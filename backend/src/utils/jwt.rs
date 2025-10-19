@@ -13,10 +13,11 @@ pub struct Claims {
     pub jti: String, // JWT ID
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct RefreshToken {
     pub id: String,
     pub user_id: String,
+    pub secret: String,
     pub token_hash: String,
     pub expires_at: chrono::DateTime<Utc>,
 }
@@ -54,14 +55,23 @@ pub fn create_access_token(
     Ok(token)
 }
 
-pub fn create_refresh_token(user_id: String) -> anyhow::Result<RefreshToken> {
-    let token = Uuid::new_v4().to_string();
-    let token_hash = hash_refresh_token(&token)?;
-    let expires_at = Utc::now() + Duration::days(7); // 7 days expiration
+impl RefreshToken {
+    pub fn encoded(&self) -> String {
+        format!("{}:{}", self.id, self.secret)
+    }
+}
+
+pub fn create_refresh_token(user_id: String, expiration_days: u64) -> anyhow::Result<RefreshToken> {
+    let secret = Uuid::new_v4().to_string();
+    let token_hash = hash_refresh_token(&secret)?;
+    let expires_at = Utc::now()
+        .checked_add_signed(Duration::days(expiration_days as i64))
+        .ok_or_else(|| anyhow::anyhow!("Refresh token expiration overflow"))?;
 
     Ok(RefreshToken {
         id: Uuid::new_v4().to_string(),
         user_id,
+        secret,
         token_hash,
         expires_at,
     })
@@ -109,6 +119,22 @@ pub fn verify_refresh_token(token: &str, hash: &str) -> anyhow::Result<bool> {
     }
 }
 
+pub fn decode_refresh_token(compound: &str) -> anyhow::Result<(String, String)> {
+    let mut parts = compound.splitn(2, ':');
+    let id = parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Malformed refresh token"))?;
+    let secret = parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Malformed refresh token"))?;
+
+    if id.is_empty() || secret.is_empty() {
+        return Err(anyhow::anyhow!("Malformed refresh token"));
+    }
+
+    Ok((id.to_string(), secret.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +148,12 @@ mod tests {
         assert_eq!(claims.sub, "user-123");
         assert_eq!(claims.username, "bob");
         assert_eq!(claims.role, "admin");
+    }
+
+    #[test]
+    fn decode_refresh_token_requires_two_parts() {
+        assert!(decode_refresh_token("abc:def").is_ok());
+        assert!(decode_refresh_token("abc").is_err());
+        assert!(decode_refresh_token(":def").is_err());
     }
 }
