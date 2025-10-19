@@ -18,7 +18,7 @@ pub async fn login(
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
     // Find user by username
     let user = match sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE username = ?"
+        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE username = $1"
     )
     .bind(&payload.username)
     .fetch_optional(&pool)
@@ -77,7 +77,7 @@ pub async fn login(
 
     // Store refresh token in database
     if let Err(_) = sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
     .bind(&refresh_token_data.id)
     .bind(&refresh_token_data.user_id)
@@ -118,7 +118,7 @@ pub async fn refresh(
     // Find refresh token in database
     use sqlx::Row;
     let token_row = sqlx::query(
-        "SELECT id, user_id, token_hash, expires_at FROM refresh_tokens WHERE id = ? AND expires_at > ?"
+        "SELECT id, user_id, token_hash, expires_at FROM refresh_tokens WHERE id = $1 AND expires_at > $2"
     )
     .bind(refresh_token)
     .bind(Utc::now())
@@ -137,7 +137,7 @@ pub async fn refresh(
 
     // Get user information
     let user = match sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = ?"
+        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = $1"
     )
     .bind(&token_record.try_get::<String,_>("user_id").unwrap_or_default())
     .fetch_optional(&pool)
@@ -182,7 +182,7 @@ pub async fn refresh(
     })?;
 
     // Delete old refresh token and store new one
-    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE id = ?")
+    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE id = $1")
         .bind(refresh_token)
         .execute(&pool)
         .await
@@ -194,7 +194,7 @@ pub async fn refresh(
     }
 
     if let Err(_) = sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
     .bind(&new_refresh_token_data.id)
     .bind(&new_refresh_token_data.user_id)
@@ -229,7 +229,7 @@ pub async fn logout(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if all {
-        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = ?")
+        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
             .bind(&user.id)
             .execute(&pool)
             .await
@@ -244,7 +244,7 @@ pub async fn logout(
 
     // Otherwise, revoke a specific refresh token by id if provided
     if let Some(rt) = payload.get("refresh_token").and_then(|v| v.as_str()) {
-        sqlx::query("DELETE FROM refresh_tokens WHERE id = ? AND user_id = ?")
+        sqlx::query("DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2")
             .bind(rt)
             .bind(&user.id)
             .execute(&pool)
@@ -259,7 +259,7 @@ pub async fn logout(
     }
 
     // Default: revoke all for safety if no token provided
-    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = ?")
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(&user.id)
         .execute(&pool)
         .await

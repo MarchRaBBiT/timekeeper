@@ -33,7 +33,7 @@ pub async fn create_leave_request(
     );
 
     sqlx::query(
-        "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"
     )
     .bind(&leave_request.id)
     .bind(&leave_request.user_id)
@@ -88,7 +88,7 @@ pub async fn create_overtime_request(
     );
 
     sqlx::query(
-        "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
     )
     .bind(&overtime_request.id)
     .bind(&overtime_request.user_id)
@@ -130,7 +130,7 @@ pub async fn get_my_requests(
 
     // Get leave requests
     let leave_requests = sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE user_id = ? ORDER BY created_at DESC"
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE user_id = $1 ORDER BY created_at DESC"
     )
     .bind(&user_id)
     .fetch_all(&pool)
@@ -144,7 +144,7 @@ pub async fn get_my_requests(
 
     // Get overtime requests
     let overtime_requests = sqlx::query_as::<_, OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE user_id = ? ORDER BY created_at DESC"
+        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE user_id = $1 ORDER BY created_at DESC"
     )
     .bind(&user_id)
     .fetch_all(&pool)
@@ -189,7 +189,7 @@ pub async fn update_request(
 
     // Try leave update
     if let Some(mut req) = sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = ? AND user_id = ?"
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = $1 AND user_id = $2"
     )
     .bind(&request_id)
     .bind(&user_id)
@@ -206,7 +206,7 @@ pub async fn update_request(
         if new_start > new_end { return Err((StatusCode::BAD_REQUEST, Json(json!({"error":"start_date must be <= end_date"})))); }
         let new_reason = upd.reason.or(req.reason);
         let now = Utc::now();
-        sqlx::query("UPDATE leave_requests SET leave_type = ?, start_date = ?, end_date = ?, reason = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE leave_requests SET leave_type = $1, start_date = $2, end_date = $3, reason = $4, updated_at = $5 WHERE id = $6")
             .bind(match new_type {
                 crate::models::leave_request::LeaveType::Annual => "annual",
                 crate::models::leave_request::LeaveType::Sick => "sick",
@@ -226,7 +226,7 @@ pub async fn update_request(
 
     // Try overtime update
     if let Some(mut req) = sqlx::query_as::<_, OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = ? AND user_id = ?"
+        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = $1 AND user_id = $2"
     )
     .bind(&request_id)
     .bind(&user_id)
@@ -242,7 +242,7 @@ pub async fn update_request(
         if new_hours <= 0.0 { return Err((StatusCode::BAD_REQUEST, Json(json!({"error":"planned_hours must be > 0"})))); }
         let new_reason = upd.reason.or(req.reason);
         let now = Utc::now();
-        sqlx::query("UPDATE overtime_requests SET date = ?, planned_hours = ?, reason = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE overtime_requests SET date = $1, planned_hours = $2, reason = $3, updated_at = $4 WHERE id = $5")
             .bind(&new_date)
             .bind(&new_hours)
             .bind(&new_reason)
@@ -268,7 +268,7 @@ pub async fn cancel_request(
     let user_id = user.id;
     // Leave
     let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'cancelled', cancelled_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'"
+        "UPDATE leave_requests SET status = 'cancelled', cancelled_at = $1, updated_at = $2 WHERE id = $3 AND user_id = $4 AND status = 'pending'"
     )
     .bind(&Utc::now())
     .bind(&Utc::now())
@@ -283,7 +283,7 @@ pub async fn cancel_request(
 
     // Overtime
     let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'cancelled', cancelled_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND status = 'pending'"
+        "UPDATE overtime_requests SET status = 'cancelled', cancelled_at = $1, updated_at = $2 WHERE id = $3 AND user_id = $4 AND status = 'pending'"
     )
     .bind(&Utc::now())
     .bind(&Utc::now())

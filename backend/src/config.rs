@@ -16,8 +16,9 @@ impl Config {
     pub fn load() -> anyhow::Result<Self> {
         dotenvy::dotenv().ok();
 
-        let database_url =
-            env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:./timekeeper.db".to_string());
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://timekeeper:timekeeper@localhost:5432/timekeeper".to_string()
+        });
 
         let jwt_secret = env::var("JWT_SECRET")
             .unwrap_or_else(|_| "your-secret-key-change-this-in-production".to_string());
