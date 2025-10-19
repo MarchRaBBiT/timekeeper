@@ -20,7 +20,13 @@ impl Config {
             env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:./timekeeper.db".to_string());
 
         let jwt_secret = env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "your-secret-key-change-this-in-production".to_string());
+            .map_err(|_| anyhow!("JWT_SECRET must be set and at least 32 characters long"))?;
+        if jwt_secret.len() < 32 {
+            return Err(anyhow!(
+                "JWT_SECRET must be at least 32 characters long (current length: {})",
+                jwt_secret.len()
+            ));
+        }
 
         let jwt_expiration_hours = env::var("JWT_EXPIRATION_HOURS")
             .unwrap_or_else(|_| "1".to_string())
