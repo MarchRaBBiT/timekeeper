@@ -1,0 +1,13 @@
+target
+**/target
+**/.git
+**/.DS_Store
+**/node_modules
+**/pkg
+scripts
+.backend.pid
+.frontend.pid
+backend/timekeeper-backend.log
+backend/timekeeper.db
+.env
+.env.*

@@ -1,0 +1,48 @@
+use crate::{
+    components::{cards::*, forms::*, layout::*},
+    state::attendance::use_attendance,
+};
+use leptos::*;
+
+#[component]
+pub fn DashboardPage() -> impl IntoView {
+    let (attendance_state, set_attendance_state) = use_attendance();
+
+    view! {
+        <Layout>
+            <div class="space-y-6">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">{"ダッシュボード"}</h1>
+                    <p class="mt-1 text-sm text-gray-600">{"最新の勤怠状況と申請サマリーを確認できます"}</p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <AttendanceCard
+                        attendance_state=attendance_state
+                        set_attendance_state=set_attendance_state
+                    />
+                    <SummaryCard/>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <RequestCard/>
+                    <UserCard/>
+                </div>
+
+                <div class="bg-white shadow rounded-lg p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">{"勤怠打刻"}</h3>
+                    <div class="flex space-x-4">
+                        <ClockInButton
+                            attendance_state=attendance_state
+                            set_attendance_state=set_attendance_state
+                        />
+                        <ClockOutButton
+                            attendance_state=attendance_state
+                            set_attendance_state=set_attendance_state
+                        />
+                    </div>
+                </div>
+            </div>
+        </Layout>
+    }
+}

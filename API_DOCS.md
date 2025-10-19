@@ -1,0 +1,716 @@
+# Timekeeper API 仕様書
+
+## 概要
+
+Timekeeper勤怠管理システムのREST API仕様書です。
+
+**ベースURL**: `http://localhost:3000/api`
+
+## 認証
+
+すべてのAPIエンドポイント（ログイン・リフレッシュ以外）はJWT認証が必要です。
+
+### 認証ヘッダー
+```
+Authorization: Bearer <access_token>
+```
+
+## エンドポイント一覧
+
+### 認証
+
+#### ログイン
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "string",
+  "password": "string"
+}
+```
+
+**レスポンス**
+```json
+{
+  "access_token": "string",
+  "refresh_token": "string",
+  "user": {
+    "id": "string",
+    "username": "string",
+    "full_name": "string",
+    "role": "employee" | "admin"
+  }
+}
+```
+
+#### トークンリフレッシュ
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "string"
+}
+```
+
+#### ログアウト（トークン失効）
+```http
+POST /api/auth/logout
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "refresh_token": "string" }
+```
+
+もしくは全リフレッシュトークンを失効させる場合:
+
+```http
+POST /api/auth/logout
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "all": true }
+```
+
+**レスポンス**
+```json
+{ "message": "Logged out" }
+```
+
+**レスポンス**
+```json
+{
+  "access_token": "string",
+  "refresh_token": "string",
+  "user": {
+    "id": "string",
+    "username": "string",
+    "full_name": "string",
+    "role": "employee" | "admin"
+  }
+}
+```
+
+### 勤怠管理
+
+#### 出勤打刻
+```http
+POST /api/attendance/clock-in
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "date": "2024-01-15" // オプション、指定しない場合は今日
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "user_id": "string",
+  "date": "2024-01-15",
+  "clock_in_time": "2024-01-15T09:00:00",
+  "clock_out_time": null,
+  "status": "present",
+  "total_work_hours": null,
+  "break_records": []
+}
+```
+
+#### 退勤打刻
+```http
+POST /api/attendance/clock-out
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "date": "2024-01-15" // オプション、指定しない場合は今日
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "user_id": "string",
+  "date": "2024-01-15",
+  "clock_in_time": "2024-01-15T09:00:00",
+  "clock_out_time": "2024-01-15T18:00:00",
+  "status": "present",
+  "total_work_hours": 8.0,
+  "break_records": []
+}
+```
+
+#### 休憩開始
+```http
+POST /api/attendance/break-start
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "attendance_id": "string"
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "attendance_id": "string",
+  "break_start_time": "2024-01-15T12:00:00",
+  "break_end_time": null,
+  "duration_minutes": null
+}
+```
+
+#### 休憩終了
+```http
+POST /api/attendance/break-end
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "break_record_id": "string"
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "attendance_id": "string",
+  "break_start_time": "2024-01-15T12:00:00",
+  "break_end_time": "2024-01-15T13:00:00",
+  "duration_minutes": 60
+}
+```
+
+#### 勤怠履歴取得
+```http
+GET /api/attendance/me?year=2024&month=1
+Authorization: Bearer <token>
+```
+
+**クエリパラメータ**
+- `year` (optional): 年
+- `month` (optional): 月
+
+**レスポンス**
+```json
+[
+  {
+    "id": "string",
+    "user_id": "string",
+    "date": "2024-01-15",
+    "clock_in_time": "2024-01-15T09:00:00",
+    "clock_out_time": "2024-01-15T18:00:00",
+    "status": "present",
+    "total_work_hours": 8.0,
+    "break_records": [
+      {
+        "id": "string",
+        "attendance_id": "string",
+        "break_start_time": "2024-01-15T12:00:00",
+        "break_end_time": "2024-01-15T13:00:00",
+        "duration_minutes": 60
+      }
+    ]
+  }
+]
+```
+
+#### 月次集計取得
+```http
+GET /api/attendance/me/summary?year=2024&month=1
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "month": 1,
+  "year": 2024,
+  "total_work_hours": 160.0,
+  "total_work_days": 20,
+  "average_daily_hours": 8.0
+}
+```
+
+#### CSV�G�N�X�|�[�g�i���Ԑl�̕��j
+```http
+GET /api/attendance/export?from=2024-01-01&to=2024-01-31
+Authorization: Bearer <token>
+```
+
+**�N�G���p�����[�^**
+- `from` (optional): YYYY-MM-DD �ĐݑĂяo���J�n��
+- `to` (optional): YYYY-MM-DD �ĐݑĂяo���I����
+
+����]�̓����`from` > `to` �̏ꍇ�̓u���[���̕s����Ԃ��܂��B
+
+**���X�|���X**
+```json
+{
+  "csv_data": "Username,Full Name,Date,Clock In,Clock Out,Total Hours,Status\n...",
+  "filename": "my_attendance_export_20240131_120000.csv"
+}
+```
+
+### 申請管理
+
+#### 休暇申請
+```http
+POST /api/requests/leave
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "leave_type": "annual" | "sick" | "personal" | "other",
+  "start_date": "2024-01-20",
+  "end_date": "2024-01-22",
+  "reason": "家族旅行"
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "user_id": "string",
+  "leave_type": "annual",
+  "start_date": "2024-01-20",
+  "end_date": "2024-01-22",
+  "reason": "家族旅行",
+  "status": "pending",
+  "approved_by": null,
+  "approved_at": null,
+  "created_at": "2024-01-15T10:00:00Z"
+}
+```
+
+#### 残業申請
+```http
+POST /api/requests/overtime
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "date": "2024-01-15",
+  "planned_hours": 2.5,
+  "reason": "プロジェクト締切"
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "user_id": "string",
+  "date": "2024-01-15",
+  "planned_hours": 2.5,
+  "reason": "プロジェクト締切",
+  "status": "pending",
+  "approved_by": null,
+  "approved_at": null,
+  "created_at": "2024-01-15T10:00:00Z"
+}
+```
+
+#### 申請一覧取得
+```http
+GET /api/requests/me
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "leave_requests": [
+    {
+      "id": "string",
+      "user_id": "string",
+      "leave_type": "annual",
+      "start_date": "2024-01-20",
+      "end_date": "2024-01-22",
+      "reason": "家族旅行",
+      "status": "pending",
+      "approved_by": null,
+      "approved_at": null,
+      "created_at": "2024-01-15T10:00:00Z"
+    }
+  ],
+  "overtime_requests": [
+    {
+      "id": "string",
+      "user_id": "string",
+      "date": "2024-01-15",
+      "planned_hours": 2.5,
+      "reason": "プロジェクト締切",
+      "status": "pending",
+      "approved_by": null,
+      "approved_at": null,
+      "created_at": "2024-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+### 管理者機能
+
+#### 従業員一覧取得
+```http
+GET /api/admin/users
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+[
+  {
+    "id": "string",
+    "username": "string",
+    "full_name": "string",
+    "role": "employee" | "admin"
+  }
+]
+```
+
+#### 従業員登録
+```http
+POST /api/admin/users
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "username": "string",
+  "password": "string",
+  "full_name": "string",
+  "role": "employee" | "admin"
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "username": "string",
+  "full_name": "string",
+  "role": "employee" | "admin"
+}
+```
+
+#### 全従業員の勤怠データ取得
+```http
+GET /api/admin/attendance
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+[
+  {
+    "id": "string",
+    "user_id": "string",
+    "date": "2024-01-15",
+    "clock_in_time": "2024-01-15T09:00:00",
+    "clock_out_time": "2024-01-15T18:00:00",
+    "status": "present",
+    "total_work_hours": 8.0,
+    "break_records": []
+  }
+]
+```
+
+#### 申請承認
+```http
+PUT /api/admin/requests/{id}/approve
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "message": "Leave request approved" // または "Overtime request approved"
+}
+```
+
+#### 申請却下
+```http
+PUT /api/admin/requests/{id}/reject
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "message": "Leave request rejected" // または "Overtime request rejected"
+}
+```
+
+#### データエクスポート
+```http
+GET /api/admin/export
+Authorization: Bearer <token>
+```
+
+**クエリパラメータ（任意）**
+- `username` (optional): ユーザー名（完全一致）
+- `from` (optional): 期間開始日 `YYYY-MM-DD`
+- `to` (optional): 期間終了日 `YYYY-MM-DD`
+
+例:
+```
+GET /api/admin/export?username=alice&from=2025-10-01&to=2025-10-31
+```
+
+**レスポンス**
+```json
+{
+  "csv_data": "Username,Full Name,Date,Clock In,Clock Out,Total Hours,Status\n...",
+  "filename": "attendance_export_20240115_120000.csv"
+}
+```
+
+## エラーレスポンス
+
+すべてのエンドポイントは以下の形式でエラーを返します：
+
+```json
+{
+  "error": "エラーメッセージ"
+}
+```
+
+### HTTPステータスコード
+
+- `200` - 成功
+- `201` - 作成成功
+- `400` - リクエストエラー
+- `401` - 認証エラー
+- `403` - 権限エラー
+- `404` - リソースが見つからない
+- `409` - 競合（例：ユーザー名重複）
+- `500` - サーバーエラー
+
+## データ型
+
+### 日付・時刻フォーマット
+- 日付: `YYYY-MM-DD` (例: `2024-01-15`)
+- 時刻: `YYYY-MM-DDTHH:MM:SS` (例: `2024-01-15T09:00:00`)
+
+### 列挙型
+
+#### ユーザー権限
+- `employee` - 従業員
+- `admin` - 管理者
+
+#### 勤怠ステータス
+- `present` - 出勤
+- `absent` - 欠勤
+- `late` - 遅刻
+- `half_day` - 半日
+
+#### 休暇種別
+- `annual` - 有給休暇
+- `sick` - 病気休暇
+- `personal` - 私用休暇
+- `other` - その他
+
+#### 申請ステータス
+- `pending` - 承認待ち
+- `approved` - 承認済み
+- `rejected` - 却下
+- `cancelled` - 取消（本人によるキャンセル）
+
+
+## 表記ルール（Conventions）
+
+### Enum値の表記（casing）
+- 本APIで扱う列挙値はすべて `snake_case` を使用します。
+- ユーザーの役割（`role`）: `employee` | `admin`
+- 勤怠ステータス（`status`）: `present` | `absent` | `late` | `half_day`
+- 申請ステータス（`status`）: `pending` | `approved` | `rejected` | `cancelled`
+- 休暇種別（`leave_type`）: `annual` | `sick` | `personal` | `other`
+
+# P0 Updates (New/Changed Endpoints)
+
+本セクションはP0実装に伴う追加/変更点の要約です。既存セクションの補足として参照してください。
+
+## 勤怠（Attendance）
+
+### 現在ステータス取得
+
+GET /api/attendance/status
+
+クエリ:
+- `date` (任意, YYYY-MM-DD, 省略時=今日)
+
+レスポンス:
+```json
+{
+  "status": "not_started" | "clocked_in" | "on_break" | "clocked_out",
+  "attendance_id": "string|null",
+  "active_break_id": "string|null",
+  "clock_in_time": "2024-01-15T09:00:00|null",
+  "clock_out_time": "2024-01-15T18:00:00|null"
+}
+```
+
+### 自分の勤怠（期間対応）
+
+GET /api/attendance/me
+
+クエリ（拡張）:
+- `from` (任意, YYYY-MM-DD)
+- `to` (任意, YYYY-MM-DD)
+
+備考:
+- `from`/`to` 指定時は `year`/`month` と併用不可
+- `from` のみ指定で当日までの範囲
+
+### 勤怠IDに紐づく休憩一覧
+
+GET /api/attendance/{id}/breaks
+
+レスポンス:
+```json
+[
+  {
+    "id": "string",
+    "attendance_id": "string",
+    "break_start_time": "2024-01-15T12:00:00",
+    "break_end_time": "2024-01-15T13:00:00|null",
+    "duration_minutes": 60
+  }
+]
+```
+
+## 管理者（Admin）勤怠操作
+
+### 勤怠の作成/置換（アップサート）
+
+PUT /api/admin/attendance
+
+ボディ:
+```json
+{
+  "user_id": "string",
+  "date": "YYYY-MM-DD",
+  "clock_in_time": "YYYY-MM-DDTHH:MM:SS",
+  "clock_out_time": "YYYY-MM-DDTHH:MM:SS|null",
+  "breaks": [
+    { "break_start_time": "YYYY-MM-DDTHH:MM:SS", "break_end_time": "YYYY-MM-DDTHH:MM:SS|null" }
+  ]
+}
+```
+
+レスポンス: Attendanceの詳細（従来型。`break_records` を含む）
+
+備考: 同一ユーザー/同一日が存在する場合は既存を置換します。
+
+### 休憩の強制終了
+
+PUT /api/admin/breaks/{id}/force-end
+
+ボディ: なし（現在時刻で終了）
+
+レスポンス: BreakRecord（更新後）
+
+## 申請（Requests）
+
+### 管理者向け 申請一覧
+
+GET /api/admin/requests
+
+クエリ:
+- `status` (任意: pending|approved|rejected|cancelled)
+- `user_id` (任意)
+- `page` (任意, 既定=1)
+- `per_page` (任意, 1..100, 既定=20)
+
+レスポンス:
+```json
+{
+  "leave_requests": [ { /* LeaveRequestResponse */ } ],
+  "overtime_requests": [ { /* OvertimeRequestResponse */ } ],
+  "page_info": { "page": 1, "per_page": 20 }
+}
+```
+
+備考: 追加のフィルタ（type/from/to等）は今後拡張予定。
+
+### 管理者向け 申請詳細
+
+GET /api/admin/requests/{id}
+
+レスポンス:
+```json
+{ "kind": "leave" | "overtime", "data": { /* *RequestResponse */ } }
+```
+
+### 申請の承認（コメント必須）
+
+PUT /api/admin/requests/{id}/approve
+
+ボディ:
+```json
+{ "comment": "string (1..500)" }
+```
+
+レスポンス例:
+```json
+{ "message": "Leave request approved" }
+```
+
+### 申請の却下（コメント必須）
+
+PUT /api/admin/requests/{id}/reject
+
+ボディ:
+```json
+{ "comment": "string (1..500)" }
+```
+
+レスポンス例:
+```json
+{ "message": "Leave request rejected" }
+```
+
+### 本人による申請の編集（承認前）
+
+PUT /api/requests/{id}
+
+ボディ（leave の例。部分更新可）:
+```json
+{ "leave_type": "annual|sick|personal|other", "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD", "reason": "string|null" }
+```
+
+ボディ（overtime の例。部分更新可）:
+```json
+{ "date": "YYYY-MM-DD", "planned_hours": 1.5, "reason": "string|null" }
+```
+
+レスポンス:
+```json
+{ "message": "Leave request updated" }
+```
+
+### 本人による申請の取消（承認前）
+
+DELETE /api/requests/{id}
+
+レスポンス:
+```json
+{ "id": "string", "status": "cancelled" }
+```
+
+## レスポンス項目の拡張（Requests）
+
+LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました:
+- `decision_comment` (string|null)
+- `rejected_by` (string|null)
+- `rejected_at` (datetime|null)
+- `cancelled_at` (datetime|null)

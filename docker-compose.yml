@@ -1,0 +1,68 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://timekeeper:timekeeper@db:5432/timekeeper
+      - RUST_LOG=info
+      - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Tokyo}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - timekeeper_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - timekeeper_net
+
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_DB=timekeeper
+      - POSTGRES_USER=timekeeper
+      - POSTGRES_PASSWORD=timekeeper
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "timekeeper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - timekeeper_net
+
+  db_admin:
+    image: dpage/pgadmin4:8.12
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - timekeeper_net
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  timekeeper_net:
+    driver: bridge
