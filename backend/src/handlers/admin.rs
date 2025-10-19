@@ -15,7 +15,7 @@ use crate::{
         break_record::BreakRecordResponse,
         user::{CreateUser, UpdateUser, User, UserResponse},
     },
-    utils::{password::hash_password, time},
+    utils::{csv::append_csv_row, password::hash_password, time},
 };
 
 pub async fn get_users(
@@ -676,29 +676,53 @@ pub async fn export_data(
 
     // Convert to CSV format
     let mut csv_data = String::new();
-    csv_data.push_str("Username,Full Name,Date,Clock In,Clock Out,Total Hours,Status\n");
+    append_csv_row(
+        &mut csv_data,
+        &[
+            "Username".to_string(),
+            "Full Name".to_string(),
+            "Date".to_string(),
+            "Clock In".to_string(),
+            "Clock Out".to_string(),
+            "Total Hours".to_string(),
+            "Status".to_string(),
+        ],
+    );
 
     for record in data {
-        csv_data.push_str(&format!(
-            "{},{},{},{},{},{},{}\n",
-            record.try_get::<String, _>("username").unwrap_or_default(),
-            record.try_get::<String, _>("full_name").unwrap_or_default(),
-            record.try_get::<String, _>("date").unwrap_or_default(),
-            record
-                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
-                .ok()
-                .flatten()
-                .map(|t| t.format("%H:%M:%S").to_string())
-                .unwrap_or_default(),
-            record
-                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_out_time")
-                .ok()
-                .flatten()
-                .map(|t| t.format("%H:%M:%S").to_string())
-                .unwrap_or_default(),
-            record.try_get::<f64, _>("total_work_hours").unwrap_or(0.0),
-            record.try_get::<String, _>("status").unwrap_or_default(),
-        ));
+        let username = record.try_get::<String, _>("username").unwrap_or_default();
+        let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+        let date = record.try_get::<String, _>("date").unwrap_or_default();
+        let clock_in = record
+            .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
+            .ok()
+            .flatten()
+            .map(|t| t.format("%H:%M:%S").to_string())
+            .unwrap_or_default();
+        let clock_out = record
+            .try_get::<Option<chrono::NaiveDateTime>, _>("clock_out_time")
+            .ok()
+            .flatten()
+            .map(|t| t.format("%H:%M:%S").to_string())
+            .unwrap_or_default();
+        let total_hours = record
+            .try_get::<f64, _>("total_work_hours")
+            .map(|h| format!("{:.2}", h))
+            .unwrap_or_else(|_| "0.00".to_string());
+        let status = record.try_get::<String, _>("status").unwrap_or_default();
+
+        append_csv_row(
+            &mut csv_data,
+            &[
+                username,
+                full_name,
+                date,
+                clock_in,
+                clock_out,
+                total_hours,
+                status,
+            ],
+        );
     }
 
     Ok(Json(json!({

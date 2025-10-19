@@ -18,7 +18,7 @@ use crate::{
         break_record::{BreakRecord, BreakRecordResponse},
         user::User,
     },
-    utils::time,
+    utils::{csv::append_csv_row, time},
 };
 
 #[derive(Debug, Deserialize)]
@@ -660,8 +660,19 @@ pub async fn export_my_attendance(
         )
     })?;
 
-    let mut csv_data =
-        String::from("Username,Full Name,Date,Clock In,Clock Out,Total Hours,Status\n");
+    let mut csv_data = String::new();
+    append_csv_row(
+        &mut csv_data,
+        &[
+            "Username".to_string(),
+            "Full Name".to_string(),
+            "Date".to_string(),
+            "Clock In".to_string(),
+            "Clock Out".to_string(),
+            "Total Hours".to_string(),
+            "Status".to_string(),
+        ],
+    );
     for row in rows {
         let username = row.try_get::<String, _>("username").unwrap_or_default();
         let full_name = row.try_get::<String, _>("full_name").unwrap_or_default();
@@ -681,13 +692,24 @@ pub async fn export_my_attendance(
             .flatten()
             .map(|t| t.format("%H:%M:%S").to_string())
             .unwrap_or_default();
-        let total_hours = row.try_get::<f64, _>("total_work_hours").unwrap_or(0.0);
+        let total_hours = row
+            .try_get::<f64, _>("total_work_hours")
+            .map(|h| format!("{:.2}", h))
+            .unwrap_or_else(|_| "0.00".to_string());
         let status = row.try_get::<String, _>("status").unwrap_or_default();
 
-        csv_data.push_str(&format!(
-            "{},{},{},{},{},{:.2},{}\n",
-            username, full_name, date, clock_in, clock_out, total_hours, status
-        ));
+        append_csv_row(
+            &mut csv_data,
+            &[
+                username,
+                full_name,
+                date,
+                clock_in,
+                clock_out,
+                total_hours,
+                status,
+            ],
+        );
     }
 
     Ok(Json(json!({
