@@ -16,8 +16,9 @@ impl Config {
     pub fn load() -> anyhow::Result<Self> {
         dotenvy::dotenv().ok();
 
-        let database_url =
-            env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:./timekeeper.db".to_string());
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://timekeeper:timekeeper@localhost:5432/timekeeper".to_string()
+        });
 
         let jwt_secret = env::var("JWT_SECRET")
             .map_err(|_| anyhow!("JWT_SECRET must be set and at least 32 characters long"))?;

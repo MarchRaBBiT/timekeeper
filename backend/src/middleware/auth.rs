@@ -99,7 +99,7 @@ pub async fn auth_admin(
 
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = ?"
+        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = $1"
     )
     .bind(user_id)
     .fetch_optional(pool)

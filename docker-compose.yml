@@ -7,11 +7,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://timekeeper:timekeeper@db:5432/timekeeper
+      - DATABASE_URL=postgres://timekeeper:timekeeper@backend-db:5432/timekeeper
       - RUST_LOG=info
       - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Tokyo}
     depends_on:
-      db:
+      backend-db:
         condition: service_healthy
     networks:
       - timekeeper_net
@@ -27,7 +27,7 @@ services:
     networks:
       - timekeeper_net
 
-  db:
+  backend-db:
     image: postgres:16
     environment:
       - POSTGRES_DB=timekeeper
@@ -53,7 +53,7 @@ services:
     ports:
       - "5050:80"
     depends_on:
-      - db
+      - backend-db
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:

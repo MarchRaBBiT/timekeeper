@@ -6,7 +6,7 @@ use axum::{
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use crate::{
     config::Config,
@@ -52,7 +52,7 @@ pub async fn create_user(
     }
     // Check if username already exists
     let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, role, created_at, updated_at FROM users WHERE username = ?"
+        "SELECT id, username, password_hash, full_name, role, created_at, updated_at FROM users WHERE username = $1"
     )
     .bind(&payload.username)
     .fetch_optional(&pool)
@@ -86,7 +86,7 @@ pub async fn create_user(
     );
 
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO users (id, username, password_hash, full_name, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
     .bind(&user.id)
     .bind(&user.username)
@@ -173,7 +173,7 @@ pub async fn approve_request(
     // Try to approve leave request first
     let now_utc = time::now_utc(&config.time_zone);
     let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'approved', approved_by = ?, approved_at = ?, decision_comment = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+        "UPDATE leave_requests SET status = 'approved', approved_by = $1, approved_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'"
     )
     .bind(&approver_id)
     .bind(&now_utc)
@@ -196,7 +196,7 @@ pub async fn approve_request(
     // Try to approve overtime request
     let now_utc = time::now_utc(&config.time_zone);
     let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'approved', approved_by = ?, approved_at = ?, decision_comment = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+        "UPDATE overtime_requests SET status = 'approved', approved_by = $1, approved_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'"
     )
     .bind(&approver_id)
     .bind(&now_utc)
@@ -248,7 +248,7 @@ pub async fn reject_request(
     // Try to reject leave request first
     let now_utc = time::now_utc(&config.time_zone);
     let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'rejected', rejected_by = ?, rejected_at = ?, decision_comment = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+        "UPDATE leave_requests SET status = 'rejected', rejected_by = $1, rejected_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'"
     )
     .bind(&approver_id)
     .bind(&now_utc)
@@ -271,7 +271,7 @@ pub async fn reject_request(
     // Try to reject overtime request
     let now_utc = time::now_utc(&config.time_zone);
     let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'rejected', rejected_by = ?, rejected_at = ?, decision_comment = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+        "UPDATE overtime_requests SET status = 'rejected', rejected_by = $1, rejected_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'"
     )
     .bind(&approver_id)
     .bind(&now_utc)
@@ -321,68 +321,78 @@ pub async fn list_requests(
     let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
-    // For brevity: only basic filtering implemented; full filters can be extended later
-    let mut conditions = vec![];
-    let mut binds: Vec<(usize, String)> = vec![];
-
-    if let Some(uid) = q.user_id.clone() {
-        conditions.push("user_id = ?".to_string());
-        binds.push((binds.len() + 1, uid));
-    }
-    if let Some(status) = q.status.clone() {
-        conditions.push("status = ?".to_string());
-        binds.push((binds.len() + 1, status));
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-
     // Leave requests
-    let leave_sql = format!(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests {} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-        where_clause
+    let mut leave_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests",
     );
-    let mut leave_query =
-        sqlx::query_as::<_, crate::models::leave_request::LeaveRequest>(&leave_sql);
-    for (_i, v) in &binds {
-        leave_query = leave_query.bind(v);
-    }
-    leave_query = leave_query.bind(per_page);
-    leave_query = leave_query.bind(offset);
-    let leave_items = leave_query.fetch_all(&pool).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })?;
+    apply_request_filters(&mut leave_builder, &q);
+    leave_builder
+        .push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let leave_items = leave_builder
+        .build_query_as::<crate::models::leave_request::LeaveRequest>()
+        .fetch_all(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Database error"})),
+            )
+        })?;
 
     // Overtime requests
-    let ot_sql = format!(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests {} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-        where_clause
+    let mut ot_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests",
     );
-    let mut ot_query =
-        sqlx::query_as::<_, crate::models::overtime_request::OvertimeRequest>(&ot_sql);
-    for (_i, v) in &binds {
-        ot_query = ot_query.bind(v);
-    }
-    ot_query = ot_query.bind(per_page);
-    ot_query = ot_query.bind(offset);
-    let ot_items = ot_query.fetch_all(&pool).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })?;
+    apply_request_filters(&mut ot_builder, &q);
+    ot_builder
+        .push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(per_page)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let ot_items = ot_builder
+        .build_query_as::<crate::models::overtime_request::OvertimeRequest>()
+        .fetch_all(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Database error"})),
+            )
+        })?;
 
     Ok(Json(json!({
         "leave_requests": leave_items.into_iter().map(crate::models::leave_request::LeaveRequestResponse::from).collect::<Vec<_>>(),
         "overtime_requests": ot_items.into_iter().map(crate::models::overtime_request::OvertimeRequestResponse::from).collect::<Vec<_>>(),
         "page_info": {"page": page, "per_page": per_page}
     })))
+}
+
+fn apply_request_filters<'a>(
+    builder: &mut QueryBuilder<'a, Postgres>,
+    filters: &'a RequestListQuery,
+) {
+    let mut first = true;
+    if let Some(ref uid) = filters.user_id {
+        if first {
+            builder.push(" WHERE ");
+            first = false;
+        } else {
+            builder.push(" AND ");
+        }
+        builder.push("user_id = ").push_bind(uid);
+    }
+    if let Some(ref status) = filters.status {
+        if first {
+            builder.push(" WHERE ");
+            first = false;
+        } else {
+            builder.push(" AND ");
+        }
+        builder.push("status = ").push_bind(status);
+    }
 }
 
 pub async fn get_request_detail(
@@ -394,7 +404,7 @@ pub async fn get_request_detail(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     if let Some(item) = sqlx::query_as::<_, crate::models::leave_request::LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = ?"
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = $1"
     )
     .bind(&request_id)
     .fetch_optional(&pool)
@@ -403,7 +413,7 @@ pub async fn get_request_detail(
         return Ok(Json(json!({"kind":"leave","data": crate::models::leave_request::LeaveRequestResponse::from(item)})));
     }
     if let Some(item) = sqlx::query_as::<_, crate::models::overtime_request::OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = ?"
+        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = $1"
     )
     .bind(&request_id)
     .fetch_optional(&pool)
@@ -474,7 +484,7 @@ pub async fn upsert_attendance(
     };
 
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
-    let _ = sqlx::query("DELETE FROM attendance WHERE user_id = ? AND date = ?")
+    let _ = sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
         .bind(&body.user_id)
         .bind(date)
         .execute(&pool)
@@ -489,7 +499,7 @@ pub async fn upsert_attendance(
     att.clock_out_time = cout;
     att.calculate_work_hours();
 
-    sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)" )
+    sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
         .bind(&att.id)
         .bind(&att.user_id)
         .bind(&att.date)
@@ -534,7 +544,7 @@ pub async fn upsert_attendance(
                 br.duration_minutes = Some(d.num_minutes() as i32);
                 br.updated_at = now_utc;
             }
-            sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
                 .bind(&br.id)
                 .bind(&br.attendance_id)
                 .bind(&br.break_start_time)
@@ -574,7 +584,7 @@ pub async fn force_end_break(
     let now_utc = now_local.with_timezone(&Utc);
     let now = now_local.naive_local();
     let mut rec = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = ?"
+        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
     .bind(&break_id)
     .fetch_optional(&pool)
@@ -593,7 +603,7 @@ pub async fn force_end_break(
     rec.duration_minutes = Some(d.num_minutes() as i32);
     rec.updated_at = now_utc;
 
-    sqlx::query("UPDATE break_records SET break_end_time = ?, duration_minutes = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4")
         .bind(&rec.break_end_time)
         .bind(&rec.duration_minutes)
         .bind(&rec.updated_at)
@@ -624,36 +634,40 @@ pub async fn export_data(
     }
     // Build filtered SQL
     use sqlx::Row;
-    let mut conditions: Vec<String> = Vec::new();
-    let mut binds: Vec<String> = Vec::new();
-    if let Some(u) = q.username.as_ref() {
-        conditions.push("u.username = ?".to_string());
-        binds.push(u.clone());
-    }
-    if let Some(f) = q.from.as_ref() {
-        conditions.push("a.date >= ?".to_string());
-        binds.push(f.clone());
-    }
-    if let Some(t) = q.to.as_ref() {
-        conditions.push("a.date <= ?".to_string());
-        binds.push(t.clone());
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {} ", conditions.join(" AND "))
-    };
-    let sql = format!(
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
-         FROM attendance a JOIN users u ON a.user_id = u.id{} ORDER BY a.date DESC, u.username",
-        where_clause
+         FROM attendance a JOIN users u ON a.user_id = u.id",
     );
-    let mut query = sqlx::query(&sql);
-    for v in &binds {
-        query = query.bind(v);
+    let mut first = true;
+    if let Some(ref u_name) = q.username {
+        if first {
+            builder.push(" WHERE ");
+            first = false;
+        } else {
+            builder.push(" AND ");
+        }
+        builder.push("u.username = ").push_bind(u_name);
     }
-    let data = query.fetch_all(&pool).await.map_err(|_| {
+    if let Some(ref from) = q.from {
+        if first {
+            builder.push(" WHERE ");
+            first = false;
+        } else {
+            builder.push(" AND ");
+        }
+        builder.push("a.date >= ").push_bind(from);
+    }
+    if let Some(ref to) = q.to {
+        if first {
+            builder.push(" WHERE ");
+            first = false;
+        } else {
+            builder.push(" AND ");
+        }
+        builder.push("a.date <= ").push_bind(to);
+    }
+    builder.push(" ORDER BY a.date DESC, u.username");
+    let data = builder.build().fetch_all(&pool).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Database error"})),
@@ -725,7 +739,7 @@ async fn get_break_records(
     attendance_id: &str,
 ) -> Result<Vec<BreakRecordResponse>, (StatusCode, Json<Value>)> {
     let break_records = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = ? ORDER BY break_start_time"
+        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
     .bind(attendance_id)
     .fetch_all(pool)

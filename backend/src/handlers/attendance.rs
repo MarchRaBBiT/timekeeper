@@ -6,7 +6,7 @@ use axum::{
 use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 use crate::{
     config::Config,
@@ -159,7 +159,7 @@ pub async fn clock_out(
 
     // Find attendance record for this date
     let mut attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = ? AND date = ?"
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
     .bind(user_id)
     .bind(date)
@@ -197,7 +197,7 @@ pub async fn clock_out(
     attendance.updated_at = now_utc;
 
     sqlx::query(
-        "UPDATE attendance SET clock_out_time = ?, total_work_hours = ?, updated_at = ? WHERE id = ?"
+        "UPDATE attendance SET clock_out_time = $1, total_work_hours = $2, updated_at = $3 WHERE id = $4"
     )
     .bind(&attendance.clock_out_time)
     .bind(&attendance.total_work_hours)
@@ -241,7 +241,7 @@ pub async fn break_start(
 
     // Check if attendance record exists and user is clocked in
     let attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = ?"
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
     )
     .bind(&payload.attendance_id)
     .fetch_optional(&pool)
@@ -271,7 +271,7 @@ pub async fn break_start(
 
     // Check if there's already an active break
     let active_break = sqlx::query_as::<_, BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = ? AND break_end_time IS NULL"
+        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL"
     )
     .bind(&payload.attendance_id)
     .fetch_optional(&pool)
@@ -293,7 +293,7 @@ pub async fn break_start(
     let break_record = BreakRecord::new(payload.attendance_id, break_start_time, now_utc);
 
     sqlx::query(
-        "INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
     .bind(&break_record.id)
     .bind(&break_record.attendance_id)
@@ -327,7 +327,7 @@ pub async fn break_end(
 
     // Find the break record
     let mut break_record = sqlx::query_as::<_, BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = ?"
+        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
     .bind(&payload.break_record_id)
     .fetch_optional(&pool)
@@ -353,7 +353,7 @@ pub async fn break_end(
     }
     // Check ownership
     let att = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = ?"
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
     )
     .bind(&break_record.attendance_id)
     .fetch_optional(&pool)
@@ -367,7 +367,7 @@ pub async fn break_end(
     break_record.end_break(break_end_time, now_utc);
 
     sqlx::query(
-        "UPDATE break_records SET break_end_time = ?, duration_minutes = ?, updated_at = ? WHERE id = ?"
+        "UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4"
     )
     .bind(&break_record.break_end_time)
     .bind(&break_record.duration_minutes)
@@ -405,7 +405,7 @@ pub async fn get_my_attendance(
             ));
         }
         sqlx::query_as::<_, Attendance>(
-            "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC"
+            "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
         )
         .bind(user_id)
         .bind(from)
@@ -439,7 +439,7 @@ pub async fn get_my_attendance(
             ));
         };
         sqlx::query_as::<_, Attendance>(
-            "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ? ORDER BY date DESC"
+            "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
         )
         .bind(user_id)
         .bind(first_day)
@@ -485,7 +485,7 @@ pub async fn get_attendance_status(
         .unwrap_or_else(|| time::today_local(&config.time_zone));
 
     let attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = ? AND date = ?"
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
     .bind(&user_id)
     .bind(&date)
@@ -496,7 +496,7 @@ pub async fn get_attendance_status(
     if let Some(att) = attendance {
         // Check active break
         let active_break = sqlx::query(
-            "SELECT id FROM break_records WHERE attendance_id = ? AND break_end_time IS NULL ORDER BY break_start_time DESC LIMIT 1"
+            "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL ORDER BY break_start_time DESC LIMIT 1"
         )
         .bind(&att.id)
         .fetch_optional(&pool)
@@ -587,7 +587,7 @@ pub async fn get_my_summary(
     };
 
     let row = sqlx::query(
-        "SELECT COALESCE(SUM(total_work_hours), 0) as total_hours, COUNT(*) as total_days FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ? AND total_work_hours IS NOT NULL"
+        "SELECT COALESCE(SUM(total_work_hours), 0) as total_hours, COUNT(*) as total_days FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 AND total_work_hours IS NOT NULL"
     )
     .bind(user_id)
     .bind(first_day)
@@ -637,31 +637,23 @@ pub async fn export_my_attendance(
         }
     }
 
-    let mut sql = String::from(
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, \
                 a.total_work_hours, a.status \
          FROM attendance a \
          JOIN users u ON a.user_id = u.id \
-         WHERE a.user_id = ?",
+         WHERE a.user_id = ",
     );
-    if from.is_some() {
-        sql.push_str(" AND a.date >= ?");
-    }
-    if to.is_some() {
-        sql.push_str(" AND a.date <= ?");
-    }
-    sql.push_str(" ORDER BY a.date DESC");
-
-    let mut query = sqlx::query(&sql);
-    query = query.bind(&user.id);
+    builder.push_bind(&user.id);
     if let Some(f) = from {
-        query = query.bind(f);
+        builder.push(" AND a.date >= ").push_bind(f);
     }
     if let Some(t) = to {
-        query = query.bind(t);
+        builder.push(" AND a.date <= ").push_bind(t);
     }
+    builder.push(" ORDER BY a.date DESC");
 
-    let rows = query.fetch_all(&pool).await.map_err(|_| {
+    let rows = builder.build().fetch_all(&pool).await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Database error"})),
@@ -734,7 +726,7 @@ async fn get_break_records(
     attendance_id: &str,
 ) -> Result<Vec<BreakRecordResponse>, (StatusCode, Json<Value>)> {
     let break_records = sqlx::query_as::<_, BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = ? ORDER BY break_start_time"
+        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
     .bind(attendance_id)
     .fetch_all(pool)
