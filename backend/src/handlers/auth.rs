@@ -7,7 +7,9 @@ use crate::{
     config::Config,
     models::user::{LoginRequest, LoginResponse, User, UserResponse},
     utils::{
-        jwt::{create_access_token, create_refresh_token},
+        jwt::{
+            create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
+        },
         password::verify_password,
     },
 };
@@ -68,12 +70,15 @@ pub async fn login(
     })?;
 
     // Create refresh token
-    let refresh_token_data = create_refresh_token(user.id.clone()).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Refresh token creation error"})),
-        )
-    })?;
+    let refresh_token_data =
+        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days).map_err(
+            |_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Refresh token creation error"})),
+                )
+            },
+        )?;
 
     // Store refresh token in database
     if let Err(_) = sqlx::query(
@@ -94,7 +99,7 @@ pub async fn login(
 
     let response = LoginResponse {
         access_token,
-        refresh_token: refresh_token_data.id, // Return the unhashed token ID
+        refresh_token: refresh_token_data.encoded(),
         user: UserResponse::from(user),
     };
 
@@ -114,13 +119,20 @@ pub async fn refresh(
                 Json(json!({"error": "Refresh token is required"})),
             )
         })?;
+    let (refresh_token_id, refresh_token_secret) =
+        decode_refresh_token(refresh_token).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid or expired refresh token"})),
+            )
+        })?;
 
     // Find refresh token in database
     use sqlx::Row;
     let token_row = sqlx::query(
         "SELECT id, user_id, token_hash, expires_at FROM refresh_tokens WHERE id = ? AND expires_at > ?"
     )
-    .bind(refresh_token)
+    .bind(&refresh_token_id)
     .bind(Utc::now())
     .fetch_optional(&pool)
     .await
@@ -134,12 +146,48 @@ pub async fn refresh(
             ));
         }
     };
+    let token_hash: String = match token_record.try_get::<String, _>("token_hash") {
+        Ok(hash) if !hash.is_empty() => hash,
+        _ => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid or expired refresh token"})),
+            ))
+        }
+    };
+    let user_id: String = match token_record.try_get::<String, _>("user_id") {
+        Ok(id) if !id.is_empty() => id,
+        _ => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid or expired refresh token"})),
+            ))
+        }
+    };
+    if user_id.is_empty() {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid or expired refresh token"})),
+        ));
+    }
+    let valid = verify_refresh_token(&refresh_token_secret, &token_hash).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Refresh token verification error"})),
+        )
+    })?;
+    if !valid {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid or expired refresh token"})),
+        ));
+    }
 
     // Get user information
     let user = match sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = ?"
     )
-    .bind(&token_record.try_get::<String,_>("user_id").unwrap_or_default())
+    .bind(&user_id)
     .fetch_optional(&pool)
     .await
     {
@@ -174,16 +222,19 @@ pub async fn refresh(
     })?;
 
     // Create new refresh token
-    let new_refresh_token_data = create_refresh_token(user.id.clone()).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Refresh token creation error"})),
-        )
-    })?;
+    let new_refresh_token_data =
+        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days).map_err(
+            |_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Refresh token creation error"})),
+                )
+            },
+        )?;
 
     // Delete old refresh token and store new one
     if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE id = ?")
-        .bind(refresh_token)
+        .bind(&refresh_token_id)
         .execute(&pool)
         .await
     {
@@ -211,7 +262,7 @@ pub async fn refresh(
 
     let response = LoginResponse {
         access_token,
-        refresh_token: new_refresh_token_data.id,
+        refresh_token: new_refresh_token_data.encoded(),
         user: UserResponse::from(user),
     };
 
@@ -244,8 +295,21 @@ pub async fn logout(
 
     // Otherwise, revoke a specific refresh token by id if provided
     if let Some(rt) = payload.get("refresh_token").and_then(|v| v.as_str()) {
+        let token_id = if rt.contains(':') {
+            match decode_refresh_token(rt) {
+                Ok((id, _)) => id,
+                Err(_) => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error":"Invalid refresh token format"})),
+                    ))
+                }
+            }
+        } else {
+            rt.to_string()
+        };
         sqlx::query("DELETE FROM refresh_tokens WHERE id = ? AND user_id = ?")
-            .bind(rt)
+            .bind(&token_id)
             .bind(&user.id)
             .execute(&pool)
             .await
