@@ -263,4 +263,16 @@ mod tests {
         assert!(resp.is_system_admin);
         assert!(!resp.mfa_enabled);
     }
+
+    #[test]
+    fn update_user_payload_supports_optional_fields() {
+        let update = UpdateUser {
+            full_name: Some("Alice Example".into()),
+            role: Some(UserRole::Admin),
+            is_system_admin: Some(true),
+        };
+        assert_eq!(update.full_name.as_deref(), Some("Alice Example"));
+        assert!(matches!(update.role, Some(UserRole::Admin)));
+        assert_eq!(update.is_system_admin, Some(true));
+    }
 }

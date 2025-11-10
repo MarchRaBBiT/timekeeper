@@ -195,4 +195,26 @@ mod tests {
         let vrs = serde_json::to_value(RequestStatus::Cancelled).unwrap();
         assert_eq!(vrs, serde_json::json!("cancelled"));
     }
+
+    #[test]
+    fn leave_request_state_transitions() {
+        use chrono::NaiveDate;
+
+        let start = NaiveDate::from_ymd_opt(2024, 4, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 4, 2).unwrap();
+
+        let mut request = LeaveRequest::new("user".into(), LeaveType::Annual, start, end, None);
+        assert!(request.is_pending());
+
+        request.approve("admin".into());
+        assert!(matches!(request.status, RequestStatus::Approved));
+        assert_eq!(request.approved_by.as_deref(), Some("admin"));
+        assert!(request.approved_at.is_some());
+
+        let mut rejected = LeaveRequest::new("user".into(), LeaveType::Sick, start, end, None);
+        rejected.reject("admin2".into());
+        assert!(matches!(rejected.status, RequestStatus::Rejected));
+        assert_eq!(rejected.rejected_by.as_deref(), Some("admin2"));
+        assert!(rejected.rejected_at.is_some());
+    }
 }

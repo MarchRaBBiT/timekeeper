@@ -166,4 +166,24 @@ mod tests {
         let v = serde_json::to_value(RequestStatus::Pending).unwrap();
         assert_eq!(v, serde_json::json!("pending"));
     }
+
+    #[test]
+    fn overtime_request_state_transitions() {
+        use chrono::NaiveDate;
+
+        let date = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
+
+        let mut request = OvertimeRequest::new("user".into(), date, 2.5, None);
+        assert!(request.is_pending());
+        request.approve("approver".into());
+        assert!(matches!(request.status, RequestStatus::Approved));
+        assert_eq!(request.approved_by.as_deref(), Some("approver"));
+        assert!(request.approved_at.is_some());
+
+        let mut rejected = OvertimeRequest::new("user".into(), date, 1.0, None);
+        rejected.reject("approver2".into());
+        assert!(matches!(rejected.status, RequestStatus::Rejected));
+        assert_eq!(rejected.rejected_by.as_deref(), Some("approver2"));
+        assert!(rejected.rejected_at.is_some());
+    }
 }

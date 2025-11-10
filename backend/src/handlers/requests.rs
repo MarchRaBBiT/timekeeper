@@ -18,7 +18,7 @@ use chrono::Utc;
 use serde::Deserialize;
 
 pub async fn create_leave_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateLeaveRequest>,
 ) -> Result<Json<LeaveRequestResponse>, (StatusCode, Json<Value>)> {
@@ -74,7 +74,7 @@ pub async fn create_leave_request(
 }
 
 pub async fn create_overtime_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateOvertimeRequest>,
 ) -> Result<Json<OvertimeRequestResponse>, (StatusCode, Json<Value>)> {
@@ -123,7 +123,7 @@ pub async fn create_overtime_request(
 }
 
 pub async fn get_my_requests(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
     let user_id = user.id;
@@ -188,7 +188,7 @@ pub async fn update_request(
     let user_id = user.id;
 
     // Try leave update
-    if let Some(mut req) = sqlx::query_as::<_, LeaveRequest>(
+    if let Some(req) = sqlx::query_as::<_, LeaveRequest>(
         "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = $1 AND user_id = $2"
     )
     .bind(&request_id)
@@ -196,7 +196,7 @@ pub async fn update_request(
     .fetch_optional(&pool)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
-        if !matches!(req.status, crate::models::leave_request::RequestStatus::Pending) {
+        if !req.is_pending() {
             return Err((StatusCode::CONFLICT, Json(json!({"error":"Only pending requests can be updated"}))));
         }
         let upd: UpdateLeavePayload = serde_json::from_value(payload.clone()).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error":"Invalid payload"}))))?;
@@ -225,7 +225,7 @@ pub async fn update_request(
     }
 
     // Try overtime update
-    if let Some(mut req) = sqlx::query_as::<_, OvertimeRequest>(
+    if let Some(req) = sqlx::query_as::<_, OvertimeRequest>(
         "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = $1 AND user_id = $2"
     )
     .bind(&request_id)
@@ -233,7 +233,7 @@ pub async fn update_request(
     .fetch_optional(&pool)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
-        if !matches!(req.status, crate::models::overtime_request::RequestStatus::Pending) {
+        if !req.is_pending() {
             return Err((StatusCode::CONFLICT, Json(json!({"error":"Only pending requests can be updated"}))));
         }
         let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone()).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error":"Invalid payload"}))))?;

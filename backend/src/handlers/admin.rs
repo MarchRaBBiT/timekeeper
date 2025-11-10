@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::Utc;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder};
@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub async fn get_users(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<UserResponse>>, (StatusCode, Json<Value>)> {
     if !user.is_admin() {
@@ -44,7 +44,7 @@ pub async fn get_users(
 }
 
 pub async fn create_user(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateUser>,
 ) -> Result<Json<UserResponse>, (StatusCode, Json<Value>)> {
@@ -121,7 +121,7 @@ pub async fn create_user(
 }
 
 pub async fn get_all_attendance(
-    State((pool, config)): State<(PgPool, Config)>,
+    State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<AttendanceResponse>>, (StatusCode, Json<Value>)> {
     if !user.is_admin() {
@@ -332,47 +332,63 @@ pub async fn list_requests(
     let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
+    let type_filter = q.r#type.as_deref().map(|s| s.to_ascii_lowercase());
+    let (include_leave, include_overtime) = match type_filter.as_deref() {
+        Some("leave") => (true, false),
+        Some("overtime") => (false, true),
+        Some("all") => (true, true),
+        _ => (true, true),
+    };
+
     // Leave requests
-    let mut leave_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests",
-    );
-    apply_request_filters(&mut leave_builder, &q);
-    leave_builder
-        .push(" ORDER BY created_at DESC LIMIT ")
-        .push_bind(per_page)
-        .push(" OFFSET ")
-        .push_bind(offset);
-    let leave_items = leave_builder
-        .build_query_as::<crate::models::leave_request::LeaveRequest>()
-        .fetch_all(&pool)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
-        })?;
+    let leave_items = if include_leave {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests",
+        );
+        apply_request_filters(&mut builder, &q);
+        builder
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(per_page)
+            .push(" OFFSET ")
+            .push_bind(offset);
+        builder
+            .build_query_as::<crate::models::leave_request::LeaveRequest>()
+            .fetch_all(&pool)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error":"Database error"})),
+                )
+            })?
+    } else {
+        Vec::new()
+    };
 
     // Overtime requests
-    let mut ot_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests",
-    );
-    apply_request_filters(&mut ot_builder, &q);
-    ot_builder
-        .push(" ORDER BY created_at DESC LIMIT ")
-        .push_bind(per_page)
-        .push(" OFFSET ")
-        .push_bind(offset);
-    let ot_items = ot_builder
-        .build_query_as::<crate::models::overtime_request::OvertimeRequest>()
-        .fetch_all(&pool)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
-        })?;
+    let ot_items = if include_overtime {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests",
+        );
+        apply_request_filters(&mut builder, &q);
+        builder
+            .push(" ORDER BY created_at DESC LIMIT ")
+            .push_bind(per_page)
+            .push(" OFFSET ")
+            .push_bind(offset);
+        builder
+            .build_query_as::<crate::models::overtime_request::OvertimeRequest>()
+            .fetch_all(&pool)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error":"Database error"})),
+                )
+            })?
+    } else {
+        Vec::new()
+    };
 
     Ok(Json(json!({
         "leave_requests": leave_items.into_iter().map(crate::models::leave_request::LeaveRequestResponse::from).collect::<Vec<_>>(),
@@ -385,25 +401,57 @@ fn apply_request_filters<'a>(
     builder: &mut QueryBuilder<'a, Postgres>,
     filters: &'a RequestListQuery,
 ) {
-    let mut first = true;
+    let mut has_clause = false;
     if let Some(ref uid) = filters.user_id {
-        if first {
-            builder.push(" WHERE ");
-            first = false;
-        } else {
-            builder.push(" AND ");
-        }
+        push_clause(builder, &mut has_clause);
         builder.push("user_id = ").push_bind(uid);
     }
     if let Some(ref status) = filters.status {
-        if first {
-            builder.push(" WHERE ");
-            first = false;
-        } else {
-            builder.push(" AND ");
-        }
+        push_clause(builder, &mut has_clause);
         builder.push("status = ").push_bind(status);
     }
+    if let Some(ref from) = filters.from {
+        if let Some(from_dt) = parse_filter_datetime(from, false) {
+            push_clause(builder, &mut has_clause);
+            builder.push("created_at >= ").push_bind(from_dt);
+        }
+    }
+    if let Some(ref to) = filters.to {
+        if let Some(to_dt) = parse_filter_datetime(to, true) {
+            push_clause(builder, &mut has_clause);
+            builder.push("created_at <= ").push_bind(to_dt);
+        }
+    }
+}
+
+fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {
+    if *has_clause {
+        builder.push(" AND ");
+    } else {
+        builder.push(" WHERE ");
+        *has_clause = true;
+    }
+}
+
+fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+        return Some(Utc.from_utc_datetime(&dt));
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
+        return Some(Utc.from_utc_datetime(&dt));
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        let dt = if end_of_day {
+            date.and_hms_opt(23, 59, 59)?
+        } else {
+            date.and_hms_opt(0, 0, 0)?
+        };
+        return Some(Utc.from_utc_datetime(&dt));
+    }
+    None
 }
 
 pub async fn get_request_detail(
@@ -649,33 +697,33 @@ pub async fn export_data(
         "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
     );
-    let mut first = true;
+    enum ExportFilter<'a> {
+        Username(&'a String),
+        From(&'a String),
+        To(&'a String),
+    }
+    let mut filters = Vec::new();
     if let Some(ref u_name) = q.username {
-        if first {
-            builder.push(" WHERE ");
-            first = false;
-        } else {
-            builder.push(" AND ");
-        }
-        builder.push("u.username = ").push_bind(u_name);
+        filters.push(ExportFilter::Username(u_name));
     }
     if let Some(ref from) = q.from {
-        if first {
-            builder.push(" WHERE ");
-            first = false;
-        } else {
-            builder.push(" AND ");
-        }
-        builder.push("a.date >= ").push_bind(from);
+        filters.push(ExportFilter::From(from));
     }
     if let Some(ref to) = q.to {
-        if first {
-            builder.push(" WHERE ");
-            first = false;
-        } else {
-            builder.push(" AND ");
+        filters.push(ExportFilter::To(to));
+    }
+    if !filters.is_empty() {
+        builder.push(" WHERE ");
+        for (idx, filter) in filters.into_iter().enumerate() {
+            if idx > 0 {
+                builder.push(" AND ");
+            }
+            match filter {
+                ExportFilter::Username(value) => builder.push("u.username = ").push_bind(value),
+                ExportFilter::From(value) => builder.push("a.date >= ").push_bind(value),
+                ExportFilter::To(value) => builder.push("a.date <= ").push_bind(value),
+            };
         }
-        builder.push("a.date <= ").push_bind(to);
     }
     builder.push(" ORDER BY a.date DESC, u.username");
     let data = builder.build().fetch_all(&pool).await.map_err(|_| {

@@ -7,13 +7,3 @@ pub mod home;
 pub mod login;
 pub mod mfa;
 pub mod requests;
-
-pub use admin::*;
-pub use admin_export::*;
-pub use admin_users::*;
-pub use attendance::*;
-pub use dashboard::*;
-pub use home::*;
-pub use login::*;
-pub use mfa::*;
-pub use requests::*;

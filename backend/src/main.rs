@@ -4,7 +4,6 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use sqlx::postgres::PgPool;
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -22,6 +21,7 @@ mod models;
 mod utils;
 
 use config::Config;
+use db::connection::{create_pool, DbPool};
 
 fn mask_secret(s: &str) -> String {
     if s.is_empty() {
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Initialize database
-    let pool = PgPool::connect(&config.database_url).await?;
+    let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     // Build public routes (no auth)
@@ -116,10 +116,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/auth/mfa", get(handlers::auth::mfa_status))
         .route("/api/auth/mfa", delete(handlers::auth::mfa_disable))
-        .route(
-            "/api/auth/mfa/register",
-            post(handlers::auth::mfa_register),
-        )
+        .route("/api/auth/mfa/register", post(handlers::auth::mfa_register))
         .route("/api/auth/mfa/setup", post(handlers::auth::mfa_setup))
         .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
         .route(

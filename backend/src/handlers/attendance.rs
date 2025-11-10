@@ -177,7 +177,7 @@ pub async fn clock_out(
         )
     })?;
 
-    if attendance.clock_out_time.is_some() {
+    if attendance.is_clocked_out() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Already clocked out today"})),
@@ -344,7 +344,7 @@ pub async fn break_end(
         )
     })?;
 
-    if break_record.break_end_time.is_some() {
+    if !break_record.is_active() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Break already ended"})),
@@ -510,7 +510,7 @@ pub async fn get_attendance_status(
                 clock_in_time: None,
                 clock_out_time: None,
             }
-        } else if att.clock_out_time.is_some() {
+        } else if att.is_clocked_out() {
             AttendanceStatusResponse {
                 status: "clocked_out".into(),
                 attendance_id: Some(att.id),

@@ -240,7 +240,9 @@ impl ApiClient {
             .client
             .post(&format!("{}/auth/mfa/activate", self.base_url()))
             .headers(headers)
-            .json(&json!({ "code": code }))
+            .json(&MfaCodeRequest {
+                code: code.to_string(),
+            })
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;

@@ -106,8 +106,3 @@ async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sq
 
     Ok(user)
 }
-
-// Helper function to extract user from request extensions
-pub fn get_current_user(request: &Request) -> Option<&User> {
-    request.extensions().get::<User>()
-}

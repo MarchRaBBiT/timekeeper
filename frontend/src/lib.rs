@@ -9,7 +9,11 @@ mod pages;
 mod state;
 pub mod utils;
 
-use pages::*;
+use pages::{
+    admin::AdminPage, admin_export::AdminExportPage, admin_users::AdminUsersPage,
+    attendance::AttendancePage, dashboard::DashboardPage, home::HomePage, login::LoginPage,
+    requests::RequestsPage,
+};
 
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {

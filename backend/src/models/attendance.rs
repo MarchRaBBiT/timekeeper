@@ -143,4 +143,25 @@ mod tests {
         let v = serde_json::to_value(AttendanceStatus::HalfDay).unwrap();
         assert_eq!(v, serde_json::json!("half_day"));
     }
+
+    #[test]
+    fn attendance_clock_state_helpers() {
+        use chrono::NaiveDate;
+
+        let date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let now = Utc::now();
+        let mut attendance = Attendance::new("user".into(), date, now);
+
+        assert!(!attendance.is_clocked_in());
+        assert!(!attendance.is_clocked_out());
+
+        let clock_in = date.and_hms_opt(9, 0, 0).unwrap();
+        attendance.clock_in_time = Some(clock_in);
+        assert!(attendance.is_clocked_in());
+        assert!(!attendance.is_clocked_out());
+
+        let clock_out = date.and_hms_opt(17, 0, 0).unwrap();
+        attendance.clock_out_time = Some(clock_out);
+        assert!(attendance.is_clocked_out());
+    }
 }

@@ -76,7 +76,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time")
             .as_secs();
-        let current = totp.generate(now).expect("code");
+        let current = totp.generate(now);
         assert!(verify_totp_code(&secret, &current).unwrap());
     }
 }

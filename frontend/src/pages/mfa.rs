@@ -3,8 +3,8 @@ use crate::{
     components::layout::{ErrorMessage, Layout, LoadingSpinner, SuccessMessage},
     state::auth::{self, use_auth},
 };
-use leptos::*;
 use leptos::ev::SubmitEvent;
+use leptos::*;
 use web_sys::HtmlInputElement;
 
 #[component]
@@ -66,7 +66,8 @@ pub fn MfaRegisterPage() -> impl IntoView {
                         set_setup_info.set(Some(info));
                         fetch_status_action.dispatch(());
                         set_success.set(Some(
-                            "認証アプリにシークレットを登録し、確認コードを入力してください。".into(),
+                            "認証アプリにシークレットを登録し、確認コードを入力してください。"
+                                .into(),
                         ));
                     }
                     Err(err) => set_error.set(Some(err)),

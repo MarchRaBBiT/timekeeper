@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::JsCast;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -41,20 +40,26 @@ fn get_from_window_config() -> Option<String> {
     val.and_then(|v| v.as_string())
 }
 
+fn snapshot_from_globals() -> RuntimeConfig {
+    if let Some(env_url) = get_from_env_js() {
+        return RuntimeConfig {
+            api_base_url: Some(env_url),
+        };
+    }
+    RuntimeConfig {
+        api_base_url: get_from_window_config(),
+    }
+}
+
 pub fn resolve_api_base_url() -> String {
-    // Precedence: env.js > window config > default
-    if let Some(s) = get_from_env_js() {
-        return s;
-    }
-    if let Some(s) = get_from_window_config() {
-        return s;
-    }
-    "http://localhost:3000/api".to_string()
+    snapshot_from_globals()
+        .api_base_url
+        .unwrap_or_else(|| "http://localhost:3000/api".to_string())
 }
 
 pub async fn init() {
-    // If env.js is present, nothing else to do (it has highest precedence)
-    if get_from_env_js().is_some() {
+    // If env.js or a pre-populated window config is present, nothing to do.
+    if snapshot_from_globals().api_base_url.is_some() {
         return;
     }
 
