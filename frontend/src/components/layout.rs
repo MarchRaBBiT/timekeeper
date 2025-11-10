@@ -5,8 +5,7 @@ use leptos::*;
 pub fn Header() -> impl IntoView {
     let (_auth, set_auth) = use_auth();
 
-    fn is_admin() -> bool {
-        // Read JWT from localStorage and inspect payload.role == "admin"
+    fn can_manage_system() -> bool {
         let win = match web_sys::window() {
             Some(w) => w,
             None => return false,
@@ -15,34 +14,28 @@ pub fn Header() -> impl IntoView {
             Ok(Some(s)) => s,
             _ => return false,
         };
-        let token = match storage.get_item("access_token") {
-            Ok(Some(t)) => t,
+        let user_json = match storage.get_item("current_user") {
+            Ok(Some(json)) => json,
             _ => return false,
         };
-        let parts: Vec<&str> = token.split('.').collect();
-        if parts.len() < 2 {
-            return false;
-        }
-        let payload_b64 = parts[1];
-        // base64url -> base64
-        let mut s = payload_b64.replace('-', "+").replace('_', "/");
-        while s.len() % 4 != 0 {
-            s.push('=');
-        }
-        let decoded = match win.atob(&s) {
-            Ok(txt) => txt,
-            Err(_) => return false,
-        };
-        // Find role field naively to avoid adding JSON deps here
-        // Prefer serde_json if available
-        match serde_json::from_str::<serde_json::Value>(&decoded) {
-            Ok(v) => v
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&user_json) {
+            if value
+                .get("is_system_admin")
+                .and_then(|flag| flag.as_bool())
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            if value
                 .get("role")
                 .and_then(|r| r.as_str())
                 .map(|r| r == "admin")
-                .unwrap_or(false),
-            Err(_) => false,
+                .unwrap_or(false)
+            {
+                return true;
+            }
         }
+        false
     }
     let on_logout = move |_| {
         leptos::spawn_local({
@@ -74,7 +67,10 @@ pub fn Header() -> impl IntoView {
                         <a href="/requests" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                             "申請"
                         </a>
-                        <Show when=move || is_admin()>
+                        <a href="/mfa/register" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                            "MFA設定"
+                        </a>
+                        <Show when=move || can_manage_system()>
                             <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                 "管理"
                             </a>

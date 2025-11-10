@@ -185,6 +185,77 @@ impl ApiClient {
         }
     }
 
+    pub async fn get_mfa_status(&self) -> Result<MfaStatusResponse, String> {
+        let headers = self.get_auth_headers()?;
+        let response = self
+            .client
+            .get(&format!("{}/auth/mfa", self.base_url()))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn register_mfa(&self) -> Result<MfaSetupResponse, String> {
+        let headers = self.get_auth_headers()?;
+        let response = self
+            .client
+            .post(&format!("{}/auth/mfa/register", self.base_url()))
+            .headers(headers)
+            .json(&json!({}))
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn activate_mfa(&self, code: &str) -> Result<(), String> {
+        let headers = self.get_auth_headers()?;
+        let response = self
+            .client
+            .post(&format!("{}/auth/mfa/activate", self.base_url()))
+            .headers(headers)
+            .json(&json!({ "code": code }))
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn clock_in(&self) -> Result<AttendanceResponse, String> {
         let headers = self.get_auth_headers()?;
 

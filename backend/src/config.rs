@@ -10,6 +10,7 @@ pub struct Config {
     pub jwt_expiration_hours: u64,
     pub refresh_token_expiration_days: u64,
     pub time_zone: Tz,
+    pub mfa_issuer: String,
 }
 
 impl Config {
@@ -44,12 +45,15 @@ impl Config {
             .parse()
             .map_err(|_| anyhow!("Invalid APP_TIMEZONE value: {}", time_zone_name))?;
 
+        let mfa_issuer = env::var("MFA_ISSUER").unwrap_or_else(|_| "Timekeeper".to_string());
+
         Ok(Config {
             database_url,
             jwt_secret,
             jwt_expiration_hours,
             refresh_token_expiration_days,
             time_zone,
+            mfa_issuer,
         })
     }
 }

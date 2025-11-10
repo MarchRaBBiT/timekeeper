@@ -1,44 +1,72 @@
+//! Models describing employee leave requests and their lifecycle.
+
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+/// Database representation of a leave request submitted by an employee.
 pub struct LeaveRequest {
+    /// Unique identifier for the leave request.
     pub id: String,
+    /// Identifier of the employee who submitted the request.
     pub user_id: String,
+    /// Type of leave being requested.
     pub leave_type: LeaveType,
+    /// First day of the requested leave period.
     pub start_date: NaiveDate,
+    /// Last day of the requested leave period.
     pub end_date: NaiveDate,
+    /// Optional user-provided explanation for the leave.
     pub reason: Option<String>,
+    /// Current status of the leave request.
     pub status: RequestStatus,
+    /// Administrator who approved the request, if any.
     pub approved_by: Option<String>,
+    /// Timestamp when the request was approved.
     pub approved_at: Option<DateTime<Utc>>,
+    /// Administrator who rejected the request, if any.
     pub rejected_by: Option<String>,
+    /// Timestamp when the request was rejected.
     pub rejected_at: Option<DateTime<Utc>>,
+    /// Timestamp when the requester cancelled the request.
     pub cancelled_at: Option<DateTime<Utc>>,
+    /// Supplemental notes recorded during approval or rejection.
     pub decision_comment: Option<String>,
+    /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp for auditing.
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
+/// Supported leave categories.
 pub enum LeaveType {
+    /// Planned vacation or personal time off.
     Annual,
+    /// Sick leave.
     Sick,
+    /// Personal leave not covered by other categories.
     Personal,
+    /// Custom leave type stored as free-form text.
     Other,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
+/// Workflow status for the leave request lifecycle.
 pub enum RequestStatus {
+    /// Awaiting review.
     Pending,
+    /// Approved by an administrator.
     Approved,
+    /// Rejected by an administrator.
     Rejected,
+    /// Cancelled by the requester or system.
     Cancelled,
 }
 
@@ -49,6 +77,7 @@ impl Default for RequestStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Payload used to create a new leave request.
 pub struct CreateLeaveRequest {
     pub leave_type: LeaveType,
     pub start_date: NaiveDate,
@@ -57,6 +86,7 @@ pub struct CreateLeaveRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// API representation shared with clients.
 pub struct LeaveRequestResponse {
     pub id: String,
     pub user_id: String,
@@ -75,6 +105,7 @@ pub struct LeaveRequestResponse {
 }
 
 impl From<LeaveRequest> for LeaveRequestResponse {
+    /// Converts the database entity into its transport-friendly variant.
     fn from(request: LeaveRequest) -> Self {
         LeaveRequestResponse {
             id: request.id,
@@ -96,6 +127,7 @@ impl From<LeaveRequest> for LeaveRequestResponse {
 }
 
 impl LeaveRequest {
+    /// Creates a new leave request pending approval.
     pub fn new(
         user_id: String,
         leave_type: LeaveType,
@@ -123,6 +155,7 @@ impl LeaveRequest {
         }
     }
 
+    /// Marks the request as approved and records reviewer details.
     pub fn approve(&mut self, approved_by: String) {
         self.status = RequestStatus::Approved;
         self.approved_by = Some(approved_by);
@@ -130,6 +163,7 @@ impl LeaveRequest {
         self.updated_at = Utc::now();
     }
 
+    /// Marks the request as rejected and records reviewer details.
     pub fn reject(&mut self, approved_by: String) {
         self.status = RequestStatus::Rejected;
         self.rejected_by = Some(approved_by);
@@ -137,6 +171,7 @@ impl LeaveRequest {
         self.updated_at = Utc::now();
     }
 
+    /// Returns `true` while the request is awaiting a reviewer decision.
     pub fn is_pending(&self) -> bool {
         matches!(self.status, RequestStatus::Pending)
     }

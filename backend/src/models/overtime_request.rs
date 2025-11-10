@@ -1,33 +1,55 @@
+//! Models describing overtime requests and review workflow.
+
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+/// Database representation of an overtime work request.
 pub struct OvertimeRequest {
+    /// Unique identifier for the overtime request.
     pub id: String,
+    /// Identifier of the employee submitting the request.
     pub user_id: String,
+    /// Date when the overtime is planned.
     pub date: NaiveDate,
+    /// Number of overtime hours planned.
     pub planned_hours: f64,
+    /// Optional justification provided by the requester.
     pub reason: Option<String>,
+    /// Current status of the request.
     pub status: RequestStatus,
+    /// Administrator who approved the request, if any.
     pub approved_by: Option<String>,
+    /// Timestamp when the request received approval.
     pub approved_at: Option<DateTime<Utc>>,
+    /// Administrator who rejected the request, if any.
     pub rejected_by: Option<String>,
+    /// Timestamp when the request was rejected.
     pub rejected_at: Option<DateTime<Utc>>,
+    /// Timestamp when the requester cancelled the request.
     pub cancelled_at: Option<DateTime<Utc>>,
+    /// Supplemental comments recorded during review.
     pub decision_comment: Option<String>,
+    /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp for auditing.
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
+/// Workflow status for an overtime request.
 pub enum RequestStatus {
+    /// Awaiting review.
     Pending,
+    /// Approved by an administrator.
     Approved,
+    /// Rejected by an administrator.
     Rejected,
+    /// Cancelled by the requester or system.
     Cancelled,
 }
 
@@ -38,6 +60,7 @@ impl Default for RequestStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Payload used to create a new overtime request.
 pub struct CreateOvertimeRequest {
     pub date: NaiveDate,
     pub planned_hours: f64,
@@ -45,6 +68,7 @@ pub struct CreateOvertimeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// API response returned for overtime requests.
 pub struct OvertimeRequestResponse {
     pub id: String,
     pub user_id: String,
@@ -62,6 +86,7 @@ pub struct OvertimeRequestResponse {
 }
 
 impl From<OvertimeRequest> for OvertimeRequestResponse {
+    /// Converts a persisted overtime request into its response form.
     fn from(request: OvertimeRequest) -> Self {
         OvertimeRequestResponse {
             id: request.id,
@@ -82,6 +107,7 @@ impl From<OvertimeRequest> for OvertimeRequestResponse {
 }
 
 impl OvertimeRequest {
+    /// Creates a new overtime request pending review.
     pub fn new(
         user_id: String,
         date: NaiveDate,
@@ -107,6 +133,7 @@ impl OvertimeRequest {
         }
     }
 
+    /// Marks the request as approved.
     pub fn approve(&mut self, approved_by: String) {
         self.status = RequestStatus::Approved;
         self.approved_by = Some(approved_by);
@@ -114,6 +141,7 @@ impl OvertimeRequest {
         self.updated_at = Utc::now();
     }
 
+    /// Marks the request as rejected.
     pub fn reject(&mut self, approved_by: String) {
         self.status = RequestStatus::Rejected;
         self.rejected_by = Some(approved_by);
@@ -121,6 +149,7 @@ impl OvertimeRequest {
         self.updated_at = Utc::now();
     }
 
+    /// Returns `true` while the request is awaiting review.
     pub fn is_pending(&self) -> bool {
         matches!(self.status, RequestStatus::Pending)
     }

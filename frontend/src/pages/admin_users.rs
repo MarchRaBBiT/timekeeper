@@ -1,6 +1,7 @@
 use crate::api::{ApiClient, CreateUser, UserResponse};
 use crate::components::layout::*;
 use leptos::*;
+use wasm_bindgen::JsCast;
 
 #[component]
 pub fn AdminUsersPage() -> impl IntoView {
@@ -8,6 +9,7 @@ pub fn AdminUsersPage() -> impl IntoView {
     let full_name = create_rw_signal(String::new());
     let password = create_rw_signal(String::new());
     let role = create_rw_signal(String::from("employee"));
+    let system_admin = create_rw_signal(false);
     let loading = create_rw_signal(false);
     let error = create_rw_signal(Option::<String>::None);
     let success = create_rw_signal(Option::<String>::None);
@@ -39,6 +41,7 @@ pub fn AdminUsersPage() -> impl IntoView {
             password: password.get(),
             full_name: full_name.get(),
             role: role.get(),
+            is_system_admin: system_admin.get(),
         };
         leptos::spawn_local(async move {
             let api = ApiClient::new();
@@ -50,6 +53,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                     password.set(String::new());
                     full_name.set(String::new());
                     role.set(String::from("employee"));
+                    system_admin.set(false);
                     load_users();
                 }
                 Err(e) => {
@@ -93,6 +97,22 @@ pub fn AdminUsersPage() -> impl IntoView {
                                 <option value="admin">{"admin"}</option>
                             </select>
                         </div>
+                        <div class="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                class="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                prop:checked=move || system_admin.get()
+                                on:change=move |ev| {
+                                    if let Some(target) = ev
+                                        .target()
+                                        .and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
+                                    {
+                                        system_admin.set(target.checked());
+                                    }
+                                }
+                            />
+                            <label class="text-sm text-gray-700">{"システム管理者権限を付与"}</label>
+                        </div>
                         <div class="md:col-span-2">
                             <button type="submit" disabled=loading.get() class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50">
                                 {move || if loading.get() { "作成中..." } else { "ユーザーを作成" }}
@@ -110,6 +130,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ユーザー名"}</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"氏名"}</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"権限"}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"システム管理者"}</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -119,6 +140,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.username.clone()}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.full_name.clone()}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.role.clone()}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{if u.is_system_admin { "Yes" } else { "No" }}</td>
                                         </tr>
                                     }
                                 } />

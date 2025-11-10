@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::api::{ApiClient, LoginRequest, UserResponse};
+use crate::api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse};
 use leptos::*;
 
 #[derive(Debug, Clone)]
@@ -69,7 +69,11 @@ pub async fn login(
     set_auth_state.update(|state| state.loading = true);
 
     let api_client = ApiClient::new();
-    let request = LoginRequest { username, password };
+    let request = LoginRequest {
+        username,
+        password,
+        totp_code: None,
+    };
 
     match api_client.login(request).await {
         Ok(response) => {
@@ -105,4 +109,47 @@ pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
         state.is_authenticated = false;
         state.loading = false;
     });
+}
+
+pub async fn fetch_mfa_status() -> Result<MfaStatusResponse, String> {
+    let api_client = ApiClient::new();
+    api_client.get_mfa_status().await
+}
+
+pub async fn register_mfa() -> Result<MfaSetupResponse, String> {
+    let api_client = ApiClient::new();
+    api_client.register_mfa().await
+}
+
+pub async fn activate_mfa(
+    code: String,
+    set_auth_state: Option<WriteSignal<AuthState>>,
+) -> Result<(), String> {
+    let api_client = ApiClient::new();
+    api_client.activate_mfa(&code).await?;
+
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(user_json)) = storage.get_item("current_user") {
+                if let Ok(mut user) = serde_json::from_str::<UserResponse>(&user_json) {
+                    if !user.mfa_enabled {
+                        user.mfa_enabled = true;
+                        if let Ok(updated) = serde_json::to_string(&user) {
+                            let _ = storage.set_item("current_user", &updated);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(setter) = set_auth_state {
+        setter.update(|state| {
+            if let Some(user) = state.user.as_mut() {
+                user.mfa_enabled = true;
+            }
+        });
+    }
+
+    Ok(())
 }

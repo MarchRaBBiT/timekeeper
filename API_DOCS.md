@@ -78,6 +78,25 @@ Content-Type: application/json
 { "message": "Logged out" }
 ```
 
+#### MFA登録開始
+```http
+POST /api/auth/mfa/register
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "otpauth_url": "otpauth://totp/Timekeeper:alice?secret=JBSWY3DPEHPK3PXP&issuer=Timekeeper"
+}
+```
+
+**備考**
+- まだMFAを有効化していない認証済みユーザーのみ利用可能
+- 新しいシークレットを払い出し、既存の保留中シークレットを置き換えます
+- `/api/auth/mfa/activate` でワンタイムコードを送信するまで有効化されません
+
 **レスポンス**
 ```json
 {
@@ -239,26 +258,28 @@ Authorization: Bearer <token>
 }
 ```
 
-#### CSV�G�N�X�|�[�g�i���Ԑl�̕��j
+#### CSVエクスポート（勤怠データの出力）
 ```http
 GET /api/attendance/export?from=2024-01-01&to=2024-01-31
 Authorization: Bearer <token>
 ```
 
-**�N�G���p�����[�^**
-- `from` (optional): YYYY-MM-DD �ĐݑĂяo���J�n��
-- `to` (optional): YYYY-MM-DD �ĐݑĂяo���I����
+**クエリパラメータ**
+- `from` (optional): YYYY-MM-DD 形式の出力対象期間の開始日
+- `to` (optional): YYYY-MM-DD 形式の出力対象期間の終了日
 
-����]�̓����`from` > `to` �̏ꍇ�̓u���[���̕s����Ԃ��܂��B
+**備考**
+- 認証済みユーザー本人の勤怠のみがエクスポート対象
+- `from`/`to` を同時に指定する場合は `from <= to` が必須（違反時は 400 Bad Request）
+- どちらも省略すると取得済みの全履歴を返します
 
-**���X�|���X**
+**レスポンス**
 ```json
 {
   "csv_data": "Username,Full Name,Date,Clock In,Clock Out,Total Hours,Status\n...",
   "filename": "my_attendance_export_20240131_120000.csv"
 }
 ```
-
 ### 申請管理
 
 #### 休暇申請

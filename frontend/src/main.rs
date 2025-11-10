@@ -24,6 +24,7 @@ fn main() {
                     <Route path="/dashboard" view=DashboardPage/>
                     <Route path="/attendance" view=AttendancePage/>
                     <Route path="/requests" view=RequestsPage/>
+                    <Route path="/mfa/register" view=MfaRegisterPage/>
                     <Route path="/admin" view=AdminPage/>
                 </Routes>
             </Router>

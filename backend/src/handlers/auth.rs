@@ -1,16 +1,24 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Extension, State},
+    http::StatusCode,
+    Json,
+};
 use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
 use crate::{
     config::Config,
-    models::user::{LoginRequest, LoginResponse, User, UserResponse},
+    models::user::{
+        ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
+        MfaStatusResponse, User, UserResponse,
+    },
     utils::{
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
         },
-        password::verify_password,
+        mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
+        password::{hash_password, verify_password},
     },
 };
 
@@ -19,9 +27,7 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
     // Find user by username
-    let user = match sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE username = $1"
-    )
+    let user = match sqlx::query_as::<_, User>("SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1")
     .bind(&payload.username)
     .fetch_optional(&pool)
     .await
@@ -52,6 +58,39 @@ pub async fn login(
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Invalid username or password"})),
         ));
+    }
+
+    if user.is_mfa_enabled() {
+        let totp_code = payload
+            .totp_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|code| !code.is_empty())
+            .ok_or_else(|| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "MFA code required"})),
+                )
+            })?;
+
+        let secret = user.mfa_secret.as_ref().ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "MFA secret missing"})),
+            )
+        })?;
+
+        if !verify_totp_code(secret, totp_code).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "MFA verification error"})),
+            )
+        })? {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid MFA code"})),
+            ));
+        }
     }
 
     // Create access token
@@ -184,9 +223,7 @@ pub async fn refresh(
     }
 
     // Get user information
-    let user = match sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users WHERE id = $1"
-    )
+    let user = match sqlx::query_as::<_, User>("SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1")
     .bind(&user_id)
     .fetch_optional(&pool)
     .await
@@ -269,9 +306,260 @@ pub async fn refresh(
     Ok(Json(response))
 }
 
+pub async fn mfa_status(
+    Extension(user): Extension<User>,
+) -> Result<Json<MfaStatusResponse>, (StatusCode, Json<Value>)> {
+    Ok(Json(MfaStatusResponse {
+        enabled: user.is_mfa_enabled(),
+        pending: user.has_pending_mfa(),
+    }))
+}
+
+async fn begin_mfa_enrollment(
+    pool: &PgPool,
+    config: &Config,
+    user: &User,
+) -> Result<MfaSetupResponse, (StatusCode, Json<Value>)> {
+    if user.is_mfa_enabled() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "MFA already enabled"})),
+        ));
+    }
+
+    let secret = generate_totp_secret();
+    let otpauth_url =
+        generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to issue MFA secret"})),
+            )
+        })?;
+
+    if let Err(_) = sqlx::query(
+        "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
+    )
+    .bind(&secret)
+    .bind(Utc::now())
+    .bind(&user.id)
+    .execute(pool)
+    .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to persist MFA secret"})),
+        ));
+    }
+
+    Ok(MfaSetupResponse {
+        secret,
+        otpauth_url,
+    })
+}
+
+pub async fn mfa_setup(
+    State((pool, config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+    let response = begin_mfa_enrollment(&pool, &config, &user).await?;
+    Ok(Json(response))
+}
+
+pub async fn mfa_register(
+    State((pool, config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+    let response = begin_mfa_enrollment(&pool, &config, &user).await?;
+    Ok(Json(response))
+}
+
+pub async fn mfa_activate(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<MfaCodeRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let secret = user.mfa_secret.as_ref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "MFA setup not initiated"})),
+        )
+    })?;
+
+    let code = payload.code.trim().to_string();
+    if !verify_totp_code(secret, &code).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "MFA verification error"})),
+        )
+    })? {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid MFA code"})),
+        ));
+    }
+
+    let now = Utc::now();
+    if let Err(_) =
+        sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
+            .bind(now)
+            .bind(&user.id)
+            .execute(&pool)
+            .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to enable MFA"})),
+        ));
+    }
+
+    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to revoke refresh tokens"})),
+        ));
+    }
+
+    Ok(Json(json!({"message": "MFA enabled"})))
+}
+
+pub async fn mfa_disable(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<MfaCodeRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !user.is_mfa_enabled() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "MFA is not enabled"})),
+        ));
+    }
+
+    let secret = user.mfa_secret.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "MFA secret missing"})),
+        )
+    })?;
+
+    let code = payload.code.trim().to_string();
+    if !verify_totp_code(secret, &code).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "MFA verification error"})),
+        )
+    })? {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid MFA code"})),
+        ));
+    }
+
+    if let Err(_) = sqlx::query(
+        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
+    )
+    .bind(Utc::now())
+    .bind(&user.id)
+    .execute(&pool)
+    .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to disable MFA"})),
+        ));
+    }
+
+    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to revoke refresh tokens"})),
+        ));
+    }
+
+    Ok(Json(json!({"message": "MFA disabled"})))
+}
+
+pub async fn change_password(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Basic guardrails for the new password to reduce trivial mistakes.
+    if payload.new_password.len() < 8 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "New password must be at least 8 characters"})),
+        ));
+    }
+    if payload.new_password == payload.current_password {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "New password must differ from current password"})),
+        ));
+    }
+
+    // Verify the existing password matches what is stored.
+    let matches =
+        verify_password(&payload.current_password, &user.password_hash).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Password verification error"})),
+            )
+        })?;
+    if !matches {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Current password is incorrect"})),
+        ));
+    }
+
+    // Hash and persist the new password.
+    let new_hash = hash_password(&payload.new_password).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to hash password"})),
+        )
+    })?;
+
+    if let Err(_) =
+        sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
+            .bind(&new_hash)
+            .bind(Utc::now())
+            .bind(&user.id)
+            .execute(&pool)
+            .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to update password"})),
+        ));
+    }
+
+    // Revoke outstanding refresh tokens so the user must reauthenticate.
+    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+    {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to revoke refresh tokens"})),
+        ));
+    }
+
+    Ok(Json(json!({"message": "Password updated successfully"})))
+}
+
 pub async fn logout(
     State((pool, _config)): State<(PgPool, Config)>,
-    axum::extract::Extension(user): axum::extract::Extension<User>,
+    Extension(user): Extension<User>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
     // If `all` is true, revoke all refresh tokens for this user

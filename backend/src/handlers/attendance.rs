@@ -10,7 +10,6 @@ use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 use crate::{
     config::Config,
-    middleware::auth::get_current_user,
     models::{
         attendance::{
             Attendance, AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest,

@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub totp_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +22,27 @@ pub struct UserResponse {
     pub username: String,
     pub full_name: String,
     pub role: String,
+    #[serde(default)]
+    pub is_system_admin: bool,
+    #[serde(default)]
+    pub mfa_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MfaSetupResponse {
+    pub secret: String,
+    pub otpauth_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MfaCodeRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MfaStatusResponse {
+    pub enabled: bool,
+    pub pending: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +155,8 @@ pub struct CreateUser {
     pub password: String,
     pub full_name: String,
     pub role: String,
+    #[serde(default)]
+    pub is_system_admin: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

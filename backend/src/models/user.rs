@@ -1,23 +1,42 @@
+//! Models that represent users, authentication payloads, and role metadata.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+/// Database representation of an authenticated user account.
 pub struct User {
+    /// Unique identifier for the user.
     pub id: String,
+    /// Immutable username used for login.
     pub username: String,
+    /// Argon2/Bcrypt/Scrypt hash of the user's password.
     pub password_hash: String,
+    /// Human-readable full name.
     pub full_name: String,
+    /// Role describing the user's privileges.
     pub role: UserRole,
+    /// Flag promoting the user to the highest administrative tier.
+    pub is_system_admin: bool,
+    /// Shared secret for RFC6238 TOTP verification (base32 encoded).
+    pub mfa_secret: Option<String>,
+    /// Timestamp marking when the user completed MFA enrollment.
+    pub mfa_enabled_at: Option<DateTime<Utc>>,
+    /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp for auditing.
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+/// Supported user roles stored in the database.
 pub enum UserRole {
+    /// Standard employee role with limited permissions.
     Employee,
+    /// Administrator role with elevated permissions.
     Admin,
 }
 
@@ -28,6 +47,7 @@ impl Default for UserRole {
 }
 
 impl UserRole {
+    /// Returns the canonical snake_case representation of the role.
     pub fn as_str(&self) -> &'static str {
         match self {
             UserRole::Employee => "employee",
@@ -67,26 +87,45 @@ impl<'de> Deserialize<'de> for UserRole {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Payload for creating a new user account.
 pub struct CreateUser {
     pub username: String,
     pub password: String,
     pub full_name: String,
     pub role: UserRole,
+    #[serde(default)]
+    pub is_system_admin: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Payload for updating portions of an existing user.
 pub struct UpdateUser {
     pub full_name: Option<String>,
     pub role: Option<UserRole>,
+    pub is_system_admin: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Credentials submitted by a user attempting to authenticate.
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+    /// Optional TOTP code required when MFA is enabled.
+    #[serde(default)]
+    pub totp_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Payload submitted when a user requests to change their password.
+pub struct ChangePasswordRequest {
+    /// Existing password that will be verified before applying the change.
+    pub current_password: String,
+    /// Replacement password that will be stored if verification succeeds.
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+/// Authentication tokens returned after a successful login.
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
@@ -94,26 +133,60 @@ pub struct LoginResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Response returned when initiating MFA setup.
+pub struct MfaSetupResponse {
+    pub secret: String,
+    pub otpauth_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+/// Request payload carrying a one-time MFA code.
+pub struct MfaCodeRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+/// Exposes MFA enrollment status for the current user.
+pub struct MfaStatusResponse {
+    pub enabled: bool,
+    pub pending: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+/// Public-facing representation of a user returned by the API.
 pub struct UserResponse {
     pub id: String,
     pub username: String,
     pub full_name: String,
     pub role: String,
+    pub is_system_admin: bool,
+    pub mfa_enabled: bool,
 }
 
 impl From<User> for UserResponse {
+    /// Converts the persistent user model into the API response DTO.
     fn from(user: User) -> Self {
+        let mfa_enabled = user.is_mfa_enabled();
         UserResponse {
             id: user.id,
             username: user.username,
             full_name: user.full_name,
             role: user.role.as_str().to_string(),
+            is_system_admin: user.is_system_admin,
+            mfa_enabled,
         }
     }
 }
 
 impl User {
-    pub fn new(username: String, password_hash: String, full_name: String, role: UserRole) -> Self {
+    /// Constructs a new user with freshly generated identifiers.
+    pub fn new(
+        username: String,
+        password_hash: String,
+        full_name: String,
+        role: UserRole,
+        is_system_admin: bool,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -121,13 +194,32 @@ impl User {
             password_hash,
             full_name,
             role,
+            is_system_admin,
+            mfa_secret: None,
+            mfa_enabled_at: None,
             created_at: now,
             updated_at: now,
         }
     }
 
+    /// Returns `true` when the user holds the `Admin` role.
     pub fn is_admin(&self) -> bool {
         matches!(self.role, UserRole::Admin)
+    }
+
+    /// Returns `true` when the user is flagged as a system administrator.
+    pub fn is_system_admin(&self) -> bool {
+        self.is_system_admin
+    }
+
+    /// Returns `true` when the user has completed MFA enrollment.
+    pub fn is_mfa_enabled(&self) -> bool {
+        self.mfa_secret.is_some() && self.mfa_enabled_at.is_some()
+    }
+
+    /// Returns `true` when setup has been started but not yet confirmed.
+    pub fn has_pending_mfa(&self) -> bool {
+        self.mfa_secret.is_some() && self.mfa_enabled_at.is_none()
     }
 }
 
@@ -164,8 +256,11 @@ mod tests {
             "hash".to_string(),
             "Alice Example".to_string(),
             UserRole::Admin,
+            true,
         );
         let resp: UserResponse = user.into();
         assert_eq!(resp.role, "admin");
+        assert!(resp.is_system_admin);
+        assert!(!resp.mfa_enabled);
     }
 }

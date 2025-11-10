@@ -1,9 +1,7 @@
 use axum::{
-    extract::Request,
     http::Method,
     middleware as axum_middleware,
-    response::Response,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use sqlx::postgres::PgPool;
@@ -52,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
         jwt_expiration_hours = config.jwt_expiration_hours,
         refresh_token_expiration_days = config.refresh_token_expiration_days,
         time_zone = %config.time_zone,
+        mfa_issuer = %config.mfa_issuer,
         "Loaded configuration from environment/.env"
     );
 
@@ -114,6 +113,18 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/requests/:id",
             put(handlers::requests::update_request).delete(handlers::requests::cancel_request),
+        )
+        .route("/api/auth/mfa", get(handlers::auth::mfa_status))
+        .route("/api/auth/mfa", delete(handlers::auth::mfa_disable))
+        .route(
+            "/api/auth/mfa/register",
+            post(handlers::auth::mfa_register),
+        )
+        .route("/api/auth/mfa/setup", post(handlers::auth::mfa_setup))
+        .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
+        .route(
+            "/api/auth/change-password",
+            put(handlers::auth::change_password),
         )
         .route("/api/auth/logout", post(handlers::auth::logout))
         .route_layer(axum_middleware::from_fn_with_state(

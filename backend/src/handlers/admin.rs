@@ -13,7 +13,7 @@ use crate::{
     models::{
         attendance::{Attendance, AttendanceResponse},
         break_record::BreakRecordResponse,
-        user::{CreateUser, UpdateUser, User, UserResponse},
+        user::{CreateUser, User, UserResponse},
     },
     utils::{csv::append_csv_row, password::hash_password, time},
 };
@@ -27,7 +27,8 @@ pub async fn get_users(
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
     let users = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, created_at, updated_at FROM users ORDER BY created_at DESC"
+        "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users ORDER BY created_at DESC",
     )
     .fetch_all(&pool)
     .await
@@ -47,12 +48,13 @@ pub async fn create_user(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateUser>,
 ) -> Result<Json<UserResponse>, (StatusCode, Json<Value>)> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     // Check if username already exists
     let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, role, created_at, updated_at FROM users WHERE username = $1"
+        "SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, \
+         mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
     )
     .bind(&payload.username)
     .fetch_optional(&pool)
@@ -83,17 +85,26 @@ pub async fn create_user(
         password_hash,
         payload.full_name,
         payload.role,
+        payload.is_system_admin,
     );
 
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"
+        "INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&user.id)
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
     // Store enum as snake_case text to match sqlx mapping
-    .bind(match user.role { crate::models::user::UserRole::Employee => "employee", crate::models::user::UserRole::Admin => "admin" })
+    .bind(match user.role {
+        crate::models::user::UserRole::Employee => "employee",
+        crate::models::user::UserRole::Admin => "admin",
+    })
+    .bind(&user.is_system_admin)
+    .bind(&user.mfa_secret)
+    .bind(&user.mfa_enabled_at)
     .bind(&user.created_at)
     .bind(&user.updated_at)
     .execute(&pool)
@@ -451,7 +462,7 @@ pub async fn upsert_attendance(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    use crate::models::attendance::{Attendance, AttendanceResponse, AttendanceStatus};
+    use crate::models::attendance::{AttendanceResponse, AttendanceStatus};
     use chrono::{NaiveDate, NaiveDateTime};
     let date = NaiveDate::parse_from_str(&body.date, "%Y-%m-%d").map_err(|_| {
         (

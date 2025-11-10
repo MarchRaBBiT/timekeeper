@@ -53,3 +53,8 @@ csv = "1.3"
 
 # Password hashing
 # argon2 declared above
+
+# Multi-factor authentication (TOTP)
+totp-rs = { version = "5", features = ["otpauth"] }
+rand = { version = "0.8", features = ["std"] }
+base32 = "0.4"
