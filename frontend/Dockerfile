@@ -1,4 +1,4 @@
-FROM rust:1.85 as builder
+FROM rust:1.88 as builder
 WORKDIR /app
 # Copy the full workspace to resolve workspace-inherited fields
 COPY . .
