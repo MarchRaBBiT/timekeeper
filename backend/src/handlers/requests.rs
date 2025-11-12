@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 
 pub async fn create_leave_request(
@@ -23,6 +23,13 @@ pub async fn create_leave_request(
     Json(payload): Json<CreateLeaveRequest>,
 ) -> Result<Json<LeaveRequestResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id;
+
+    if !is_valid_leave_window(payload.start_date, payload.end_date) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "start_date must be <= end_date"})),
+        ));
+    }
 
     let leave_request = LeaveRequest::new(
         user_id.to_string(),
@@ -79,6 +86,13 @@ pub async fn create_overtime_request(
     Json(payload): Json<CreateOvertimeRequest>,
 ) -> Result<Json<OvertimeRequestResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id;
+
+    if !is_valid_planned_hours(payload.planned_hours) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "planned_hours must be > 0"})),
+        ));
+    }
 
     let overtime_request = OvertimeRequest::new(
         user_id.to_string(),
@@ -300,4 +314,32 @@ pub async fn cancel_request(
         StatusCode::NOT_FOUND,
         Json(json!({"error":"Request not found or not cancellable"})),
     ))
+}
+
+fn is_valid_leave_window(start: NaiveDate, end: NaiveDate) -> bool {
+    start <= end
+}
+
+fn is_valid_planned_hours(hours: f64) -> bool {
+    hours > 0.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leave_window_validation_requires_start_before_end() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+        assert!(is_valid_leave_window(start, end));
+        assert!(!is_valid_leave_window(end, start));
+    }
+
+    #[test]
+    fn planned_hours_validation_disallows_non_positive_values() {
+        assert!(is_valid_planned_hours(0.5));
+        assert!(!is_valid_planned_hours(0.0));
+        assert!(!is_valid_planned_hours(-1.0));
+    }
 }

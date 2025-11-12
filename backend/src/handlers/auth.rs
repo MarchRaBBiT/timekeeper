@@ -271,7 +271,7 @@ pub async fn refresh(
 
     // Delete old refresh token and store new one
     if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE id = $1")
-        .bind(refresh_token)
+        .bind(&refresh_token_id)
         .execute(&pool)
         .await
     {
@@ -583,8 +583,14 @@ pub async fn logout(
 
     // Otherwise, revoke a specific refresh token by id if provided
     if let Some(rt) = payload.get("refresh_token").and_then(|v| v.as_str()) {
+        let (token_id, _) = decode_refresh_token(rt).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"Invalid refresh token"})),
+            )
+        })?;
         sqlx::query("DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2")
-            .bind(rt)
+            .bind(&token_id)
             .bind(&user.id)
             .execute(&pool)
             .await
