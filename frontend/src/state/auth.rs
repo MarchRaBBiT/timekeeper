@@ -64,6 +64,7 @@ async fn check_auth_status(_api_client: &ApiClient) -> Result<UserResponse, Stri
 pub async fn login(
     username: String,
     password: String,
+    totp_code: Option<String>,
     set_auth_state: WriteSignal<AuthState>,
 ) -> Result<(), String> {
     set_auth_state.update(|state| state.loading = true);
@@ -72,7 +73,7 @@ pub async fn login(
     let request = LoginRequest {
         username,
         password,
-        totp_code: None,
+        totp_code,
     };
 
     match api_client.login(request).await {

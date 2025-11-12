@@ -3,40 +3,14 @@ use leptos::*;
 
 #[component]
 pub fn Header() -> impl IntoView {
-    let (_auth, set_auth) = use_auth();
-
-    fn can_manage_system() -> bool {
-        let win = match web_sys::window() {
-            Some(w) => w,
-            None => return false,
-        };
-        let storage = match win.local_storage() {
-            Ok(Some(s)) => s,
-            _ => return false,
-        };
-        let user_json = match storage.get_item("current_user") {
-            Ok(Some(json)) => json,
-            _ => return false,
-        };
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&user_json) {
-            if value
-                .get("is_system_admin")
-                .and_then(|flag| flag.as_bool())
-                .unwrap_or(false)
-            {
-                return true;
-            }
-            if value
-                .get("role")
-                .and_then(|r| r.as_str())
-                .map(|r| r == "admin")
-                .unwrap_or(false)
-            {
-                return true;
-            }
-        }
-        false
-    }
+    let (auth, set_auth) = use_auth();
+    let can_manage_system = move || {
+        auth.get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .unwrap_or(false)
+    };
     let on_logout = move |_| {
         leptos::spawn_local({
             let set_auth = set_auth.clone();

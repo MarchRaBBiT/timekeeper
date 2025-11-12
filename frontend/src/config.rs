@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     pub api_base_url: Option<String>,
 }
+
+static API_BASE_URL: OnceLock<String> = OnceLock::new();
 
 fn window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
@@ -40,51 +43,62 @@ fn get_from_window_config() -> Option<String> {
     val.and_then(|v| v.as_string())
 }
 
-fn snapshot_from_globals() -> RuntimeConfig {
+fn snapshot_from_globals() -> Option<String> {
     if let Some(env_url) = get_from_env_js() {
-        return RuntimeConfig {
-            api_base_url: Some(env_url),
-        };
+        return Some(env_url);
     }
-    RuntimeConfig {
-        api_base_url: get_from_window_config(),
-    }
+    get_from_window_config()
 }
 
-pub fn resolve_api_base_url() -> String {
-    snapshot_from_globals()
-        .api_base_url
-        .unwrap_or_else(|| "http://localhost:3000/api".to_string())
+fn cache_base_url(value: &str) -> String {
+    let value = value.to_string();
+    let _ = API_BASE_URL.set(value.clone());
+    value
+}
+
+fn write_window_config(cfg: &RuntimeConfig) {
+    if cfg.api_base_url.is_none() {
+        return;
+    }
+    let w = match web_sys::window() {
+        Some(win) => win,
+        None => return,
+    };
+    let obj = js_sys::Object::new();
+    if let Some(url) = &cfg.api_base_url {
+        let _ = js_sys::Reflect::set(
+            &obj,
+            &"api_base_url".into(),
+            &wasm_bindgen::JsValue::from_str(url),
+        );
+    }
+    let _ = js_sys::Reflect::set(&w, &"__TIMEKEEPER_CONFIG".into(), &obj);
+}
+
+async fn fetch_runtime_config() -> Option<RuntimeConfig> {
+    let resp = reqwest_wasm::get("./config.json").await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<RuntimeConfig>().await.ok()
+}
+
+pub async fn await_api_base_url() -> String {
+    if let Some(cached) = API_BASE_URL.get() {
+        return cached.clone();
+    }
+    if let Some(existing) = snapshot_from_globals() {
+        return cache_base_url(&existing);
+    }
+    if let Some(cfg) = fetch_runtime_config().await {
+        write_window_config(&cfg);
+        if let Some(url) = cfg.api_base_url {
+            return cache_base_url(&url);
+        }
+    }
+    cache_base_url("http://localhost:3000/api")
 }
 
 pub async fn init() {
-    // If env.js or a pre-populated window config is present, nothing to do.
-    if snapshot_from_globals().api_base_url.is_some() {
-        return;
-    }
-
-    // Try to fetch ./config.json and stash into window.__TIMEKEEPER_CONFIG
-    let url = "./config.json";
-    let resp = match reqwest_wasm::get(url).await {
-        Ok(r) => r,
-        Err(_) => return, // No config file; keep defaults
-    };
-    if !resp.status().is_success() {
-        return;
-    }
-    match resp.json::<RuntimeConfig>().await {
-        Ok(cfg) => {
-            let w = window();
-            let obj = js_sys::Object::new();
-            if let Some(v) = cfg.api_base_url {
-                let _ = js_sys::Reflect::set(
-                    &obj,
-                    &"api_base_url".into(),
-                    &wasm_bindgen::JsValue::from_str(&v),
-                );
-            }
-            let _ = js_sys::Reflect::set(&w, &"__TIMEKEEPER_CONFIG".into(), &obj);
-        }
-        Err(_) => {}
-    }
+    let _ = await_api_base_url().await;
 }

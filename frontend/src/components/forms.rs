@@ -11,6 +11,7 @@ use crate::state::auth as auth_state;
 pub fn LoginForm() -> impl IntoView {
     let (username, set_username) = create_signal(String::new());
     let (password, set_password) = create_signal(String::new());
+    let (totp_code, set_totp_code) = create_signal(String::new());
     let (error, set_error) = create_signal(None::<String>);
     let (loading, set_loading) = create_signal(false);
     let (_auth, set_auth) = auth_state::use_auth();
@@ -22,14 +23,25 @@ pub fn LoginForm() -> impl IntoView {
 
         let uname = username.get();
         let pword = password.get();
+        let code = totp_code.get();
+        let totp_payload = {
+            let trimmed = code.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        };
         let set_loading2 = set_loading.clone();
         let set_error2 = set_error.clone();
         let set_auth2 = set_auth.clone();
+        let set_totp_code2 = set_totp_code.clone();
 
         spawn_local(async move {
-            match auth_state::login(uname, pword, set_auth2).await {
+            match auth_state::login(uname, pword, totp_payload, set_auth2).await {
                 Ok(_) => {
                     set_loading2.set(false);
+                    set_totp_code2.set(String::new());
                     if let Some(window) = web_sys::window() {
                         let _ = window.location().set_href("/dashboard");
                     }
@@ -84,6 +96,23 @@ pub fn LoginForm() -> impl IntoView {
                                 on:input=move |ev| {
                                     let target = event_target::<HtmlInputElement>(&ev);
                                     set_password.set(target.value());
+                                }
+                            />
+                        </div>
+                        <div>
+                            <label for="totp_code" class="sr-only">{"MFAコード"}</label>
+                            <input
+                                id="totp_code"
+                                name="totp_code"
+                                type="text"
+                                inputmode="numeric"
+                                autocomplete="one-time-code"
+                                class="appearance-none rounded relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                                placeholder="MFAコード (有効化済みの場合)"
+                                prop:value=totp_code
+                                on:input=move |ev| {
+                                    let target = event_target::<HtmlInputElement>(&ev);
+                                    set_totp_code.set(target.value());
                                 }
                             />
                         </div>

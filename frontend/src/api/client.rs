@@ -25,10 +25,12 @@ impl ApiClient {
         }
     }
 
-    fn base_url(&self) -> String {
-        self.base_url
-            .clone()
-            .unwrap_or_else(|| config::resolve_api_base_url())
+    async fn resolved_base_url(&self) -> String {
+        if let Some(base) = &self.base_url {
+            base.clone()
+        } else {
+            config::await_api_base_url().await
+        }
     }
 
     fn get_auth_headers(&self) -> Result<reqwest_wasm::header::HeaderMap, String> {
@@ -56,9 +58,10 @@ impl ApiClient {
     }
 
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, String> {
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/auth/login", self.base_url()))
+            .post(&format!("{}/auth/login", base_url))
             .json(&request)
             .send()
             .await
@@ -109,9 +112,10 @@ impl ApiClient {
             .map_err(|_| "Failed to get refresh token")?
             .ok_or("No refresh token")?;
 
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/auth/refresh", self.base_url()))
+            .post(&format!("{}/auth/refresh", base_url))
             .json(&json!({ "refresh_token": refresh_token }))
             .send()
             .await
@@ -148,6 +152,7 @@ impl ApiClient {
 
     pub async fn logout(&self, all: bool) -> Result<(), String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
 
         // Read refresh token id if present
         let window = web_sys::window()
@@ -169,7 +174,7 @@ impl ApiClient {
 
         let resp = self
             .client
-            .post(&format!("{}/auth/logout", self.base_url()))
+            .post(&format!("{}/auth/logout", base_url))
             .headers(headers)
             .json(&body)
             .send()
@@ -187,9 +192,10 @@ impl ApiClient {
 
     pub async fn get_mfa_status(&self) -> Result<MfaStatusResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .get(&format!("{}/auth/mfa", self.base_url()))
+            .get(&format!("{}/auth/mfa", base_url))
             .headers(headers)
             .send()
             .await
@@ -211,9 +217,10 @@ impl ApiClient {
 
     pub async fn register_mfa(&self) -> Result<MfaSetupResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/auth/mfa/register", self.base_url()))
+            .post(&format!("{}/auth/mfa/register", base_url))
             .headers(headers)
             .json(&json!({}))
             .send()
@@ -236,9 +243,10 @@ impl ApiClient {
 
     pub async fn activate_mfa(&self, code: &str) -> Result<(), String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/auth/mfa/activate", self.base_url()))
+            .post(&format!("{}/auth/mfa/activate", base_url))
             .headers(headers)
             .json(&MfaCodeRequest {
                 code: code.to_string(),
@@ -261,9 +269,10 @@ impl ApiClient {
     pub async fn clock_in(&self) -> Result<AttendanceResponse, String> {
         let headers = self.get_auth_headers()?;
 
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/attendance/clock-in", self.base_url()))
+            .post(&format!("{}/attendance/clock-in", base_url))
             .headers(headers)
             .json(&json!({}))
             .send()
@@ -287,9 +296,10 @@ impl ApiClient {
     pub async fn clock_out(&self) -> Result<AttendanceResponse, String> {
         let headers = self.get_auth_headers()?;
 
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/attendance/clock-out", self.base_url()))
+            .post(&format!("{}/attendance/clock-out", base_url))
             .headers(headers)
             .json(&json!({}))
             .send()
@@ -317,7 +327,8 @@ impl ApiClient {
     ) -> Result<Vec<AttendanceResponse>, String> {
         let headers = self.get_auth_headers()?;
 
-        let mut url = format!("{}/attendance/me", self.base_url());
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/attendance/me", base_url);
         let mut query_params = Vec::new();
 
         if let Some(year) = year {
@@ -356,9 +367,10 @@ impl ApiClient {
 
     pub async fn break_start(&self, attendance_id: &str) -> Result<BreakRecordResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/attendance/break-start", self.base_url()))
+            .post(&format!("{}/attendance/break-start", base_url))
             .headers(headers)
             .json(&json!({"attendance_id": attendance_id}))
             .send()
@@ -380,9 +392,10 @@ impl ApiClient {
 
     pub async fn break_end(&self, break_record_id: &str) -> Result<BreakRecordResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/attendance/break-end", self.base_url()))
+            .post(&format!("{}/attendance/break-end", base_url))
             .headers(headers)
             .json(&json!({"break_record_id": break_record_id}))
             .send()
@@ -408,7 +421,8 @@ impl ApiClient {
         to: Option<chrono::NaiveDate>,
     ) -> Result<Vec<AttendanceResponse>, String> {
         let headers = self.get_auth_headers()?;
-        let mut url = format!("{}/attendance/me", self.base_url());
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/attendance/me", base_url);
         let mut query_params = Vec::new();
         if let Some(f) = from {
             query_params.push(format!("from={}", f));
@@ -447,7 +461,8 @@ impl ApiClient {
         date: Option<chrono::NaiveDate>,
     ) -> Result<AttendanceStatusResponse, String> {
         let headers = self.get_auth_headers()?;
-        let mut url = format!("{}/attendance/status", self.base_url());
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/attendance/status", base_url);
         if let Some(d) = date {
             url.push_str(&format!("?date={}", d));
         }
@@ -477,7 +492,8 @@ impl ApiClient {
         attendance_id: &str,
     ) -> Result<Vec<BreakRecordResponse>, String> {
         let headers = self.get_auth_headers()?;
-        let url = format!("{}/attendance/{}/breaks", self.base_url(), attendance_id);
+        let base_url = self.resolved_base_url().await;
+        let url = format!("{}/attendance/{}/breaks", base_url, attendance_id);
         let response = self
             .client
             .get(&url)
@@ -504,9 +520,10 @@ impl ApiClient {
         payload: AdminAttendanceUpsert,
     ) -> Result<AttendanceResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .put(&format!("{}/admin/attendance", self.base_url()))
+            .put(&format!("{}/admin/attendance", base_url))
             .headers(headers)
             .json(&payload)
             .send()
@@ -531,13 +548,10 @@ impl ApiClient {
         break_id: &str,
     ) -> Result<BreakRecordResponse, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .put(&format!(
-                "{}/admin/breaks/{}/force-end",
-                self.base_url(),
-                break_id
-            ))
+            .put(&format!("{}/admin/breaks/{}/force-end", base_url, break_id))
             .headers(headers)
             .send()
             .await
@@ -564,7 +578,8 @@ impl ApiClient {
         per_page: Option<u32>,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
-        let mut url = format!("{}/admin/requests", self.base_url());
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/admin/requests", base_url);
         let mut qp = vec![];
         if let Some(s) = status {
             qp.push(format!("status={}", s));
@@ -605,9 +620,10 @@ impl ApiClient {
 
     pub async fn admin_get_request_detail(&self, id: &str) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .get(&format!("{}/admin/requests/{}", self.base_url(), id))
+            .get(&format!("{}/admin/requests/{}", base_url, id))
             .headers(headers)
             .send()
             .await
@@ -632,13 +648,10 @@ impl ApiClient {
         comment: &str,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .put(&format!(
-                "{}/admin/requests/{}/approve",
-                self.base_url(),
-                id
-            ))
+            .put(&format!("{}/admin/requests/{}/approve", base_url, id))
             .headers(headers)
             .json(&json!({"comment": comment}))
             .send()
@@ -664,9 +677,10 @@ impl ApiClient {
         comment: &str,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .put(&format!("{}/admin/requests/{}/reject", self.base_url(), id))
+            .put(&format!("{}/admin/requests/{}/reject", base_url, id))
             .headers(headers)
             .json(&json!({"comment": comment}))
             .send()
@@ -692,9 +706,10 @@ impl ApiClient {
         payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .put(&format!("{}/requests/{}", self.base_url(), id))
+            .put(&format!("{}/requests/{}", base_url, id))
             .headers(headers)
             .json(&payload)
             .send()
@@ -716,9 +731,10 @@ impl ApiClient {
 
     pub async fn cancel_request(&self, id: &str) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .delete(&format!("{}/requests/{}", self.base_url(), id))
+            .delete(&format!("{}/requests/{}", base_url, id))
             .headers(headers)
             .send()
             .await
@@ -744,7 +760,8 @@ impl ApiClient {
     ) -> Result<AttendanceSummary, String> {
         let headers = self.get_auth_headers()?;
 
-        let mut url = format!("{}/attendance/me/summary", self.base_url());
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/attendance/me/summary", base_url);
         let mut query_params = Vec::new();
 
         if let Some(year) = year {
@@ -786,10 +803,10 @@ impl ApiClient {
         request: CreateLeaveRequest,
     ) -> Result<LeaveRequestResponse, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/requests/leave", self.base_url()))
+            .post(&format!("{}/requests/leave", base_url))
             .headers(headers)
             .json(&request)
             .send()
@@ -815,10 +832,10 @@ impl ApiClient {
         request: CreateOvertimeRequest,
     ) -> Result<OvertimeRequestResponse, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/requests/overtime", self.base_url()))
+            .post(&format!("{}/requests/overtime", base_url))
             .headers(headers)
             .json(&request)
             .send()
@@ -841,10 +858,10 @@ impl ApiClient {
 
     pub async fn get_my_requests(&self) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .get(&format!("{}/requests/me", self.base_url()))
+            .get(&format!("{}/requests/me", base_url))
             .headers(headers)
             .send()
             .await
@@ -866,10 +883,10 @@ impl ApiClient {
 
     pub async fn get_users(&self) -> Result<Vec<UserResponse>, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .get(&format!("{}/admin/users", self.base_url()))
+            .get(&format!("{}/admin/users", base_url))
             .headers(headers)
             .send()
             .await
@@ -891,10 +908,10 @@ impl ApiClient {
 
     pub async fn create_user(&self, request: CreateUser) -> Result<UserResponse, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .post(&format!("{}/admin/users", self.base_url()))
+            .post(&format!("{}/admin/users", base_url))
             .headers(headers)
             .json(&request)
             .send()
@@ -917,10 +934,10 @@ impl ApiClient {
 
     pub async fn export_data(&self) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
-
+        let base_url = self.resolved_base_url().await;
         let response = self
             .client
-            .get(&format!("{}/admin/export", self.base_url()))
+            .get(&format!("{}/admin/export", base_url))
             .headers(headers)
             .send()
             .await
@@ -947,6 +964,7 @@ impl ApiClient {
         to: Option<&str>,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(u) = username {
             if !u.is_empty() {
@@ -966,7 +984,7 @@ impl ApiClient {
 
         let mut request = self
             .client
-            .get(&format!("{}/admin/export", self.base_url()))
+            .get(&format!("{}/admin/export", base_url))
             .headers(headers);
         if !params.is_empty() {
             request = request.query(&params);
@@ -997,6 +1015,7 @@ impl ApiClient {
         to: Option<&str>,
     ) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(f) = from {
             if !f.is_empty() {
@@ -1011,7 +1030,7 @@ impl ApiClient {
 
         let mut request = self
             .client
-            .get(&format!("{}/attendance/export", self.base_url()))
+            .get(&format!("{}/attendance/export", base_url))
             .headers(headers);
         if !params.is_empty() {
             request = request.query(&params);
