@@ -12,7 +12,7 @@ pub mod utils;
 use pages::{
     admin::AdminPage, admin_export::AdminExportPage, admin_users::AdminUsersPage,
     attendance::AttendancePage, dashboard::DashboardPage, home::HomePage, login::LoginPage,
-    requests::RequestsPage,
+    mfa::MfaRegisterPage, requests::RequestsPage,
 };
 
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
@@ -36,6 +36,7 @@ pub fn start() {
                     <Route path="/dashboard" view=ProtectedDashboard/>
                     <Route path="/attendance" view=ProtectedAttendance/>
                     <Route path="/requests" view=ProtectedRequests/>
+                    <Route path="/mfa/register" view=MfaRegisterPage/>
                     <Route path="/admin" view=ProtectedAdmin/>
                     <Route path="/admin/users" view=ProtectedAdminUsers/>
                     <Route path="/admin/export" view=ProtectedAdminExport/>
