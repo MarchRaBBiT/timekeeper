@@ -3,7 +3,10 @@ use leptos::*;
 
 use crate::{
     api::ApiClient,
-    components::layout::{ErrorMessage, Layout, SuccessMessage},
+    components::{
+        forms::AttendanceActionButtons,
+        layout::{ErrorMessage, Layout, SuccessMessage},
+    },
     state::attendance::{load_attendance_range, load_today_status, use_attendance},
     utils::trigger_csv_download,
 };
@@ -177,95 +180,6 @@ pub fn AttendancePage() -> impl IntoView {
         }
     };
 
-    let status_section = {
-        let set_state = set_state.clone();
-        move || {
-            state
-                .get()
-                .today_status
-                .clone()
-                .map(|status| {
-                    let (label, color) = match status.status.as_str() {
-                        "not_started" => ("未出勤", "bg-gray-100 text-gray-800"),
-                        "clocked_in" => ("出勤中", "bg-blue-100 text-blue-800"),
-                        "on_break" => ("休憩中", "bg-yellow-100 text-yellow-800"),
-                        "clocked_out" => ("退勤済", "bg-green-100 text-green-800"),
-                        _ => ("-", "bg-gray-100 text-gray-800"),
-                    };
-
-                    let set_state_clock = set_state.clone();
-                    let set_state_break_end = set_state.clone();
-                    let set_state_break_start = set_state.clone();
-
-                    view! {
-                        <div class="rounded-md p-4 border flex items-center justify-between">
-                            <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {}", color)>{label}</span>
-                            <div class="space-x-2">
-                                <button
-                                    class="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"
-                                    disabled={status.status != "not_started"}
-                                    on:click=move |_| {
-                                        let set_state = set_state_clock.clone();
-                                        spawn_local(async move {
-                                            let _ = crate::state::attendance::clock_in(set_state.clone()).await;
-                                            let _ = load_today_status(set_state).await;
-                                        });
-                                    }
-                                >
-                                    {"出勤"}
-                                </button>
-                                <button
-                                    class="px-3 py-1 rounded bg-amber-600 text-white disabled:opacity-50"
-                                    disabled={status.status != "clocked_in"}
-                                    on:click=move |_| {
-                                        if let Some(att_id) = status.attendance_id.clone() {
-                                            let set_state = set_state_break_start.clone();
-                                            spawn_local(async move {
-                                                let api = ApiClient::new();
-                                                let _ = api.break_start(&att_id).await;
-                                                let _ = load_today_status(set_state).await;
-                                            });
-                                        }
-                                    }
-                                >
-                                    {"休憩開始"}
-                                </button>
-                                <button
-                                    class="px-3 py-1 rounded bg-amber-700 text-white disabled:opacity-50"
-                                    disabled={status.status != "on_break"}
-                                    on:click=move |_| {
-                                        if let Some(break_id) = status.active_break_id.clone() {
-                                            let set_state = set_state_break_end.clone();
-                                            spawn_local(async move {
-                                                let api = ApiClient::new();
-                                                let _ = api.break_end(&break_id).await;
-                                                let _ = load_today_status(set_state).await;
-                                            });
-                                        }
-                                    }
-                                >
-                                    {"休憩終了"}
-                                </button>
-                                <button
-                                    class="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-50"
-                                    disabled={status.status == "not_started" || status.status == "clocked_out"}
-                                    on:click=move |_| {
-                                        let set_state = set_state.clone();
-                                        spawn_local(async move {
-                                            let _ = crate::state::attendance::clock_out(set_state.clone()).await;
-                                            let _ = load_today_status(set_state).await;
-                                        });
-                                    }
-                                >
-                                    {"退勤"}
-                                </button>
-                            </div>
-                        </div>
-                    }
-                })
-        }
-    };
-
     view! {
         <Layout>
             <div class="space-y-6">
@@ -275,7 +189,12 @@ pub fn AttendancePage() -> impl IntoView {
                 </div>
 
                 <Show when=move || state.get().today_status.is_some()>
-                    {status_section()}
+                    <div class="rounded-md p-4 border bg-white shadow-sm">
+                        <AttendanceActionButtons
+                            attendance_state=state
+                            set_attendance_state=set_state
+                        />
+                    </div>
                 </Show>
 
                 <div class="bg-white shadow rounded-lg p-4 flex items-end space-x-3">
