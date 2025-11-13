@@ -172,6 +172,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/holidays/:id",
             delete(handlers::admin::delete_holiday),
         )
+        .route(
+            "/api/admin/holidays/google",
+            get(handlers::holidays::fetch_google_holidays),
+        )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),
