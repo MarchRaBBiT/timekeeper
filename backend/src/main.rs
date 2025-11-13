@@ -156,6 +156,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/requests/:id/reject",
             put(handlers::admin::reject_request),
         )
+        .route(
+            "/api/admin/mfa/reset",
+            post(handlers::admin::reset_user_mfa),
+        )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),

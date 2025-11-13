@@ -502,6 +502,11 @@ pub struct AdminBreakItem {
     pub break_end_time: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct ResetMfaPayload {
+    pub user_id: String,
+}
+
 pub async fn upsert_attendance(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
@@ -790,6 +795,53 @@ pub async fn export_data(
             "attendance_export_{}.csv",
             time::now_in_timezone(&config.time_zone).format("%Y%m%d_%H%M%S")
         )
+    })))
+}
+
+pub async fn reset_user_mfa(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(requester): Extension<User>,
+    Json(payload): Json<ResetMfaPayload>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !requester.is_system_admin() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"Only system administrators can reset MFA"})),
+        ));
+    }
+    let now = Utc::now();
+    let result = sqlx::query(
+        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
+    )
+    .bind(&now)
+    .bind(&payload.user_id)
+    .execute(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Failed to reset MFA"})),
+        )
+    })?;
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"User not found"})),
+        ));
+    }
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&payload.user_id)
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to revoke refresh tokens"})),
+            )
+        })?;
+    Ok(Json(json!({
+        "message": "MFA reset and refresh tokens revoked",
+        "user_id": payload.user_id
     })))
 }
 

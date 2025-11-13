@@ -932,6 +932,28 @@ impl ApiClient {
         }
     }
 
+    pub async fn admin_reset_mfa(&self, user_id: &str) -> Result<(), String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let resp = self
+            .client
+            .post(&format!("{}/admin/mfa/reset", base_url))
+            .headers(headers)
+            .json(&json!({ "user_id": user_id }))
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn export_data(&self) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
