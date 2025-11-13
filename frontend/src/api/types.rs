@@ -67,6 +67,22 @@ pub struct AttendanceStatusResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HolidayResponse {
+    pub id: String,
+    pub holiday_date: NaiveDate,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateHolidayRequest {
+    pub holiday_date: NaiveDate,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BreakRecordResponse {
     pub id: String,
     pub attendance_id: String,

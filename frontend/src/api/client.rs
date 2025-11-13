@@ -954,6 +954,139 @@ impl ApiClient {
         }
     }
 
+    pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .get(&format!("{}/holidays", base_url))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_list_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .get(&format!("{}/admin/holidays", base_url))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_create_holiday(
+        &self,
+        payload: &CreateHolidayRequest,
+    ) -> Result<HolidayResponse, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .post(&format!("{}/admin/holidays", base_url))
+            .headers(headers)
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_delete_holiday(&self, id: &str) -> Result<(), String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .delete(&format!("{}/admin/holidays/{}", base_url, id))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_fetch_google_holidays(
+        &self,
+        year: Option<i32>,
+    ) -> Result<Vec<CreateHolidayRequest>, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/admin/holidays/google", base_url);
+        if let Some(year) = year {
+            url.push_str(&format!("?year={}", year));
+        }
+        let response = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status().is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn export_data(&self) -> Result<serde_json::Value, String> {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
