@@ -6,13 +6,14 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{Error as SqlxError, PgPool, Postgres, QueryBuilder};
 
 use crate::{
     config::Config,
     models::{
         attendance::{Attendance, AttendanceResponse},
         break_record::BreakRecordResponse,
+        holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::{CreateUser, User, UserResponse},
     },
     utils::{csv::append_csv_row, password::hash_password, time},
@@ -843,6 +844,132 @@ pub async fn reset_user_mfa(
         "message": "MFA reset and refresh tokens revoked",
         "user_id": payload.user_id
     })))
+}
+
+pub async fn list_holidays(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+) -> Result<Json<Vec<HolidayResponse>>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    let holidays = sqlx::query_as::<_, Holiday>(
+        "SELECT id, holiday_date, name, description, created_at, updated_at \
+         FROM holidays ORDER BY holiday_date",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Database error"})),
+        )
+    })?;
+
+    Ok(Json(
+        holidays
+            .into_iter()
+            .map(HolidayResponse::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+pub async fn create_holiday(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<CreateHolidayPayload>,
+) -> Result<Json<HolidayResponse>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    let CreateHolidayPayload {
+        holiday_date,
+        name,
+        description,
+    } = payload;
+
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"Holiday name is required"})),
+        ));
+    }
+
+    let normalized_description = description.as_deref().map(str::trim).and_then(|d| {
+        if d.is_empty() {
+            None
+        } else {
+            Some(d.to_string())
+        }
+    });
+
+    let holiday = Holiday::new(
+        holiday_date,
+        trimmed_name.to_string(),
+        normalized_description,
+    );
+
+    let insert_result = sqlx::query(
+        "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&holiday.id)
+    .bind(&holiday.holiday_date)
+    .bind(&holiday.name)
+    .bind(&holiday.description)
+    .bind(&holiday.created_at)
+    .bind(&holiday.updated_at)
+    .execute(&pool)
+    .await;
+
+    match insert_result {
+        Ok(_) => Ok(Json(HolidayResponse::from(holiday))),
+        Err(SqlxError::Database(db_err))
+            if db_err.constraint() == Some("holidays_holiday_date_key") =>
+        {
+            Err((
+                StatusCode::CONFLICT,
+                Json(json!({"error":"Holiday already exists for that date"})),
+            ))
+        }
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Failed to create holiday"})),
+        )),
+    }
+}
+
+pub async fn delete_holiday(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Path(holiday_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    let result = sqlx::query("DELETE FROM holidays WHERE id = $1")
+        .bind(&holiday_id)
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to delete holiday"})),
+            )
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"Holiday not found"})),
+        ));
+    }
+
+    Ok(Json(json!({"message":"Holiday deleted","id": holiday_id})))
 }
 
 async fn get_break_records(

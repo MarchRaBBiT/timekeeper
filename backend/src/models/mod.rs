@@ -2,6 +2,7 @@
 
 pub mod attendance;
 pub mod break_record;
+pub mod holiday;
 pub mod leave_request;
 pub mod overtime_request;
 pub mod user;

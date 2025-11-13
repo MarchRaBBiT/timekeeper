@@ -124,6 +124,10 @@ async fn main() -> anyhow::Result<()> {
             put(handlers::auth::change_password),
         )
         .route("/api/auth/logout", post(handlers::auth::logout))
+        .route(
+            "/api/holidays",
+            get(handlers::holidays::list_public_holidays),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),
             auth_middleware::auth,
@@ -159,6 +163,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/mfa/reset",
             post(handlers::admin::reset_user_mfa),
+        )
+        .route(
+            "/api/admin/holidays",
+            get(handlers::admin::list_holidays).post(handlers::admin::create_holiday),
+        )
+        .route(
+            "/api/admin/holidays/:id",
+            delete(handlers::admin::delete_holiday),
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
