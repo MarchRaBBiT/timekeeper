@@ -16,7 +16,6 @@ mod config;
 mod db;
 mod handlers;
 mod middleware;
-use crate::middleware as auth_middleware;
 mod models;
 mod utils;
 
@@ -130,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),
-            auth_middleware::auth,
+            middleware::auth,
         ));
 
     // Build admin-protected routes (auth + admin role)
@@ -179,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),
-            auth_middleware::auth_admin,
+            middleware::auth_admin,
         ));
 
     // Compose app with shared layers (CORS/Trace) and shared state
@@ -189,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(admin_routes)
         .layer(
             ServiceBuilder::new()
+                .layer(axum_middleware::from_fn(middleware::log_error_responses))
                 .layer(TraceLayer::new_for_http())
                 .layer(
                     CorsLayer::new()
