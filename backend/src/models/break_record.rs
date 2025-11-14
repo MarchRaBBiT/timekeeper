@@ -1,6 +1,6 @@
 //! Models that capture break sessions within an attendance record.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -78,6 +78,7 @@ impl BreakRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::NaiveDate;
 
     #[test]
     fn break_record_activity_reflects_end_state() {
