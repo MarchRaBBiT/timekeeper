@@ -23,7 +23,7 @@ pub async fn get_users(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<UserResponse>>, (StatusCode, Json<Value>)> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
@@ -125,7 +125,7 @@ pub async fn get_all_attendance(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<AttendanceResponse>>, (StatusCode, Json<Value>)> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     let attendances = sqlx::query_as::<_, Attendance>(
@@ -513,7 +513,7 @@ pub async fn upsert_attendance(
     Extension(user): Extension<User>,
     Json(body): Json<AdminAttendanceUpsert>,
 ) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     use crate::models::attendance::{AttendanceResponse, AttendanceStatus};
@@ -642,7 +642,7 @@ pub async fn force_end_break(
     Extension(user): Extension<User>,
     Path(break_id): Path<String>,
 ) -> Result<Json<crate::models::break_record::BreakRecordResponse>, (StatusCode, Json<Value>)> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     let now_local = time::now_in_timezone(&config.time_zone);

@@ -132,20 +132,8 @@ async fn main() -> anyhow::Result<()> {
             middleware::auth,
         ));
 
-    // Build admin-protected routes (auth + admin role)
+    // Build admin-protected routes (approvals only)
     let admin_routes = Router::new()
-        .route(
-            "/api/admin/users",
-            get(handlers::admin::get_users).post(handlers::admin::create_user),
-        )
-        .route(
-            "/api/admin/attendance",
-            get(handlers::admin::get_all_attendance).put(handlers::admin::upsert_attendance),
-        )
-        .route(
-            "/api/admin/breaks/:id/force-end",
-            put(handlers::admin::force_end_break),
-        )
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
             "/api/admin/requests/:id",
@@ -158,10 +146,6 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/requests/:id/reject",
             put(handlers::admin::reject_request),
-        )
-        .route(
-            "/api/admin/mfa/reset",
-            post(handlers::admin::reset_user_mfa),
         )
         .route(
             "/api/admin/holidays",
@@ -181,11 +165,35 @@ async fn main() -> anyhow::Result<()> {
             middleware::auth_admin,
         ));
 
+    // Build system admin routes (full platform management)
+    let system_admin_routes = Router::new()
+        .route(
+            "/api/admin/users",
+            get(handlers::admin::get_users).post(handlers::admin::create_user),
+        )
+        .route(
+            "/api/admin/attendance",
+            get(handlers::admin::get_all_attendance).put(handlers::admin::upsert_attendance),
+        )
+        .route(
+            "/api/admin/breaks/:id/force-end",
+            put(handlers::admin::force_end_break),
+        )
+        .route(
+            "/api/admin/mfa/reset",
+            post(handlers::admin::reset_user_mfa),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            (pool.clone(), config.clone()),
+            middleware::auth_system_admin,
+        ));
+
     // Compose app with shared layers (CORS/Trace) and shared state
     let app = Router::new()
         .merge(public_routes)
         .merge(user_routes)
         .merge(admin_routes)
+        .merge(system_admin_routes)
         .layer(
             ServiceBuilder::new()
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))

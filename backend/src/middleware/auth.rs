@@ -95,6 +95,43 @@ pub async fn auth_admin(
     Ok(next.run(request).await)
 }
 
+// Auth + require system admin flag for system-level routes
+pub async fn auth_system_admin(
+    State((pool, config)): State<(PgPool, Config)>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let auth_header = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|header| header.to_str().ok());
+
+    let token = match auth_header {
+        Some(header) if header.starts_with("Bearer ") => {
+            header.strip_prefix("Bearer ").unwrap_or("")
+        }
+        _ => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    let claims = match verify_token(token, &config.jwt_secret) {
+        Ok(claims) => claims,
+        Err(_) => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    let user = match get_user_by_id(&pool, &claims.sub).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Err(StatusCode::UNAUTHORIZED),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    if !user.is_system_admin() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    request.extensions_mut().insert(user);
+    Ok(next.run(request).await)
+}
+
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
