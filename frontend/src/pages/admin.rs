@@ -473,17 +473,15 @@ pub fn AdminPage() -> impl IntoView {
         <Layout>
             <Show
                 when=move || admin_allowed.get()
-                fallback=move || {
-                    view! {
-                        <div class="space-y-6">
-                            <div class="bg-white shadow rounded-lg p-6">
-                                <p class="text-sm text-gray-700">
-                                    {"管理者権限が必要です。システム管理者にご連絡ください。"}
-                                </p>
-                            </div>
+                fallback=move || view! {
+                    <div class="space-y-6">
+                        <div class="bg-white shadow rounded-lg p-6">
+                            <p class="text-sm text-gray-700">
+                                {"管理者権限が必要です。システム管理者にご連絡ください。"}
+                            </p>
                         </div>
-                    }
-                }
+                    </div>
+                }.into_view()
             >
             <div class="space-y-6">
                 <div>
@@ -580,8 +578,9 @@ pub fn AdminPage() -> impl IntoView {
                             <div class="flex space-x-2">
                                 <input placeholder="Break ID" class="border rounded px-2 py-1 w-full" on:input=move |ev| feb_id.set(event_target_value(&ev)) />
                                 <button class="px-3 py-1 bg-amber-600 text-white rounded" on:click=on_force_end>{"強制終了"}</button>
+                            </div>
+                        </div>
                     </div>
-                </div>
                 </Show>
                 <Show when=move || system_admin_allowed.get()>
                 <div class="bg-white shadow rounded-lg p-4 space-y-4">
@@ -897,9 +896,11 @@ pub fn AdminPage() -> impl IntoView {
                     </div>
                 </div>
             </div>
-                </div>
+            </div>
 
-                <Show when=move || show_modal.get()>
+            </Show>
+
+            <Show when=move || show_modal.get()>
                     <div class="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
                         <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
                             <h3 class="text-lg font-medium text-gray-900 mb-2">{"申請詳細"}</h3>
@@ -916,8 +917,6 @@ pub fn AdminPage() -> impl IntoView {
                         </div>
                     </div>
                 </Show>
-            </div>
-            </Show>
         </Layout>
     }
 }
