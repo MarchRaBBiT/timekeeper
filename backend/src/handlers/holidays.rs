@@ -19,6 +19,7 @@ use crate::{
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
     "https://calendar.google.com/calendar/ical/japanese__ja%40holiday.calendar.google.com/public/basic.ics";
+const HOLIDAY_DESCRIPTION_PREFIX: &str = "\u{795d}\u{65e5}"; // Japanese word for "holiday"
 
 pub async fn list_public_holidays(
     State((pool, _config)): State<(PgPool, Config)>,
@@ -128,18 +129,33 @@ fn parse_google_calendar_ics(content: &str, year_filter: Option<i32>) -> Vec<Cre
         } else if line.starts_with("END:VEVENT") {
             if let (Some(date), Some(name)) = (current_date, summary.clone()) {
                 if year_filter.map(|y| date.year() == y).unwrap_or(true) {
-                    events.push(CreateHolidayPayload {
-                        holiday_date: date,
-                        name: name.trim().to_string(),
-                        description: description.clone().and_then(|d| {
-                            let trimmed = d.trim();
-                            if trimmed.is_empty() {
-                                None
-                            } else {
-                                Some(trimmed.to_string())
-                            }
-                        }),
+                    let normalized_description = description.clone().and_then(|d| {
+                        let trimmed = d.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        }
                     });
+
+                    let is_public_holiday = normalized_description
+                        .as_deref()
+                        .map(|desc| desc.starts_with(HOLIDAY_DESCRIPTION_PREFIX))
+                        .unwrap_or(false);
+
+                    if is_public_holiday {
+                        events.push(CreateHolidayPayload {
+                            holiday_date: date,
+                            name: name.trim().to_string(),
+                            description: normalized_description,
+                        });
+                    } else {
+                        tracing::debug!(
+                            "Skipping non-holiday calendar event: {} ({:?})",
+                            name,
+                            normalized_description
+                        );
+                    }
                 }
             }
             current_date = None;
