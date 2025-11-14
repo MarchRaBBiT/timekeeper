@@ -114,10 +114,14 @@ impl Attendance {
     }
 
     /// Recomputes `total_work_hours` when both clock-in and clock-out exist.
-    pub fn calculate_work_hours(&mut self) {
+    /// `break_minutes` should be the total minutes spent on breaks for the day.
+    pub fn calculate_work_hours(&mut self, break_minutes: i64) {
         if let (Some(clock_in), Some(clock_out)) = (self.clock_in_time, self.clock_out_time) {
             let duration = clock_out - clock_in;
-            self.total_work_hours = Some(duration.num_minutes() as f64 / 60.0);
+            let gross_minutes = duration.num_minutes();
+            let net_minutes = gross_minutes - break_minutes.max(0);
+            let effective_minutes = net_minutes.max(0);
+            self.total_work_hours = Some(effective_minutes as f64 / 60.0);
         }
     }
 

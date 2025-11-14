@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
@@ -192,7 +192,8 @@ pub async fn clock_out(
     }
 
     attendance.clock_out_time = Some(clock_out_time);
-    attendance.calculate_work_hours();
+    let break_minutes = total_break_minutes(&pool, &attendance.id).await?;
+    attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = now_utc;
 
     sqlx::query(
@@ -380,6 +381,10 @@ pub async fn break_end(
             Json(json!({"error": "Failed to update break record"})),
         )
     })?;
+
+    if att.clock_out_time.is_some() {
+        recalculate_total_hours(&pool, att, now_utc).await?;
+    }
 
     let response = BreakRecordResponse::from(break_record);
     Ok(Json(response))
@@ -741,6 +746,56 @@ async fn get_break_records(
         .into_iter()
         .map(BreakRecordResponse::from)
         .collect())
+}
+
+pub(crate) async fn total_break_minutes(
+    pool: &PgPool,
+    attendance_id: &str,
+) -> Result<i64, (StatusCode, Json<Value>)> {
+    let row = sqlx::query(
+        "SELECT COALESCE(SUM(duration_minutes), 0) AS minutes FROM break_records WHERE attendance_id = $1 AND duration_minutes IS NOT NULL",
+    )
+    .bind(attendance_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+    })?;
+
+    let minutes = row.try_get::<i64, _>("minutes").unwrap_or(0);
+    Ok(minutes.max(0))
+}
+
+pub(crate) async fn recalculate_total_hours(
+    pool: &PgPool,
+    mut attendance: Attendance,
+    updated_at: DateTime<Utc>,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    if attendance.clock_in_time.is_none() || attendance.clock_out_time.is_none() {
+        return Ok(());
+    }
+
+    let break_minutes = total_break_minutes(pool, &attendance.id).await?;
+    attendance.calculate_work_hours(break_minutes);
+    attendance.updated_at = updated_at;
+
+    sqlx::query("UPDATE attendance SET total_work_hours = $1, updated_at = $2 WHERE id = $3")
+        .bind(&attendance.total_work_hours)
+        .bind(&attendance.updated_at)
+        .bind(&attendance.id)
+        .execute(pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to update attendance"})),
+            )
+        })?;
+
+    Ok(())
 }
 
 fn status_to_str(s: &crate::models::attendance::AttendanceStatus) -> &'static str {

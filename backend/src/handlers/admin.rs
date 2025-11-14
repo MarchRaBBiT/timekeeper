@@ -10,6 +10,7 @@ use sqlx::{Error as SqlxError, PgPool, Postgres, QueryBuilder};
 
 use crate::{
     config::Config,
+    handlers::attendance::recalculate_total_hours,
     models::{
         attendance::{Attendance, AttendanceResponse},
         break_record::BreakRecordResponse,
@@ -518,23 +519,30 @@ pub async fn upsert_attendance(
     }
     use crate::models::attendance::{AttendanceResponse, AttendanceStatus};
     use chrono::{NaiveDate, NaiveDateTime};
-    let date = NaiveDate::parse_from_str(&body.date, "%Y-%m-%d").map_err(|_| {
+
+    let AdminAttendanceUpsert {
+        user_id,
+        date,
+        clock_in_time,
+        clock_out_time,
+        breaks,
+    } = body;
+
+    let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             Json(json!({"error":"Invalid date"})),
         )
     })?;
-    let cin = NaiveDateTime::parse_from_str(&body.clock_in_time, "%Y-%m-%dT%H:%M:%S")
-        .or_else(|_| {
-            chrono::NaiveDateTime::parse_from_str(&body.clock_in_time, "%Y-%m-%d %H:%M:%S")
-        })
+    let cin = NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%d %H:%M:%S"))
         .map_err(|_| {
             (
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error":"Invalid clock_in_time"})),
             )
         })?;
-    let cout = match &body.clock_out_time {
+    let cout = match &clock_out_time {
         Some(s) => Some(
             NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                 .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
@@ -550,37 +558,23 @@ pub async fn upsert_attendance(
 
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
     let _ = sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
-        .bind(&body.user_id)
+        .bind(&user_id)
         .bind(date)
         .execute(&pool)
         .await;
 
     let mut att = crate::models::attendance::Attendance::new(
-        body.user_id.clone(),
+        user_id.clone(),
         date,
         time::now_utc(&config.time_zone),
     );
     att.clock_in_time = Some(cin);
     att.clock_out_time = cout;
-    att.calculate_work_hours();
 
-    sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
-        .bind(&att.id)
-        .bind(&att.user_id)
-        .bind(&att.date)
-        .bind(&att.clock_in_time)
-        .bind(&att.clock_out_time)
-          // Store enum as snake_case text to match sqlx mapping
-          .bind(match att.status { AttendanceStatus::Present => "present", AttendanceStatus::Absent => "absent", AttendanceStatus::Late => "late", AttendanceStatus::HalfDay => "half_day" })
-          .bind(&att.total_work_hours)
-        .bind(&att.created_at)
-        .bind(&att.updated_at)
-        .execute(&pool)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
+    let mut total_break_minutes: i64 = 0;
+    let mut pending_breaks: Vec<crate::models::break_record::BreakRecord> = Vec::new();
 
-    // insert breaks
-    if let Some(bks) = body.breaks {
+    if let Some(bks) = breaks {
         for b in bks {
             let bs =
                 chrono::NaiveDateTime::parse_from_str(&b.break_start_time, "%Y-%m-%dT%H:%M:%S")
@@ -605,22 +599,45 @@ pub async fn upsert_attendance(
             let mut br = crate::models::break_record::BreakRecord::new(att.id.clone(), bs, now_utc);
             if let Some(bev) = be {
                 br.break_end_time = Some(bev);
-                let d = bev - bs;
-                br.duration_minutes = Some(d.num_minutes() as i32);
+                let d = (bev - bs).num_minutes().max(0);
+                br.duration_minutes = Some(d as i32);
                 br.updated_at = now_utc;
+                total_break_minutes += d;
             }
-            sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
-                .bind(&br.id)
-                .bind(&br.attendance_id)
-                .bind(&br.break_start_time)
-                .bind(&br.break_end_time)
-                .bind(&br.duration_minutes)
-                .bind(&br.created_at)
-                .bind(&br.updated_at)
-                .execute(&pool)
-                .await
-                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to insert break"}))))?;
+            pending_breaks.push(br);
         }
+    }
+
+    att.calculate_work_hours(total_break_minutes);
+
+    sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
+        .bind(&att.id)
+        .bind(&att.user_id)
+        .bind(&att.date)
+        .bind(&att.clock_in_time)
+        .bind(&att.clock_out_time)
+          // Store enum as snake_case text to match sqlx mapping
+          .bind(match att.status { AttendanceStatus::Present => "present", AttendanceStatus::Absent => "absent", AttendanceStatus::Late => "late", AttendanceStatus::HalfDay => "half_day" })
+          .bind(&att.total_work_hours)
+        .bind(&att.created_at)
+        .bind(&att.updated_at)
+        .execute(&pool)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
+
+    // insert breaks
+    for br in pending_breaks {
+        sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            .bind(&br.id)
+            .bind(&br.attendance_id)
+            .bind(&br.break_start_time)
+            .bind(&br.break_end_time)
+            .bind(&br.duration_minutes)
+            .bind(&br.created_at)
+            .bind(&br.updated_at)
+            .execute(&pool)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to insert break"}))))?;
     }
 
     let breaks = get_break_records(&pool, &att.id).await?;
@@ -676,6 +693,18 @@ pub async fn force_end_break(
         .execute(&pool)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to update break"}))))?;
+
+    if let Some(attendance) = sqlx::query_as::<_, Attendance>(
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
+    )
+    .bind(&rec.attendance_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
+        if attendance.clock_out_time.is_some() {
+            recalculate_total_hours(&pool, attendance, now_utc).await?;
+        }
+    }
 
     Ok(Json(
         crate::models::break_record::BreakRecordResponse::from(rec),
