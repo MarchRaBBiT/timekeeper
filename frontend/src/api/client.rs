@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use leptos::*;
-use reqwest_wasm::Client;
+use reqwest_wasm::{Client, StatusCode};
 use serde_json::json;
 
 use crate::{api::types::*, config};
@@ -55,6 +55,35 @@ impl ApiClient {
         );
 
         Ok(headers)
+    }
+
+    fn handle_unauthorized_status(status: StatusCode) {
+        if status == StatusCode::UNAUTHORIZED {
+            Self::clear_auth_session();
+            Self::redirect_to_login_if_needed();
+        }
+    }
+
+    fn clear_auth_session() {
+        if let Some(window) = web_sys::window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                let _ = storage.remove_item("access_token");
+                let _ = storage.remove_item("refresh_token");
+                let _ = storage.remove_item("current_user");
+            }
+        }
+    }
+
+    fn redirect_to_login_if_needed() {
+        if let Some(window) = web_sys::window() {
+            let location = window.location();
+            if let Ok(pathname) = location.pathname() {
+                if pathname == "/login" {
+                    return;
+                }
+            }
+            let _ = location.set_href("/login");
+        }
     }
 
     pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, String> {
@@ -121,7 +150,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             let login_response: LoginResponse = response
                 .json()
                 .await
@@ -180,7 +211,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if resp.status().is_success() {
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             Ok(())
         } else {
             let err: Result<ApiError, _> = resp.json().await;
@@ -201,7 +234,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -227,7 +262,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -255,7 +292,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             Ok(())
         } else {
             let error: ApiError = response
@@ -279,7 +318,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -306,7 +347,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -351,7 +394,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -376,7 +421,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -401,7 +448,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -442,7 +491,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -473,7 +524,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -501,7 +554,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -529,7 +584,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -556,7 +613,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -604,7 +663,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -628,7 +689,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -657,7 +720,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -686,7 +751,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -715,7 +782,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -739,7 +808,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -784,7 +855,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -813,7 +886,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -842,7 +917,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -867,7 +944,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -892,7 +971,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -918,7 +999,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -943,7 +1026,9 @@ impl ApiClient {
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
-        if resp.status().is_success() {
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             Ok(())
         } else {
             let error: ApiError = resp
@@ -965,7 +1050,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -990,7 +1077,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -1019,7 +1108,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -1044,7 +1135,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             Ok(())
         } else {
             let error: ApiError = response
@@ -1073,7 +1166,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -1098,7 +1193,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -1150,7 +1247,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
@@ -1196,7 +1295,9 @@ impl ApiClient {
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
             response
                 .json()
                 .await
