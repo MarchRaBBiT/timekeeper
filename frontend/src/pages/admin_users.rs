@@ -1,5 +1,6 @@
 use crate::api::{ApiClient, CreateUser, UserResponse};
 use crate::components::layout::*;
+use crate::state::auth::use_auth;
 use leptos::*;
 use wasm_bindgen::JsCast;
 
@@ -16,6 +17,17 @@ pub fn AdminUsersPage() -> impl IntoView {
 
     let users = create_rw_signal(Vec::<UserResponse>::new());
 
+    let (auth, _set_auth) = use_auth();
+    let auth_for_guard = auth.clone();
+    let is_system_admin = create_memo(move |_| {
+        auth_for_guard
+            .get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin)
+            .unwrap_or(false)
+    });
+
     // Load current users list
     let load_users = {
         let users = users.clone();
@@ -29,44 +41,75 @@ pub fn AdminUsersPage() -> impl IntoView {
             })
         }
     };
-    load_users();
-
-    let on_submit = move |ev: leptos::ev::SubmitEvent| {
-        ev.prevent_default();
-        error.set(None);
-        success.set(None);
-        loading.set(true);
-        let req = CreateUser {
-            username: username.get(),
-            password: password.get(),
-            full_name: full_name.get(),
-            role: role.get(),
-            is_system_admin: system_admin.get(),
-        };
-        leptos::spawn_local(async move {
-            let api = ApiClient::new();
-            match api.create_user(req).await {
-                Ok(u) => {
-                    success.set(Some(format!("ユーザー '{}' を作成しました", u.username)));
-                    loading.set(false);
-                    username.set(String::new());
-                    password.set(String::new());
-                    full_name.set(String::new());
-                    role.set(String::from("employee"));
-                    system_admin.set(false);
-                    load_users();
-                }
-                Err(e) => {
-                    error.set(Some(e));
-                    loading.set(false);
-                }
+    {
+        let load_users = load_users.clone();
+        let is_system_admin = is_system_admin.clone();
+        create_effect(move |_| {
+            if !is_system_admin.get() {
+                return;
             }
+            load_users();
         });
+    }
+
+    let on_submit = {
+        let is_system_admin = is_system_admin.clone();
+        move |ev: leptos::ev::SubmitEvent| {
+            ev.prevent_default();
+            error.set(None);
+            success.set(None);
+            loading.set(true);
+            if !is_system_admin.get_untracked() {
+                error.set(Some("システム管理者のみ操作できます。".into()));
+                loading.set(false);
+                return;
+            }
+            let req = CreateUser {
+                username: username.get(),
+                password: password.get(),
+                full_name: full_name.get(),
+                role: role.get(),
+                is_system_admin: system_admin.get(),
+            };
+            leptos::spawn_local(async move {
+                let api = ApiClient::new();
+                match api.create_user(req).await {
+                    Ok(u) => {
+                        success.set(Some(format!("ユーザー '{}' を作成しました", u.username)));
+                        loading.set(false);
+                        username.set(String::new());
+                        password.set(String::new());
+                        full_name.set(String::new());
+                        role.set(String::from("employee"));
+                        system_admin.set(false);
+                        load_users();
+                    }
+                    Err(e) => {
+                        error.set(Some(e));
+                        loading.set(false);
+                    }
+                }
+            });
+        }
     };
 
     view! {
         <Layout>
-            <div class="space-y-6">
+            <Show
+                when=move || is_system_admin.get()
+                fallback=move || {
+                    view! {
+                        <div class="space-y-6">
+                            <div class="bg-white shadow rounded-lg p-6">
+                                <p class="text-sm text-gray-700">
+                                    {"このページはシステム管理者のみ利用できます。"}
+                                </p>
+                            </div>
+                        </div>
+                    }
+                }
+            >
+                <div class="space-y-6">
                 <div class="bg-white shadow rounded-lg p-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">{"ユーザー追加 (管理者専用)"}</h2>
 
@@ -148,7 +191,8 @@ pub fn AdminUsersPage() -> impl IntoView {
                         </table>
                     </div>
                 </div>
-            </div>
+                </div>
+            </Show>
         </Layout>
     }
 }

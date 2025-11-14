@@ -1,5 +1,6 @@
 use crate::api::ApiClient;
 use crate::components::layout::*;
+use crate::state::auth::use_auth;
 use crate::utils::trigger_csv_download;
 use leptos::*;
 
@@ -13,41 +14,73 @@ pub fn AdminExportPage() -> impl IntoView {
     let from_date = create_rw_signal(String::new());
     let to_date = create_rw_signal(String::new());
 
-    let on_export = move |_| {
-        error.set(None);
-        preview.set(None);
-        downloading.set(true);
-        leptos::spawn_local(async move {
-            let api = ApiClient::new();
-            let u = username.get();
-            let f = from_date.get();
-            let t = to_date.get();
-            let u_opt = if u.is_empty() { None } else { Some(u.as_str()) };
-            let f_opt = if f.is_empty() { None } else { Some(f.as_str()) };
-            let t_opt = if t.is_empty() { None } else { Some(t.as_str()) };
-            match api.export_data_filtered(u_opt, f_opt, t_opt).await {
-                Ok(v) => {
-                    let fname = v
-                        .get("filename")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("export.csv");
-                    let csv = v.get("csv_data").and_then(|c| c.as_str()).unwrap_or("");
-                    filename_state.set(fname.to_string());
-                    preview.set(Some(csv.chars().take(2000).collect()));
-                    let _ = trigger_csv_download(fname, csv);
-                    downloading.set(false);
-                }
-                Err(e) => {
-                    error.set(Some(e));
-                    downloading.set(false);
-                }
+    let (auth, _set_auth) = use_auth();
+    let auth_for_guard = auth.clone();
+    let is_admin = create_memo(move |_| {
+        auth_for_guard
+            .get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .unwrap_or(false)
+    });
+
+    let on_export = {
+        let is_admin = is_admin.clone();
+        move |_| {
+            if !is_admin.get_untracked() {
+                error.set(Some("管理者のみ操作できます。".into()));
+                return;
             }
-        });
+            error.set(None);
+            preview.set(None);
+            downloading.set(true);
+            leptos::spawn_local(async move {
+                let api = ApiClient::new();
+                let u = username.get();
+                let f = from_date.get();
+                let t = to_date.get();
+                let u_opt = if u.is_empty() { None } else { Some(u.as_str()) };
+                let f_opt = if f.is_empty() { None } else { Some(f.as_str()) };
+                let t_opt = if t.is_empty() { None } else { Some(t.as_str()) };
+                match api.export_data_filtered(u_opt, f_opt, t_opt).await {
+                    Ok(v) => {
+                        let fname = v
+                            .get("filename")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("export.csv");
+                        let csv = v.get("csv_data").and_then(|c| c.as_str()).unwrap_or("");
+                        filename_state.set(fname.to_string());
+                        preview.set(Some(csv.chars().take(2000).collect()));
+                        let _ = trigger_csv_download(fname, csv);
+                        downloading.set(false);
+                    }
+                    Err(e) => {
+                        error.set(Some(e));
+                        downloading.set(false);
+                    }
+                }
+            });
+        }
     };
 
     view! {
         <Layout>
-            <div class="space-y-6">
+            <Show
+                when=move || is_admin.get()
+                fallback=move || {
+                    view! {
+                        <div class="space-y-6">
+                            <div class="bg-white shadow rounded-lg p-6">
+                                <p class="text-sm text-gray-700">
+                                    {"このページは管理者以上のみ利用できます。"}
+                                </p>
+                            </div>
+                        </div>
+                    }
+                }
+            >
+                <div class="space-y-6">
                 <div class="bg-white shadow rounded-lg p-6">
                     <h2 class="text-lg font-medium text-gray-900 mb-4">{"データエクスポート (CSV)"}</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -77,7 +110,8 @@ pub fn AdminExportPage() -> impl IntoView {
                         </div>
                     </Show>
                 </div>
-            </div>
+                </div>
+            </Show>
         </Layout>
     }
 }

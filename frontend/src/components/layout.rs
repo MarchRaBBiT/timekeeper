@@ -4,11 +4,18 @@ use leptos::*;
 #[component]
 pub fn Header() -> impl IntoView {
     let (auth, set_auth) = use_auth();
-    let can_manage_system = move || {
+    let can_access_admin = move || {
         auth.get()
             .user
             .as_ref()
             .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .unwrap_or(false)
+    };
+    let can_manage_users = move || {
+        auth.get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin)
             .unwrap_or(false)
     };
     let on_logout = move |_| {
@@ -44,15 +51,17 @@ pub fn Header() -> impl IntoView {
                         <a href="/mfa/register" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                             "MFA設定"
                         </a>
-                        <Show when=move || can_manage_system()>
+                        <Show when=move || can_access_admin()>
                             <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                 "管理"
                             </a>
-                            <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                                "ユーザー追加"
-                            </a>
                             <a href="/admin/export" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                 "データエクスポート"
+                            </a>
+                        </Show>
+                        <Show when=move || can_manage_users()>
+                            <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "ユーザー追加"
                             </a>
                         </Show>
                         <button on:click=on_logout class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">

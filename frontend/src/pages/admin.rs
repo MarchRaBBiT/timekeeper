@@ -3,6 +3,7 @@ use crate::api::{
     UserResponse,
 };
 use crate::components::layout::*;
+use crate::state::auth::use_auth;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, Utc};
 use leptos::*;
 use serde_json::json;
@@ -25,6 +26,26 @@ pub fn AdminPage() -> impl IntoView {
     let page = create_rw_signal(1u32);
     let per_page = create_rw_signal(20u32);
     let list = create_rw_signal(serde_json::Value::Null);
+
+    let (auth, _set_auth) = use_auth();
+    let auth_for_admin = auth.clone();
+    let admin_allowed = create_memo(move |_| {
+        auth_for_admin
+            .get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .unwrap_or(false)
+    });
+    let auth_for_system = auth.clone();
+    let system_admin_allowed = create_memo(move |_| {
+        auth_for_system
+            .get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin)
+            .unwrap_or(false)
+    });
 
     let load_list = {
         let status = status.clone();
@@ -57,9 +78,16 @@ pub fn AdminPage() -> impl IntoView {
         }
     };
 
-    create_effect(move |_| {
-        load_list();
-    });
+    {
+        let load_list_cb = load_list.clone();
+        let admin_allowed = admin_allowed.clone();
+        create_effect(move |_| {
+            if !admin_allowed.get() {
+                return;
+            }
+            load_list_cb();
+        });
+    }
 
     // Request detail modal
     let show_modal = create_rw_signal(false);
@@ -274,7 +302,16 @@ pub fn AdminPage() -> impl IntoView {
         }
     };
     let refresh_holidays = Rc::new(refresh_holidays);
-    refresh_holidays.clone()();
+    {
+        let refresh = refresh_holidays.clone();
+        let admin_allowed_for_holidays = admin_allowed.clone();
+        create_effect(move |_| {
+            if !admin_allowed_for_holidays.get() {
+                return;
+            }
+            refresh();
+        });
+    }
 
     let fetch_google_holidays = {
         let google_year_input = google_year_input.clone();
@@ -434,6 +471,20 @@ pub fn AdminPage() -> impl IntoView {
 
     view! {
         <Layout>
+            <Show
+                when=move || admin_allowed.get()
+                fallback=move || {
+                    view! {
+                        <div class="space-y-6">
+                            <div class="bg-white shadow rounded-lg p-6">
+                                <p class="text-sm text-gray-700">
+                                    {"管理者権限が必要です。システム管理者にご連絡ください。"}
+                                </p>
+                            </div>
+                        </div>
+                    }
+                }
+            >
             <div class="space-y-6">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-900">{"管理者画面"}</h1>
@@ -506,6 +557,7 @@ pub fn AdminPage() -> impl IntoView {
                         </div>
                     </div>
 
+                <Show when=move || system_admin_allowed.get()>
                     <div class="bg-white shadow rounded-lg p-6">
                         <h3 class="text-lg font-medium text-gray-900 mb-4">{"勤怠の手動登録（アップサート）"}</h3>
                         <form class="space-y-3" on:submit=on_submit_att>
@@ -530,6 +582,8 @@ pub fn AdminPage() -> impl IntoView {
                                 <button class="px-3 py-1 bg-amber-600 text-white rounded" on:click=on_force_end>{"強制終了"}</button>
                     </div>
                 </div>
+                </Show>
+                <Show when=move || system_admin_allowed.get()>
                 <div class="bg-white shadow rounded-lg p-4 space-y-4">
                     <h2 class="text-lg font-semibold text-gray-900">{"MFA リセット (システム管理者専用)"}</h2>
                     <p class="text-sm text-gray-600">
@@ -578,6 +632,7 @@ pub fn AdminPage() -> impl IntoView {
                             .unwrap_or_else(|| view! {}.into_view())
                     }}
                 </div>
+                </Show>
                 <div class="bg-white shadow rounded-lg p-6 space-y-4">
                     <div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                         <div>
@@ -862,6 +917,7 @@ pub fn AdminPage() -> impl IntoView {
                     </div>
                 </Show>
             </div>
+            </Show>
         </Layout>
     }
 }
