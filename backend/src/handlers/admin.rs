@@ -360,7 +360,8 @@ pub async fn list_requests(
             .build_query_as::<crate::models::leave_request::LeaveRequest>()
             .fetch_all(&pool)
             .await
-            .map_err(|_| {
+            .map_err(|err| {
+                tracing::error!(error = %err, "failed to list leave requests");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"error":"Database error"})),
@@ -385,7 +386,8 @@ pub async fn list_requests(
             .build_query_as::<crate::models::overtime_request::OvertimeRequest>()
             .fetch_all(&pool)
             .await
-            .map_err(|_| {
+            .map_err(|err| {
+                tracing::error!(error = %err, "failed to list overtime requests");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"error":"Database error"})),

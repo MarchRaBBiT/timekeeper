@@ -149,7 +149,12 @@ pub async fn get_my_requests(
     .bind(&user_id)
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
+    .map_err(|err| {
+        tracing::error!(
+            error = %err,
+            user_id = %user_id,
+            "failed to fetch leave_requests in get_my_requests"
+        );
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Database error"})),
@@ -163,7 +168,12 @@ pub async fn get_my_requests(
     .bind(&user_id)
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
+    .map_err(|err| {
+        tracing::error!(
+            error = %err,
+            user_id = %user_id,
+            "failed to fetch overtime_requests in get_my_requests"
+        );
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Database error"})),
