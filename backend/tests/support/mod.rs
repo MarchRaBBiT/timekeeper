@@ -3,6 +3,10 @@ use chrono_tz::Asia::Tokyo;
 use sqlx::PgPool;
 use timekeeper_backend::{
     config::Config,
+    models::{
+        leave_request::{LeaveRequest, LeaveType},
+        overtime_request::OvertimeRequest,
+    },
     models::user::{User, UserRole},
 };
 use uuid::Uuid;
@@ -63,4 +67,85 @@ pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
     .execute(pool)
     .await
     .expect("insert weekly holiday");
+}
+
+pub async fn seed_leave_request(
+    pool: &PgPool,
+    user_id: &str,
+    leave_type: LeaveType,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> LeaveRequest {
+    let request =
+        LeaveRequest::new(user_id.to_string(), leave_type, start_date, end_date, Some("test".into()));
+    sqlx::query(
+        "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+    )
+    .bind(&request.id)
+    .bind(&request.user_id)
+    .bind(match request.leave_type {
+        LeaveType::Annual => "annual",
+        LeaveType::Sick => "sick",
+        LeaveType::Personal => "personal",
+        LeaveType::Other => "other",
+    })
+    .bind(&request.start_date)
+    .bind(&request.end_date)
+    .bind(&request.reason)
+    .bind(match request.status {
+        timekeeper_backend::models::leave_request::RequestStatus::Pending => "pending",
+        timekeeper_backend::models::leave_request::RequestStatus::Approved => "approved",
+        timekeeper_backend::models::leave_request::RequestStatus::Rejected => "rejected",
+        timekeeper_backend::models::leave_request::RequestStatus::Cancelled => "cancelled",
+    })
+    .bind(&request.approved_by)
+    .bind(&request.approved_at)
+    .bind(&request.decision_comment)
+    .bind(&request.rejected_by)
+    .bind(&request.rejected_at)
+    .bind(&request.cancelled_at)
+    .bind(&request.created_at)
+    .bind(&request.updated_at)
+    .execute(pool)
+    .await
+    .expect("insert leave request");
+    request
+}
+
+pub async fn seed_overtime_request(
+    pool: &PgPool,
+    user_id: &str,
+    date: NaiveDate,
+    planned_hours: f64,
+) -> OvertimeRequest {
+    let request =
+        OvertimeRequest::new(user_id.to_string(), date, planned_hours, Some("test OT".into()));
+    sqlx::query(
+        "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+    )
+    .bind(&request.id)
+    .bind(&request.user_id)
+    .bind(&request.date)
+    .bind(&request.planned_hours)
+    .bind(&request.reason)
+    .bind(match request.status {
+        timekeeper_backend::models::overtime_request::RequestStatus::Pending => "pending",
+        timekeeper_backend::models::overtime_request::RequestStatus::Approved => "approved",
+        timekeeper_backend::models::overtime_request::RequestStatus::Rejected => "rejected",
+        timekeeper_backend::models::overtime_request::RequestStatus::Cancelled => "cancelled",
+    })
+    .bind(&request.approved_by)
+    .bind(&request.approved_at)
+    .bind(&request.decision_comment)
+    .bind(&request.rejected_by)
+    .bind(&request.rejected_at)
+    .bind(&request.cancelled_at)
+    .bind(&request.created_at)
+    .bind(&request.updated_at)
+    .execute(pool)
+    .await
+    .expect("insert overtime request");
+    request
 }
