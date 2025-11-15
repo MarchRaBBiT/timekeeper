@@ -7,6 +7,7 @@ use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use std::sync::Arc;
 
 use crate::{
     config::Config,
@@ -17,6 +18,7 @@ use crate::{
         break_record::{BreakRecord, BreakRecordResponse},
         user::User,
     },
+    services::holiday::HolidayService,
     utils::{csv::append_csv_row, time},
 };
 
@@ -46,6 +48,7 @@ pub struct AttendanceStatusResponse {
 pub async fn clock_in(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
+    Extension(holiday_service): Extension<Arc<HolidayService>>,
     Json(payload): Json<ClockInRequest>,
 ) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id.as_str();
@@ -55,6 +58,8 @@ pub async fn clock_in(
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_in_time = now_local.naive_local();
+
+    reject_if_holiday(&holiday_service, date, user_id).await?;
 
     // Check if attendance record already exists for this date
     let existing_attendance = sqlx::query_as::<_, Attendance>(
@@ -146,6 +151,7 @@ pub async fn clock_in(
 pub async fn clock_out(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
+    Extension(holiday_service): Extension<Arc<HolidayService>>,
     Json(payload): Json<ClockOutRequest>,
 ) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id.as_str();
@@ -155,6 +161,8 @@ pub async fn clock_out(
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_out_time = now_local.naive_local();
+
+    reject_if_holiday(&holiday_service, date, user_id).await?;
 
     // Find attendance record for this date
     let mut attendance = sqlx::query_as::<_, Attendance>(
@@ -806,4 +814,33 @@ fn status_to_str(s: &crate::models::attendance::AttendanceStatus) -> &'static st
         Late => "late",
         HalfDay => "half_day",
     }
+}
+
+async fn reject_if_holiday(
+    holiday_service: &HolidayService,
+    date: NaiveDate,
+    user_id: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let decision = holiday_service
+        .is_holiday(date, Some(user_id))
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to evaluate holiday calendar"})),
+            )
+        })?;
+
+    if decision.is_holiday {
+        let reason = decision.reason.label();
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": format!(
+                "{} is a {}. Submit an overtime request before clocking in/out.",
+                date, reason
+            )})),
+        ));
+    }
+
+    Ok(())
 }

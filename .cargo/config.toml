@@ -1,0 +1,4 @@
+[env]
+DATABASE_URL = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper"
+SQLX_OFFLINE = "true"
+

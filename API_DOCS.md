@@ -78,6 +78,61 @@ Content-Type: application/json
 { "message": "Logged out" }
 ```
 
+### 休日API（Holiday API）
+
+#### 登録済み祝日の取得
+```http
+GET /api/holidays
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+[
+  {
+    "id": "8f0c5fd0-...",
+    "holiday_date": "2025-01-01",
+    "name": "元日",
+    "description": "Google Calendar からの取り込み"
+  }
+]
+```
+
+#### 任意日が休日かどうかを確認する (`check`)
+```http
+GET /api/holidays/check?date=2025-01-08
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "is_holiday": true,
+  "reason": "weekly holiday"
+}
+```
+
+- `reason` は `public holiday`（祝日） / `weekly holiday`（定休） / `forced holiday`（例外で休日化） / `working day` のいずれか。
+- 個別例外 (`holiday_exceptions`) を登録している場合、最優先で結果に反映されます。
+
+#### 月単位の休日一覧を取得
+```http
+GET /api/holidays/month?year=2025&month=1
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+[
+  { "date": "2025-01-01", "reason": "public holiday" },
+  { "date": "2025-01-05", "reason": "weekly holiday" }
+]
+```
+
+- `month` は 1〜12 のみ指定可能。
+- `reason` の値は `check` API と同じ。
+- 個別例外を設定したユーザーは、該当する日に `forced holiday` または `working day` が返却されます。
+
 #### MFA登録開始
 ```http
 POST /api/auth/mfa/register
@@ -422,6 +477,59 @@ Content-Type: application/json
   "role": "employee" | "admin"
 }
 ```
+
+#### 定休曜日の設定一覧取得
+```http
+GET /api/admin/holidays/weekly
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+[
+  {
+    "id": "4634f6e3-...",
+    "weekday": 0,
+    "starts_on": "2025-01-06",
+    "ends_on": null,
+    "enforced_from": "2025-01-06",
+    "enforced_to": null
+  }
+]
+```
+
+- `weekday` は 0=月曜〜6=日曜。
+- `enforced_*` は実際の適用期間（履歴管理用）。
+
+#### 定休曜日の適用開始/終了を登録
+```http
+POST /api/admin/holidays/weekly
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "weekday": 2,
+  "starts_on": "2025-01-08",
+  "ends_on": null
+}
+```
+
+**レスポンス**
+```json
+{
+  "id": "4634f6e3-...",
+  "weekday": 2,
+  "starts_on": "2025-01-08",
+  "ends_on": null,
+  "enforced_from": "2025-01-08",
+  "enforced_to": null
+}
+```
+
+**補足**
+- `weekday` は 0..6 のみ受け付け。
+- `ends_on` は `null`（無期限）でも可。
+- 一般管理者 (`is_system_admin=false`) は `starts_on` を翌日以降にしか設定できません。
 
 #### 全従業員の勤怠データ取得
 ```http

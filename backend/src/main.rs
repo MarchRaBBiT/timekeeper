@@ -2,9 +2,9 @@ use axum::{
     http::Method,
     middleware as axum_middleware,
     routing::{delete, get, post, put},
-    Router,
+    Extension, Router,
 };
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -17,10 +17,12 @@ mod db;
 mod handlers;
 mod middleware;
 mod models;
+mod services;
 mod utils;
 
 use config::Config;
 use db::connection::{create_pool, DbPool};
+use services::holiday::HolidayService;
 
 fn mask_secret(s: &str) -> String {
     if s.is_empty() {
@@ -56,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize database
     let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
+    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
 
     // Build public routes (no auth)
     let public_routes = Router::new()
@@ -127,6 +130,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/holidays",
             get(handlers::holidays::list_public_holidays),
         )
+        .route(
+            "/api/holidays/check",
+            get(handlers::holidays::check_holiday),
+        )
+        .route(
+            "/api/holidays/month",
+            get(handlers::holidays::list_month_holidays),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             (pool.clone(), config.clone()),
             middleware::auth,
@@ -150,6 +161,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/holidays",
             get(handlers::admin::list_holidays).post(handlers::admin::create_holiday),
+        )
+        .route(
+            "/api/admin/holidays/weekly",
+            get(handlers::admin::list_weekly_holidays).post(handlers::admin::create_weekly_holiday),
         )
         .route(
             "/api/admin/holidays/:id",
@@ -212,6 +227,7 @@ async fn main() -> anyhow::Result<()> {
                         .max_age(std::time::Duration::from_secs(24 * 60 * 60)),
                 ),
         )
+        .layer(Extension(holiday_service))
         .with_state((pool, config));
 
     // Start server

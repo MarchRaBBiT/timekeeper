@@ -5,9 +5,10 @@ use axum::{
 };
 use chrono::{Datelike, NaiveDate};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 use crate::{
     config::Config,
@@ -15,6 +16,7 @@ use crate::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
+    services::holiday::HolidayService,
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -49,6 +51,29 @@ pub async fn list_public_holidays(
 #[derive(Debug, Deserialize)]
 pub struct GoogleHolidayQuery {
     pub year: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HolidayCheckQuery {
+    pub date: NaiveDate,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HolidayMonthQuery {
+    pub year: i32,
+    pub month: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HolidayCheckResponse {
+    pub is_holiday: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HolidayMonthEntry {
+    pub date: NaiveDate,
+    pub reason: String,
 }
 
 pub async fn fetch_google_holidays(
@@ -91,6 +116,66 @@ pub async fn fetch_google_holidays(
 
     let parsed = parse_google_calendar_ics(&response_text, params.year);
     Ok(Json(parsed))
+}
+
+pub async fn check_holiday(
+    Extension(user): Extension<User>,
+    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Query(query): Query<HolidayCheckQuery>,
+) -> Result<Json<HolidayCheckResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let decision = holiday_service
+        .is_holiday(query.date, Some(&user.id))
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to evaluate holiday calendar"})),
+            )
+        })?;
+
+    let reason = if decision.is_holiday {
+        Some(decision.reason.label().to_string())
+    } else {
+        None
+    };
+
+    Ok(Json(HolidayCheckResponse {
+        is_holiday: decision.is_holiday,
+        reason,
+    }))
+}
+
+pub async fn list_month_holidays(
+    Extension(user): Extension<User>,
+    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Query(query): Query<HolidayMonthQuery>,
+) -> Result<Json<Vec<HolidayMonthEntry>>, (StatusCode, Json<serde_json::Value>)> {
+    if !(1..=12).contains(&query.month) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"Month must be between 1 and 12"})),
+        ));
+    }
+
+    let entries = holiday_service
+        .list_month(query.year, query.month, Some(&user.id))
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to load holiday calendar"})),
+            )
+        })?;
+
+    let response = entries
+        .into_iter()
+        .map(|entry| HolidayMonthEntry {
+            date: entry.date,
+            reason: entry.reason.label().to_string(),
+        })
+        .collect();
+
+    Ok(Json(response))
 }
 
 fn parse_google_calendar_ics(content: &str, year_filter: Option<i32>) -> Vec<CreateHolidayPayload> {

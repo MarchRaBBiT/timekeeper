@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::{Error as SqlxError, PgPool, Postgres, QueryBuilder};
@@ -14,7 +14,10 @@ use crate::{
     models::{
         attendance::{Attendance, AttendanceResponse},
         break_record::BreakRecordResponse,
-        holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
+        holiday::{
+            CreateHolidayPayload, CreateWeeklyHolidayPayload, Holiday, HolidayResponse,
+            WeeklyHoliday, WeeklyHolidayResponse,
+        },
         user::{CreateUser, User, UserResponse},
     },
     utils::{csv::append_csv_row, password::hash_password, time},
@@ -999,6 +1002,102 @@ pub async fn delete_holiday(
     }
 
     Ok(Json(json!({"message":"Holiday deleted","id": holiday_id})))
+}
+
+pub async fn list_weekly_holidays(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+) -> Result<Json<Vec<WeeklyHolidayResponse>>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    let holidays = sqlx::query_as::<_, WeeklyHoliday>(
+        "SELECT id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at \
+         FROM weekly_holidays ORDER BY enforced_from, weekday",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Database error"})),
+        )
+    })?;
+
+    Ok(Json(
+        holidays
+            .into_iter()
+            .map(WeeklyHolidayResponse::from)
+            .collect(),
+    ))
+}
+
+pub async fn create_weekly_holiday(
+    State((pool, config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<CreateWeeklyHolidayPayload>,
+) -> Result<Json<WeeklyHolidayResponse>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    if payload.weekday > 6 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"Weekday must be between 0 (Mon) and 6 (Sun)"})),
+        ));
+    }
+
+    if let Some(ends_on) = payload.ends_on {
+        if ends_on < payload.starts_on {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"End date must be on or after the start date"})),
+            ));
+        }
+    }
+
+    let today = time::today_local(&config.time_zone);
+    let tomorrow = today + Duration::days(1);
+    if !user.is_system_admin() && payload.starts_on < tomorrow {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"Start date must be at least tomorrow"})),
+        ));
+    }
+
+    let weekly = WeeklyHoliday::new(
+        payload.weekday,
+        payload.starts_on,
+        payload.ends_on,
+        user.id.clone(),
+    );
+
+    sqlx::query(
+        "INSERT INTO weekly_holidays \
+            (id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(&weekly.id)
+    .bind(&weekly.weekday)
+    .bind(&weekly.starts_on)
+    .bind(&weekly.ends_on)
+    .bind(&weekly.enforced_from)
+    .bind(&weekly.enforced_to)
+    .bind(&weekly.created_by)
+    .bind(&weekly.created_at)
+    .bind(&weekly.updated_at)
+    .execute(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Failed to create weekly holiday"})),
+        )
+    })?;
+
+    Ok(Json(WeeklyHolidayResponse::from(weekly)))
 }
 
 async fn get_break_records(
