@@ -29,12 +29,14 @@ cd timekeeper
    ```
 2. `.env` を編集し、使用する DB とシークレットを設定  
    ```env
-   DATABASE_URL=sqlite:./timekeeper.db
+   DATABASE_URL=postgres://timekeeper:timekeeper@localhost:5432/timekeeper
    JWT_SECRET=change-me-for-local
    JWT_EXPIRATION_HOURS=1
    REFRESH_TOKEN_EXPIRATION_DAYS=7
    ```
 3. ローカル PostgreSQL / ステージングで利用する場合は `DATABASE_URL` を DSN に置き換え、`JWT_SECRET` を十分ランダムな値に更新してください（Docker Compose でも `.env` を直接読むため）。
+
+> SQLite を利用する場合は `DATABASE_URL=sqlite:./timekeeper.db` のように書き換えてください。既定値と `env.example` は PostgreSQL を前提としています。
 
 ## 4. バックエンドのセットアップ
 

@@ -39,7 +39,7 @@
 | ID | シナリオ | ステップ | 期待結果 |
 | --- | --- | --- | --- |
 | IT-API-001 | 定休登録→月次取得 | (1) Admin トークンで `POST /api/holidays/weekly` (水曜) (2) `GET /api/holidays/month?2025-01` | レスポンスに対象日の `kind="weekly_holiday"` が含まれる |
-| IT-API-002 | 例外登録→休日解除 | (1) 定休日あり (2) `/api/admin/holiday-exceptions` で override=false (3) `/api/holidays/check` を user 指定で呼ぶ | `is_holiday=false` |
+| IT-API-002 | 例外登録→休日解除 | (1) 定休日あり (2) `holiday_exceptions` に対象ユーザーの override=false を直接投入（現在 API 未提供のためテスト helper か SQL で登録） (3) `/api/holidays/check` を user 指定で呼ぶ | `is_holiday=false` |
 | IT-API-003 | 祝日+定休→休日 | (1) `holidays` に 1/1 (2) 定休日 1/1 と被る (3) `/api/holidays/check` | `reason` に祝日が含まれる |
 | IT-API-004 | 勤怠禁止→例外許可 | (1) 休日に `POST /api/attendance/clock-in` → `403` (2) 例外 override=false 登録 (3) 再度打刻 → `200` |
 
@@ -57,4 +57,3 @@
 - 将来的な部署別拡張時には上記テーブルに `department_id` が追加される想定のため、テストデータ投入は必ず helper を介して行う（直接 INSERT ではなく `TestDataBuilder` を利用）。
 
 以上のケースを CI に組み込むことで、休日ロジック変更時の回帰を防ぐ。
-

@@ -79,11 +79,13 @@ http://localhost:8000
 ## 環境変数
 
 ```env
-DATABASE_URL=sqlite:./timekeeper.db
+DATABASE_URL=postgres://timekeeper:timekeeper@localhost:5432/timekeeper
 JWT_SECRET=your-secret-key-change-this-in-production
 JWT_EXPIRATION_HOURS=1
 REFRESH_TOKEN_EXPIRATION_DAYS=7
 ```
+
+> メモ: SQLite を使いたい場合は `DATABASE_URL=sqlite:./timekeeper.db` のように書き換えてください（アプリは環境変数の DSN をそのまま利用します）。既定値と `env.example` は PostgreSQL を前提にしています。
 
 ## デフォルトアカウント
 

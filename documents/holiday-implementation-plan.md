@@ -26,23 +26,18 @@
 3. 既存レコード初期投入: 現行運用に合わせて `weekly_holidays` に土日を登録 (`starts_on = tomorrow`, `enforced_from = today`)。
 4. 以降の ALTER 系は将来の部署別対応に備えて `department_id NULL` カラムをコメント付きで予約する案も検討可。
 
+> 2025-11-15 時点メモ: 5.1〜5.3 は既に `main` ブランチに取り込まれています。残タスクには「(未実装)」と記載しています。
+
 ## 5. バックエンド実装
-1. **ドメインサービス追加**: `backend/src/services/holiday_service.rs`（新規）に以下を実装。
-   - `HolidayService::is_holiday(date_naive, user_id_opt)` -> `HolidayDecision { is_holiday, reason }`
-   - 定休/祝日/例外をまとめて取得する SQL。月次キャッシュ用に `fetch_month(year, month)` も提供。
-   - アプリ起動時に `Arc<HolidayService>` を `Extension` で注入し、`Config` と一緒に `State` に保持。
-2. **API ルーティング** (`backend/src/main.rs`):
-   - `GET /api/holidays/weekly` (admin) : 現在および未来の定休設定一覧。
-   - `POST /api/holidays/weekly` (admin) : starts_on/ends_on/weekday をバリデーションして登録。`is_system_admin` 以外は `starts_on >= tomorrow` を enforce。
-   - `GET /api/holidays/check?date=YYYY-MM-DD` : `HolidayService::is_holiday` を呼び結果を返却。
-   - `GET /api/holidays/month?year=&month=` : 月次の祝日+定休+例外を返却（種別フラグ付き）。頻繁利用を想定し、サービス内で 1 ヶ月単位の結果をキャッシュ（`tokio::sync::RwLock<HashMap<MonthKey, CacheEntry>>`）する。
-   - 将来の例外 CRUD (`/api/admin/holiday-exceptions`) も同サービスを利用して実装予定（今回 Optional）。
-3. **勤怠ハンドラ修正** (`backend/src/handlers/attendance.rs`):
-   - `clock_in` / `clock_out` の冒頭で `HolidayService::is_holiday` を呼び、休日かつ override で平日扱いが無い場合は `403` を返す。エラーメッセージに「残業申請を行ってください」を含める。
-   - 休日での打刻許可を与えるケース（例: 例外 override=false）では理由をレスポンスへ含められるよう `AttendanceStatusResponse` に `holiday_reason: Option<String>` を追加する案を検討。
-4. **Admin ハンドラ補強** (`backend/src/handlers/admin.rs`):
-   - 定休 API 用の DTO (`CreateWeeklyHolidayPayload`) を追加し、`weekday`/`starts_on`/`ends_on` の検証処理を実装。
-   - 例外追加 API の骨格を実装し、UI 未整備でも REST 経由で登録できるようにする（任意）。
+1. **ドメインサービス**（実装済）: `backend/src/services/holiday.rs` に `HolidayService::is_holiday` / `fetch_month` / キャッシュ実装を追加済み。`Arc<HolidayService>` を `Extension` で注入し、`Config` とともに `State` へ渡している。
+2. **API ルーティング**（実装済）:
+   - `GET/POST /api/holidays/weekly` や `GET /api/holidays/check`、`GET /api/holidays/month` を `main.rs` に登録済み。
+   - 例外 CRUD (`/api/admin/holiday-exceptions`) は未実装のため、テストでは直接 `holiday_exceptions` テーブルへ投入する。
+3. **勤怠ハンドラ修正**（実装済）:
+   - `clock_in` / `clock_out` 冒頭で `HolidayService::is_holiday` を呼び、休日の場合は `403` でブロック（例外 override=false などで平日扱いになる場合を除く）。
+   - レスポンスには必要に応じて `reason` を返し、UI 側で警告表示に利用している。
+4. **Admin ハンドラ補強**（一部未実装）:
+   - 定休 API は組み込み済みだが、休日例外 CRUD は未リリース。将来 `CreateHolidayExceptionPayload` 等を追加して REST 経由で登録できるようにする。
 
 ## 6. フロントエンド対応
 1. **設定 UI** (`frontend/src/pages/admin.rs`):
@@ -77,4 +72,3 @@
 - **例外 UI 未整備**: 直後に必要になる場合を想定し、最小限の API クライアント + 管理画面ボタンを準備するか、当面は SQL 直更新の手順を runbook に記載する。
 
 以上を 1 スプリント (バックエンド 2〜3 日 + フロント 2 日 + テスト/レビュー 1 日) を目安に実装する。
-
