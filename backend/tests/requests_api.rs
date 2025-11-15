@@ -10,16 +10,11 @@ use timekeeper_backend::{
         admin::{list_requests, RequestListQuery},
         requests::get_my_requests,
     },
-    models::{
-        leave_request::LeaveType,
-        user::UserRole,
-    },
+    models::{leave_request::LeaveType, user::UserRole},
 };
 
 mod support;
-use support::{
-    seed_leave_request, seed_overtime_request, seed_user, test_config,
-};
+use support::{seed_leave_request, seed_overtime_request, seed_user, test_config};
 
 fn init_tracing() {
     let _ = tracing_subscriber::fmt::try_init();
@@ -34,8 +29,7 @@ async fn get_my_requests_returns_leave_and_overtime(pool: PgPool) {
     seed_leave_request(&pool, &user.id, LeaveType::Annual, date, date).await;
     seed_overtime_request(&pool, &user.id, date, 1.5).await;
 
-    let response =
-        get_my_requests(State((pool.clone(), config)), Extension(user.clone())).await;
+    let response = get_my_requests(State((pool.clone(), config)), Extension(user.clone())).await;
 
     let payload: Value = response.expect("get_my_requests ok").0;
     let leave = payload

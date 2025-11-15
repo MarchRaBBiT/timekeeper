@@ -3,11 +3,12 @@ use chrono_tz::Asia::Tokyo;
 use sqlx::PgPool;
 use timekeeper_backend::{
     config::Config,
+    models::user::{User, UserRole},
     models::{
+        holiday::Holiday,
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
-    models::user::{User, UserRole},
 };
 use uuid::Uuid;
 
@@ -76,8 +77,13 @@ pub async fn seed_leave_request(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> LeaveRequest {
-    let request =
-        LeaveRequest::new(user_id.to_string(), leave_type, start_date, end_date, Some("test".into()));
+    let request = LeaveRequest::new(
+        user_id.to_string(),
+        leave_type,
+        start_date,
+        end_date,
+        Some("test".into()),
+    );
     sqlx::query(
         "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
@@ -119,8 +125,12 @@ pub async fn seed_overtime_request(
     date: NaiveDate,
     planned_hours: f64,
 ) -> OvertimeRequest {
-    let request =
-        OvertimeRequest::new(user_id.to_string(), date, planned_hours, Some("test OT".into()));
+    let request = OvertimeRequest::new(
+        user_id.to_string(),
+        date,
+        planned_hours,
+        Some("test OT".into()),
+    );
     sqlx::query(
         "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
@@ -148,4 +158,44 @@ pub async fn seed_overtime_request(
     .await
     .expect("insert overtime request");
     request
+}
+
+pub async fn seed_public_holiday(pool: &PgPool, date: NaiveDate, name: &str) -> Holiday {
+    let holiday = Holiday::new(date, name.to_string(), None);
+    sqlx::query(
+        "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&holiday.id)
+    .bind(&holiday.holiday_date)
+    .bind(&holiday.name)
+    .bind(&holiday.description)
+    .bind(&holiday.created_at)
+    .bind(&holiday.updated_at)
+    .execute(pool)
+    .await
+    .expect("insert holiday");
+    holiday
+}
+
+pub async fn seed_holiday_exception(
+    pool: &PgPool,
+    user_id: &str,
+    date: NaiveDate,
+    override_value: bool,
+    reason: &str,
+) {
+    sqlx::query(
+        "INSERT INTO holiday_exceptions \
+            (id, user_id, exception_date, override, reason, created_by, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, 'test', NOW(), NOW())",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(user_id)
+    .bind(date)
+    .bind(override_value)
+    .bind(reason)
+    .execute(pool)
+    .await
+    .expect("insert holiday exception");
 }
