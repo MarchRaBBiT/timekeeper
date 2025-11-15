@@ -63,7 +63,8 @@ async fn main() -> anyhow::Result<()> {
     // Build public routes (no auth)
     let public_routes = Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
-        .route("/api/auth/refresh", post(handlers::auth::refresh));
+        .route("/api/auth/refresh", post(handlers::auth::refresh))
+        .route("/api/config/timezone", get(handlers::config::get_time_zone));
 
     // Build user-protected routes (auth required)
     let user_routes = Router::new()

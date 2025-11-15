@@ -78,6 +78,20 @@ Content-Type: application/json
 { "message": "Logged out" }
 ```
 
+### 構成情報
+
+#### タイムゾーン取得
+```http
+GET /api/config/timezone
+```
+
+**レスポンス**
+```json
+{ "time_zone": "Asia/Tokyo" }
+```
+
+- 認証不要で、バックエンドが採用している IANA タイムゾーン名（`Config.time_zone`）を返します。
+
 ### 休日API（Holiday API）
 
 #### 登録済み祝日の取得
