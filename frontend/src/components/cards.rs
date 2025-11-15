@@ -1,8 +1,9 @@
-use chrono::{Datelike, Timelike, Utc};
+use chrono::{Datelike, Timelike};
 use leptos::*;
 
 use crate::api::{ApiClient, AttendanceSummary};
-use crate::state::attendance::{load_attendance_range, load_today_status, AttendanceState};
+use crate::state::attendance::{refresh_today_context, AttendanceState};
+use crate::utils::time::{now_in_app_tz, today_in_app_tz};
 
 #[component]
 pub fn AttendanceCard(
@@ -13,14 +14,14 @@ pub fn AttendanceCard(
         let set_state = set_attendance_state;
         create_effect(move |_| {
             spawn_local(async move {
-                let today = Utc::now().date_naive();
-                let _ = load_today_status(set_state).await;
-                let _ = load_attendance_range(set_state, Some(today), Some(today)).await;
+                if let Err(err) = refresh_today_context(set_state).await {
+                    log::error!("Failed to refresh attendance context: {}", err);
+                }
             });
         });
     }
 
-    let today = Utc::now().date_naive();
+    let today = today_in_app_tz();
 
     let clock_in = move || {
         attendance_state
@@ -106,7 +107,7 @@ pub fn SummaryCard() -> impl IntoView {
     let (summary, set_summary) = create_signal::<Option<AttendanceSummary>>(None);
     spawn_local(async move {
         let api = ApiClient::new();
-        let now = Utc::now();
+        let now = now_in_app_tz();
         let y = now.year();
         let m = now.month() as u32;
         if let Ok(s) = api.get_my_summary(Some(y), Some(m)).await {

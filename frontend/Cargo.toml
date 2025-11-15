@@ -39,6 +39,7 @@ thiserror.workspace = true
 
 # Time handling
 chrono = { version = "0.4", features = ["serde", "wasm-bindgen"] }
+chrono-tz = "0.8"
 
 # UUID
 uuid = { version = "1.0", features = ["v4", "serde", "wasm-bindgen"] }

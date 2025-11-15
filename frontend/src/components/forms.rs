@@ -1,10 +1,9 @@
-use chrono::Utc;
 use leptos::*;
 use web_sys::HtmlInputElement;
 
 use crate::api::ApiClient;
 use crate::state::attendance::{
-    self as attendance_state, load_attendance_range, load_today_status, AttendanceState,
+    self as attendance_state, describe_holiday_reason, AttendanceState,
 };
 use crate::state::auth as auth_state;
 
@@ -191,11 +190,7 @@ pub fn AttendanceActionButtons(
         let set_attendance_state = set_attendance_state.clone();
         move || {
             let set_state = set_attendance_state.clone();
-            async move {
-                let today = Utc::now().date_naive();
-                let _ = load_today_status(set_state.clone()).await;
-                let _ = load_attendance_range(set_state, Some(today), Some(today)).await;
-            }
+            async move { attendance_state::refresh_today_context(set_state).await }
         }
     };
 
@@ -213,14 +208,16 @@ pub fn AttendanceActionButtons(
             let set_message = set_message.clone();
             let set_loading = set_loading.clone();
             spawn_local(async move {
-                let result = attendance_state::clock_in(set_state.clone()).await;
-                match result {
-                    Ok(_) => {
-                        refresh_state().await;
-                        set_message.set(Some("出勤が完了しました。".into()));
-                    }
-                    Err(err) => set_message.set(Some(format!("出勤に失敗しました: {}", err))),
-                }
+                match attendance_state::clock_in(set_state.clone()).await {
+                    Ok(_) => match refresh_state().await {
+                        Ok(_) => set_message.set(Some("打刻しました。".into())),
+                        Err(err) => {
+                            log::error!("Failed to refresh attendance context: {}", err);
+                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
+                        }
+                    },
+                    Err(err) => set_message.set(Some(format!("打刻に失敗しました: {}", err))),
+                };
                 set_loading.set(false);
             });
         }
@@ -252,12 +249,15 @@ pub fn AttendanceActionButtons(
             spawn_local(async move {
                 let api = ApiClient::new();
                 match api.break_start(&att_id).await {
-                    Ok(_) => {
-                        refresh_state().await;
-                        set_message.set(Some("休憩を開始しました。".into()));
-                    }
+                    Ok(_) => match refresh_state().await {
+                        Ok(_) => set_message.set(Some("休憩を開始しました。".into())),
+                        Err(err) => {
+                            log::error!("Failed to refresh attendance context: {}", err);
+                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
+                        }
+                    },
                     Err(err) => set_message.set(Some(format!("休憩開始に失敗しました: {}", err))),
-                }
+                };
                 set_loading.set(false);
             });
         }
@@ -289,12 +289,15 @@ pub fn AttendanceActionButtons(
             spawn_local(async move {
                 let api = ApiClient::new();
                 match api.break_end(&break_id).await {
-                    Ok(_) => {
-                        refresh_state().await;
-                        set_message.set(Some("休憩を終了しました。".into()));
-                    }
+                    Ok(_) => match refresh_state().await {
+                        Ok(_) => set_message.set(Some("休憩を終了しました。".into())),
+                        Err(err) => {
+                            log::error!("Failed to refresh attendance context: {}", err);
+                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
+                        }
+                    },
                     Err(err) => set_message.set(Some(format!("休憩終了に失敗しました: {}", err))),
-                }
+                };
                 set_loading.set(false);
             });
         }
@@ -314,25 +317,33 @@ pub fn AttendanceActionButtons(
             let set_message = set_message.clone();
             let set_loading = set_loading.clone();
             spawn_local(async move {
-                let result = attendance_state::clock_out(set_state.clone()).await;
-                match result {
-                    Ok(_) => {
-                        refresh_state().await;
-                        set_message.set(Some("退勤が完了しました。".into()));
-                    }
+                match attendance_state::clock_out(set_state.clone()).await {
+                    Ok(_) => match refresh_state().await {
+                        Ok(_) => set_message.set(Some("退勤しました。".into())),
+                        Err(err) => {
+                            log::error!("Failed to refresh attendance context: {}", err);
+                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
+                        }
+                    },
                     Err(err) => set_message.set(Some(format!("退勤に失敗しました: {}", err))),
-                }
+                };
                 set_loading.set(false);
             });
         }
     };
 
     let status_snapshot = move || attendance_state.get().today_status.clone();
+    let holiday_reason = create_memo(move |_| attendance_state.get().today_holiday_reason.clone());
     let button_state = move || {
-        button_flags_for(
+        let flags = button_flags_for(
             status_snapshot().as_ref().map(|s| s.status.as_str()),
             loading.get(),
-        )
+        );
+        if holiday_reason.get().is_some() {
+            AttendanceButtonFlags::default()
+        } else {
+            flags
+        }
     };
 
     view! {
@@ -375,6 +386,20 @@ pub fn AttendanceActionButtons(
                     >{"退勤"}</button>
                 </div>
             </div>
+            {move || {
+                holiday_reason
+                    .get()
+                    .map(|reason| {
+                        let label = describe_holiday_reason(reason.trim());
+                        view! {
+                            <div class="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded text-sm">
+                                {format!("本日は{}のため打刻できません。", label)}
+                            </div>
+                        }
+                        .into_view()
+                    })
+                    .unwrap_or_else(|| view! {}.into_view())
+            }}
             {move || {
                 message
                     .get()

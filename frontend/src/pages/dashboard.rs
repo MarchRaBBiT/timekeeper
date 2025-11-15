@@ -1,8 +1,9 @@
 use crate::{
     components::{cards::*, forms::*, layout::*},
-    state::attendance::{load_today_status, use_attendance},
+    state::attendance::{refresh_today_context, use_attendance},
 };
 use leptos::*;
+use log::error;
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
@@ -11,7 +12,9 @@ pub fn DashboardPage() -> impl IntoView {
     create_effect(move |_| {
         let set_state = set_attendance_state.clone();
         spawn_local(async move {
-            let _ = load_today_status(set_state).await;
+            if let Err(err) = refresh_today_context(set_state).await {
+                error!("Failed to refresh attendance context: {}", err);
+            }
         });
     });
 

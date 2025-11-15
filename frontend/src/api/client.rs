@@ -1148,6 +1148,127 @@ impl ApiClient {
         }
     }
 
+    pub async fn check_holiday(
+        &self,
+        date: chrono::NaiveDate,
+    ) -> Result<HolidayCheckResponse, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .get(&format!("{}/holidays/check", base_url))
+            .query(&[("date", date.format("%Y-%m-%d").to_string())])
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn get_monthly_holidays(
+        &self,
+        year: i32,
+        month: u32,
+    ) -> Result<Vec<HolidayCalendarEntry>, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .get(&format!("{}/holidays/month", base_url))
+            .query(&[("year", year.to_string()), ("month", month.to_string())])
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .get(&format!("{}/admin/holidays/weekly", base_url))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn admin_create_weekly_holiday(
+        &self,
+        payload: &CreateWeeklyHolidayRequest,
+    ) -> Result<WeeklyHolidayResponse, String> {
+        let headers = self.get_auth_headers()?;
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .client
+            .post(&format!("{}/admin/holidays/weekly", base_url))
+            .headers(headers)
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn admin_fetch_google_holidays(
         &self,
         year: Option<i32>,

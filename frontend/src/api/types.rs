@@ -83,6 +83,37 @@ pub struct CreateHolidayRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeeklyHolidayResponse {
+    pub id: String,
+    pub weekday: i16,
+    pub starts_on: NaiveDate,
+    pub ends_on: Option<NaiveDate>,
+    pub enforced_from: NaiveDate,
+    pub enforced_to: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateWeeklyHolidayRequest {
+    pub weekday: u8,
+    pub starts_on: NaiveDate,
+    #[serde(default)]
+    pub ends_on: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HolidayCheckResponse {
+    pub is_holiday: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HolidayCalendarEntry {
+    pub date: NaiveDate,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BreakRecordResponse {
     pub id: String,
     pub attendance_id: String,
@@ -211,5 +242,27 @@ mod tests {
         let lr: LoginResponse = serde_json::from_str(raw).unwrap();
         assert_eq!(lr.user.role, "admin");
         assert_eq!(lr.user.username, "bob");
+    }
+
+    #[wasm_bindgen_test]
+    fn serialize_create_weekly_holiday_request_includes_optional_fields() {
+        let request = CreateWeeklyHolidayRequest {
+            weekday: 2,
+            starts_on: NaiveDate::from_ymd_opt(2025, 1, 8).unwrap(),
+            ends_on: None,
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["weekday"], serde_json::json!(2));
+        assert_eq!(json["starts_on"], serde_json::json!("2025-01-08"));
+        assert!(json.get("ends_on").is_some());
+        assert!(json["ends_on"].is_null());
+    }
+
+    #[wasm_bindgen_test]
+    fn deserialize_holiday_calendar_entry() {
+        let raw = r#"{"date":"2025-01-01","reason":"public holiday"}"#;
+        let entry: HolidayCalendarEntry = serde_json::from_str(raw).unwrap();
+        assert_eq!(entry.date, NaiveDate::from_ymd_opt(2025, 1, 1).unwrap());
+        assert_eq!(entry.reason, "public holiday");
     }
 }
