@@ -1,5 +1,6 @@
-use crate::state::auth::use_auth;
+use crate::{config, state::auth::use_auth};
 use leptos::*;
+use log::error;
 
 #[component]
 pub fn Header() -> impl IntoView {
@@ -80,9 +81,87 @@ pub fn Layout(children: Children) -> impl IntoView {
         <div class="min-h-screen bg-gray-50">
             <Header/>
             <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                <TimeZoneWarningBanner/>
                 {children()}
             </main>
         </div>
+    }
+}
+
+#[component]
+pub fn TimeZoneWarningBanner() -> impl IntoView {
+    let (status, set_status) = create_signal(config::time_zone_status());
+    let (refreshing, set_refreshing) = create_signal(false);
+
+    {
+        let set_status = set_status.clone();
+        spawn_local(async move {
+            config::await_time_zone().await;
+            set_status.set(config::time_zone_status());
+        });
+    }
+
+    let on_retry = move |_| {
+        if refreshing.get() {
+            return;
+        }
+        set_refreshing.set(true);
+        set_status.update(|state| state.loading = true);
+        let set_status = set_status.clone();
+        let set_refreshing = set_refreshing.clone();
+        spawn_local(async move {
+            let new_status = config::refresh_time_zone().await;
+            if new_status.last_error.is_some() {
+                error!("Failed to refresh timezone: {:?}", new_status.last_error);
+            }
+            set_status.set(new_status);
+            set_refreshing.set(false);
+        });
+    };
+
+    let should_show = move || {
+        let state = status.get();
+        state.is_fallback || state.last_error.is_some()
+    };
+
+    let warning_message = move || {
+        let state = status.get();
+        if state.loading {
+            "バックエンドのタイムゾーン情報を再取得しています...".to_string()
+        } else if let Some(err) = state.last_error.clone() {
+            format!(
+                "サーバーのタイムゾーン情報を取得できませんでした ({})。現在 {} として動作しています。",
+                err,
+                state.time_zone.clone().unwrap_or_else(|| "UTC".into())
+            )
+        } else {
+            format!(
+                "サーバーのタイムゾーン情報を取得できず、現在 {} として動作しています。",
+                state.time_zone.clone().unwrap_or_else(|| "UTC".into())
+            )
+        }
+    };
+
+    view! {
+        <Show when=should_show>
+            <div class="mb-4">
+                <div class="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p class="font-semibold">{"タイムゾーン情報に関する警告"}</p>
+                            <p class="text-sm mt-1">{warning_message}</p>
+                        </div>
+                        <button
+                            class="inline-flex items-center justify-center px-4 py-2 border border-yellow-500 text-sm font-medium rounded text-yellow-900 hover:bg-yellow-100 disabled:opacity-60"
+                            on:click=on_retry
+                            disabled=move || refreshing.get()
+                        >
+                            {move || if refreshing.get() { "再取得中..." } else { "再取得" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Show>
     }
 }
 

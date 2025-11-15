@@ -1,4 +1,3 @@
 {
-  "api_base_url": "http://localhost:3000/api",
-  "time_zone": "UTC"
+  "api_base_url": "http://localhost:3000/api"
 }
