@@ -16,7 +16,7 @@ use crate::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
-    services::holiday::HolidayService,
+    services::holiday::{HolidayReason, HolidayService},
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -133,10 +133,9 @@ pub async fn check_holiday(
             )
         })?;
 
-    let reason = if decision.is_holiday {
-        Some(decision.reason.label().to_string())
-    } else {
-        None
+    let reason = match decision.reason {
+        HolidayReason::None => None,
+        other => Some(other.label().to_string()),
     };
 
     Ok(Json(HolidayCheckResponse {
