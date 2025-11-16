@@ -7,7 +7,7 @@
 - [ ] `refactor/backend-requests`: Leave/Overtimeリクエストのrepository化
 - [ ] `refactor/backend-admin`: 管理APIのモジュール分割とレスポンス統一
 - [ ] `refactor/backend-holidays`: Holiday Service/handlerの再構成
-- [ ] `refactor/backend-models`: Enum変換/モデルimplの統合
+- [x] `refactor/backend-models`: Enum変換/モデルimplの統合
 
 ## 1. フロントエンドレビュー結果（参考）
 - `frontend/src/pages/admin.rs` の `AdminPage` は view を分割済ながらシグナル生成・API呼び出し・状態変更が同一スコープに集約しており、`load_list` や `on_reject` などの handler は何をパラメータ化しているのか把握しづらい（例: `load_list` の `Rc<dyn Fn()>` が `status`/`per_page` などを外部から直接参照）。
