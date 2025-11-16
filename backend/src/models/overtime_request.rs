@@ -59,6 +59,17 @@ impl Default for RequestStatus {
     }
 }
 
+impl RequestStatus {
+    pub fn db_value(&self) -> &'static str {
+        match self {
+            RequestStatus::Pending => "pending",
+            RequestStatus::Approved => "approved",
+            RequestStatus::Rejected => "rejected",
+            RequestStatus::Cancelled => "cancelled",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 /// Payload used to create a new overtime request.
 pub struct CreateOvertimeRequest {
