@@ -2,14 +2,13 @@ use chrono::{Datelike, Timelike};
 use leptos::*;
 
 use crate::api::{ApiClient, AttendanceSummary};
-use crate::state::attendance::{refresh_today_context, AttendanceState};
+use crate::state::attendance::{refresh_today_context, use_attendance};
 use crate::utils::time::{now_in_app_tz, today_in_app_tz};
 
 #[component]
-pub fn AttendanceCard(
-    attendance_state: ReadSignal<AttendanceState>,
-    set_attendance_state: WriteSignal<AttendanceState>,
-) -> impl IntoView {
+pub fn AttendanceCard() -> impl IntoView {
+    let (attendance_state, set_attendance_state) = use_attendance();
+
     {
         let set_state = set_attendance_state;
         create_effect(move |_| {
@@ -75,20 +74,20 @@ pub fn AttendanceCard(
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    {format!("今日の勤怠 ({:04}-{:02}-{:02})", today.year(), today.month(), today.day())}
+                    {format!("本日の勤怠 ({:04}-{:02}-{:02})", today.year(), today.month(), today.day())}
                 </h3>
                 <div class="mt-5">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"出勤時間"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"出勤時刻"}</dt>
                             <dd class="mt-1 text-sm text-gray-900">{clock_in}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"退勤時間"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"退勤時刻"}</dt>
                             <dd class="mt-1 text-sm text-gray-900">{clock_out}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"総労働時間"}</dt>
                             <dd class="mt-1 text-sm text-gray-900">{total_hours}</dd>
                         </div>
                         <div>
@@ -118,25 +117,25 @@ pub fn SummaryCard() -> impl IntoView {
     view! {
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">{"今月のサマリー"}</h3>
+                <h3 class="text-lg leading-6 font-medium text-gray-900">{"月次サマリ"}</h3>
                 <div class="mt-5">
                     <div class="grid grid-cols-3 gap-4">
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"総稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"総労働時間"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
-                                {move || summary.get().as_ref().map(|s| format!("{:.2}時間", s.total_work_hours)).unwrap_or_else(|| "-".into())}
+                                {move || summary.get().as_ref().map(|s| format!("{:.2} 時間", s.total_work_hours)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"稼働日数"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"労働日数"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
                                 {move || summary.get().as_ref().map(|s| format!("{} 日", s.total_work_days)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"平均稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"平均労働時間"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
-                                {move || summary.get().as_ref().map(|s| format!("{:.2}時間", s.average_daily_hours)).unwrap_or_else(|| "-".into())}
+                                {move || summary.get().as_ref().map(|s| format!("{:.2} 時間", s.average_daily_hours)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                     </div>
@@ -176,8 +175,8 @@ pub fn RequestCard() -> impl IntoView {
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg leading-6 font-medium text-gray-900">{"申請状況"}</h3>
                 <div class="mt-5 space-y-2">
-                    <div class="text-sm text-gray-700">{"休暇申請: 保留="}{move || count("leave_requests","pending")} {" 件 / 承認="}{move || count("leave_requests","approved")} {" 件 / 却下="}{move || count("leave_requests","rejected")} {" 件"}</div>
-                    <div class="text-sm text-gray-700">{"残業申請: 保留="}{move || count("overtime_requests","pending")} {" 件 / 承認="}{move || count("overtime_requests","approved")} {" 件 / 却下="}{move || count("overtime_requests","rejected")} {" 件"}</div>
+                    <div class="text-sm text-gray-700">{"休暇申請: 待ち="}{move || count("leave_requests","pending")} {" 件 / 承認="}{move || count("leave_requests","approved")} {" 件 / 却下="}{move || count("leave_requests","rejected")} {" 件"}</div>
+                    <div class="text-sm text-gray-700">{"残業申請: 待ち="}{move || count("overtime_requests","pending")} {" 件 / 承認="}{move || count("overtime_requests","approved")} {" 件 / 却下="}{move || count("overtime_requests","rejected")} {" 件"}</div>
                 </div>
             </div>
         </div>
@@ -203,7 +202,7 @@ pub fn UserCard() -> impl IntoView {
                             <dd class="mt-1 text-sm text-gray-900">{move || auth.get().user.as_ref().map(|u| u.full_name.clone()).unwrap_or_else(|| "-".into())}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-gray-500">{"役割"}</dt>
+                            <dt class="text-sm font-medium text-gray-500">{"権限"}</dt>
                             <dd class="mt-1 text-sm text-gray-900">{move || auth.get().user.as_ref().map(|u| u.role.clone()).unwrap_or_else(|| "-".into())}</dd>
                         </div>
                     </div>

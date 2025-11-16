@@ -31,8 +31,14 @@ impl Default for AttendanceState {
 }
 
 pub fn use_attendance() -> (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>) {
-    let (attendance_state, set_attendance_state) = create_signal(AttendanceState::default());
-    (attendance_state, set_attendance_state)
+    if let Some(ctx) = use_context::<(ReadSignal<AttendanceState>, WriteSignal<AttendanceState>)>()
+    {
+        ctx
+    } else {
+        let signals = create_signal(AttendanceState::default());
+        provide_context(signals);
+        signals
+    }
 }
 
 pub async fn clock_in(set_attendance_state: WriteSignal<AttendanceState>) -> Result<(), String> {
@@ -183,6 +189,16 @@ mod tests {
         let mut state = AttendanceState::default();
         state.last_refresh_error = Some("network error".into());
         assert_eq!(state.last_refresh_error.as_deref(), Some("network error"));
+    }
+
+    #[wasm_bindgen_test]
+    fn use_attendance_reuses_context_within_scope() {
+        let _runtime = leptos_reactive::create_runtime();
+        let (_, setter) = super::use_attendance();
+        setter.update(|state| state.today_holiday_reason = Some("shared".into()));
+
+        let (reader, _) = super::use_attendance();
+        assert_eq!(reader.get().today_holiday_reason, Some("shared".into()));
     }
 }
 

@@ -1,22 +1,12 @@
 use crate::{
     components::{cards::*, forms::*, layout::*},
-    state::attendance::{refresh_today_context, use_attendance},
+    state::attendance::use_attendance,
 };
 use leptos::*;
-use log::error;
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
     let (attendance_state, set_attendance_state) = use_attendance();
-
-    create_effect(move |_| {
-        let set_state = set_attendance_state.clone();
-        spawn_local(async move {
-            if let Err(err) = refresh_today_context(set_state).await {
-                error!("Failed to refresh attendance context: {}", err);
-            }
-        });
-    });
 
     view! {
         <Layout>
@@ -27,10 +17,7 @@ pub fn DashboardPage() -> impl IntoView {
                 </div>
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <AttendanceCard
-                        attendance_state=attendance_state
-                        set_attendance_state=set_attendance_state
-                    />
+                    <AttendanceCard/>
                     <SummaryCard/>
                 </div>
 
