@@ -63,3 +63,27 @@
 1. ドキュメントをチームでレビューし、アプローチを承認。
 2. 共通ヘルパーを作る PR → `clock_in` などを順に小分けで PR 連続投入。
 3. `backend/src/handlers` 以下の他の large handler（`admin.rs` 等）も同様の方針で拡張可能。必要なら `handlers/README.md` に DRY ルールを記載。
+
+## 7. その他 backend/src 横断レビューの要点
+- **`handlers/requests.rs`**: SQL を各ハンドラで直書きしており、`LeaveRequest`/`OvertimeRequest` の作成・取得フローが重複。`map_err` で同じ JSON エラーを複数回組み立てているため、helper による共通化が必要。フォームバリデーション関数もハンドラと同居していて再利用しにくい。
+- **`handlers/admin.rs`**: 900行超のファイルにユーザー一覧・申請承認・休日一覧・MFA・CSVなどが混在し、責務境界が曖昧。認可チェックやレスポンス shape も統一されておらず、モジュール分割（`admin::{requests, holidays, mfa}`）と共通レスポンス/エラーヘルパー導入が望ましい。
+- **`services/holiday.rs`/`handlers/holidays.rs`**: 月次リスト生成 (`list_month`) が 1日ずつ `is_holiday` を呼び出すため非効率かつ読みにくい。祝日/週次/例外をまとめたモデルを services で統合し、handler では結果を返すだけに整理する。
+- **`models/*`**: Enum ↔ str の変換 (`AttendanceStatus`, `UserRole` 等) が散在しており、`handlers` 側で文字列を手打ちしている箇所が多い。Model impl に DB 変換/状態遷移をまとめ、repository/helper から再利用する。
+
+## 8. 横断リファクタのブランチ案と検証
+`refactor/backend-attendance` での進め方にならい、他モジュールでも以下のように小さく枝を分ける。
+
+| ブランチ | 対象 | 主な作業 | 推奨テスト |
+|---------|------|----------|-----------|
+| `refactor/backend-requests` | `handlers/requests.rs`, `models/leave_request.rs`, `models/overtime_request.rs` | Repository パターン導入、エラーヘルパー共有、モデル活用 | `cargo test -p timekeeper-backend --test requests_api` |
+| `refactor/backend-admin` | `handlers/admin.rs`, `handlers/mod.rs` | モジュール分割、認可/レスポンス共通化、SQL repo 化 | `cargo test -p timekeeper-backend --test admin_holiday_list` |
+| `refactor/backend-holidays` | `services/holiday.rs`, `handlers/holidays.rs` | `HolidayService` の再構成、祝日結合クエリの repo 化 | `cargo test -p timekeeper-backend --test holiday_service` |
+| `refactor/backend-models` | `models/*` | Enum 変換ヘルパー整理、モデル impl に DB 補助を集約 | 各モデルのユニットテスト (`cargo test -p timekeeper-backend`) |
+
+各ブランチで `cargo fmt --all` → `cargo test -p timekeeper-backend` を実行し、`backend/tests` の CI が通ることを確認する。
+
+## 9. 次のアクション（横断）
+1. 本ドキュメントをチームで共有し、優先度を決定して各 refactor ブランチを順次切る。  
+2. ブランチごとに小さな plan（目的、手順、テスト）を `documents/` 配下に追加し、`refactor/backend-attendance` と同様の粒度で進行ログを残す。  
+3. 各 PR で repository/helper が追加されたら、API ハンドラが細くなったことをレビュー観点に含める。  
+4. backend の整理後は frontend 側（特に `AdminPage`）の ViewModel 化と合わせて e2e (`backend/tests`, Playwright) を回し、リグレッションを防止する。
