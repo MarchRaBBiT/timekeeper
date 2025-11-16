@@ -19,6 +19,8 @@ use crate::{
     utils::time,
 };
 
+const MAX_DECISION_COMMENT_LENGTH: usize = 500;
+
 #[derive(Deserialize)]
 pub struct ApprovePayload {
     pub comment: String,
@@ -33,12 +35,7 @@ pub async fn approve_request(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    if body.comment.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"comment is required"})),
-        ));
-    }
+    validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
@@ -89,12 +86,7 @@ pub async fn reject_request(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    if body.comment.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"comment is required"})),
-        ));
-    }
+    validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
@@ -152,7 +144,13 @@ pub async fn list_requests(
     }
     let page = q.page.unwrap_or(1).max(1);
     let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
-    let offset = (page - 1) * per_page;
+    let offset = page
+        .checked_sub(1)
+        .and_then(|p| p.checked_mul(per_page))
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"page is too large"})),
+        ))?;
 
     let type_filter = q.r#type.as_deref().map(|s| s.to_ascii_lowercase());
     let (include_leave, include_overtime) = match type_filter.as_deref() {
@@ -217,6 +215,29 @@ pub async fn list_requests(
         "overtime_requests": ot_items.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>(),
         "page_info": {"page": page, "per_page": per_page}
     })))
+}
+
+fn validate_decision_comment(comment: &str) -> Result<(), (StatusCode, Json<Value>)> {
+    if comment.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"comment is required"})),
+        ));
+    }
+
+    if comment.chars().count() > MAX_DECISION_COMMENT_LENGTH {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "comment must be between 1 and {} characters",
+                    MAX_DECISION_COMMENT_LENGTH
+                )
+            })),
+        ));
+    }
+
+    Ok(())
 }
 
 pub async fn get_request_detail(
