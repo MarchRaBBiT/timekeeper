@@ -5,7 +5,9 @@
 ## 進捗チェックリスト
 - [x] `refactor/backend-attendance`: 共通ヘルパー + clock/break ハンドラのDRY化
 - [x] `refactor/backend-requests`: Leave/Overtimeリクエストのrepository化
-- [ ] `refactor/backend-admin`: 管理APIのモジュール分割とレスポンス統一
+
+- [x] `refactor/backend-admin`: 管理APIのモジュール分割とレスポンス統一
+
 - [ ] `refactor/backend-holidays`: Holiday Service/handlerの再構成
 - [ ] `refactor/backend-models`: Enum変換/モデルimplの統合
 
