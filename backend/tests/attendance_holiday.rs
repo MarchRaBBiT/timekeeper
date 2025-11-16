@@ -23,10 +23,10 @@ async fn clock_in_blocked_on_weekly_holiday() {
     seed_weekly_holiday(&pool, date).await;
 
     let config = test_config();
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_service = Arc::new(HolidayService::new(pool.clone_pool()));
 
     let result = attendance::clock_in(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(user.clone()),
         Extension(holiday_service.clone()),
         Json(ClockInRequest { date: Some(date) }),
@@ -64,15 +64,15 @@ async fn clock_in_allowed_with_exception() {
     .bind(Uuid::new_v4().to_string())
     .bind(&user.id)
     .bind(date)
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await
     .expect("insert exception");
 
     let config = test_config();
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_service = Arc::new(HolidayService::new(pool.clone_pool()));
 
     let result = attendance::clock_in(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(user.clone()),
         Extension(holiday_service.clone()),
         Json(ClockInRequest { date: Some(date) }),

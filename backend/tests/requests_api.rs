@@ -32,7 +32,8 @@ async fn get_my_requests_returns_leave_and_overtime() {
     seed_leave_request(&pool, &user.id, LeaveType::Annual, date, date).await;
     seed_overtime_request(&pool, &user.id, date, 1.5).await;
 
-    let response = get_my_requests(State((pool.clone(), config)), Extension(user.clone())).await;
+    let response =
+        get_my_requests(State((pool.clone_pool(), config)), Extension(user.clone())).await;
 
     let payload: Value = response.expect("get_my_requests ok").0;
     let leave = payload
@@ -72,7 +73,7 @@ async fn admin_list_requests_includes_seeded_records() {
     };
 
     let response = list_requests(
-        State((pool.clone(), config)),
+        State((pool.clone_pool(), config)),
         Extension(admin.clone()),
         Query(query),
     )

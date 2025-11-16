@@ -32,7 +32,7 @@ async fn regular_admin_cannot_backdate_weekly_holiday() {
     };
 
     let result = admin::create_weekly_holiday(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(admin_user.clone()),
         Json(payload),
     )
@@ -59,7 +59,7 @@ async fn system_admin_can_backdate_weekly_holiday() {
     };
 
     let response = admin::create_weekly_holiday(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(admin_user.clone()),
         Json(payload),
     )
@@ -80,7 +80,7 @@ async fn holiday_check_endpoint_detects_weekly_rule() {
     let target_date = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
     seed_weekly_holiday(&pool, target_date).await;
 
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_service = Arc::new(HolidayService::new(pool.clone_pool()));
 
     let response = holidays::check_holiday(
         Extension(user.clone()),

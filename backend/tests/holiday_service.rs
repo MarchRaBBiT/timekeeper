@@ -18,10 +18,10 @@ async fn detects_public_holiday() -> sqlx::Result<()> {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(date)
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
-    let service = HolidayService::new(pool.clone());
+    let service = HolidayService::new(pool.clone_pool());
     let decision = service.is_holiday(date, None).await?;
 
     assert!(decision.is_holiday);
@@ -44,10 +44,10 @@ async fn detects_weekly_holiday() -> sqlx::Result<()> {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(wed - Duration::days(7))
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
-    let service = HolidayService::new(pool.clone());
+    let service = HolidayService::new(pool.clone_pool());
     let decision = service.is_holiday(wed, None).await?;
 
     assert!(decision.is_holiday);
@@ -73,7 +73,7 @@ async fn exception_can_override_weekly_holiday() -> sqlx::Result<()> {
     )
     .bind(&user_id)
     .bind(format!("user_{}", username_prefix))
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
     sqlx::query(
@@ -83,7 +83,7 @@ async fn exception_can_override_weekly_holiday() -> sqlx::Result<()> {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(wed - Duration::days(7))
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
     sqlx::query(
@@ -94,10 +94,10 @@ async fn exception_can_override_weekly_holiday() -> sqlx::Result<()> {
     .bind(Uuid::new_v4().to_string())
     .bind(&user_id)
     .bind(wed)
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
-    let service = HolidayService::new(pool.clone());
+    let service = HolidayService::new(pool.clone_pool());
     let decision = service.is_holiday(wed, Some(&user_id)).await?;
 
     assert!(!decision.is_holiday);
@@ -118,7 +118,7 @@ async fn monthly_listing_combines_sources() -> sqlx::Result<()> {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(jan1)
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
     let wed = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
@@ -129,10 +129,10 @@ async fn monthly_listing_combines_sources() -> sqlx::Result<()> {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(wed - Duration::days(7))
-    .execute(&pool)
+    .execute(pool.as_ref())
     .await?;
 
-    let service = HolidayService::new(pool.clone());
+    let service = HolidayService::new(pool.clone_pool());
     let entries = service.list_month(2025, 1, None).await?;
 
     assert!(entries

@@ -1,7 +1,11 @@
 use chrono::{Datelike, Duration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{env, time::Duration as StdDuration};
+use std::{
+    env,
+    sync::{Arc, OnceLock},
+    time::Duration as StdDuration,
+};
 use timekeeper_backend::{
     config::Config,
     models::user::{User, UserRole},
@@ -11,7 +15,10 @@ use timekeeper_backend::{
         overtime_request::OvertimeRequest,
     },
 };
-use tokio::time::timeout;
+use tokio::{
+    sync::{Mutex, OwnedMutexGuard},
+    time::timeout,
+};
 use uuid::Uuid;
 
 const DEFAULT_DATABASE_URL: &str = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper";
@@ -33,7 +40,40 @@ fn database_url() -> String {
     env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.into())
 }
 
-pub async fn setup_test_pool() -> Option<PgPool> {
+pub struct TestDatabase {
+    pool: PgPool,
+    _guard: OwnedMutexGuard<()>,
+}
+
+impl TestDatabase {
+    pub fn clone_pool(&self) -> PgPool {
+        self.pool.clone()
+    }
+}
+
+impl std::ops::Deref for TestDatabase {
+    type Target = PgPool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
+impl AsRef<PgPool> for TestDatabase {
+    fn as_ref(&self) -> &PgPool {
+        &self.pool
+    }
+}
+
+static TEST_DB_GUARD: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
+
+fn test_db_guard() -> Arc<Mutex<()>> {
+    TEST_DB_GUARD
+        .get_or_init(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+pub async fn setup_test_pool() -> Option<TestDatabase> {
     let database_url = database_url();
     let connect_future = PgPoolOptions::new()
         .max_connections(5)
@@ -52,6 +92,8 @@ pub async fn setup_test_pool() -> Option<PgPool> {
         }
     };
 
+    let guard = test_db_guard().lock_owned().await;
+
     if let Err(error) = sqlx::migrate!("./migrations").run(&pool).await {
         eprintln!("Skipping DB-backed test (migration failed): {error}");
         return None;
@@ -62,7 +104,10 @@ pub async fn setup_test_pool() -> Option<PgPool> {
         return None;
     }
 
-    Some(pool)
+    Some(TestDatabase {
+        pool,
+        _guard: guard,
+    })
 }
 
 async fn reset_database(pool: &PgPool) -> Result<(), sqlx::Error> {

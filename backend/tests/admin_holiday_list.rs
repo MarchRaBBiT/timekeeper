@@ -34,7 +34,7 @@ async fn admin_holiday_list_filters_by_type() {
     };
 
     let response = list_holidays(
-        axum::extract::State((pool.clone(), config)),
+        axum::extract::State((pool.clone_pool(), config)),
         Extension(admin),
         Query(query),
     )
@@ -77,7 +77,7 @@ async fn admin_holiday_list_supports_pagination_and_range() {
     };
 
     let response = list_holidays(
-        axum::extract::State((pool.clone(), config)),
+        axum::extract::State((pool.clone_pool(), config)),
         Extension(admin),
         Query(query),
     )
