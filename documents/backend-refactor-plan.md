@@ -96,3 +96,4 @@
 2. ブランチごとに小さな plan（目的、手順、テスト）を `documents/` 配下に追加し、`refactor/backend-attendance` と同様の粒度で進行ログを残す。  
 3. 各 PR で repository/helper が追加されたら、API ハンドラが細くなったことをレビュー観点に含める。  
 4. backend の整理後は frontend 側（特に `AdminPage`）の ViewModel 化と合わせて e2e (`backend/tests`, Playwright) を回し、リグレッションを防止する。
+5. `documents/refactor-backend-merge-request.md` を用いて `refactor/backend` ブランチへのマージ依頼内容を整理し、レビュアーと共有する。
