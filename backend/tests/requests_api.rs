@@ -4,7 +4,6 @@ use axum::{
 };
 use chrono::NaiveDate;
 use serde_json::Value;
-use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::{
         admin::{list_requests, RequestListQuery},
@@ -14,14 +13,18 @@ use timekeeper_backend::{
 };
 
 mod support;
-use support::{seed_leave_request, seed_overtime_request, seed_user, test_config};
+use support::{seed_leave_request, seed_overtime_request, seed_user, setup_test_pool, test_config};
 
 fn init_tracing() {
     let _ = tracing_subscriber::fmt::try_init();
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn get_my_requests_returns_leave_and_overtime(pool: PgPool) {
+#[tokio::test]
+async fn get_my_requests_returns_leave_and_overtime() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping get_my_requests_returns_leave_and_overtime: database unavailable");
+        return;
+    };
     init_tracing();
     let config = test_config();
     let user = seed_user(&pool, UserRole::Employee, false).await;
@@ -44,8 +47,12 @@ async fn get_my_requests_returns_leave_and_overtime(pool: PgPool) {
     assert_eq!(overtime.len(), 1);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn admin_list_requests_includes_seeded_records(pool: PgPool) {
+#[tokio::test]
+async fn admin_list_requests_includes_seeded_records() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping admin_list_requests_includes_seeded_records: database unavailable");
+        return;
+    };
     init_tracing();
     let config = test_config();
     let admin = seed_user(&pool, UserRole::Admin, false).await;

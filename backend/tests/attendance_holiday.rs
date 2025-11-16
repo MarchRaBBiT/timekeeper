@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::NaiveDate;
-use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::attendance,
     models::{attendance::ClockInRequest, user::UserRole},
@@ -11,10 +10,14 @@ use timekeeper_backend::{
 use uuid::Uuid;
 
 mod support;
-use support::{seed_user, seed_weekly_holiday, test_config};
+use support::{seed_user, seed_weekly_holiday, setup_test_pool, test_config};
 
-#[sqlx::test(migrations = "./migrations")]
-async fn clock_in_blocked_on_weekly_holiday(pool: PgPool) {
+#[tokio::test]
+async fn clock_in_blocked_on_weekly_holiday() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping clock_in_blocked_on_weekly_holiday: database unavailable");
+        return;
+    };
     let user = seed_user(&pool, UserRole::Employee, false).await;
     let date = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
     seed_weekly_holiday(&pool, date).await;
@@ -43,8 +46,12 @@ async fn clock_in_blocked_on_weekly_holiday(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn clock_in_allowed_with_exception(pool: PgPool) {
+#[tokio::test]
+async fn clock_in_allowed_with_exception() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping clock_in_allowed_with_exception: database unavailable");
+        return;
+    };
     let user = seed_user(&pool, UserRole::Employee, false).await;
     let date = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
     seed_weekly_holiday(&pool, date).await;
