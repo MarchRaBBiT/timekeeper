@@ -126,6 +126,9 @@ timekeeper/
 - `POST /api/auth/login` - ログイン
 - `POST /api/auth/refresh` - トークンリフレッシュ
 
+### 設定情報
+- `GET /api/config/timezone` - バックエンドが使用するタイムゾーン名を取得
+
 ### 勤怠管理
 - `POST /api/attendance/clock-in` - 出勤打刻
 - `POST /api/attendance/clock-out` - 退勤打刻
@@ -140,6 +143,7 @@ timekeeper/
 - `GET /api/requests/me` - 自分の申請一覧
 
 ### 管理者機能
+- `GET /api/admin/holidays` - `page`/`per_page`/`type`/`from`/`to` を受け取り、祝日・定休・例外を横断でページネーション表示
 - `GET /api/admin/users` - 従業員一覧
 - `POST /api/admin/users` - 従業員登録
 - `GET /api/admin/attendance` - 全従業員の勤怠データ

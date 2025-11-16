@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT 1 as value\n            FROM weekly_holidays\n            WHERE weekday = $1\n              AND enforced_from <= $2\n              AND (enforced_to IS NULL OR enforced_to >= $2)\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "value",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int2",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "06bf33217bd2c02b758770fca43ccb4a837dd21e9266c3675a607a0aa7492f07"
+}

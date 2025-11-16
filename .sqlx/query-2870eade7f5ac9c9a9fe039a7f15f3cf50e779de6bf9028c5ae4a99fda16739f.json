@@ -1,0 +1,116 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nWITH combined AS (\n    SELECT\n        id,\n        'public'::text AS kind,\n        holiday_date AS applies_from,\n        NULL::date AS applies_to,\n        holiday_date AS date,\n        NULL::smallint AS weekday,\n        NULL::date AS starts_on,\n        NULL::date AS ends_on,\n        name,\n        description,\n        NULL::text AS user_id,\n        description AS reason,\n        NULL::text AS created_by,\n        created_at,\n        NULL::bool AS is_override\n    FROM holidays\n    UNION ALL\n    SELECT\n        id,\n        'weekly'::text AS kind,\n        enforced_from AS applies_from,\n        enforced_to AS applies_to,\n        NULL::date AS date,\n        weekday,\n        starts_on,\n        ends_on,\n        NULL::text AS name,\n        NULL::text AS description,\n        NULL::text AS user_id,\n        NULL::text AS reason,\n        created_by,\n        created_at,\n        NULL::bool AS is_override\n    FROM weekly_holidays\n    UNION ALL\n    SELECT\n        id,\n        'exception'::text AS kind,\n        exception_date AS applies_from,\n        NULL::date AS applies_to,\n        exception_date AS date,\n        NULL::smallint AS weekday,\n        NULL::date AS starts_on,\n        NULL::date AS ends_on,\n        NULL::text AS name,\n        reason AS description,\n        user_id,\n        reason,\n        created_by,\n        created_at,\n        override AS is_override\n    FROM holiday_exceptions\n)\nSELECT\n    COUNT(*) OVER() as \"total_count!\",\n    id AS \"id!\",\n    kind AS \"kind!\",\n    applies_from AS \"applies_from!\",\n    applies_to AS \"applies_to?\",\n    date AS \"date?\",\n    weekday AS \"weekday?\",\n    starts_on AS \"starts_on?\",\n    ends_on AS \"ends_on?\",\n    name AS \"name?\",\n    description AS \"description?\",\n    user_id AS \"user_id?\",\n    reason AS \"reason?\",\n    created_by AS \"created_by?\",\n    created_at AS \"created_at!\",\n    is_override AS \"is_override?\"\nFROM combined\nWHERE\n    ($1::text IS NULL OR $1 = '' OR $1 = 'all' OR kind = $1)\n    AND ($2::date IS NULL OR applies_from >= $2)\n    AND ($3::date IS NULL OR applies_from <= $3)\nORDER BY applies_from DESC, created_at DESC\nOFFSET $4\nLIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "kind!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "applies_from!",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "applies_to?",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "date?",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 6,
+        "name": "weekday?",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 7,
+        "name": "starts_on?",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 8,
+        "name": "ends_on?",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 9,
+        "name": "name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "description?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "user_id?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "reason?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_by?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "is_override?",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Date",
+        "Date",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "2870eade7f5ac9c9a9fe039a7f15f3cf50e779de6bf9028c5ae4a99fda16739f"
+}

@@ -1066,12 +1066,43 @@ impl ApiClient {
         }
     }
 
-    pub async fn admin_list_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
+    pub async fn admin_list_holidays(
+        &self,
+        params: &crate::api::types::AdminHolidayListParams,
+    ) -> Result<crate::api::types::AdminHolidayListResponse, String> {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/admin/holidays", base_url);
+        let mut query = Vec::new();
+        if params.page > 0 {
+            query.push(format!("page={}", params.page));
+        }
+        if params.per_page > 0 {
+            query.push(format!("per_page={}", params.per_page));
+        }
+        if let Some(kind) = &params.kind {
+            if !kind.is_empty() {
+                query.push(format!("type={}", kind));
+            }
+        }
+        if let Some(from) = &params.from {
+            if !from.is_empty() {
+                query.push(format!("from={}", from));
+            }
+        }
+        if let Some(to) = &params.to {
+            if !to.is_empty() {
+                query.push(format!("to={}", to));
+            }
+        }
+        if !query.is_empty() {
+            url.push('?');
+            url.push_str(&query.join("&"));
+        }
+
         let response = self
             .client
-            .get(&format!("{}/admin/holidays", base_url))
+            .get(&url)
             .headers(headers)
             .send()
             .await

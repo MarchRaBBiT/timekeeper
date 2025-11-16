@@ -114,6 +114,42 @@ pub struct HolidayCalendarEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminHolidayListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<AdminHolidayListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminHolidayListItem {
+    pub id: String,
+    pub kind: String,
+    pub applies_from: NaiveDate,
+    pub applies_to: Option<NaiveDate>,
+    pub date: Option<NaiveDate>,
+    pub weekday: Option<i16>,
+    pub starts_on: Option<NaiveDate>,
+    pub ends_on: Option<NaiveDate>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub user_id: Option<String>,
+    pub reason: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: String,
+    pub is_override: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AdminHolidayListParams {
+    pub page: u32,
+    pub per_page: u32,
+    pub kind: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BreakRecordResponse {
     pub id: String,
     pub attendance_id: String,

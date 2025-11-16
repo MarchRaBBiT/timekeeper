@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{Error as SqlxError, PgPool, Postgres, QueryBuilder};
 
@@ -22,6 +22,85 @@ use crate::{
     },
     utils::{csv::append_csv_row, password::hash_password, time},
 };
+
+#[derive(Debug, Deserialize)]
+pub struct AdminHolidayListQuery {
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+    #[serde(rename = "type")]
+    pub r#type: Option<String>,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminHolidayListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<AdminHolidayListItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminHolidayListItem {
+    pub id: String,
+    pub kind: String,
+    pub applies_from: NaiveDate,
+    pub applies_to: Option<NaiveDate>,
+    pub date: Option<NaiveDate>,
+    pub weekday: Option<i16>,
+    pub starts_on: Option<NaiveDate>,
+    pub ends_on: Option<NaiveDate>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub user_id: Option<String>,
+    pub reason: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub is_override: Option<bool>,
+}
+
+#[derive(Debug)]
+struct AdminHolidayListRow {
+    total_count: i64,
+    id: String,
+    kind: String,
+    applies_from: NaiveDate,
+    applies_to: Option<NaiveDate>,
+    date: Option<NaiveDate>,
+    weekday: Option<i16>,
+    starts_on: Option<NaiveDate>,
+    ends_on: Option<NaiveDate>,
+    name: Option<String>,
+    description: Option<String>,
+    user_id: Option<String>,
+    reason: Option<String>,
+    created_by: Option<String>,
+    created_at: DateTime<Utc>,
+    is_override: Option<bool>,
+}
+
+impl From<AdminHolidayListRow> for AdminHolidayListItem {
+    fn from(value: AdminHolidayListRow) -> Self {
+        Self {
+            id: value.id,
+            kind: value.kind,
+            applies_from: value.applies_from,
+            applies_to: value.applies_to,
+            date: value.date,
+            weekday: value.weekday,
+            starts_on: value.starts_on,
+            ends_on: value.ends_on,
+            name: value.name,
+            description: value.description,
+            user_id: value.user_id,
+            reason: value.reason,
+            created_by: value.created_by,
+            created_at: value.created_at,
+            is_override: value.is_override,
+        }
+    }
+}
 
 pub async fn get_users(
     State((pool, _config)): State<(PgPool, Config)>,
@@ -883,30 +962,137 @@ pub async fn reset_user_mfa(
 pub async fn list_holidays(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<HolidayResponse>>, (StatusCode, Json<Value>)> {
+    Query(params): Query<AdminHolidayListQuery>,
+) -> Result<Json<AdminHolidayListResponse>, (StatusCode, Json<Value>)> {
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
 
-    let holidays = sqlx::query_as::<_, Holiday>(
-        "SELECT id, holiday_date, name, description, created_at, updated_at \
-         FROM holidays ORDER BY holiday_date",
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(25).clamp(1, 100);
+    let offset = ((page - 1) as i64) * per_page as i64;
+    let kind_lower = params.r#type.map(|k| k.to_lowercase());
+    let from = params.from;
+    let to = params.to;
+
+    if let (Some(from), Some(to)) = (from, to) {
+        if from > to {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"`from` must be on or before `to`"})),
+            ));
+        }
+    }
+
+    let rows = sqlx::query_as!(
+        AdminHolidayListRow,
+        r#"
+WITH combined AS (
+    SELECT
+        id,
+        'public'::text AS kind,
+        holiday_date AS applies_from,
+        NULL::date AS applies_to,
+        holiday_date AS date,
+        NULL::smallint AS weekday,
+        NULL::date AS starts_on,
+        NULL::date AS ends_on,
+        name,
+        description,
+        NULL::text AS user_id,
+        description AS reason,
+        NULL::text AS created_by,
+        created_at,
+        NULL::bool AS is_override
+    FROM holidays
+    UNION ALL
+    SELECT
+        id,
+        'weekly'::text AS kind,
+        enforced_from AS applies_from,
+        enforced_to AS applies_to,
+        NULL::date AS date,
+        weekday,
+        starts_on,
+        ends_on,
+        NULL::text AS name,
+        NULL::text AS description,
+        NULL::text AS user_id,
+        NULL::text AS reason,
+        created_by,
+        created_at,
+        NULL::bool AS is_override
+    FROM weekly_holidays
+    UNION ALL
+    SELECT
+        id,
+        'exception'::text AS kind,
+        exception_date AS applies_from,
+        NULL::date AS applies_to,
+        exception_date AS date,
+        NULL::smallint AS weekday,
+        NULL::date AS starts_on,
+        NULL::date AS ends_on,
+        NULL::text AS name,
+        reason AS description,
+        user_id,
+        reason,
+        created_by,
+        created_at,
+        override AS is_override
+    FROM holiday_exceptions
+)
+SELECT
+    COUNT(*) OVER() as "total_count!",
+    id AS "id!",
+    kind AS "kind!",
+    applies_from AS "applies_from!",
+    applies_to AS "applies_to?",
+    date AS "date?",
+    weekday AS "weekday?",
+    starts_on AS "starts_on?",
+    ends_on AS "ends_on?",
+    name AS "name?",
+    description AS "description?",
+    user_id AS "user_id?",
+    reason AS "reason?",
+    created_by AS "created_by?",
+    created_at AS "created_at!",
+    is_override AS "is_override?"
+FROM combined
+WHERE
+    ($1::text IS NULL OR $1 = '' OR $1 = 'all' OR kind = $1)
+    AND ($2::date IS NULL OR applies_from >= $2)
+    AND ($3::date IS NULL OR applies_from <= $3)
+ORDER BY applies_from DESC, created_at DESC
+OFFSET $4
+LIMIT $5
+        "#,
+        kind_lower.as_deref(),
+        from,
+        to,
+        offset,
+        per_page as i64,
     )
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
+    .map_err(|err| {
+        tracing::error!(error = ?err, "failed to fetch admin holiday list");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error":"Database error"})),
         )
     })?;
 
-    Ok(Json(
-        holidays
-            .into_iter()
-            .map(HolidayResponse::from)
-            .collect::<Vec<_>>(),
-    ))
+    let total = rows.first().map(|row| row.total_count).unwrap_or(0);
+    let items = rows.into_iter().map(AdminHolidayListItem::from).collect();
+
+    Ok(Json(AdminHolidayListResponse {
+        page: page as i64,
+        per_page: per_page as i64,
+        total,
+        items,
+    }))
 }
 
 pub async fn create_holiday(

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT override\n                FROM holiday_exceptions\n                WHERE user_id = $1 AND exception_date = $2\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "override",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9ef253c89250145bf88a07e0dd3445de13511e0df45fe590d4ca0fc8ba890c63"
+}

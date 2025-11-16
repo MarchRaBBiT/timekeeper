@@ -3,11 +3,11 @@ use chrono_tz::Asia::Tokyo;
 use sqlx::PgPool;
 use timekeeper_backend::{
     config::Config,
+    models::user::{User, UserRole},
     models::{
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
-    models::user::{User, UserRole},
 };
 use uuid::Uuid;
 
@@ -76,8 +76,13 @@ pub async fn seed_leave_request(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> LeaveRequest {
-    let request =
-        LeaveRequest::new(user_id.to_string(), leave_type, start_date, end_date, Some("test".into()));
+    let request = LeaveRequest::new(
+        user_id.to_string(),
+        leave_type,
+        start_date,
+        end_date,
+        Some("test".into()),
+    );
     sqlx::query(
         "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
@@ -119,8 +124,12 @@ pub async fn seed_overtime_request(
     date: NaiveDate,
     planned_hours: f64,
 ) -> OvertimeRequest {
-    let request =
-        OvertimeRequest::new(user_id.to_string(), date, planned_hours, Some("test OT".into()));
+    let request = OvertimeRequest::new(
+        user_id.to_string(),
+        date,
+        planned_hours,
+        Some("test OT".into()),
+    );
     sqlx::query(
         "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",

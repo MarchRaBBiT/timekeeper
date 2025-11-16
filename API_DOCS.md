@@ -492,6 +492,53 @@ Content-Type: application/json
 }
 ```
 
+#### 休日の横断一覧をページネーション表示
+```http
+GET /api/admin/holidays?page=1&per_page=25&type=public&from=2025-01-01&to=2025-03-31
+Authorization: Bearer <token>
+```
+
+**クエリパラメータ**
+
+- `page` (デフォルト 1) … 1 始まりのページ番号。指定しない場合は 1。
+- `per_page` (デフォルト 25) … 1〜100 の間で表示件数を指定。
+- `type` … `public` (祝日) / `weekly` (定休) / `exception` (休日例外) のいずれか。省略または `all` で全件。
+- `from` / `to` … `YYYY-MM-DD` 形式。適用開始日 (`applies_from`) の範囲で絞り込みます。
+
+**レスポンス**
+```json
+{
+  "page": 1,
+  "per_page": 25,
+  "total": 42,
+  "items": [
+    {
+      "id": "a8f6...",
+      "kind": "public",
+      "applies_from": "2025-01-01",
+      "applies_to": null,
+      "date": "2025-01-01",
+      "weekday": null,
+      "starts_on": null,
+      "ends_on": null,
+      "name": "元日",
+      "description": "Google Calendar",
+      "user_id": null,
+      "reason": null,
+      "created_by": "system",
+      "created_at": "2025-01-01T00:00:00Z",
+      "is_override": null
+    }
+  ]
+}
+```
+
+- `kind` … `public` / `weekly` / `exception` を返します。
+- `applies_from` / `applies_to` … 区間があるレコード（定休や例外）で適用範囲を示します。
+- `date` … 祝日実体の日付。定休や例外は `null` になります。
+- `weekday` … `kind=weekly` のときに 0=月〜6=日 を返します。
+- `user_id`・`is_override` … 例外 (exception) の対象と上書き種別を示します。
+
 #### 定休曜日の設定一覧取得
 ```http
 GET /api/admin/holidays/weekly
