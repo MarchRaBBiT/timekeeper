@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use crate::{
     config::Config,
+    handlers::requests_repo,
     models::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
@@ -25,9 +26,9 @@ pub async fn create_leave_request(
     let user_id = user.id;
 
     if !is_valid_leave_window(payload.start_date, payload.end_date) {
-        return Err((
+        return Err(error_response(
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "start_date must be <= end_date"})),
+            "start_date must be <= end_date",
         ));
     }
 
@@ -39,42 +40,14 @@ pub async fn create_leave_request(
         payload.reason,
     );
 
-    sqlx::query(
-        "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"
-    )
-    .bind(&leave_request.id)
-    .bind(&leave_request.user_id)
-    .bind(match leave_request.leave_type {
-        crate::models::leave_request::LeaveType::Annual => "annual",
-        crate::models::leave_request::LeaveType::Sick => "sick",
-        crate::models::leave_request::LeaveType::Personal => "personal",
-        crate::models::leave_request::LeaveType::Other => "other",
-    })
-    .bind(&leave_request.start_date)
-    .bind(&leave_request.end_date)
-    .bind(&leave_request.reason)
-    .bind(match leave_request.status {
-        crate::models::leave_request::RequestStatus::Pending => "pending",
-        crate::models::leave_request::RequestStatus::Approved => "approved",
-        crate::models::leave_request::RequestStatus::Rejected => "rejected",
-        crate::models::leave_request::RequestStatus::Cancelled => "cancelled",
-    })
-    .bind(&leave_request.approved_by)
-    .bind(&leave_request.approved_at)
-    .bind(&leave_request.decision_comment)
-    .bind(&leave_request.rejected_by)
-    .bind(&leave_request.rejected_at)
-    .bind(&leave_request.cancelled_at)
-    .bind(&leave_request.created_at)
-    .bind(&leave_request.updated_at)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create leave request"})),
-        )
-    })?;
+    requests_repo::insert_leave_request(&pool, &leave_request)
+        .await
+        .map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create leave request",
+            )
+        })?;
 
     let response = LeaveRequestResponse::from(leave_request);
     Ok(Json(response))
@@ -88,9 +61,9 @@ pub async fn create_overtime_request(
     let user_id = user.id;
 
     if !is_valid_planned_hours(payload.planned_hours) {
-        return Err((
+        return Err(error_response(
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "planned_hours must be > 0"})),
+            "planned_hours must be > 0",
         ));
     }
 
@@ -101,36 +74,14 @@ pub async fn create_overtime_request(
         payload.reason,
     );
 
-    sqlx::query(
-        "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
-    )
-    .bind(&overtime_request.id)
-    .bind(&overtime_request.user_id)
-    .bind(&overtime_request.date)
-    .bind(&overtime_request.planned_hours)
-    .bind(&overtime_request.reason)
-    .bind(match overtime_request.status {
-        crate::models::overtime_request::RequestStatus::Pending => "pending",
-        crate::models::overtime_request::RequestStatus::Approved => "approved",
-        crate::models::overtime_request::RequestStatus::Rejected => "rejected",
-        crate::models::overtime_request::RequestStatus::Cancelled => "cancelled",
-    })
-    .bind(&overtime_request.approved_by)
-    .bind(&overtime_request.approved_at)
-    .bind(&overtime_request.decision_comment)
-    .bind(&overtime_request.rejected_by)
-    .bind(&overtime_request.rejected_at)
-    .bind(&overtime_request.cancelled_at)
-    .bind(&overtime_request.created_at)
-    .bind(&overtime_request.updated_at)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create overtime request"})),
-        )
-    })?;
+    requests_repo::insert_overtime_request(&pool, &overtime_request)
+        .await
+        .map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create overtime request",
+            )
+        })?;
 
     let response = OvertimeRequestResponse::from(overtime_request);
     Ok(Json(response))
@@ -142,43 +93,27 @@ pub async fn get_my_requests(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
     let user_id = user.id;
 
-    // Get leave requests
-    let leave_requests = sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE user_id = $1 ORDER BY created_at DESC"
-    )
-    .bind(&user_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|err| {
-        tracing::error!(
-            error = %err,
-            user_id = %user_id,
-            "failed to fetch leave_requests in get_my_requests"
-        );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    let leave_requests = requests_repo::list_leave_requests_by_user(&pool, &user_id)
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                error = %err,
+                user_id = %user_id,
+                "failed to fetch leave_requests in get_my_requests"
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
+        })?;
 
-    // Get overtime requests
-    let overtime_requests = sqlx::query_as::<_, OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE user_id = $1 ORDER BY created_at DESC"
-    )
-    .bind(&user_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|err| {
-        tracing::error!(
-            error = %err,
-            user_id = %user_id,
-            "failed to fetch overtime_requests in get_my_requests"
-        );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    let overtime_requests = requests_repo::list_overtime_requests_by_user(&pool, &user_id)
+        .await
+        .map_err(|err| {
+            tracing::error!(
+                error = %err,
+                user_id = %user_id,
+                "failed to fetch overtime_requests in get_my_requests"
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
+        })?;
 
     let response = json!({
         "leave_requests": leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
@@ -212,76 +147,79 @@ pub async fn update_request(
     let user_id = user.id;
 
     // Try leave update
-    if let Some(req) = sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = $1 AND user_id = $2"
-    )
-    .bind(&request_id)
-    .bind(&user_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
+    if let Some(req) = requests_repo::fetch_leave_request_by_id(&pool, &request_id, &user_id)
+        .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    {
         if !req.is_pending() {
-            return Err((StatusCode::CONFLICT, Json(json!({"error":"Only pending requests can be updated"}))));
+            return Err(error_response(
+                StatusCode::CONFLICT,
+                "Only pending requests can be updated",
+            ));
         }
-        let upd: UpdateLeavePayload = serde_json::from_value(payload.clone()).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error":"Invalid payload"}))))?;
+        let upd: UpdateLeavePayload = serde_json::from_value(payload.clone())
+            .map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid payload"))?;
         let new_type = upd.leave_type.unwrap_or(req.leave_type);
         let new_start = upd.start_date.unwrap_or(req.start_date);
         let new_end = upd.end_date.unwrap_or(req.end_date);
-        if new_start > new_end { return Err((StatusCode::BAD_REQUEST, Json(json!({"error":"start_date must be <= end_date"})))); }
-        let new_reason = upd.reason.or(req.reason);
+        if new_start > new_end {
+            return Err(error_response(
+                StatusCode::BAD_REQUEST,
+                "start_date must be <= end_date",
+            ));
+        }
+        let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
-        sqlx::query("UPDATE leave_requests SET leave_type = $1, start_date = $2, end_date = $3, reason = $4, updated_at = $5 WHERE id = $6")
-            .bind(match new_type {
-                crate::models::leave_request::LeaveType::Annual => "annual",
-                crate::models::leave_request::LeaveType::Sick => "sick",
-                crate::models::leave_request::LeaveType::Personal => "personal",
-                crate::models::leave_request::LeaveType::Other => "other",
-            })
-            .bind(&new_start)
-            .bind(&new_end)
-            .bind(&new_reason)
-            .bind(&now)
-            .bind(&req.id)
-            .execute(&pool)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to update request"}))))?;
+        requests_repo::update_leave_request(
+            &pool, &req.id, new_type, new_start, new_end, new_reason, now,
+        )
+        .await
+        .map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update request",
+            )
+        })?;
         return Ok(Json(json!({"message":"Leave request updated"})));
     }
 
     // Try overtime update
-    if let Some(req) = sqlx::query_as::<_, OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = $1 AND user_id = $2"
-    )
-    .bind(&request_id)
-    .bind(&user_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
+    if let Some(req) = requests_repo::fetch_overtime_request_by_id(&pool, &request_id, &user_id)
+        .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+    {
         if !req.is_pending() {
-            return Err((StatusCode::CONFLICT, Json(json!({"error":"Only pending requests can be updated"}))));
+            return Err(error_response(
+                StatusCode::CONFLICT,
+                "Only pending requests can be updated",
+            ));
         }
-        let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone()).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error":"Invalid payload"}))))?;
+        let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone())
+            .map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid payload"))?;
         let new_date = upd.date.unwrap_or(req.date);
         let new_hours = upd.planned_hours.unwrap_or(req.planned_hours);
-        if new_hours <= 0.0 { return Err((StatusCode::BAD_REQUEST, Json(json!({"error":"planned_hours must be > 0"})))); }
-        let new_reason = upd.reason.or(req.reason);
+        if new_hours <= 0.0 {
+            return Err(error_response(
+                StatusCode::BAD_REQUEST,
+                "planned_hours must be > 0",
+            ));
+        }
+        let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
-        sqlx::query("UPDATE overtime_requests SET date = $1, planned_hours = $2, reason = $3, updated_at = $4 WHERE id = $5")
-            .bind(&new_date)
-            .bind(&new_hours)
-            .bind(&new_reason)
-            .bind(&now)
-            .bind(&req.id)
-            .execute(&pool)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to update request"}))))?;
+        requests_repo::update_overtime_request(
+            &pool, &req.id, new_date, new_hours, new_reason, now,
+        )
+        .await
+        .map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update request",
+            )
+        })?;
         return Ok(Json(json!({"message":"Overtime request updated"})));
     }
 
-    Err((
-        StatusCode::NOT_FOUND,
-        Json(json!({"error":"Request not found"})),
-    ))
+    Err(error_response(StatusCode::NOT_FOUND, "Request not found"))
 }
 
 pub async fn cancel_request(
@@ -291,38 +229,25 @@ pub async fn cancel_request(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let user_id = user.id;
     // Leave
-    let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'cancelled', cancelled_at = $1, updated_at = $2 WHERE id = $3 AND user_id = $4 AND status = 'pending'"
-    )
-    .bind(&Utc::now())
-    .bind(&Utc::now())
-    .bind(&request_id)
-    .bind(&user_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
-    if result.rows_affected() > 0 {
+    let now = Utc::now();
+    let result = requests_repo::cancel_leave_request(&pool, &request_id, &user_id, now)
+        .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
     // Overtime
-    let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'cancelled', cancelled_at = $1, updated_at = $2 WHERE id = $3 AND user_id = $4 AND status = 'pending'"
-    )
-    .bind(&Utc::now())
-    .bind(&Utc::now())
-    .bind(&request_id)
-    .bind(&user_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
-    if result.rows_affected() > 0 {
+    let result = requests_repo::cancel_overtime_request(&pool, &request_id, &user_id, Utc::now())
+        .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+    if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
-    Err((
+    Err(error_response(
         StatusCode::NOT_FOUND,
-        Json(json!({"error":"Request not found or not cancellable"})),
+        "Request not found or not cancellable",
     ))
 }
 
@@ -352,4 +277,8 @@ mod tests {
         assert!(!is_valid_planned_hours(0.0));
         assert!(!is_valid_planned_hours(-1.0));
     }
+}
+
+fn error_response(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Value>) {
+    (status, Json(json!({ "error": message.into() })))
 }

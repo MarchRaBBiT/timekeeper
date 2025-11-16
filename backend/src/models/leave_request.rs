@@ -76,6 +76,28 @@ impl Default for RequestStatus {
     }
 }
 
+impl LeaveType {
+    pub fn db_value(&self) -> &'static str {
+        match self {
+            LeaveType::Annual => "annual",
+            LeaveType::Sick => "sick",
+            LeaveType::Personal => "personal",
+            LeaveType::Other => "other",
+        }
+    }
+}
+
+impl RequestStatus {
+    pub fn db_value(&self) -> &'static str {
+        match self {
+            RequestStatus::Pending => "pending",
+            RequestStatus::Approved => "approved",
+            RequestStatus::Rejected => "rejected",
+            RequestStatus::Cancelled => "cancelled",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 /// Payload used to create a new leave request.
 pub struct CreateLeaveRequest {
