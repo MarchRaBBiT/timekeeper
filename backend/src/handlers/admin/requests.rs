@@ -10,6 +10,7 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use crate::{
     config::Config,
+    handlers::requests_repo,
     models::{
         leave_request::{LeaveRequest, LeaveRequestResponse},
         overtime_request::{OvertimeRequest, OvertimeRequestResponse},
@@ -42,44 +43,29 @@ pub async fn approve_request(
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
 
-    let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'approved', approved_by = $1, approved_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'",
-    )
-    .bind(&approver_id)
-    .bind(&now_utc)
-    .bind(&comment)
-    .bind(&now_utc)
-    .bind(&request_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
-    if result.rows_affected() > 0 {
+    if requests_repo::approve_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        > 0
+    {
         return Ok(Json(json!({"message": "Leave request approved"})));
     }
 
-    let now_utc = time::now_utc(&config.time_zone);
-    let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'approved', approved_by = $1, approved_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'",
-    )
-    .bind(&approver_id)
-    .bind(&now_utc)
-    .bind(&comment)
-    .bind(&now_utc)
-    .bind(&request_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
-    if result.rows_affected() > 0 {
+    if requests_repo::approve_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        > 0
+    {
         return Ok(Json(json!({"message": "Overtime request approved"})));
     }
 
@@ -113,44 +99,29 @@ pub async fn reject_request(
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
 
-    let result = sqlx::query(
-        "UPDATE leave_requests SET status = 'rejected', rejected_by = $1, rejected_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'",
-    )
-    .bind(&approver_id)
-    .bind(&now_utc)
-    .bind(&comment)
-    .bind(&now_utc)
-    .bind(&request_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
-    if result.rows_affected() > 0 {
+    if requests_repo::reject_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        > 0
+    {
         return Ok(Json(json!({"message": "Leave request rejected"})));
     }
 
-    let now_utc = time::now_utc(&config.time_zone);
-    let result = sqlx::query(
-        "UPDATE overtime_requests SET status = 'rejected', rejected_by = $1, rejected_at = $2, decision_comment = $3, updated_at = $4 WHERE id = $5 AND status = 'pending'",
-    )
-    .bind(&approver_id)
-    .bind(&now_utc)
-    .bind(&comment)
-    .bind(&now_utc)
-    .bind(&request_id)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
-    if result.rows_affected() > 0 {
+    if requests_repo::reject_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        > 0
+    {
         return Ok(Json(json!({"message": "Overtime request rejected"})));
     }
 
@@ -256,33 +227,31 @@ pub async fn get_request_detail(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    if let Some(item) = sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests WHERE id = $1",
-    )
-    .bind(&request_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })? {
-        return Ok(Json(json!({"kind":"leave","data": LeaveRequestResponse::from(item)})));
+    if let Some(item) = requests_repo::fetch_leave_request(&pool, &request_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Database error"})),
+            )
+        })?
+    {
+        return Ok(Json(
+            json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
+        ));
     }
-    if let Some(item) = sqlx::query_as::<_, OvertimeRequest>(
-        "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests WHERE id = $1",
-    )
-    .bind(&request_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })? {
-        return Ok(Json(json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)})));
+    if let Some(item) = requests_repo::fetch_overtime_request(&pool, &request_id)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Database error"})),
+            )
+        })?
+    {
+        return Ok(Json(
+            json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
+        ));
     }
     Err((
         StatusCode::NOT_FOUND,
