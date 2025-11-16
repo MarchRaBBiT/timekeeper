@@ -9,6 +9,11 @@ use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use std::sync::Arc;
 
+use crate::handlers::attendance_utils::{
+    ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in, ensure_not_clocked_out,
+    ensure_owned, error_response, fetch_attendance_by_id, fetch_attendance_by_user_date,
+    insert_attendance_record, update_clock_in, update_clock_out,
+};
 use crate::{
     config::Config,
     models::{
@@ -61,89 +66,24 @@ pub async fn clock_in(
 
     reject_if_holiday(&holiday_service, date, user_id).await?;
 
-    // Check if attendance record already exists for this date
-    let existing_attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
-    )
-    .bind(user_id)
-    .bind(date)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
-
-    let attendance = match existing_attendance {
+    let attendance = match fetch_attendance_by_user_date(&pool, user_id, date).await? {
         Some(mut attendance) => {
-            if attendance.clock_in_time.is_some() {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Already clocked in today"})),
-                ));
-            }
+            ensure_not_clocked_in(&attendance)?;
             attendance.clock_in_time = Some(clock_in_time);
             attendance.updated_at = now_utc;
-
-            sqlx::query("UPDATE attendance SET clock_in_time = $1, updated_at = $2 WHERE id = $3")
-                .bind(&attendance.clock_in_time)
-                .bind(&attendance.updated_at)
-                .bind(&attendance.id)
-                .execute(&pool)
-                .await
-                .map_err(|_| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "Failed to update attendance"})),
-                    )
-                })?;
-
+            update_clock_in(&pool, &attendance).await?;
             attendance
         }
         None => {
             let mut attendance = Attendance::new(user_id.to_string(), date, now_utc);
             attendance.clock_in_time = Some(clock_in_time);
-
-            sqlx::query(
-                "INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
-            )
-            .bind(&attendance.id)
-            .bind(&attendance.user_id)
-            .bind(&attendance.date)
-            .bind(&attendance.clock_in_time)
-            .bind(&attendance.clock_out_time)
-            .bind(status_to_str(&attendance.status))
-            .bind(&attendance.total_work_hours)
-            .bind(&attendance.created_at)
-            .bind(&attendance.updated_at)
-            .execute(&pool)
-            .await
-            .map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to create attendance record"})),
-                )
-            })?;
-
+            insert_attendance_record(&pool, &attendance).await?;
             attendance
         }
     };
 
-    // Get break records for this attendance
     let break_records = get_break_records(&pool, &attendance.id).await?;
-
-    let response = AttendanceResponse {
-        id: attendance.id,
-        user_id: attendance.user_id,
-        date: attendance.date,
-        clock_in_time: attendance.clock_in_time,
-        clock_out_time: attendance.clock_out_time,
-        status: attendance.status,
-        total_work_hours: attendance.total_work_hours,
-        break_records,
-    };
+    let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
 }
@@ -164,75 +104,27 @@ pub async fn clock_out(
 
     reject_if_holiday(&holiday_service, date, user_id).await?;
 
-    // Find attendance record for this date
-    let mut attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
-    )
-    .bind(user_id)
-    .bind(date)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?
-    .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "No attendance record found for today"})),
-        )
-    })?;
+    let mut attendance = fetch_attendance_by_user_date(&pool, user_id, date)
+        .await?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "No attendance record found for today",
+            )
+        })?;
 
-    if attendance.is_clocked_out() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Already clocked out today"})),
-        ));
-    }
-
-    if attendance.clock_in_time.is_none() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Must clock in before clocking out"})),
-        ));
-    }
+    ensure_not_clocked_out(&attendance)?;
+    ensure_clock_in_exists(&attendance)?;
 
     attendance.clock_out_time = Some(clock_out_time);
     let break_minutes = total_break_minutes(&pool, &attendance.id).await?;
     attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = now_utc;
 
-    sqlx::query(
-        "UPDATE attendance SET clock_out_time = $1, total_work_hours = $2, updated_at = $3 WHERE id = $4"
-    )
-    .bind(&attendance.clock_out_time)
-    .bind(&attendance.total_work_hours)
-    .bind(&attendance.updated_at)
-    .bind(&attendance.id)
-    .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to update attendance"})),
-        )
-    })?;
+    update_clock_out(&pool, &attendance).await?;
 
-    // Get break records for this attendance
     let break_records = get_break_records(&pool, &attendance.id).await?;
-
-    let response = AttendanceResponse {
-        id: attendance.id,
-        user_id: attendance.user_id,
-        date: attendance.date,
-        clock_in_time: attendance.clock_in_time,
-        clock_out_time: attendance.clock_out_time,
-        status: attendance.status,
-        total_work_hours: attendance.total_work_hours,
-        break_records,
-    };
+    let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
 }
@@ -248,34 +140,9 @@ pub async fn break_start(
     let break_start_time = now_local.naive_local();
 
     // Check if attendance record exists and user is clocked in
-    let attendance = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
-    )
-    .bind(&payload.attendance_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?
-    .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Attendance record not found"})),
-        )
-    })?;
-
-    if attendance.user_id != user.id {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
-    }
-    if !attendance.is_clocked_in() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Must be clocked in to start break"})),
-        ));
-    }
+    let attendance = fetch_attendance_by_id(&pool, &payload.attendance_id).await?;
+    ensure_owned(&attendance, &user.id)?;
+    ensure_clocked_in(&attendance)?;
 
     // Check if there's already an active break
     let active_break = sqlx::query_as::<_, BreakRecord>(
@@ -359,18 +226,8 @@ pub async fn break_end(
             Json(json!({"error": "Break already ended"})),
         ));
     }
-    // Check ownership
-    let att = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
-    )
-    .bind(&break_record.attendance_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error":"Attendance record not found"}))))?;
-    if att.user_id != user.id {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
-    }
+    let att = fetch_attendance_by_id(&pool, &break_record.attendance_id).await?;
+    ensure_owned(&att, &user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
 
@@ -469,17 +326,7 @@ pub async fn get_my_attendance(
     let mut responses = Vec::new();
     for attendance in attendances {
         let break_records = get_break_records(&pool, &attendance.id).await?;
-        let response = AttendanceResponse {
-            id: attendance.id,
-            user_id: attendance.user_id,
-            date: attendance.date,
-            clock_in_time: attendance.clock_in_time,
-            clock_out_time: attendance.clock_out_time,
-            status: attendance.status,
-            total_work_hours: attendance.total_work_hours,
-            break_records,
-        };
-        responses.push(response);
+        responses.push(build_attendance_response(attendance, break_records));
     }
 
     Ok(Json(responses))
@@ -733,6 +580,22 @@ pub async fn export_my_attendance(
     })))
 }
 
+fn build_attendance_response(
+    attendance: Attendance,
+    break_records: Vec<BreakRecordResponse>,
+) -> AttendanceResponse {
+    AttendanceResponse {
+        id: attendance.id,
+        user_id: attendance.user_id,
+        date: attendance.date,
+        clock_in_time: attendance.clock_in_time,
+        clock_out_time: attendance.clock_out_time,
+        status: attendance.status,
+        total_work_hours: attendance.total_work_hours,
+        break_records,
+    }
+}
+
 async fn get_break_records(
     pool: &PgPool,
     attendance_id: &str,
@@ -804,16 +667,6 @@ pub(crate) async fn recalculate_total_hours(
         })?;
 
     Ok(())
-}
-
-fn status_to_str(s: &crate::models::attendance::AttendanceStatus) -> &'static str {
-    use crate::models::attendance::AttendanceStatus::*;
-    match s {
-        Present => "present",
-        Absent => "absent",
-        Late => "late",
-        HalfDay => "half_day",
-    }
 }
 
 async fn reject_if_holiday(
