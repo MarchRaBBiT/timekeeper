@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::{
     config::Config,
     models::{
-        holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
+        holiday::{CreateHolidayPayload, HolidayResponse},
         user::User,
     },
     services::holiday::HolidayService,
@@ -24,16 +24,11 @@ const GOOGLE_JP_HOLIDAY_ICS: &str =
 const HOLIDAY_DESCRIPTION_PREFIX: &str = "\u{795d}\u{65e5}"; // Japanese word for "holiday"
 
 pub async fn list_public_holidays(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State((_pool, _config)): State<(PgPool, Config)>,
     Extension(_user): Extension<User>,
+    Extension(holiday_service): Extension<Arc<HolidayService>>,
 ) -> Result<Json<Vec<HolidayResponse>>, (StatusCode, Json<serde_json::Value>)> {
-    let holidays = sqlx::query_as::<_, Holiday>(
-        "SELECT id, holiday_date, name, description, created_at, updated_at \
-         FROM holidays ORDER BY holiday_date",
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|_| {
+    let holidays = holiday_service.list_public_holidays().await.map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error":"Database error"})),
