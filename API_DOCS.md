@@ -138,14 +138,16 @@ Authorization: Bearer <token>
 **レスポンス**
 ```json
 [
-  { "date": "2025-01-01", "reason": "public holiday" },
-  { "date": "2025-01-05", "reason": "weekly holiday" }
+  { "date": "2025-01-01", "is_holiday": true, "reason": "public holiday" },
+  { "date": "2025-01-05", "is_holiday": true, "reason": "weekly holiday" },
+  { "date": "2025-01-08", "is_holiday": false, "reason": "working day" }
 ]
 ```
 
 - `month` は 1〜12 のみ指定可能。
 - `reason` の値は `check` API と同じ。
-- 個別例外を設定したユーザーは、該当する日に `forced holiday` または `working day` が返却されます。
+- `is_holiday` フラグで休日／稼働日のどちらとして扱われるかを判定できます。
+- 個別例外を設定したユーザーは、該当する日に `forced holiday` または `working day` が返却され、`is_holiday` もそれに合わせて更新されます。
 
 #### MFA登録開始
 ```http

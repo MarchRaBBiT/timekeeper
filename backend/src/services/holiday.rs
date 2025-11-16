@@ -29,9 +29,15 @@ impl HolidayService {
             .fetch_optional(&self.pool)
             .await?
             {
+                let reason = if exception.r#override {
+                    HolidayReason::ForcedHolidayOverride
+                } else {
+                    HolidayReason::WorkingDayOverride
+                };
+
                 return Ok(HolidayDecision {
                     is_holiday: exception.r#override,
-                    reason: HolidayReason::ExceptionOverride,
+                    reason,
                 });
             }
         }
@@ -103,10 +109,15 @@ impl HolidayService {
             }
 
             let decision = self.is_holiday(cursor, user_id).await?;
-            if decision.is_holiday {
+            let include = match decision.reason {
+                HolidayReason::None => decision.is_holiday,
+                _ => true,
+            };
+
+            if include {
                 entries.push(HolidayCalendarEntry {
                     date: cursor,
-                    is_holiday: true,
+                    is_holiday: decision.is_holiday,
                     reason: decision.reason,
                 });
             }
@@ -131,7 +142,8 @@ pub struct HolidayDecision {
 pub enum HolidayReason {
     PublicHoliday,
     WeeklyHoliday,
-    ExceptionOverride,
+    ForcedHolidayOverride,
+    WorkingDayOverride,
     None,
 }
 
@@ -140,7 +152,8 @@ impl HolidayReason {
         match self {
             HolidayReason::PublicHoliday => "public holiday",
             HolidayReason::WeeklyHoliday => "weekly holiday",
-            HolidayReason::ExceptionOverride => "forced holiday",
+            HolidayReason::ForcedHolidayOverride => "forced holiday",
+            HolidayReason::WorkingDayOverride => "working day",
             HolidayReason::None => "working day",
         }
     }

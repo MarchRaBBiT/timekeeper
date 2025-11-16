@@ -16,7 +16,7 @@ use crate::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
-    services::holiday::HolidayService,
+    services::holiday::{HolidayReason, HolidayService},
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -73,6 +73,7 @@ pub struct HolidayCheckResponse {
 #[derive(Debug, Serialize)]
 pub struct HolidayMonthEntry {
     pub date: NaiveDate,
+    pub is_holiday: bool,
     pub reason: String,
 }
 
@@ -133,10 +134,9 @@ pub async fn check_holiday(
             )
         })?;
 
-    let reason = if decision.is_holiday {
-        Some(decision.reason.label().to_string())
-    } else {
-        None
+    let reason = match decision.reason {
+        HolidayReason::None => None,
+        other => Some(other.label().to_string()),
     };
 
     Ok(Json(HolidayCheckResponse {
@@ -171,6 +171,7 @@ pub async fn list_month_holidays(
         .into_iter()
         .map(|entry| HolidayMonthEntry {
             date: entry.date,
+            is_holiday: entry.is_holiday,
             reason: entry.reason.label().to_string(),
         })
         .collect();
