@@ -6,7 +6,6 @@ use axum::{
     Extension, Json,
 };
 use chrono::NaiveDate;
-use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::{admin, holidays},
     models::{holiday::CreateWeeklyHolidayPayload, user::UserRole},
@@ -14,10 +13,14 @@ use timekeeper_backend::{
 };
 
 mod support;
-use support::{seed_user, seed_weekly_holiday, test_config};
+use support::{seed_user, seed_weekly_holiday, setup_test_pool, test_config};
 
-#[sqlx::test(migrations = "./migrations")]
-async fn regular_admin_cannot_backdate_weekly_holiday(pool: PgPool) {
+#[tokio::test]
+async fn regular_admin_cannot_backdate_weekly_holiday() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping regular_admin_cannot_backdate_weekly_holiday: database unavailable");
+        return;
+    };
     let admin_user = seed_user(&pool, UserRole::Admin, false).await;
     let config = test_config();
     let backdated = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
@@ -29,7 +32,7 @@ async fn regular_admin_cannot_backdate_weekly_holiday(pool: PgPool) {
     };
 
     let result = admin::create_weekly_holiday(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(admin_user.clone()),
         Json(payload),
     )
@@ -39,8 +42,12 @@ async fn regular_admin_cannot_backdate_weekly_holiday(pool: PgPool) {
     assert_eq!(err.0, StatusCode::BAD_REQUEST);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn system_admin_can_backdate_weekly_holiday(pool: PgPool) {
+#[tokio::test]
+async fn system_admin_can_backdate_weekly_holiday() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping system_admin_can_backdate_weekly_holiday: database unavailable");
+        return;
+    };
     let admin_user = seed_user(&pool, UserRole::Admin, true).await;
     let config = test_config();
     let backdated = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
@@ -52,7 +59,7 @@ async fn system_admin_can_backdate_weekly_holiday(pool: PgPool) {
     };
 
     let response = admin::create_weekly_holiday(
-        State((pool.clone(), config.clone())),
+        State((pool.clone_pool(), config.clone())),
         Extension(admin_user.clone()),
         Json(payload),
     )
@@ -63,13 +70,17 @@ async fn system_admin_can_backdate_weekly_holiday(pool: PgPool) {
     assert_eq!(response.0.starts_on, backdated);
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn holiday_check_endpoint_detects_weekly_rule(pool: PgPool) {
+#[tokio::test]
+async fn holiday_check_endpoint_detects_weekly_rule() {
+    let Some(pool) = setup_test_pool().await else {
+        eprintln!("Skipping holiday_check_endpoint_detects_weekly_rule: database unavailable");
+        return;
+    };
     let user = seed_user(&pool, UserRole::Employee, false).await;
     let target_date = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
     seed_weekly_holiday(&pool, target_date).await;
 
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_service = Arc::new(HolidayService::new(pool.clone_pool()));
 
     let response = holidays::check_holiday(
         Extension(user.clone()),

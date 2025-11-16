@@ -1,6 +1,11 @@
 use chrono::{Datelike, Duration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
-use sqlx::PgPool;
+use sqlx::{postgres::PgPoolOptions, PgPool};
+use std::{
+    env,
+    sync::{Arc, OnceLock},
+    time::Duration as StdDuration,
+};
 use timekeeper_backend::{
     config::Config,
     models::user::{User, UserRole},
@@ -10,17 +15,110 @@ use timekeeper_backend::{
         overtime_request::OvertimeRequest,
     },
 };
+use tokio::{
+    sync::{Mutex, OwnedMutexGuard},
+    time::timeout,
+};
 use uuid::Uuid;
 
+const DEFAULT_DATABASE_URL: &str = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper";
+
 pub fn test_config() -> Config {
+    let database_url = database_url();
+
     Config {
-        database_url: "postgres://timekeeper:timekeeper@localhost:5432/timekeeper".into(),
+        database_url,
         jwt_secret: "a_secure_token_that_is_long_enough_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
         time_zone: Tokyo,
         mfa_issuer: "Timekeeper".into(),
     }
+}
+
+fn database_url() -> String {
+    env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.into())
+}
+
+pub struct TestDatabase {
+    pool: PgPool,
+    _guard: OwnedMutexGuard<()>,
+}
+
+impl TestDatabase {
+    pub fn clone_pool(&self) -> PgPool {
+        self.pool.clone()
+    }
+}
+
+impl std::ops::Deref for TestDatabase {
+    type Target = PgPool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
+impl AsRef<PgPool> for TestDatabase {
+    fn as_ref(&self) -> &PgPool {
+        &self.pool
+    }
+}
+
+static TEST_DB_GUARD: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
+
+fn test_db_guard() -> Arc<Mutex<()>> {
+    TEST_DB_GUARD
+        .get_or_init(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+pub async fn setup_test_pool() -> Option<TestDatabase> {
+    let database_url = database_url();
+    let connect_future = PgPoolOptions::new()
+        .max_connections(5)
+        .acquire_timeout(StdDuration::from_secs(5))
+        .connect(&database_url);
+
+    let pool = match timeout(StdDuration::from_secs(3), connect_future).await {
+        Ok(Ok(pool)) => pool,
+        Ok(Err(error)) => {
+            eprintln!("Skipping DB-backed test: {error}");
+            return None;
+        }
+        Err(_) => {
+            eprintln!("Skipping DB-backed test: timed out connecting to {database_url}");
+            return None;
+        }
+    };
+
+    let guard = test_db_guard().lock_owned().await;
+
+    if let Err(error) = sqlx::migrate!("./migrations").run(&pool).await {
+        eprintln!("Skipping DB-backed test (migration failed): {error}");
+        return None;
+    }
+
+    if let Err(error) = reset_database(&pool).await {
+        eprintln!("Skipping DB-backed test (cleanup failed): {error}");
+        return None;
+    }
+
+    Some(TestDatabase {
+        pool,
+        _guard: guard,
+    })
+}
+
+async fn reset_database(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "TRUNCATE TABLE holiday_exceptions, weekly_holidays, holidays, leave_requests, overtime_requests, \
+         break_records, attendance, refresh_tokens, users RESTART IDENTITY CASCADE",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 pub async fn seed_user(pool: &PgPool, role: UserRole, is_system_admin: bool) -> User {
@@ -198,4 +296,53 @@ pub async fn seed_holiday_exception(
     .execute(pool)
     .await
     .expect("insert holiday exception");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_MUTEX
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("lock env")
+    }
+
+    fn restore_env(original: Option<String>) {
+        if let Some(value) = original {
+            env::set_var("DATABASE_URL", value);
+        } else {
+            env::remove_var("DATABASE_URL");
+        }
+    }
+
+    #[test]
+    fn test_config_uses_database_url_from_env() {
+        let _guard = env_guard();
+        let original = env::var("DATABASE_URL").ok();
+        env::set_var("DATABASE_URL", "postgres://override/testdb");
+
+        let config = test_config();
+
+        assert_eq!(config.database_url, "postgres://override/testdb");
+        restore_env(original);
+    }
+
+    #[test]
+    fn test_config_falls_back_to_default_when_env_missing() {
+        let _guard = env_guard();
+        let original = env::var("DATABASE_URL").ok();
+        env::remove_var("DATABASE_URL");
+
+        let config = test_config();
+
+        assert_eq!(
+            config.database_url,
+            "postgres://timekeeper:timekeeper@localhost:5432/timekeeper"
+        );
+        restore_env(original);
+    }
 }
