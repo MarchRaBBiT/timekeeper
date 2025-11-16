@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+pub use crate::models::request::RequestStatus;
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 /// Database representation of a leave request submitted by an employee.
 pub struct LeaveRequest {
@@ -53,27 +55,6 @@ pub enum LeaveType {
     Personal,
     /// Custom leave type stored as free-form text.
     Other,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-/// Workflow status for the leave request lifecycle.
-pub enum RequestStatus {
-    /// Awaiting review.
-    Pending,
-    /// Approved by an administrator.
-    Approved,
-    /// Rejected by an administrator.
-    Rejected,
-    /// Cancelled by the requester or system.
-    Cancelled,
-}
-
-impl Default for RequestStatus {
-    fn default() -> Self {
-        RequestStatus::Pending
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
