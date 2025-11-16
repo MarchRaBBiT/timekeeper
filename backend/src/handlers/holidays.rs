@@ -73,6 +73,7 @@ pub struct HolidayCheckResponse {
 #[derive(Debug, Serialize)]
 pub struct HolidayMonthEntry {
     pub date: NaiveDate,
+    pub is_holiday: bool,
     pub reason: String,
 }
 
@@ -170,6 +171,7 @@ pub async fn list_month_holidays(
         .into_iter()
         .map(|entry| HolidayMonthEntry {
             date: entry.date,
+            is_holiday: entry.is_holiday,
             reason: entry.reason.label().to_string(),
         })
         .collect();

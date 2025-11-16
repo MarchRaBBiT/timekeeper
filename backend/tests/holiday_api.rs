@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::{admin, holidays},
@@ -119,4 +119,48 @@ async fn holiday_check_endpoint_reports_working_day_override(pool: PgPool) {
 
     assert!(!response.0.is_holiday);
     assert_eq!(response.0.reason.as_deref(), Some("working day"));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn holiday_month_endpoint_marks_working_day_overrides(pool: PgPool) {
+    let user = seed_user(&pool, UserRole::Employee, false).await;
+    let target_date = NaiveDate::from_ymd_opt(2025, 1, 8).unwrap();
+    seed_weekly_holiday(&pool, target_date).await;
+
+    sqlx::query(
+        "INSERT INTO holiday_exceptions \
+            (id, user_id, exception_date, override, reason, created_by, created_at) \
+         VALUES ($1, $2, $3, FALSE, 'Override to work', 'system', NOW())",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&user.id)
+    .bind(target_date)
+    .execute(&pool)
+    .await
+    .expect("insert exception");
+
+    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+
+    let response = holidays::list_month_holidays(
+        Extension(user.clone()),
+        Extension(holiday_service.clone()),
+        Query(holidays::HolidayMonthQuery {
+            year: target_date.year(),
+            month: target_date.month(),
+        }),
+    )
+    .await
+    .expect("month call should succeed");
+
+    let entry = response
+        .0
+        .iter()
+        .find(|day| day.date == target_date)
+        .expect("calendar should include override day");
+
+    assert!(
+        !entry.is_holiday,
+        "override day should be marked as working"
+    );
+    assert_eq!(entry.reason, "working day");
 }
