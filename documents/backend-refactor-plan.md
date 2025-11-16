@@ -2,6 +2,13 @@
 
 > ブランチ方針: この計画は `refactor/backend`（横串）、機能別サブブランチ（`refactor/backend-attendance` など）で順次適用する想定。
 
+## 進捗チェックリスト
+- [x] `refactor/backend-attendance`: 共通ヘルパー + clock/break ハンドラのDRY化
+- [ ] `refactor/backend-requests`: Leave/Overtimeリクエストのrepository化
+- [ ] `refactor/backend-admin`: 管理APIのモジュール分割とレスポンス統一
+- [ ] `refactor/backend-holidays`: Holiday Service/handlerの再構成
+- [ ] `refactor/backend-models`: Enum変換/モデルimplの統合
+
 ## 1. フロントエンドレビュー結果（参考）
 - `frontend/src/pages/admin.rs` の `AdminPage` は view を分割済ながらシグナル生成・API呼び出し・状態変更が同一スコープに集約しており、`load_list` や `on_reject` などの handler は何をパラメータ化しているのか把握しづらい（例: `load_list` の `Rc<dyn Fn()>` が `status`/`per_page` などを外部から直接参照）。
 - `frontend/src/components/cards.rs` の `WeeklyHolidayCard` や `AdminHolidayListCard` は表示と設定ロジックを混在させており、MVVM/MVC で言う「ViewModel」が存在しないため view が肥大化。APIレスポンスの整形や `json` マクロを直接呼び出す箇所が多く、試験的な変更が増えると再利用性の高いパーツに変化が集中します。
