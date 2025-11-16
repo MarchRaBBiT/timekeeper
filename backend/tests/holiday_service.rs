@@ -190,3 +190,39 @@ async fn monthly_listing_respects_weekly_effective_range(pool: PgPool) -> sqlx::
 
     Ok(())
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn invalidate_month_refreshes_cached_sources(pool: PgPool) -> sqlx::Result<()> {
+    let jan1 = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+    sqlx::query(
+        "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
+         VALUES ($1, $2, 'New Year', NULL, NOW(), NOW())",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(jan1)
+    .execute(&pool)
+    .await?;
+
+    let service = HolidayService::new(pool.clone());
+    let initial = service.list_month(2025, 1, None).await?;
+    assert_eq!(initial.len(), 1);
+
+    let jan2 = NaiveDate::from_ymd_opt(2025, 1, 2).unwrap();
+    sqlx::query(
+        "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
+         VALUES ($1, $2, 'Extra', NULL, NOW(), NOW())",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(jan2)
+    .execute(&pool)
+    .await?;
+
+    let still_cached = service.list_month(2025, 1, None).await?;
+    assert_eq!(still_cached.len(), 1);
+
+    service.invalidate_month(2025, 1, None).await?;
+    let refreshed = service.list_month(2025, 1, None).await?;
+    assert_eq!(refreshed.len(), 2);
+
+    Ok(())
+}

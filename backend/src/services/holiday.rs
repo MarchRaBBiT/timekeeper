@@ -1,16 +1,41 @@
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 use chrono::{Datelike, Duration, NaiveDate};
 use sqlx::{PgPool, Row};
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct HolidayService {
     pool: PgPool,
+    month_cache: Arc<RwLock<HashMap<MonthCacheKey, Arc<HolidaySources>>>>,
 }
 
 impl HolidayService {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            month_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub async fn invalidate_month(
+        &self,
+        year: i32,
+        month: u32,
+        user_id: Option<&str>,
+    ) -> sqlx::Result<()> {
+        month_bounds(year, month)?;
+        let mut cache = self.month_cache.write().await;
+        match user_id {
+            Some(id) => {
+                cache.remove(&MonthCacheKey::new(year, month, Some(id)));
+            }
+            None => {
+                cache.retain(|key, _| !key.is_month(year, month));
+            }
+        }
+        Ok(())
     }
 
     pub async fn is_holiday(
@@ -18,10 +43,10 @@ impl HolidayService {
         date: NaiveDate,
         user_id: Option<&str>,
     ) -> sqlx::Result<HolidayDecision> {
-        let end = date
-            .succ_opt()
-            .ok_or_else(|| sqlx::Error::Protocol("date overflow".into()))?;
-        let sources = self.load_sources(date, end, user_id).await?;
+        let (window_start, window_end) = month_bounds(date.year(), date.month())?;
+        let sources = self
+            .month_sources(date.year(), date.month(), window_start, window_end, user_id)
+            .await?;
         Ok(sources.decision_for(date))
     }
 
@@ -32,7 +57,9 @@ impl HolidayService {
         user_id: Option<&str>,
     ) -> sqlx::Result<Vec<HolidayCalendarEntry>> {
         let (window_start, window_end) = month_bounds(year, month)?;
-        let sources = self.load_sources(window_start, window_end, user_id).await?;
+        let sources = self
+            .month_sources(year, month, window_start, window_end, user_id)
+            .await?;
 
         let mut cursor = window_start;
         let mut entries = Vec::new();
@@ -48,7 +75,28 @@ impl HolidayService {
         Ok(entries)
     }
 
-    async fn load_sources(
+    async fn month_sources(
+        &self,
+        year: i32,
+        month: u32,
+        window_start: NaiveDate,
+        window_end: NaiveDate,
+        user_id: Option<&str>,
+    ) -> sqlx::Result<Arc<HolidaySources>> {
+        let key = MonthCacheKey::new(year, month, user_id);
+        if let Some(entry) = self.month_cache.read().await.get(&key) {
+            return Ok(entry.clone());
+        }
+
+        let sources = Arc::new(
+            self.fetch_sources(window_start, window_end, user_id)
+                .await?,
+        );
+        let mut cache = self.month_cache.write().await;
+        Ok(cache.entry(key).or_insert_with(|| sources.clone()).clone())
+    }
+
+    async fn fetch_sources(
         &self,
         window_start: NaiveDate,
         window_end: NaiveDate,
@@ -172,7 +220,7 @@ pub struct HolidayCalendarEntry {
     pub reason: HolidayReason,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct HolidaySources {
     public_holidays: BTreeSet<NaiveDate>,
     weekly_holidays: BTreeSet<NaiveDate>,
@@ -282,4 +330,25 @@ fn align_weekday_on_or_after(date: NaiveDate, weekday: u32) -> NaiveDate {
     let current = date.weekday().num_days_from_monday();
     let diff = (weekday + 7 - current) % 7;
     date + Duration::days(diff as i64)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct MonthCacheKey {
+    year: i32,
+    month: u32,
+    user_id: Option<String>,
+}
+
+impl MonthCacheKey {
+    fn new(year: i32, month: u32, user_id: Option<&str>) -> Self {
+        Self {
+            year,
+            month,
+            user_id: user_id.map(|value| value.to_string()),
+        }
+    }
+
+    fn is_month(&self, year: i32, month: u32) -> bool {
+        self.year == year && self.month == month
+    }
 }
