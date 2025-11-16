@@ -1,12 +1,16 @@
 use axum::{
-    extract::{Query, State},
-    Extension,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    Extension, Json,
 };
 use chrono::NaiveDate;
 use serde_json::Value;
 use timekeeper_backend::{
     handlers::{
-        admin::{list_requests, RequestListQuery},
+        admin::{
+            approve_request, list_requests, reject_request, ApprovePayload, RejectPayload,
+            RequestListQuery,
+        },
         requests::get_my_requests,
     },
     models::{leave_request::LeaveType, user::UserRole},
@@ -90,4 +94,88 @@ async fn admin_list_requests_includes_seeded_records() {
         .expect("overtime array");
     assert!(!leave.is_empty());
     assert!(!overtime.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn approve_request_rejects_comment_longer_than_500(pool: PgPool) {
+    init_tracing();
+    let config = test_config();
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let payload = ApprovePayload {
+        comment: "a".repeat(501),
+    };
+
+    let error = approve_request(
+        State((pool.clone(), config)),
+        Extension(admin),
+        Path("request-id".to_string()),
+        Json(payload),
+    )
+    .await
+    .expect_err("comment too long should error");
+
+    let (status, Json(body)) = error;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body.get("error").and_then(|v| v.as_str()),
+        Some("comment must be between 1 and 500 characters"),
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn reject_request_rejects_comment_longer_than_500(pool: PgPool) {
+    init_tracing();
+    let config = test_config();
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let payload = RejectPayload {
+        comment: "b".repeat(600),
+    };
+
+    let error = reject_request(
+        State((pool.clone(), config)),
+        Extension(admin),
+        Path("request-id".to_string()),
+        Json(payload),
+    )
+    .await
+    .expect_err("comment too long should error");
+
+    let (status, Json(body)) = error;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body.get("error").and_then(|v| v.as_str()),
+        Some("comment must be between 1 and 500 characters"),
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_list_requests_rejects_page_overflow(pool: PgPool) {
+    init_tracing();
+    let config = test_config();
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+
+    let query = RequestListQuery {
+        status: None,
+        r#type: None,
+        user_id: None,
+        from: None,
+        to: None,
+        page: Some(i64::MAX),
+        per_page: Some(100),
+    };
+
+    let error = list_requests(
+        State((pool.clone(), config)),
+        Extension(admin),
+        Query(query),
+    )
+    .await
+    .expect_err("page overflow should error");
+
+    let (status, Json(body)) = error;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body.get("error").and_then(|v| v.as_str()),
+        Some("page is too large")
+    );
 }
