@@ -394,14 +394,14 @@ fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
         return Ok(());
     }
     let totp_code = code
-        .map(str::trim)
+        .map(|raw| raw.chars().filter(|ch| !ch.is_whitespace()).collect::<String>())
         .filter(|code| !code.is_empty())
         .ok_or_else(|| unauthorized("MFA code required"))?;
     let secret = user
         .mfa_secret
         .as_ref()
         .ok_or_else(|| internal_error("MFA secret missing"))?;
-    let valid = verify_totp_code(secret, totp_code)
+    let valid = verify_totp_code(secret, &totp_code)
         .map_err(|_| internal_error("MFA verification error"))?;
     if valid {
         Ok(())

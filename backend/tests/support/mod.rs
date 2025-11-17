@@ -1,11 +1,20 @@
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use ctor::ctor;
+use pg_embed::{
+    pg_enums::PgAuthMethod,
+    pg_fetch::{PgFetchSettings, PG_V15},
+    postgres::{PgEmbed, PgSettings},
+};
+use sqlx::PgPool;
 use std::{
     env,
-    sync::{Arc, OnceLock},
+    net::TcpListener,
+    path::PathBuf,
+    sync::OnceLock,
     time::Duration as StdDuration,
 };
+use tempfile::TempDir;
 use timekeeper_backend::{
     config::Config,
     models::user::{User, UserRole},
@@ -14,17 +23,96 @@ use timekeeper_backend::{
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
-};
-use tokio::{
-    sync::{Mutex, OwnedMutexGuard},
-    time::timeout,
+    utils::password::hash_password,
 };
 use uuid::Uuid;
 
-const DEFAULT_DATABASE_URL: &str = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper";
+struct EmbeddedPostgres {
+    #[allow(dead_code)]
+    instance: PgEmbed,
+    #[allow(dead_code)]
+    data_dir: TempDir,
+}
+
+impl std::fmt::Debug for EmbeddedPostgres {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmbeddedPostgres").finish()
+    }
+}
+
+static EMBEDDED_PG: OnceLock<EmbeddedPostgres> = OnceLock::new();
+static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
+
+#[ctor]
+fn init_test_database_url() {
+    if env::var("DATABASE_URL").is_ok() || env::var("TEST_DATABASE_URL").is_ok() {
+        return;
+    }
+    let url = start_embedded_postgres();
+    env::set_var("DATABASE_URL", url.clone());
+    env::set_var("TEST_DATABASE_URL", url);
+}
+
+fn start_embedded_postgres() -> String {
+    EMBEDDED_DB_URL
+        .get()
+        .cloned()
+        .unwrap_or_else(|| {
+            let data_dir = tempfile::tempdir().expect("create temp dir for embedded postgres");
+            let db_path: PathBuf = data_dir.path().join("data");
+            let pg_settings = PgSettings {
+                database_dir: db_path,
+                port: allocate_ephemeral_port(),
+                user: "timekeeper_test".into(),
+                password: "timekeeper_test".into(),
+                auth_method: PgAuthMethod::Plain,
+                persistent: false,
+                timeout: Some(StdDuration::from_secs(15)),
+                migration_dir: None,
+            };
+            let fetch_settings = PgFetchSettings {
+                version: PG_V15,
+                ..Default::default()
+            };
+
+            let runtime = tokio::runtime::Runtime::new().expect("create tokio runtime");
+            let mut pg_embed: Option<PgEmbed> = None;
+            runtime.block_on(async {
+                let mut pg = PgEmbed::new(pg_settings, fetch_settings)
+                    .await
+                    .expect("init embedded postgres");
+                pg.setup().await.expect("setup embedded postgres");
+                pg.start_db().await.expect("start embedded postgres");
+                pg_embed = Some(pg);
+            });
+            let pg = pg_embed.expect("embedded postgres initialized");
+            let url = format!(
+                "postgres://{}:{}@127.0.0.1:{}/postgres",
+                pg.pg_settings.user, pg.pg_settings.password, pg.pg_settings.port
+            );
+            EMBEDDED_PG
+                .set(EmbeddedPostgres {
+                    instance: pg,
+                    data_dir,
+                })
+                .expect("set embedded postgres instance");
+            EMBEDDED_DB_URL
+                .set(url.clone())
+                .expect("set embedded postgres url");
+            url
+        })
+}
+
+fn allocate_ephemeral_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .expect("bind ephemeral port")
+        .local_addr()
+        .expect("read socket addr")
+        .port()
+}
 
 pub fn test_config() -> Config {
-    let database_url = database_url();
+    let database_url = test_database_url();
 
     Config {
         database_url,
@@ -36,100 +124,25 @@ pub fn test_config() -> Config {
     }
 }
 
-fn database_url() -> String {
-    env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.into())
+fn test_database_url() -> String {
+    env::var("TEST_DATABASE_URL")
+        .or_else(|_| env::var("DATABASE_URL"))
+        .unwrap_or_else(|_| start_embedded_postgres())
 }
 
-pub struct TestDatabase {
-    pool: PgPool,
-    _guard: OwnedMutexGuard<()>,
-}
-
-impl TestDatabase {
-    pub fn clone_pool(&self) -> PgPool {
-        self.pool.clone()
-    }
-}
-
-impl std::ops::Deref for TestDatabase {
-    type Target = PgPool;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pool
-    }
-}
-
-impl AsRef<PgPool> for TestDatabase {
-    fn as_ref(&self) -> &PgPool {
-        &self.pool
-    }
-}
-
-static TEST_DB_GUARD: OnceLock<Arc<Mutex<()>>> = OnceLock::new();
-
-fn test_db_guard() -> Arc<Mutex<()>> {
-    TEST_DB_GUARD
-        .get_or_init(|| Arc::new(Mutex::new(())))
-        .clone()
-}
-
-pub async fn setup_test_pool() -> Option<TestDatabase> {
-    let database_url = database_url();
-    let connect_future = PgPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(StdDuration::from_secs(5))
-        .connect(&database_url);
-
-    let pool = match timeout(StdDuration::from_secs(3), connect_future).await {
-        Ok(Ok(pool)) => pool,
-        Ok(Err(error)) => {
-            eprintln!("Skipping DB-backed test: {error}");
-            return None;
-        }
-        Err(_) => {
-            eprintln!("Skipping DB-backed test: timed out connecting to {database_url}");
-            return None;
-        }
-    };
-
-    let guard = test_db_guard().lock_owned().await;
-
-    if let Err(error) = sqlx::migrate!("./migrations").run(&pool).await {
-        eprintln!("Skipping DB-backed test (migration failed): {error}");
-        return None;
-    }
-
-    if let Err(error) = reset_database(&pool).await {
-        eprintln!("Skipping DB-backed test (cleanup failed): {error}");
-        return None;
-    }
-
-    Some(TestDatabase {
-        pool,
-        _guard: guard,
-    })
-}
-
-async fn reset_database(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "TRUNCATE TABLE holiday_exceptions, weekly_holidays, holidays, leave_requests, overtime_requests, \
-         break_records, attendance, refresh_tokens, users RESTART IDENTITY CASCADE",
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-pub async fn seed_user(pool: &PgPool, role: UserRole, is_system_admin: bool) -> User {
+async fn insert_user_with_password_hash(
+    pool: &PgPool,
+    role: UserRole,
+    is_system_admin: bool,
+    password_hash: String,
+) -> User {
     let user = User::new(
         format!("user_{}", Uuid::new_v4().to_string()),
-        "hash".into(),
+        password_hash,
         "Test User".into(),
         role,
         is_system_admin,
     );
-
     sqlx::query(
         "INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
@@ -152,6 +165,20 @@ pub async fn seed_user(pool: &PgPool, role: UserRole, is_system_admin: bool) -> 
     user
 }
 
+pub async fn seed_user(pool: &PgPool, role: UserRole, is_system_admin: bool) -> User {
+    insert_user_with_password_hash(pool, role, is_system_admin, "hash".into()).await
+}
+
+pub async fn seed_user_with_password(
+    pool: &PgPool,
+    role: UserRole,
+    is_system_admin: bool,
+    password: &str,
+) -> User {
+    let password_hash = hash_password(password).expect("hash password");
+    insert_user_with_password_hash(pool, role, is_system_admin, password_hash).await
+}
+
 pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
     let weekday = date.weekday().num_days_from_monday() as i16;
     sqlx::query(
@@ -161,7 +188,7 @@ pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
     )
     .bind(Uuid::new_v4().to_string())
     .bind(weekday)
-    .bind(date - Duration::days(7))
+    .bind(date - ChronoDuration::days(7))
     .bind(date)
     .execute(pool)
     .await
@@ -322,8 +349,8 @@ mod tests {
     #[test]
     fn test_config_uses_database_url_from_env() {
         let _guard = env_guard();
-        let original = env::var("DATABASE_URL").ok();
-        env::set_var("DATABASE_URL", "postgres://override/testdb");
+        let original = env::var("TEST_DATABASE_URL").ok();
+        env::set_var("TEST_DATABASE_URL", "postgres://override/testdb");
 
         let config = test_config();
 
@@ -334,14 +361,14 @@ mod tests {
     #[test]
     fn test_config_falls_back_to_default_when_env_missing() {
         let _guard = env_guard();
-        let original = env::var("DATABASE_URL").ok();
-        env::remove_var("DATABASE_URL");
+        let original = env::var("TEST_DATABASE_URL").ok();
+        env::remove_var("TEST_DATABASE_URL");
 
         let config = test_config();
 
         assert_eq!(
             config.database_url,
-            "postgres://timekeeper:timekeeper@localhost:5432/timekeeper"
+            "postgres://timekeeper:timekeeper@localhost:15432/timekeeper_test"
         );
         restore_env(original);
     }

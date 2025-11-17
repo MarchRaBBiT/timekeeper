@@ -190,4 +190,3 @@ async fn monthly_listing_respects_weekly_effective_range(pool: PgPool) -> sqlx::
 
     Ok(())
 }
-
