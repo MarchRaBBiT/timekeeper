@@ -19,13 +19,9 @@ pub async fn auth(
         .get(header::AUTHORIZATION)
         .and_then(|header| header.to_str().ok());
 
-    let token = match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            header.strip_prefix("Bearer ").unwrap_or("")
-        }
-        _ => {
-            return Err(StatusCode::UNAUTHORIZED);
-        }
+    let token = match auth_header.and_then(parse_bearer_token) {
+        Some(token) => token,
+        None => return Err(StatusCode::UNAUTHORIZED),
     };
 
     // Verify JWT token
@@ -69,11 +65,9 @@ pub async fn auth_admin(
         .get(header::AUTHORIZATION)
         .and_then(|header| header.to_str().ok());
 
-    let token = match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            header.strip_prefix("Bearer ").unwrap_or("")
-        }
-        _ => return Err(StatusCode::UNAUTHORIZED),
+    let token = match auth_header.and_then(parse_bearer_token) {
+        Some(token) => token,
+        None => return Err(StatusCode::UNAUTHORIZED),
     };
 
     let claims = match verify_token(token, &config.jwt_secret) {
@@ -106,11 +100,9 @@ pub async fn auth_system_admin(
         .get(header::AUTHORIZATION)
         .and_then(|header| header.to_str().ok());
 
-    let token = match auth_header {
-        Some(header) if header.starts_with("Bearer ") => {
-            header.strip_prefix("Bearer ").unwrap_or("")
-        }
-        _ => return Err(StatusCode::UNAUTHORIZED),
+    let token = match auth_header.and_then(parse_bearer_token) {
+        Some(token) => token,
+        None => return Err(StatusCode::UNAUTHORIZED),
     };
 
     let claims = match verify_token(token, &config.jwt_secret) {
@@ -142,4 +134,19 @@ async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sq
     .await?;
 
     Ok(user)
+}
+fn parse_bearer_token(header: &str) -> Option<&str> {
+    if let Some(rest) = header.strip_prefix("Bearer ") {
+        return Some(rest);
+    }
+    if let Some(rest) = header.strip_prefix("bearer ") {
+        return Some(rest);
+    }
+    if let Some(space_idx) = header.find(' ') {
+        let (scheme, rest) = header.split_at(space_idx);
+        if scheme.eq_ignore_ascii_case("bearer") {
+            return Some(rest.trim_start());
+        }
+    }
+    None
 }
