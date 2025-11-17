@@ -1,7 +1,10 @@
 #![allow(dead_code)]
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use leptos::*;
 use reqwest_wasm::{Client, StatusCode};
-use serde_json::json;
+use serde_json::{json, Value};
+use uuid::Uuid;
+use web_sys::Storage;
 
 use crate::{api::types::*, config};
 
@@ -36,12 +39,7 @@ impl ApiClient {
     fn get_auth_headers(&self) -> Result<reqwest_wasm::header::HeaderMap, String> {
         let mut headers = reqwest_wasm::header::HeaderMap::new();
 
-        // Get token from localStorage
-        let window = web_sys::window().ok_or("No window object")?;
-        let storage = window
-            .local_storage()
-            .map_err(|_| "No localStorage")?
-            .ok_or("No localStorage")?;
+        let storage = storage()?;
         let token = storage
             .get_item("access_token")
             .map_err(|_| "Failed to get token")?
@@ -65,12 +63,11 @@ impl ApiClient {
     }
 
     fn clear_auth_session() {
-        if let Some(window) = web_sys::window() {
-            if let Ok(Some(storage)) = window.local_storage() {
-                let _ = storage.remove_item("access_token");
-                let _ = storage.remove_item("refresh_token");
-                let _ = storage.remove_item("current_user");
-            }
+        if let Ok(storage) = storage() {
+            let _ = storage.remove_item("access_token");
+            let _ = storage.remove_item("access_token_jti");
+            let _ = storage.remove_item("refresh_token");
+            let _ = storage.remove_item("current_user");
         }
     }
 
@@ -86,7 +83,11 @@ impl ApiClient {
         }
     }
 
-    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, String> {
+    pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, String> {
+        let storage = storage()?;
+        if request.device_label.is_none() {
+            request.device_label = Some(ensure_device_label(&storage)?);
+        }
         let base_url = self.resolved_base_url().await;
         let response = self
             .client
@@ -102,24 +103,7 @@ impl ApiClient {
                 .await
                 .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-            // Store tokens in localStorage
-            let window = web_sys::window().ok_or("No window object")?;
-            let storage = window
-                .local_storage()
-                .map_err(|_| "No localStorage")?
-                .ok_or("No localStorage")?;
-            storage
-                .set_item("access_token", &login_response.access_token)
-                .map_err(|_| "Failed to store token")?;
-            storage
-                .set_item("refresh_token", &login_response.refresh_token)
-                .map_err(|_| "Failed to store refresh token")?;
-            let user_json = serde_json::to_string(&login_response.user)
-                .map_err(|_| "Failed to serialize user profile")?;
-            storage
-                .set_item("current_user", &user_json)
-                .map_err(|_| "Failed to store user profile")?;
-
+            persist_session(&storage, &login_response)?;
             Ok(login_response)
         } else {
             let error: ApiError = response
@@ -131,21 +115,28 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, String> {
-        let window = web_sys::window().ok_or("No window object")?;
-        let storage = window
-            .local_storage()
-            .map_err(|_| "No localStorage")?
-            .ok_or("No localStorage")?;
+        let storage = storage()?;
         let refresh_token = storage
             .get_item("refresh_token")
             .map_err(|_| "Failed to get refresh token")?
             .ok_or("No refresh token")?;
+        let device_label = ensure_device_label(&storage)?;
+        let previous_jti = current_access_jti(&storage);
 
         let base_url = self.resolved_base_url().await;
+        let mut payload = json!({
+            "refresh_token": refresh_token,
+            "device_label": device_label
+        });
+        if let Some(jti) = previous_jti {
+            if let Value::Object(ref mut map) = payload {
+                map.insert("previous_jti".into(), json!(jti));
+            }
+        }
         let response = self
             .client
             .post(&format!("{}/auth/refresh", base_url))
-            .json(&json!({ "refresh_token": refresh_token }))
+            .json(&payload)
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -158,19 +149,7 @@ impl ApiClient {
                 .await
                 .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-            // Update tokens in localStorage
-            storage
-                .set_item("access_token", &login_response.access_token)
-                .map_err(|_| "Failed to store token")?;
-            storage
-                .set_item("refresh_token", &login_response.refresh_token)
-                .map_err(|_| "Failed to store refresh token")?;
-            let user_json = serde_json::to_string(&login_response.user)
-                .map_err(|_| "Failed to serialize user profile")?;
-            storage
-                .set_item("current_user", &user_json)
-                .map_err(|_| "Failed to store user profile")?;
-
+            persist_session(&storage, &login_response)?;
             Ok(login_response)
         } else {
             let error: ApiError = response
@@ -185,15 +164,10 @@ impl ApiClient {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
 
-        // Read refresh token id if present
-        let window = web_sys::window()
-            .ok_or("No window object")
-            .map_err(|e| e.to_string())?;
-        let storage = window
-            .local_storage()
-            .map_err(|_| "No localStorage")?
-            .ok_or("No localStorage")?;
-        let refresh = storage.get_item("refresh_token").ok().flatten();
+        // Read refresh token if present
+        let refresh = storage()
+            .ok()
+            .and_then(|s| s.get_item("refresh_token").ok().flatten());
 
         let body = if all {
             serde_json::json!({ "all": true })
@@ -1431,4 +1405,70 @@ impl ApiClient {
             Err(error.error)
         }
     }
+}
+
+fn storage() -> Result<Storage, String> {
+    let window = web_sys::window().ok_or_else(|| "No window object".to_string())?;
+    window
+        .local_storage()
+        .map_err(|_| "No localStorage".to_string())?
+        .ok_or_else(|| "No localStorage".to_string())
+}
+
+fn ensure_device_label(storage: &Storage) -> Result<String, String> {
+    if let Ok(Some(label)) = storage.get_item("device_label") {
+        if !label.trim().is_empty() {
+            return Ok(label);
+        }
+    }
+    let label = format!("device-{}", Uuid::new_v4());
+    storage
+        .set_item("device_label", &label)
+        .map_err(|_| "Failed to persist device label")?;
+    Ok(label)
+}
+
+fn decode_jti(token: &str) -> Option<String> {
+    let mut parts = token.split('.');
+    parts.next()?;
+    let payload = parts.next()?;
+    let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    let value: Value = serde_json::from_slice(&decoded).ok()?;
+    value
+        .get("jti")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn persist_session(storage: &Storage, response: &LoginResponse) -> Result<(), String> {
+    storage
+        .set_item("access_token", &response.access_token)
+        .map_err(|_| "Failed to store token")?;
+    storage
+        .set_item("refresh_token", &response.refresh_token)
+        .map_err(|_| "Failed to store refresh token")?;
+    let user_json =
+        serde_json::to_string(&response.user).map_err(|_| "Failed to serialize user profile")?;
+    storage
+        .set_item("current_user", &user_json)
+        .map_err(|_| "Failed to store user profile")?;
+    if let Some(jti) = decode_jti(&response.access_token) {
+        let _ = storage.set_item("access_token_jti", &jti);
+    } else {
+        let _ = storage.remove_item("access_token_jti");
+    }
+    Ok(())
+}
+
+fn current_access_jti(storage: &Storage) -> Option<String> {
+    if let Ok(Some(jti)) = storage.get_item("access_token_jti") {
+        return Some(jti);
+    }
+    if let Ok(Some(token)) = storage.get_item("access_token") {
+        if let Some(jti) = decode_jti(&token) {
+            let _ = storage.set_item("access_token_jti", &jti);
+            return Some(jti);
+        }
+    }
+    None
 }

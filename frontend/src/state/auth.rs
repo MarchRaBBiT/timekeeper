@@ -74,6 +74,7 @@ pub async fn login(
         username,
         password,
         totp_code,
+        device_label: None,
     };
 
     match api_client.login(request).await {
@@ -101,6 +102,7 @@ pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
     let window = web_sys::window().unwrap();
     if let Ok(Some(storage)) = window.local_storage() {
         let _ = storage.remove_item("access_token");
+        let _ = storage.remove_item("access_token_jti");
         let _ = storage.remove_item("refresh_token");
         let _ = storage.remove_item("current_user");
     }

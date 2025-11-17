@@ -4056,6 +4056,7 @@ name = "timekeeper-frontend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.7",
  "chrono",
  "chrono-tz",
  "console_error_panic_hook",
