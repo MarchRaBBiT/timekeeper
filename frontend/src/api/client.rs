@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use web_sys::Storage;
 
-use crate::{api::types::*, config};
+use crate::{api::types::*, config, utils::storage as storage_utils};
 
 pub struct ApiClient {
     client: Client,
@@ -39,7 +39,7 @@ impl ApiClient {
     fn get_auth_headers(&self) -> Result<reqwest_wasm::header::HeaderMap, String> {
         let mut headers = reqwest_wasm::header::HeaderMap::new();
 
-        let storage = storage()?;
+        let storage = storage_utils::local_storage()?;
         let token = storage
             .get_item("access_token")
             .map_err(|_| "Failed to get token")?
@@ -63,7 +63,7 @@ impl ApiClient {
     }
 
     fn clear_auth_session() {
-        if let Ok(storage) = storage() {
+        if let Ok(storage) = storage_utils::local_storage() {
             let _ = storage.remove_item("access_token");
             let _ = storage.remove_item("access_token_jti");
             let _ = storage.remove_item("refresh_token");
@@ -84,7 +84,7 @@ impl ApiClient {
     }
 
     pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, String> {
-        let storage = storage()?;
+        let storage = storage_utils::local_storage()?;
         if request.device_label.is_none() {
             request.device_label = Some(ensure_device_label(&storage)?);
         }
@@ -115,7 +115,7 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, String> {
-        let storage = storage()?;
+        let storage = storage_utils::local_storage()?;
         let refresh_token = storage
             .get_item("refresh_token")
             .map_err(|_| "Failed to get refresh token")?
@@ -165,7 +165,7 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
 
         // Read refresh token if present
-        let refresh = storage()
+        let refresh = storage_utils::local_storage()
             .ok()
             .and_then(|s| s.get_item("refresh_token").ok().flatten());
 
@@ -1405,14 +1405,6 @@ impl ApiClient {
             Err(error.error)
         }
     }
-}
-
-fn storage() -> Result<Storage, String> {
-    let window = web_sys::window().ok_or_else(|| "No window object".to_string())?;
-    window
-        .local_storage()
-        .map_err(|_| "No localStorage".to_string())?
-        .ok_or_else(|| "No localStorage".to_string())
 }
 
 fn ensure_device_label(storage: &Storage) -> Result<String, String> {
