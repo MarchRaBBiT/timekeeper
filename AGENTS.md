@@ -36,3 +36,11 @@ Prefer the scripts’ `stop/status/logs` subcommands to avoid stale PID files.
 
 ## Environment & Configuration Tips
 - Copy `env.example` to `.env`, set `DATABASE_URL` (SQLite locally or your managed Postgres DSN), and keep `JWT_SECRET` unique because docker compose loads it straight from `.env`.
+
+## Backend Design Principles
+- Keep handlers slender and modular: move DB-heavy logic into helper modules or repositories (e.g., `handlers/admin/requests.rs`, `handlers/requests_repo.rs`) so each handler focuses on HTTP concerns.
+- Share cross-cutting enums and types (`models::request::RequestStatus`) instead of duplicating definitions across models.
+- Route holiday logic through `services::holiday::HolidayService`; handlers should consume service methods instead of issuing raw SQL.
+- Attendance and other complex handlers must use helper modules (`handlers/attendance_utils.rs` etc.) for repeated checks and error handling to keep each function single-responsibility.
+- Follow DRY/SOLID across the codebase: extract reusable code, keep abstractions focused, and favor dependency injection (services, repositories) over tight coupling to infrastructure details.
+- Favor composition over inheritance and keep modules small; as soon as a file grows beyond a single responsibility, split it into submodules and re-export what is needed.

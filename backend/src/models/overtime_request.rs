@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+pub use crate::models::request::RequestStatus;
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 /// Database representation of an overtime work request.
 pub struct OvertimeRequest {
@@ -36,38 +38,6 @@ pub struct OvertimeRequest {
     pub created_at: DateTime<Utc>,
     /// Last update timestamp for auditing.
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
-/// Workflow status for an overtime request.
-pub enum RequestStatus {
-    /// Awaiting review.
-    Pending,
-    /// Approved by an administrator.
-    Approved,
-    /// Rejected by an administrator.
-    Rejected,
-    /// Cancelled by the requester or system.
-    Cancelled,
-}
-
-impl Default for RequestStatus {
-    fn default() -> Self {
-        RequestStatus::Pending
-    }
-}
-
-impl RequestStatus {
-    pub fn db_value(&self) -> &'static str {
-        match self {
-            RequestStatus::Pending => "pending",
-            RequestStatus::Approved => "approved",
-            RequestStatus::Rejected => "rejected",
-            RequestStatus::Cancelled => "cancelled",
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

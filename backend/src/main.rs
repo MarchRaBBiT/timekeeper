@@ -4,7 +4,7 @@ use axum::{
     routing::{delete, get, post, put},
     Extension, Router,
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -24,6 +24,8 @@ use config::Config;
 use db::connection::{create_pool, DbPool};
 use services::holiday::HolidayService;
 
+type AuthState = (DbPool, Config);
+
 fn mask_secret(s: &str) -> String {
     if s.is_empty() {
         return "<empty>".into();
@@ -34,7 +36,40 @@ fn mask_secret(s: &str) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
+    init_tracing();
+
+    let config = Config::load()?;
+    log_config(&config);
+
+    let pool: DbPool = create_pool(&config.database_url).await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let shared_state: AuthState = (pool.clone(), config.clone());
+
+    let app = Router::new()
+        .merge(public_routes())
+        .merge(user_routes(shared_state.clone()))
+        .merge(admin_routes(shared_state.clone()))
+        .merge(system_admin_routes(shared_state.clone()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(axum_middleware::from_fn(middleware::log_error_responses))
+                .layer(TraceLayer::new_for_http())
+                .layer(cors_layer()),
+        )
+        .layer(Extension(holiday_service))
+        .with_state(shared_state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    tracing::info!("Server listening on {}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+fn init_tracing() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -42,9 +77,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+}
 
-    // Load configuration
-    let config = Config::load()?;
+fn log_config(config: &Config) {
     tracing::info!(
         database_url = %config.database_url,
         jwt_secret = %mask_secret(&config.jwt_secret),
@@ -54,20 +89,17 @@ async fn main() -> anyhow::Result<()> {
         mfa_issuer = %config.mfa_issuer,
         "Loaded configuration from environment/.env"
     );
+}
 
-    // Initialize database
-    let pool: DbPool = create_pool(&config.database_url).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
-
-    // Build public routes (no auth)
-    let public_routes = Router::new()
+fn public_routes() -> Router<AuthState> {
+    Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
-        .route("/api/config/timezone", get(handlers::config::get_time_zone));
+        .route("/api/config/timezone", get(handlers::config::get_time_zone))
+}
 
-    // Build user-protected routes (auth required)
-    let user_routes = Router::new()
+fn user_routes(state: AuthState) -> Router<AuthState> {
+    Router::new()
         .route(
             "/api/attendance/clock-in",
             post(handlers::attendance::clock_in),
@@ -139,13 +171,11 @@ async fn main() -> anyhow::Result<()> {
             "/api/holidays/month",
             get(handlers::holidays::list_month_holidays),
         )
-        .route_layer(axum_middleware::from_fn_with_state(
-            (pool.clone(), config.clone()),
-            middleware::auth,
-        ));
+        .route_layer(axum_middleware::from_fn_with_state(state, middleware::auth))
+}
 
-    // Build admin-protected routes (approvals only)
-    let admin_routes = Router::new()
+fn admin_routes(state: AuthState) -> Router<AuthState> {
+    Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
             "/api/admin/requests/:id",
@@ -177,12 +207,13 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
-            (pool.clone(), config.clone()),
+            state,
             middleware::auth_admin,
-        ));
+        ))
+}
 
-    // Build system admin routes (full platform management)
-    let system_admin_routes = Router::new()
+fn system_admin_routes(state: AuthState) -> Router<AuthState> {
+    Router::new()
         .route(
             "/api/admin/users",
             get(handlers::admin::get_users).post(handlers::admin::create_user),
@@ -200,43 +231,21 @@ async fn main() -> anyhow::Result<()> {
             post(handlers::admin::reset_user_mfa),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            (pool.clone(), config.clone()),
+            state,
             middleware::auth_system_admin,
-        ));
+        ))
+}
 
-    // Compose app with shared layers (CORS/Trace) and shared state
-    let app = Router::new()
-        .merge(public_routes)
-        .merge(user_routes)
-        .merge(admin_routes)
-        .merge(system_admin_routes)
-        .layer(
-            ServiceBuilder::new()
-                .layer(axum_middleware::from_fn(middleware::log_error_responses))
-                .layer(TraceLayer::new_for_http())
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(Any)
-                        .allow_methods([
-                            Method::GET,
-                            Method::POST,
-                            Method::PUT,
-                            Method::DELETE,
-                            Method::OPTIONS,
-                        ])
-                        .allow_headers(Any)
-                        .max_age(std::time::Duration::from_secs(24 * 60 * 60)),
-                ),
-        )
-        .layer(Extension(holiday_service))
-        .with_state((pool, config));
-
-    // Start server
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    tracing::info!("Server listening on {}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(Any)
+        .max_age(Duration::from_secs(24 * 60 * 60))
 }
