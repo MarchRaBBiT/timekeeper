@@ -37,6 +37,16 @@ Prefer the scripts’ `stop/status/logs` subcommands to avoid stale PID files.
 ## Environment & Configuration Tips
 - Copy `env.example` to `.env`, set `DATABASE_URL` (SQLite locally or your managed Postgres DSN), and keep `JWT_SECRET` unique because docker compose loads it straight from `.env`.
 
+## Additional Development Policies
+- Always respond in Japanese.
+- Follow TDD: write the test that validates a feature before implementing the feature itself.
+- When requirements conflict, do not proceed with implementation; instead, point out the contradiction.
+- Write Japanese text in code or documentation using UTF-8 encoding.
+- Use LF for line endings in code and documentation.
+- Before replying after an implementation, run the relevant test build and confirm it completes successfully.
+- When proposing implementation options, list at most five in order of recommendation and include pros and cons for each.
+- When recommending an option, explain why it is being recommended.
+
 ## Backend Design Principles
 - Keep handlers slender and modular: move DB-heavy logic into helper modules or repositories (e.g., `handlers/admin/requests.rs`, `handlers/requests_repo.rs`) so each handler focuses on HTTP concerns.
 - Share cross-cutting enums and types (`models::request::RequestStatus`) instead of duplicating definitions across models.
