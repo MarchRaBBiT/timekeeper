@@ -113,6 +113,9 @@ pub struct LoginRequest {
     /// Optional TOTP code required when MFA is enabled.
     #[serde(default)]
     pub totp_code: Option<String>,
+    /// Optional label to identify the client/device for long-lived tokens.
+    #[serde(default)]
+    pub device_label: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

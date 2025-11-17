@@ -3,13 +3,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
 use crate::{
     config::Config,
-    handlers::auth_repo::{self, StoredRefreshToken},
+    handlers::auth_repo::{self, ActiveAccessToken, StoredRefreshToken},
     models::user::{
         ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
         MfaStatusResponse, User, UserResponse,
@@ -17,7 +17,7 @@ use crate::{
     utils::{
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
-            RefreshToken,
+            Claims, RefreshToken,
         },
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
         password::{hash_password, verify_password},
@@ -43,7 +43,7 @@ pub async fn login(
     )?;
     enforce_mfa(&user, payload.totp_code.as_deref())?;
 
-    let access_token = create_access_token(
+    let (access_token, claims) = create_access_token(
         user.id.clone(),
         user.username.clone(),
         user.role.as_str().to_string(),
@@ -57,6 +57,7 @@ pub async fn login(
             .map_err(|_| internal_error("Refresh token creation error"))?;
 
     persist_refresh_token(&pool, &refresh_token_data, "Failed to store refresh token").await?;
+    persist_active_access_token(&pool, &claims, payload.device_label.as_deref()).await?;
 
     let response = LoginResponse {
         access_token,
@@ -86,7 +87,7 @@ pub async fn refresh(
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
 
-    let access_token = create_access_token(
+    let (access_token, claims) = create_access_token(
         user.id.clone(),
         user.username.clone(),
         user.role.as_str().to_string(),
@@ -111,6 +112,14 @@ pub async fn refresh(
         "Failed to store new refresh token",
     )
     .await?;
+    let device_context = payload
+        .get("device_label")
+        .and_then(|v| v.as_str())
+        .or(Some("refresh"));
+    persist_active_access_token(&pool, &claims, device_context).await?;
+    if let Some(old_jti) = payload.get("previous_jti").and_then(|v| v.as_str()) {
+        let _ = revoke_active_access_token(&pool, old_jti).await;
+    }
 
     let response = LoginResponse {
         access_token,
@@ -218,6 +227,7 @@ pub async fn mfa_activate(
     }
 
     revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
+    revoke_active_tokens_for_user(&pool, &user.id).await?;
 
     Ok(Json(json!({"message": "MFA enabled"})))
 }
@@ -337,6 +347,7 @@ pub async fn change_password(
 pub async fn logout(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
+    Extension(claims): Extension<Claims>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
     let all = payload
@@ -345,6 +356,7 @@ pub async fn logout(
         .unwrap_or(false);
     if all {
         revoke_tokens_for_user(&pool, &user.id, "Failed to revoke tokens").await?;
+        revoke_active_tokens_for_user(&pool, &user.id).await?;
         return Ok(Json(json!({"message":"Logged out"})));
     }
 
@@ -352,10 +364,11 @@ pub async fn logout(
         let (token_id, _) =
             decode_refresh_token(rt).map_err(|_| bad_request("Invalid refresh token"))?;
         revoke_refresh_token_for_user(&pool, &token_id, &user.id).await?;
+        revoke_active_access_token(&pool, &claims.jti).await?;
         return Ok(Json(json!({"message":"Logged out"})));
     }
 
-    revoke_tokens_for_user(&pool, &user.id, "Failed to revoke tokens").await?;
+    revoke_active_access_token(&pool, &claims.jti).await?;
     Ok(Json(json!({"message":"Logged out"})))
 }
 
@@ -394,7 +407,11 @@ fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
         return Ok(());
     }
     let totp_code = code
-        .map(|raw| raw.chars().filter(|ch| !ch.is_whitespace()).collect::<String>())
+        .map(|raw| {
+            raw.chars()
+                .filter(|ch| !ch.is_whitespace())
+                .collect::<String>()
+        })
         .filter(|code| !code.is_empty())
         .ok_or_else(|| unauthorized("MFA code required"))?;
     let secret = user
@@ -468,4 +485,49 @@ async fn revoke_tokens_for_user(
     auth_repo::delete_refresh_tokens_for_user(pool, user_id)
         .await
         .map_err(|_| internal_error(error_message))
+}
+
+async fn persist_active_access_token(
+    pool: &PgPool,
+    claims: &Claims,
+    context: Option<&str>,
+) -> HandlerResult<()> {
+    let expires_at = claims_expiration_datetime(claims)?;
+    auth_repo::cleanup_expired_access_tokens(pool)
+        .await
+        .map_err(|_| internal_error("Failed to cleanup expired tokens"))?;
+    let sanitized_context = context.and_then(|ctx| {
+        let trimmed = ctx.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.chars().take(128).collect::<String>())
+        }
+    });
+    let token = ActiveAccessToken {
+        jti: &claims.jti,
+        user_id: &claims.sub,
+        expires_at,
+        context: sanitized_context.as_deref(),
+    };
+    auth_repo::insert_active_access_token(pool, &token)
+        .await
+        .map_err(|_| internal_error("Failed to register access token"))
+}
+
+async fn revoke_active_access_token(pool: &PgPool, jti: &str) -> HandlerResult<()> {
+    auth_repo::delete_active_access_token_by_jti(pool, jti)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access token"))
+}
+
+async fn revoke_active_tokens_for_user(pool: &PgPool, user_id: &str) -> HandlerResult<()> {
+    auth_repo::delete_active_access_tokens_for_user(pool, user_id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))
+}
+
+fn claims_expiration_datetime(claims: &Claims) -> HandlerResult<DateTime<Utc>> {
+    DateTime::<Utc>::from_timestamp(claims.exp, 0)
+        .ok_or_else(|| internal_error("Token expiration overflow"))
 }

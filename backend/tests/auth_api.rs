@@ -1,4 +1,5 @@
 use axum::{extract::State, http::StatusCode, Json};
+use base32::Alphabet::RFC4648;
 use chrono::Utc;
 use sqlx::PgPool;
 use timekeeper_backend::{
@@ -7,7 +8,6 @@ use timekeeper_backend::{
     utils::mfa::generate_totp_secret,
 };
 use totp_rs::{Algorithm, TOTP};
-use base32::Alphabet::RFC4648;
 mod support;
 use support::{seed_user_with_password, test_config};
 
@@ -26,6 +26,7 @@ async fn login_returns_tokens_for_valid_credentials(pool: PgPool) {
         username: user.username.clone(),
         password: password.to_string(),
         totp_code: None,
+        device_label: None,
     };
 
     let Json(response) = login(State((pool.clone(), config)), Json(payload))
@@ -46,6 +47,7 @@ async fn login_succeeds_for_default_admin(pool: PgPool) {
         username: "admin".into(),
         password: "admin123".into(),
         totp_code: None,
+        device_label: Some("default-admin".into()),
     };
 
     let Json(response) = login(State((pool.clone(), config)), Json(payload))
@@ -77,14 +79,21 @@ async fn login_with_mfa_requires_code_and_accepts_valid_totp(pool: PgPool) {
         username: user.username.clone(),
         password: password.to_string(),
         totp_code: None,
+        device_label: Some("mfa-device".into()),
     };
 
-    let error = login(State((pool.clone(), config.clone())), Json(missing_code_payload))
-        .await
-        .expect_err("MFA should require a code");
+    let error = login(
+        State((pool.clone(), config.clone())),
+        Json(missing_code_payload),
+    )
+    .await
+    .expect_err("MFA should require a code");
     let (status, Json(body)) = error;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(body.get("error").and_then(|v| v.as_str()), Some("MFA code required"));
+    assert_eq!(
+        body.get("error").and_then(|v| v.as_str()),
+        Some("MFA code required")
+    );
 
     let totp_code = current_totp_code(&secret);
     let spaced_code = format!("{} {}", &totp_code[..3], &totp_code[3..]);
@@ -92,6 +101,7 @@ async fn login_with_mfa_requires_code_and_accepts_valid_totp(pool: PgPool) {
         username: user.username.clone(),
         password: password.to_string(),
         totp_code: Some(spaced_code),
+        device_label: Some("mfa-device".into()),
     };
 
     let Json(response) = login(State((pool.clone(), config)), Json(payload))
@@ -105,18 +115,10 @@ async fn login_with_mfa_requires_code_and_accepts_valid_totp(pool: PgPool) {
 
 fn current_totp_code(secret: &str) -> String {
     let cleaned = secret.trim().replace(' ', "").to_uppercase();
-    let secret_bytes = base32::decode(RFC4648 { padding: false }, cleaned.as_str())
-        .expect("valid base32 secret");
-    TOTP::new(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-        secret_bytes,
-        None,
-        "test".into(),
-    )
-    .expect("build totp")
-    .generate_current()
-    .expect("generate totp")
+    let secret_bytes =
+        base32::decode(RFC4648 { padding: false }, cleaned.as_str()).expect("valid base32 secret");
+    TOTP::new(Algorithm::SHA1, 6, 1, 30, secret_bytes, None, "test".into())
+        .expect("build totp")
+        .generate_current()
+        .expect("generate totp")
 }

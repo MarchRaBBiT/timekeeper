@@ -7,7 +7,7 @@ use axum::{
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sqlx::PgPool;
 
-use crate::{config::Config, models::user::User, utils::jwt::Claims};
+use crate::{config::Config, handlers::auth_repo, models::user::User, utils::jwt::Claims};
 
 pub async fn auth(
     State((pool, config)): State<(PgPool, Config)>,
@@ -17,27 +17,10 @@ pub async fn auth(
     let auth_header = request
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok());
-
-    let token = match auth_header.and_then(parse_bearer_token) {
-        Some(token) => token,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    // Verify JWT token
-    let claims = match verify_token(token, &config.jwt_secret) {
-        Ok(claims) => claims,
-        Err(_) => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    // Get user from database
-    let user = match get_user_by_id(&pool, &claims.sub).await {
-        Ok(Some(user)) => user,
-        Ok(None) => return Err(StatusCode::UNAUTHORIZED),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
-    // Add user to request extensions
+        .and_then(|header| header.to_str().ok())
+        .map(|value| value.to_owned());
+    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
+    request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user);
 
     Ok(next.run(request).await)
@@ -63,28 +46,14 @@ pub async fn auth_admin(
     let auth_header = request
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok());
-
-    let token = match auth_header.and_then(parse_bearer_token) {
-        Some(token) => token,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    let claims = match verify_token(token, &config.jwt_secret) {
-        Ok(claims) => claims,
-        Err(_) => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    let user = match get_user_by_id(&pool, &claims.sub).await {
-        Ok(Some(user)) => user,
-        Ok(None) => return Err(StatusCode::UNAUTHORIZED),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
+        .and_then(|header| header.to_str().ok())
+        .map(|value| value.to_owned());
+    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
     if !user.is_admin() {
         return Err(StatusCode::FORBIDDEN);
     }
 
+    request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user);
     Ok(next.run(request).await)
 }
@@ -98,28 +67,14 @@ pub async fn auth_system_admin(
     let auth_header = request
         .headers()
         .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok());
-
-    let token = match auth_header.and_then(parse_bearer_token) {
-        Some(token) => token,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    let claims = match verify_token(token, &config.jwt_secret) {
-        Ok(claims) => claims,
-        Err(_) => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    let user = match get_user_by_id(&pool, &claims.sub).await {
-        Ok(Some(user)) => user,
-        Ok(None) => return Err(StatusCode::UNAUTHORIZED),
-        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-    };
-
+        .and_then(|header| header.to_str().ok())
+        .map(|value| value.to_owned());
+    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
     if !user.is_system_admin() {
         return Err(StatusCode::FORBIDDEN);
     }
 
+    request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user);
     Ok(next.run(request).await)
 }
@@ -149,4 +104,31 @@ fn parse_bearer_token(header: &str) -> Option<&str> {
         }
     }
     None
+}
+
+async fn authenticate_request(
+    auth_header: Option<&str>,
+    pool: &PgPool,
+    config: &Config,
+) -> Result<(Claims, User), StatusCode> {
+    let token = match auth_header.and_then(parse_bearer_token) {
+        Some(token) => token,
+        None => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    let claims = verify_token(token, &config.jwt_secret).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    let is_active = auth_repo::access_token_exists(pool, &claims.jti)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !is_active {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let user = get_user_by_id(pool, &claims.sub)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    Ok((claims, user))
 }
