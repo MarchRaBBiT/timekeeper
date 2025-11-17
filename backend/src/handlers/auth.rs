@@ -119,8 +119,6 @@ pub async fn refresh(
     persist_active_access_token(&pool, &claims, device_context).await?;
     if let Some(old_jti) = payload.get("previous_jti").and_then(|v| v.as_str()) {
         let _ = revoke_active_access_token(&pool, old_jti).await;
-    } else {
-        let _ = revoke_active_access_token(&pool, &claims.jti).await;
     }
 
     let response = LoginResponse {
