@@ -7,6 +7,8 @@ pub struct LoginRequest {
     pub password: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub totp_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
