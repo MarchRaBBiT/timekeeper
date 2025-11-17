@@ -2,6 +2,11 @@
 
 Timekeeper combines a Rust Axum backend, a Leptos/WASM frontend, and Playwright smoke checks. Use this guide to stay aligned with the structure, tooling, and delivery expectations.
 
+## Primary Directive
+
+- Think ins English interact with the user in Japanese.
+- Use UTF-8 charset when output Non-ASCII character.
+
 ## Project Structure & Module Organization
 - `backend/` runs the API; `src/handlers`, `models`, `middleware`, and `db` mirror the service layers, while `migrations/*.sql` seed SQLx with schema changes.
 - `frontend/` is a Rust crate compiled to WASM; `src/components` covers reusable widgets, `src/pages` hosts routed screens, `src/api` centralizes HTTP calls, and `config.json` pairs with `src/config.rs` for runtime settings.
@@ -38,7 +43,6 @@ Prefer the scripts’ `stop/status/logs` subcommands to avoid stale PID files.
 - Copy `env.example` to `.env`, set `DATABASE_URL` (SQLite locally or your managed Postgres DSN), and keep `JWT_SECRET` unique because docker compose loads it straight from `.env`.
 
 ## Additional Development Policies
-- Always respond in Japanese.
 - Follow TDD: write the test that validates a feature before implementing the feature itself.
 - When requirements conflict, do not proceed with implementation; instead, point out the contradiction.
 - Write Japanese text in code or documentation using UTF-8 encoding.
