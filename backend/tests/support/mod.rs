@@ -340,9 +340,9 @@ mod tests {
 
     fn restore_env(original: Option<String>) {
         if let Some(value) = original {
-            env::set_var("DATABASE_URL", value);
+            env::set_var("TEST_DATABASE_URL", value);
         } else {
-            env::remove_var("DATABASE_URL");
+            env::remove_var("TEST_DATABASE_URL");
         }
     }
 
@@ -365,11 +365,9 @@ mod tests {
         env::remove_var("TEST_DATABASE_URL");
 
         let config = test_config();
+        let expected = start_embedded_postgres();
 
-        assert_eq!(
-            config.database_url,
-            "postgres://timekeeper:timekeeper@localhost:15432/timekeeper_test"
-        );
+        assert_eq!(config.database_url, expected);
         restore_env(original);
     }
 }
