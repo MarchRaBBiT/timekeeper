@@ -3,7 +3,7 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String, // user_id
     pub username: String,
@@ -44,7 +44,7 @@ pub fn create_access_token(
     role: String,
     secret: &str,
     expiration_hours: u64,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, Claims)> {
     let claims = Claims::new(user_id, username, role, expiration_hours);
     let token = encode(
         &Header::default(),
@@ -52,7 +52,7 @@ pub fn create_access_token(
         &EncodingKey::from_secret(secret.as_ref()),
     )?;
 
-    Ok(token)
+    Ok((token, claims))
 }
 
 impl RefreshToken {
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn create_and_verify_with_snake_case_role() {
-        let token =
+        let (token, _) =
             create_access_token("user-123".into(), "bob".into(), "admin".into(), "secret", 1)
                 .expect("create token");
         let claims = verify_access_token(&token, "secret").expect("verify token");

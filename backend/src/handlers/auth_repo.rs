@@ -11,6 +11,14 @@ pub struct StoredRefreshToken {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Debug)]
+pub struct ActiveAccessToken<'a> {
+    pub jti: &'a str,
+    pub user_id: &'a str,
+    pub expires_at: DateTime<Utc>,
+    pub context: Option<&'a str>,
+}
+
 pub async fn find_user_by_username(
     pool: &PgPool,
     username: &str,
@@ -92,4 +100,58 @@ pub async fn fetch_valid_refresh_token(
     .bind(now)
     .fetch_optional(pool)
     .await
+}
+
+pub async fn insert_active_access_token(
+    pool: &PgPool,
+    token: &ActiveAccessToken<'_>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO active_access_tokens (jti, user_id, expires_at, context) \
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(token.jti)
+    .bind(token.user_id)
+    .bind(token.expires_at)
+    .bind(token.context)
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+pub async fn access_token_exists(pool: &PgPool, jti: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>("SELECT 1 FROM active_access_tokens WHERE jti = $1 LIMIT 1")
+        .bind(jti)
+        .fetch_optional(pool)
+        .await
+        .map(|row| row.is_some())
+}
+
+pub async fn delete_active_access_token_by_jti(
+    pool: &PgPool,
+    jti: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM active_access_tokens WHERE jti = $1")
+        .bind(jti)
+        .execute(pool)
+        .await
+        .map(|_| ())
+}
+
+pub async fn delete_active_access_tokens_for_user(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM active_access_tokens WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map(|_| ())
+}
+
+pub async fn cleanup_expired_access_tokens(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM active_access_tokens WHERE expires_at <= NOW()")
+        .execute(pool)
+        .await
+        .map(|_| ())
 }

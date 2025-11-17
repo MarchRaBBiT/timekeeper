@@ -7,13 +7,7 @@ use pg_embed::{
     postgres::{PgEmbed, PgSettings},
 };
 use sqlx::PgPool;
-use std::{
-    env,
-    net::TcpListener,
-    path::PathBuf,
-    sync::OnceLock,
-    time::Duration as StdDuration,
-};
+use std::{env, net::TcpListener, path::PathBuf, sync::OnceLock, time::Duration as StdDuration};
 use tempfile::TempDir;
 use timekeeper_backend::{
     config::Config,
@@ -54,53 +48,53 @@ fn init_test_database_url() {
 }
 
 fn start_embedded_postgres() -> String {
-    EMBEDDED_DB_URL
-        .get()
-        .cloned()
-        .unwrap_or_else(|| {
-            let data_dir = tempfile::tempdir().expect("create temp dir for embedded postgres");
-            let db_path: PathBuf = data_dir.path().join("data");
-            let pg_settings = PgSettings {
-                database_dir: db_path,
-                port: allocate_ephemeral_port(),
-                user: "timekeeper_test".into(),
-                password: "timekeeper_test".into(),
-                auth_method: PgAuthMethod::Plain,
-                persistent: false,
-                timeout: Some(StdDuration::from_secs(15)),
-                migration_dir: None,
-            };
-            let fetch_settings = PgFetchSettings {
-                version: PG_V15,
-                ..Default::default()
-            };
+    let url = EMBEDDED_DB_URL.get().cloned().unwrap_or_else(|| {
+        let data_dir = tempfile::tempdir().expect("create temp dir for embedded postgres");
+        let db_path: PathBuf = data_dir.path().join("data");
+        let pg_settings = PgSettings {
+            database_dir: db_path,
+            port: allocate_ephemeral_port(),
+            user: "timekeeper_test".into(),
+            password: "timekeeper_test".into(),
+            auth_method: PgAuthMethod::Plain,
+            persistent: false,
+            timeout: Some(StdDuration::from_secs(15)),
+            migration_dir: None,
+        };
+        let fetch_settings = PgFetchSettings {
+            version: PG_V15,
+            ..Default::default()
+        };
 
-            let runtime = tokio::runtime::Runtime::new().expect("create tokio runtime");
-            let mut pg_embed: Option<PgEmbed> = None;
-            runtime.block_on(async {
-                let mut pg = PgEmbed::new(pg_settings, fetch_settings)
-                    .await
-                    .expect("init embedded postgres");
-                pg.setup().await.expect("setup embedded postgres");
-                pg.start_db().await.expect("start embedded postgres");
-                pg_embed = Some(pg);
-            });
-            let pg = pg_embed.expect("embedded postgres initialized");
-            let url = format!(
-                "postgres://{}:{}@127.0.0.1:{}/postgres",
-                pg.pg_settings.user, pg.pg_settings.password, pg.pg_settings.port
-            );
-            EMBEDDED_PG
-                .set(EmbeddedPostgres {
-                    instance: pg,
-                    data_dir,
-                })
-                .expect("set embedded postgres instance");
-            EMBEDDED_DB_URL
-                .set(url.clone())
-                .expect("set embedded postgres url");
-            url
-        })
+        let runtime = tokio::runtime::Runtime::new().expect("create tokio runtime");
+        let mut pg_embed: Option<PgEmbed> = None;
+        runtime.block_on(async {
+            let mut pg = PgEmbed::new(pg_settings, fetch_settings)
+                .await
+                .expect("init embedded postgres");
+            pg.setup().await.expect("setup embedded postgres");
+            pg.start_db().await.expect("start embedded postgres");
+            pg_embed = Some(pg);
+        });
+        let pg = pg_embed.expect("embedded postgres initialized");
+        let url = format!(
+            "postgres://{}:{}@127.0.0.1:{}/postgres",
+            pg.pg_settings.user, pg.pg_settings.password, pg.pg_settings.port
+        );
+        EMBEDDED_PG
+            .set(EmbeddedPostgres {
+                instance: pg,
+                data_dir,
+            })
+            .expect("set embedded postgres instance");
+        EMBEDDED_DB_URL
+            .set(url.clone())
+            .expect("set embedded postgres url");
+        url
+    });
+    env::set_var("DATABASE_URL", url.clone());
+    env::set_var("TEST_DATABASE_URL", url.clone());
+    url
 }
 
 fn allocate_ephemeral_port() -> u16 {
@@ -338,18 +332,24 @@ mod tests {
             .expect("lock env")
     }
 
-    fn restore_env(original: Option<String>) {
-        if let Some(value) = original {
-            env::set_var("TEST_DATABASE_URL", value);
-        } else {
-            env::remove_var("TEST_DATABASE_URL");
+    fn restore_env(original: (Option<String>, Option<String>)) {
+        match original.0 {
+            Some(value) => env::set_var("TEST_DATABASE_URL", value),
+            None => env::remove_var("TEST_DATABASE_URL"),
+        }
+        match original.1 {
+            Some(value) => env::set_var("DATABASE_URL", value),
+            None => env::remove_var("DATABASE_URL"),
         }
     }
 
     #[test]
     fn test_config_uses_database_url_from_env() {
         let _guard = env_guard();
-        let original = env::var("TEST_DATABASE_URL").ok();
+        let original = (
+            env::var("TEST_DATABASE_URL").ok(),
+            env::var("DATABASE_URL").ok(),
+        );
         env::set_var("TEST_DATABASE_URL", "postgres://override/testdb");
 
         let config = test_config();
@@ -361,11 +361,14 @@ mod tests {
     #[test]
     fn test_config_falls_back_to_default_when_env_missing() {
         let _guard = env_guard();
-        let original = env::var("TEST_DATABASE_URL").ok();
+        let original = (
+            env::var("TEST_DATABASE_URL").ok(),
+            env::var("DATABASE_URL").ok(),
+        );
         env::remove_var("TEST_DATABASE_URL");
 
         let config = test_config();
-        let expected = start_embedded_postgres();
+        let expected = env::var("DATABASE_URL").expect("database url set");
 
         assert_eq!(config.database_url, expected);
         restore_env(original);

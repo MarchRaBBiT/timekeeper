@@ -10,6 +10,10 @@ repository.workspace = true
 name = "timekeeper-backend"
 path = "src/main.rs"
 
+[[bin]]
+name = "token_cleanup"
+path = "src/bin/token_cleanup.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "tracing"] }
