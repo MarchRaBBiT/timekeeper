@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::{
     api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse},
-    pages::login::repository as login_repository,
+    pages::{login::repository as login_repository, mfa::repository as mfa_repository},
     utils::storage as storage_utils,
 };
 use leptos::*;
@@ -123,21 +123,18 @@ pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
 }
 
 pub async fn fetch_mfa_status() -> Result<MfaStatusResponse, String> {
-    let api_client = ApiClient::new();
-    api_client.get_mfa_status().await
+    mfa_repository::fetch_status().await
 }
 
 pub async fn register_mfa() -> Result<MfaSetupResponse, String> {
-    let api_client = ApiClient::new();
-    api_client.register_mfa().await
+    mfa_repository::register().await
 }
 
 pub async fn activate_mfa(
     code: String,
     set_auth_state: Option<WriteSignal<AuthState>>,
 ) -> Result<(), String> {
-    let api_client = ApiClient::new();
-    api_client.activate_mfa(&code).await?;
+    mfa_repository::activate(&code).await?;
 
     if let Ok(storage) = storage_utils::local_storage() {
         if let Ok(Some(user_json)) = storage.get_item("current_user") {
