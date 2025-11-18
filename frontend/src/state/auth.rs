@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use crate::{
     api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse},
+    pages::login::repository as login_repository,
     utils::storage as storage_utils,
 };
 use leptos::*;
@@ -72,17 +73,22 @@ pub async fn login(
     totp_code: Option<String>,
     set_auth_state: WriteSignal<AuthState>,
 ) -> Result<(), String> {
-    set_auth_state.update(|state| state.loading = true);
-
-    let api_client = ApiClient::new();
     let request = LoginRequest {
         username,
         password,
         totp_code,
         device_label: None,
     };
+    login_request(request, set_auth_state).await
+}
 
-    match api_client.login(request).await {
+pub async fn login_request(
+    request: LoginRequest,
+    set_auth_state: WriteSignal<AuthState>,
+) -> Result<(), String> {
+    set_auth_state.update(|state| state.loading = true);
+
+    match login_repository::login(request).await {
         Ok(response) => {
             set_auth_state.update(|state| {
                 state.user = Some(response.user);
@@ -99,9 +105,7 @@ pub async fn login(
 }
 
 pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
-    // Try to notify backend to revoke refresh token (best-effort)
-    let api_client = ApiClient::new();
-    let _ = api_client.logout(false).await;
+    let _ = login_repository::logout(false).await;
 
     // Clear tokens from localStorage regardless of backend result
     if let Ok(storage) = storage_utils::local_storage() {
