@@ -1,11 +1,10 @@
+use crate::utils::storage as storage_utils;
 use leptos::*;
 
 fn has_access_token() -> bool {
-    if let Some(win) = web_sys::window() {
-        if let Ok(Some(storage)) = win.local_storage() {
-            if let Ok(Some(tok)) = storage.get_item("access_token") {
-                return !tok.is_empty();
-            }
+    if let Ok(storage) = storage_utils::local_storage() {
+        if let Ok(Some(tok)) = storage.get_item("access_token") {
+            return !tok.is_empty();
         }
     }
     false

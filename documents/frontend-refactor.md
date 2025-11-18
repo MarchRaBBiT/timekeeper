@@ -9,6 +9,21 @@
   - 認証専用のサービスモジュール（`auth_service.rs` など）を切り出し、`ApiClient` からは `trait` を通して利用する構造へ分割。
   - localStorage 利用や JWT デコードといった横断関心事を小さなヘルパー（`token_storage.rs` 等）に分け、重複コードを排除。
   - API ごとに専用の入力/出力型を定義して `serde_json::Value` の直接操作を減らす。
+- **現状が持つ主な機能**
+  - `ApiClient::new/new_with_base_url`: `reqwest_wasm::Client` とベースURLを初期化するファクトリ。
+  - `resolved_base_url`: 設定ファイルや `base_url` プロパティから実際の API エンドポイントを解決する。
+  - `get_auth_headers`: localStorage の `access_token` から `Authorization` ヘッダーを生成する。
+  - `handle_unauthorized_status`: 401 時にセッションを破棄しログイン画面へ誘導する。
+  - `clear_auth_session/redirect_to_login_if_needed`: localStorage の認証情報を削除し、必要なら `/login` へ遷移させる。
+  - `login`: `/auth/login` に `LoginRequest` を POST し、レスポンスを localStorage (access/refresh/user) に保存する。
+  - `refresh_token`: `/auth/refresh` を呼び、リフレッシュトークンでアクセストークンを再取得し保存する。
+  - `logout`: `/auth/logout` を呼び出し、必要に応じて `all` パラメータを付けてトークンを無効化する。
+  - `get_mfa_status/register_mfa/mfa_activate`: MFA 関連の取得・登録・有効化エンドポイントへアクセスする。
+  - `get_attendance_status/clock_in/clock_out/break_start/break_end`: 勤怠系の API に対するGET/POST操作をラップする。
+  - `get_my_attendance/get_breaks/...` : 勤怠データや休憩記録を取得する複数のヘルパーメソッド。
+  - `get_requests/create_leave_request/create_overtime_request`: 休暇・残業リクエストの取得/作成 API を叩く。
+  - `admin` 系 (`get_users/create_user/get_holidays/...`): 管理者向けユーザー管理・休日管理・エクスポートAPIにアクセスする。
+  - `supporting helpers`: `persist_session`, `ensure_device_label`, `decode_jti` など localStorage とJWT を扱うユーティリティ。
 
 ## frontend/src/state/auth.rs
 - **問題点**

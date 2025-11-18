@@ -23,12 +23,12 @@ pub fn AttendancePage() -> impl IntoView {
     let holiday_entries_error = create_rw_signal(None::<String>);
     let initial_today = today_in_app_tz();
     let active_holiday_period = create_rw_signal((initial_today.year(), initial_today.month()));
-    let fetch_month_holidays = Rc::new({
+    let fetch_month_holidays = {
         let holiday_entries = holiday_entries.clone();
         let holiday_entries_loading = holiday_entries_loading.clone();
         let holiday_entries_error = holiday_entries_error.clone();
         let active_holiday_period = active_holiday_period.clone();
-        move |year: i32, month: u32| {
+        store_value(Rc::new(move |year: i32, month: u32| {
             holiday_entries_loading.set(true);
             holiday_entries_error.set(None);
             let holiday_entries = holiday_entries.clone();
@@ -46,19 +46,21 @@ pub fn AttendancePage() -> impl IntoView {
                 }
                 holiday_entries_loading.set(false);
             });
-        }
-    });
-    let fetch_month_for_effect = fetch_month_holidays.clone();
-    create_effect(move |_| {
+        }))
+    };
+    {
+        let fetch_month = fetch_month_holidays;
         let set_state_for_status = set_state.clone();
-        let fetch_month = fetch_month_for_effect.clone();
-        spawn_local(async move {
-            if let Err(err) = refresh_today_context(set_state_for_status).await {
-                error!("Failed to refresh attendance context: {}", err);
-            }
+        create_effect(move |_| {
+            let set_state_for_status = set_state_for_status.clone();
+            spawn_local(async move {
+                if let Err(err) = refresh_today_context(set_state_for_status).await {
+                    error!("Failed to refresh attendance context: {}", err);
+                }
+            });
+            fetch_month.get_value()(initial_today.year(), initial_today.month());
         });
-        fetch_month(initial_today.year(), initial_today.month());
-    });
+    }
 
     let from_input = create_rw_signal(String::new());
     let to_input = create_rw_signal(String::new());
@@ -70,7 +72,7 @@ pub fn AttendancePage() -> impl IntoView {
         let set_state = set_state.clone();
         let from_input = from_input.clone();
         let to_input = to_input.clone();
-        let fetch_month_holidays = fetch_month_holidays.clone();
+        let fetch_month_holidays = fetch_month_holidays;
         move |_| {
             let from = if from_input.get().is_empty() {
                 None
@@ -86,7 +88,7 @@ pub fn AttendancePage() -> impl IntoView {
                 let _ = load_attendance_range(set_state, from, to).await;
             });
             if let Some(date) = from {
-                fetch_month_holidays(date.year(), date.month());
+                fetch_month_holidays.get_value()(date.year(), date.month());
             }
         }
     };
@@ -97,7 +99,7 @@ pub fn AttendancePage() -> impl IntoView {
         let set_state = set_state.clone();
         let export_error = export_error.clone();
         let export_success = export_success.clone();
-        let fetch_month_holidays = fetch_month_holidays.clone();
+        let fetch_month_holidays = fetch_month_holidays;
         move |_| {
             export_error.set(None);
             export_success.set(None);
@@ -118,7 +120,7 @@ pub fn AttendancePage() -> impl IntoView {
                 let _ = load_attendance_range(set_state_for_async, Some(first_day), Some(last_day))
                     .await;
             });
-            fetch_month_holidays(first_day.year(), first_day.month());
+            fetch_month_holidays.get_value()(first_day.year(), first_day.month());
         }
     };
 
@@ -308,10 +310,10 @@ pub fn AttendancePage() -> impl IntoView {
                             class="px-3 py-1 text-sm rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                             disabled={move || holiday_entries_loading.get()}
                             on:click={
-                                let fetch = fetch_month_holidays.clone();
+                                let fetch = fetch_month_holidays;
                                 move |_| {
                                     let (year, month) = active_holiday_period.get();
-                                    fetch(year, month);
+                                    fetch.get_value()(year, month);
                                 }
                             }
                         >
@@ -382,8 +384,9 @@ pub fn AttendancePage() -> impl IntoView {
                                             let breaks = breaks.clone();
                                             spawn_local(async move {
                                                 let api = ApiClient::new();
-                                                if let Ok(list) = api.get_breaks_by_attendance(&attendance_id).await {
-                                                    breaks.set(list);
+                                                match api.get_breaks_by_attendance(&attendance_id).await {
+                                                    Ok(list) => breaks.set(list),
+                                                    Err(err) => error!("Failed to load breaks: {}", err),
                                                 }
                                             });
                                         }

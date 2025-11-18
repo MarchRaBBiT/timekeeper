@@ -2,6 +2,7 @@ use crate::api::{ApiClient, CreateLeaveRequest, CreateOvertimeRequest};
 use crate::components::layout::*;
 use leptos::*;
 use serde_json::json;
+use std::rc::Rc;
 
 #[component]
 pub fn RequestsPage() -> impl IntoView {
@@ -18,21 +19,28 @@ pub fn RequestsPage() -> impl IntoView {
     // simplistic my requests list
     let items = create_rw_signal(serde_json::Value::Null);
 
-    let load_my = {
+    let load_my_fn: Rc<dyn Fn()> = {
         let items = items.clone();
-        move || {
+        Rc::new(move || {
+            let items = items.clone();
             leptos::spawn_local(async move {
                 let api = ApiClient::new();
                 if let Ok(v) = api.get_my_requests().await {
                     items.set(v);
                 }
             });
-        }
+        })
     };
 
-    create_effect(move |_| {
-        load_my();
-    });
+    let load_my = store_value(load_my_fn);
+
+    {
+        let load_initial = load_my;
+        create_effect(move |_| {
+            let loader = load_initial.get_value();
+            loader();
+        });
+    }
 
     view! {
         <Layout>
@@ -49,11 +57,16 @@ pub fn RequestsPage() -> impl IntoView {
                             ev.prevent_default();
                             let api = ApiClient::new();
                             let lt = leave_type.get();
+                            let load_after = load_my.get_value();
                             let sd = chrono::NaiveDate::parse_from_str(&leave_start.get(), "%Y-%m-%d");
                             let ed = chrono::NaiveDate::parse_from_str(&leave_end.get(), "%Y-%m-%d");
                             if let (Ok(start_date), Ok(end_date)) = (sd, ed) {
                                 let req = CreateLeaveRequest { leave_type: lt, start_date, end_date, reason: if leave_reason.get().is_empty() { None } else { Some(leave_reason.get()) } };
-                                leptos::spawn_local(async move { let _ = api.create_leave_request(req).await; });
+                                leptos::spawn_local(async move {
+                                    if api.create_leave_request(req).await.is_ok() {
+                                        load_after();
+                                    }
+                                });
                             }
                         }>
                             <div>
@@ -90,10 +103,15 @@ pub fn RequestsPage() -> impl IntoView {
                         <form class="space-y-4" on:submit=move |ev| {
                             ev.prevent_default();
                             let api = ApiClient::new();
+                            let load_after = load_my.get_value();
                             if let Ok(date) = chrono::NaiveDate::parse_from_str(&ot_date.get(), "%Y-%m-%d") {
                                 let hours = ot_hours.get().parse::<f64>().unwrap_or(0.0);
                                 let req = CreateOvertimeRequest { date, planned_hours: hours, reason: if ot_reason.get().is_empty() { None } else { Some(ot_reason.get()) } };
-                                leptos::spawn_local(async move { let _ = api.create_overtime_request(req).await; });
+                                leptos::spawn_local(async move {
+                                    if api.create_overtime_request(req).await.is_ok() {
+                                        load_after();
+                                    }
+                                });
                             }
                         }>
                             <div>
@@ -160,21 +178,35 @@ pub fn RequestsPage() -> impl IntoView {
                                                                     // naive: open a prompt to edit; in real UI, use modal
                                                                     let api = ApiClient::new();
                                                                     let idu = id_sv.get_value();
+                                                                    let refresh = load_my.get_value();
                                                                     if is_leave {
                                                                         let reason = web_sys::window().and_then(|w| w.prompt_with_message("理由(空で変更なし)").ok().flatten());
                                                                         let payload = json!({"reason": reason});
-                                                                        leptos::spawn_local(async move { let _ = api.update_request(&idu, payload).await; });
+                                                                        leptos::spawn_local(async move {
+                                                                            if api.update_request(&idu, payload).await.is_ok() {
+                                                                                refresh();
+                                                                            }
+                                                                        });
                                                                     } else {
                                                                         let hours = web_sys::window().and_then(|w| w.prompt_with_message("時間(例:2.0)").ok().flatten()).and_then(|s| s.parse::<f64>().ok());
                                                                         let payload = json!({"planned_hours": hours});
-                                                                        leptos::spawn_local(async move { let _ = api.update_request(&idu, payload).await; });
+                                                                        leptos::spawn_local(async move {
+                                                                            if api.update_request(&idu, payload).await.is_ok() {
+                                                                                refresh();
+                                                                            }
+                                                                        });
                                                                     }
                                                                 }>{"編集"}</button>
                                                                 <button class="text-red-600" on:click=move |_| {
                                                                     if web_sys::window().and_then(|w| w.confirm_with_message("取消しますか?").ok()).unwrap_or(false) {
                                                                         let api = ApiClient::new();
                                                                         let idc = id_sv.get_value();
-                                                                        leptos::spawn_local(async move { let _ = api.cancel_request(&idc).await; });
+                                                                        let refresh = load_my.get_value();
+                                                                        leptos::spawn_local(async move {
+                                                                            if api.cancel_request(&idc).await.is_ok() {
+                                                                                refresh();
+                                                                            }
+                                                                        });
                                                                     }
                                                                 }>{"取消"}</button>
                                                             </Show>

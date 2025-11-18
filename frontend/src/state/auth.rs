@@ -45,19 +45,25 @@ async fn check_auth_status(_api_client: &ApiClient) -> Result<UserResponse, Stri
     let storage = storage_utils::local_storage()?;
     let token = storage
         .get_item("access_token")
-        .map_err(|_| "Failed to get token")?
-        .ok_or("No token")?;
+        .map_err(|_| "Failed to get token")?;
 
-    if token.is_empty() {
-        return Err("No token".to_string());
+    if token.as_deref().map(|t| t.is_empty()).unwrap_or(true) {
+        return refresh_session(api_client).await;
     }
 
-    let user_json = storage
+    match storage
         .get_item("current_user")
         .map_err(|_| "Failed to read user profile")?
-        .ok_or("No stored user profile")?;
+    {
+        Some(user_json) => serde_json::from_str(&user_json)
+            .map_err(|_| "Failed to parse stored user profile".to_string()),
+        None => refresh_session(api_client).await,
+    }
+}
 
-    serde_json::from_str(&user_json).map_err(|_| "Failed to parse stored user profile".to_string())
+async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, String> {
+    let response = api_client.refresh_token().await?;
+    Ok(response.user)
 }
 
 pub async fn login(
