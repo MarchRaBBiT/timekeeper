@@ -50,6 +50,7 @@ Prefer the scripts’ `stop/status/logs` subcommands to avoid stale PID files.
 - Before replying after an implementation, run the relevant test build and confirm it completes successfully.
 - When proposing implementation options, list at most five in order of recommendation and include pros and cons for each.
 - When recommending an option, explain why it is being recommended.
+- Always create a dedicated topic branch before starting any feature implementation and keep related commits isolated on that branch until the PR is ready.
 
 ## Backend Design Principles
 - Keep handlers slender and modular: move DB-heavy logic into helper modules or repositories (e.g., `handlers/admin/requests.rs`, `handlers/requests_repo.rs`) so each handler focuses on HTTP concerns.

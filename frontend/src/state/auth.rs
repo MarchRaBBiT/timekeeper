@@ -39,7 +39,7 @@ pub fn use_auth() -> (ReadSignal<AuthState>, WriteSignal<AuthState>) {
     (auth_state, set_auth_state)
 }
 
-async fn check_auth_status(_api_client: &ApiClient) -> Result<UserResponse, String> {
+async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, String> {
     // Try to get user info by making a request to a protected endpoint
     // For now, we'll just check if token exists in localStorage
     let storage = storage_utils::local_storage()?;
