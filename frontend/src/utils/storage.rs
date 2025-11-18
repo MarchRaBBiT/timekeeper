@@ -1,6 +1,6 @@
 use web_sys::{Storage, Window};
 
-pub fn window() -> Result<Window, String> {
+fn window() -> Result<Window, String> {
     web_sys::window().ok_or_else(|| "No window object".to_string())
 }
 
