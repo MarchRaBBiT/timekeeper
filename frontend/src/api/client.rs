@@ -568,3 +568,55 @@ pub(super) fn current_access_jti(storage: &Storage) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    fn storage() -> Storage {
+        storage_utils::local_storage().expect("local_storage available")
+    }
+
+    fn cleanup(keys: &[&str]) {
+        let store = storage();
+        for key in keys {
+            let _ = store.remove_item(key);
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn ensure_device_label_persists_value() {
+        cleanup(&["device_label"]);
+        let store = storage();
+        let first = ensure_device_label(&store).expect("label generated");
+        assert!(first.starts_with("device-"));
+        assert_eq!(store.get_item("device_label").unwrap().unwrap(), first);
+        let second = ensure_device_label(&store).expect("label reused");
+        assert_eq!(first, second);
+        cleanup(&["device_label"]);
+    }
+
+    #[wasm_bindgen_test]
+    fn decode_jti_extracts_payload_value() {
+        let token = "aaa.eyJqdGkiOiJhYmMifQ.sig";
+        assert_eq!(decode_jti(token).as_deref(), Some("abc"));
+    }
+
+    #[wasm_bindgen_test]
+    fn current_access_jti_decodes_and_caches() {
+        cleanup(&["access_token", "access_token_jti"]);
+        let store = storage();
+        let token = "bbb.eyJqdGkiOiJ0ZXN0LWp0aSJ9.sig";
+        store.set_item("access_token", token).unwrap();
+        let resolved = current_access_jti(&store).expect("jti present");
+        assert_eq!(resolved, "test-jti");
+        assert_eq!(
+            store.get_item("access_token_jti").unwrap().as_deref(),
+            Some("test-jti")
+        );
+        cleanup(&["access_token", "access_token_jti"]);
+    }
+}

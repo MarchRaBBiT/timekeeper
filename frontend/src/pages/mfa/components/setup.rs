@@ -5,7 +5,7 @@ use leptos::*;
 pub fn SetupSection<F, R>(
     status: ReadSignal<Option<MfaStatusResponse>>,
     status_loading: ReadSignal<bool>,
-    register_loading: ReadSignal<bool>,
+    register_loading: Signal<bool>,
     on_register: F,
     on_refresh: R,
 ) -> impl IntoView

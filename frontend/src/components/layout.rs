@@ -1,10 +1,13 @@
-use crate::{config, state::auth::use_auth};
+use crate::{
+    config,
+    state::auth::{self, use_auth},
+};
 use leptos::*;
 use log::error;
 
 #[component]
 pub fn Header() -> impl IntoView {
-    let (auth, set_auth) = use_auth();
+    let (auth, _set_auth) = use_auth();
     let can_access_admin = move || {
         auth.get()
             .user
@@ -19,16 +22,27 @@ pub fn Header() -> impl IntoView {
             .map(|user| user.is_system_admin)
             .unwrap_or(false)
     };
-    let on_logout = move |_| {
-        leptos::spawn_local({
-            let set_auth = set_auth.clone();
-            async move {
-                crate::state::auth::logout(set_auth).await;
+    let logout_action = auth::use_logout_action();
+    let logout_pending = logout_action.pending();
+    {
+        let logout_action = logout_action.clone();
+        create_effect(move |_| {
+            if logout_action.value().get().is_some() {
                 if let Some(win) = web_sys::window() {
                     let _ = win.location().set_href("/login");
                 }
             }
         });
+    }
+    let on_logout = {
+        let logout_action = logout_action.clone();
+        let logout_pending = logout_pending.clone();
+        move |_| {
+            if logout_pending.get_untracked() {
+                return;
+            }
+            logout_action.dispatch(false);
+        }
     };
     view! {
         <header class="bg-white shadow-sm border-b">
@@ -65,7 +79,11 @@ pub fn Header() -> impl IntoView {
                                 "ユーザー追加"
                             </a>
                         </Show>
-                        <button on:click=on_logout class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                        <button
+                            on:click=on_logout
+                            class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                            disabled={move || logout_pending.get()}
+                        >
                             "ログアウト"
                         </button>
                     </nav>

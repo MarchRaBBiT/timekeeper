@@ -6,7 +6,7 @@ use web_sys::HtmlInputElement;
 #[component]
 pub fn VerificationSection(
     setup_info: ReadSignal<Option<MfaSetupResponse>>,
-    activate_loading: ReadSignal<bool>,
+    activate_loading: Signal<bool>,
     on_submit: Callback<SubmitEvent>,
     on_input: WriteSignal<String>,
 ) -> impl IntoView {
