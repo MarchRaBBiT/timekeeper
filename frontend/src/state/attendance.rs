@@ -71,6 +71,17 @@ pub async fn clock_out(set_attendance_state: WriteSignal<AttendanceState>) -> Re
     }
 }
 
+pub async fn start_break(attendance_id: &str) -> Result<(), String> {
+    ApiClient::new()
+        .break_start(attendance_id)
+        .await
+        .map(|_| ())
+}
+
+pub async fn end_break(break_id: &str) -> Result<(), String> {
+    ApiClient::new().break_end(break_id).await.map(|_| ())
+}
+
 pub async fn load_attendance_range(
     set_attendance_state: WriteSignal<AttendanceState>,
     from: Option<NaiveDate>,

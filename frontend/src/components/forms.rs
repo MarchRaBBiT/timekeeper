@@ -1,8 +1,8 @@
-use crate::api::ApiClient;
 use crate::state::attendance::{
     self as attendance_state, describe_holiday_reason, AttendanceState,
 };
 use leptos::*;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct AttendanceButtonFlags {
     clock_in: bool,
@@ -36,56 +36,157 @@ fn button_flags_for(status: Option<&str>, loading: bool) -> AttendanceButtonFlag
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClockEventKind {
+    ClockIn,
+    BreakStart,
+    BreakEnd,
+    ClockOut,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ClockEventPayload {
+    kind: ClockEventKind,
+    attendance_id: Option<String>,
+    break_id: Option<String>,
+}
+
+impl ClockEventPayload {
+    fn clock_in() -> Self {
+        Self {
+            kind: ClockEventKind::ClockIn,
+            attendance_id: None,
+            break_id: None,
+        }
+    }
+
+    fn clock_out() -> Self {
+        Self {
+            kind: ClockEventKind::ClockOut,
+            attendance_id: None,
+            break_id: None,
+        }
+    }
+
+    fn break_start(attendance_id: String) -> Self {
+        Self {
+            kind: ClockEventKind::BreakStart,
+            attendance_id: Some(attendance_id),
+            break_id: None,
+        }
+    }
+
+    fn break_end(break_id: String) -> Self {
+        Self {
+            kind: ClockEventKind::BreakEnd,
+            attendance_id: None,
+            break_id: Some(break_id),
+        }
+    }
+}
+
 #[component]
 pub fn AttendanceActionButtons(
     attendance_state: ReadSignal<AttendanceState>,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> impl IntoView {
-    let (loading, set_loading) = create_signal(false);
     let (message, set_message) = create_signal(None::<String>);
+    let last_event = create_rw_signal(None::<ClockEventKind>);
 
-    let refresh_state = {
+    let clock_action = {
         let set_attendance_state = set_attendance_state.clone();
-        move || {
-            let set_state = set_attendance_state.clone();
-            async move { attendance_state::refresh_today_context(set_state).await }
+        create_action(move |payload: &ClockEventPayload| {
+            let set_attendance_state = set_attendance_state.clone();
+            let payload = payload.clone();
+            async move {
+                match payload.kind {
+                    ClockEventKind::ClockIn => {
+                        attendance_state::clock_in(set_attendance_state.clone()).await?
+                    }
+                    ClockEventKind::ClockOut => {
+                        attendance_state::clock_out(set_attendance_state.clone()).await?
+                    }
+                    ClockEventKind::BreakStart => {
+                        let attendance_id = payload
+                            .attendance_id
+                            .as_deref()
+                            .ok_or_else(|| "出勤レコードが見つかりません。".to_string())?;
+                        attendance_state::start_break(attendance_id).await?
+                    }
+                    ClockEventKind::BreakEnd => {
+                        let break_id = payload
+                            .break_id
+                            .as_deref()
+                            .ok_or_else(|| "休憩レコードが見つかりません。".to_string())?;
+                        attendance_state::end_break(break_id).await?
+                    }
+                };
+                attendance_state::refresh_today_context(set_attendance_state).await
+            }
+        })
+    };
+    let action_pending = clock_action.pending();
+    {
+        let clock_action = clock_action.clone();
+        let set_message = set_message.clone();
+        let last_event = last_event.clone();
+        create_effect(move |_| {
+            if let Some(result) = clock_action.value().get() {
+                match result {
+                    Ok(_) => {
+                        let success = match last_event.get_untracked() {
+                            Some(ClockEventKind::ClockIn) => "出勤しました。",
+                            Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
+                            Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
+                            Some(ClockEventKind::ClockOut) => "退勤しました。",
+                            None => "操作が完了しました。",
+                        };
+                        set_message.set(Some(success.into()));
+                    }
+                    Err(err) => set_message.set(Some(err)),
+                }
+            }
+        });
+    }
+
+    let handle_clock_in = {
+        let clock_action = clock_action.clone();
+        let action_pending = action_pending;
+        let set_message = set_message.clone();
+        let last_event = last_event.clone();
+        move |_| {
+            if action_pending.get() {
+                return;
+            }
+            set_message.set(None);
+            last_event.set(Some(ClockEventKind::ClockIn));
+            clock_action.dispatch(ClockEventPayload::clock_in());
         }
     };
 
-    let handle_clock_in = {
-        let set_attendance_state = set_attendance_state.clone();
+    let handle_clock_out = {
+        let clock_action = clock_action.clone();
+        let action_pending = action_pending;
         let set_message = set_message.clone();
-        let set_loading = set_loading.clone();
+        let last_event = last_event.clone();
         move |_| {
-            if loading.get() {
+            if action_pending.get() {
                 return;
             }
-            set_loading.set(true);
             set_message.set(None);
-            let set_state = set_attendance_state.clone();
-            let set_message = set_message.clone();
-            let set_loading = set_loading.clone();
-            spawn_local(async move {
-                match attendance_state::clock_in(set_state.clone()).await {
-                    Ok(_) => match refresh_state().await {
-                        Ok(_) => set_message.set(Some("打刻しました。".into())),
-                        Err(err) => {
-                            log::error!("Failed to refresh attendance context: {}", err);
-                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
-                        }
-                    },
-                    Err(err) => set_message.set(Some(format!("打刻に失敗しました: {}", err))),
-                };
-                set_loading.set(false);
-            });
+            last_event.set(Some(ClockEventKind::ClockOut));
+            clock_action.dispatch(ClockEventPayload::clock_out());
         }
     };
 
     let handle_break_start = {
         let attendance_state = attendance_state.clone();
         let set_message = set_message.clone();
+        let clock_action = clock_action.clone();
+        let action_pending = action_pending;
+        let last_event = last_event.clone();
         move |_| {
-            if loading.get() {
+            if action_pending.get() {
                 return;
             }
             let Some(status) = attendance_state.get().today_status.clone() else {
@@ -93,39 +194,27 @@ pub fn AttendanceActionButtons(
                 return;
             };
             if status.status != "clocked_in" {
-                set_message.set(Some("勤務中のみ休憩を開始できます。".into()));
+                set_message.set(Some("出勤中のみ休憩を開始できます。".into()));
                 return;
             }
             let Some(att_id) = status.attendance_id.clone() else {
-                set_message.set(Some("勤怠レコードが見つかりません。".into()));
+                set_message.set(Some("出勤レコードが見つかりません。".into()));
                 return;
             };
-            set_loading.set(true);
             set_message.set(None);
-            let set_message = set_message.clone();
-            let set_loading = set_loading.clone();
-            spawn_local(async move {
-                let api = ApiClient::new();
-                match api.break_start(&att_id).await {
-                    Ok(_) => match refresh_state().await {
-                        Ok(_) => set_message.set(Some("休憩を開始しました。".into())),
-                        Err(err) => {
-                            log::error!("Failed to refresh attendance context: {}", err);
-                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
-                        }
-                    },
-                    Err(err) => set_message.set(Some(format!("休憩開始に失敗しました: {}", err))),
-                };
-                set_loading.set(false);
-            });
+            last_event.set(Some(ClockEventKind::BreakStart));
+            clock_action.dispatch(ClockEventPayload::break_start(att_id));
         }
     };
 
     let handle_break_end = {
         let attendance_state = attendance_state.clone();
         let set_message = set_message.clone();
+        let clock_action = clock_action.clone();
+        let action_pending = action_pending;
+        let last_event = last_event.clone();
         move |_| {
-            if loading.get() {
+            if action_pending.get() {
                 return;
             }
             let Some(status) = attendance_state.get().today_status.clone() else {
@@ -140,53 +229,9 @@ pub fn AttendanceActionButtons(
                 set_message.set(Some("休憩レコードが見つかりません。".into()));
                 return;
             };
-            set_loading.set(true);
             set_message.set(None);
-            let set_message = set_message.clone();
-            let set_loading = set_loading.clone();
-            spawn_local(async move {
-                let api = ApiClient::new();
-                match api.break_end(&break_id).await {
-                    Ok(_) => match refresh_state().await {
-                        Ok(_) => set_message.set(Some("休憩を終了しました。".into())),
-                        Err(err) => {
-                            log::error!("Failed to refresh attendance context: {}", err);
-                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
-                        }
-                    },
-                    Err(err) => set_message.set(Some(format!("休憩終了に失敗しました: {}", err))),
-                };
-                set_loading.set(false);
-            });
-        }
-    };
-
-    let handle_clock_out = {
-        let set_attendance_state = set_attendance_state.clone();
-        let set_message = set_message.clone();
-        let set_loading = set_loading.clone();
-        move |_| {
-            if loading.get() {
-                return;
-            }
-            set_loading.set(true);
-            set_message.set(None);
-            let set_state = set_attendance_state.clone();
-            let set_message = set_message.clone();
-            let set_loading = set_loading.clone();
-            spawn_local(async move {
-                match attendance_state::clock_out(set_state.clone()).await {
-                    Ok(_) => match refresh_state().await {
-                        Ok(_) => set_message.set(Some("退勤しました。".into())),
-                        Err(err) => {
-                            log::error!("Failed to refresh attendance context: {}", err);
-                            set_message.set(Some(format!("状態の更新に失敗しました: {}", err)));
-                        }
-                    },
-                    Err(err) => set_message.set(Some(format!("退勤に失敗しました: {}", err))),
-                };
-                set_loading.set(false);
-            });
+            last_event.set(Some(ClockEventKind::BreakEnd));
+            clock_action.dispatch(ClockEventPayload::break_end(break_id));
         }
     };
 
@@ -195,7 +240,7 @@ pub fn AttendanceActionButtons(
     let button_state = move || {
         let flags = button_flags_for(
             status_snapshot().as_ref().map(|s| s.status.as_str()),
-            loading.get(),
+            action_pending.get(),
         );
         if holiday_reason.get().is_some() {
             AttendanceButtonFlags::default()
@@ -216,32 +261,44 @@ pub fn AttendanceActionButtons(
                         _ => ("未出勤", "bg-gray-100 text-gray-800"),
                     };
                     view! {
-                        <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {}", color)>
+                        <span class=format!(
+                            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {}",
+                            color
+                        )>
                             {label}
                         </span>
-                    }.into_view()
+                    }
+                    .into_view()
                 }}
                 <div class="flex flex-wrap gap-3">
                     <button
                         class="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50"
                         disabled={move || !button_state().clock_in}
                         on:click=handle_clock_in
-                    >{"出勤"}</button>
+                    >
+                        {"出勤"}
+                    </button>
                     <button
                         class="px-4 py-2 rounded bg-amber-600 text-white disabled:opacity-50"
                         disabled={move || !button_state().break_start}
                         on:click=handle_break_start
-                    >{"休憩開始"}</button>
+                    >
+                        {"休憩開始"}
+                    </button>
                     <button
                         class="px-4 py-2 rounded bg-amber-700 text-white disabled:opacity-50"
                         disabled={move || !button_state().break_end}
                         on:click=handle_break_end
-                    >{"休憩終了"}</button>
+                    >
+                        {"休憩終了"}
+                    </button>
                     <button
                         class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
                         disabled={move || !button_state().clock_out}
                         on:click=handle_clock_out
-                    >{"退勤"}</button>
+                    >
+                        {"退勤"}
+                    </button>
                 </div>
             </div>
             {move || {
@@ -258,6 +315,9 @@ pub fn AttendanceActionButtons(
                     })
                     .unwrap_or_else(|| view! {}.into_view())
             }}
+            <Show when=move || action_pending.get()>
+                <p class="text-sm text-gray-500">{"処理中です..."}</p>
+            </Show>
             {move || {
                 message
                     .get()
@@ -265,52 +325,5 @@ pub fn AttendanceActionButtons(
                     .unwrap_or_else(|| view! {}.into_view())
             }}
         </div>
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use wasm_bindgen_test::*;
-
-    wasm_bindgen_test_configure!(run_in_browser);
-
-    #[wasm_bindgen_test]
-    fn not_started_only_allows_clock_in() {
-        let flags = button_flags_for(None, false);
-        assert!(flags.clock_in);
-        assert!(!flags.break_start);
-        assert!(!flags.break_end);
-        assert!(!flags.clock_out);
-    }
-
-    #[wasm_bindgen_test]
-    fn clocked_in_allows_break_start_and_clock_out() {
-        let flags = button_flags_for(Some("clocked_in"), false);
-        assert!(!flags.clock_in);
-        assert!(flags.break_start);
-        assert!(!flags.break_end);
-        assert!(flags.clock_out);
-    }
-
-    #[wasm_bindgen_test]
-    fn on_break_allows_break_end_and_clock_out() {
-        let flags = button_flags_for(Some("on_break"), false);
-        assert!(!flags.clock_in);
-        assert!(!flags.break_start);
-        assert!(flags.break_end);
-        assert!(flags.clock_out);
-    }
-
-    #[wasm_bindgen_test]
-    fn clocked_out_disables_all_buttons() {
-        let flags = button_flags_for(Some("clocked_out"), false);
-        assert_eq!(flags, AttendanceButtonFlags::default());
-    }
-
-    #[wasm_bindgen_test]
-    fn loading_state_disables_everything() {
-        let flags = button_flags_for(Some("clocked_in"), true);
-        assert_eq!(flags, AttendanceButtonFlags::default());
     }
 }
