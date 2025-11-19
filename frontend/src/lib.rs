@@ -29,19 +29,21 @@ pub fn start() {
 
     mount_to_body(|| {
         view! {
-            <Router>
-                <Routes>
-                    <Route path="/" view=HomePage/>
-                    <Route path="/login" view=LoginPage/>
-                    <Route path="/dashboard" view=ProtectedDashboard/>
-                    <Route path="/attendance" view=ProtectedAttendance/>
-                    <Route path="/requests" view=ProtectedRequests/>
-                    <Route path="/mfa/register" view=MfaRegisterPage/>
-                    <Route path="/admin" view=ProtectedAdmin/>
-                    <Route path="/admin/users" view=ProtectedAdminUsers/>
-                    <Route path="/admin/export" view=ProtectedAdminExport/>
-                </Routes>
-            </Router>
+            <crate::state::auth::AuthProvider>
+                <Router>
+                    <Routes>
+                        <Route path="/" view=HomePage/>
+                        <Route path="/login" view=LoginPage/>
+                        <Route path="/dashboard" view=ProtectedDashboard/>
+                        <Route path="/attendance" view=ProtectedAttendance/>
+                        <Route path="/requests" view=ProtectedRequests/>
+                        <Route path="/mfa/register" view=MfaRegisterPage/>
+                        <Route path="/admin" view=ProtectedAdmin/>
+                        <Route path="/admin/users" view=ProtectedAdminUsers/>
+                        <Route path="/admin/export" view=ProtectedAdminExport/>
+                    </Routes>
+                </Router>
+            </crate::state::auth::AuthProvider>
         }
     });
 }

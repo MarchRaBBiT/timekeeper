@@ -1,9 +1,12 @@
 #![allow(dead_code)]
 use crate::{
     api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse},
+    pages::login::repository as login_repository,
     utils::storage as storage_utils,
 };
 use leptos::*;
+
+type AuthContext = (ReadSignal<AuthState>, WriteSignal<AuthState>);
 
 #[derive(Debug, Clone)]
 pub struct AuthState {
@@ -22,21 +25,39 @@ impl Default for AuthState {
     }
 }
 
-pub fn use_auth() -> (ReadSignal<AuthState>, WriteSignal<AuthState>) {
+fn create_auth_context() -> AuthContext {
     let (auth_state, set_auth_state) = create_signal(AuthState::default());
+    set_auth_state.update(|state| state.loading = true);
 
-    // Check if user is already logged in on mount
-    let api_client = ApiClient::new();
+    let set_auth_for_check = set_auth_state;
     spawn_local(async move {
-        if let Ok(user) = check_auth_status(&api_client).await {
-            set_auth_state.update(|state| {
+        let api_client = ApiClient::new();
+        match check_auth_status(&api_client).await {
+            Ok(user) => set_auth_for_check.update(|state| {
                 state.user = Some(user);
                 state.is_authenticated = true;
-            });
+                state.loading = false;
+            }),
+            Err(_) => set_auth_for_check.update(|state| {
+                state.user = None;
+                state.is_authenticated = false;
+                state.loading = false;
+            }),
         }
     });
 
     (auth_state, set_auth_state)
+}
+
+#[component]
+pub fn AuthProvider(children: Children) -> impl IntoView {
+    let ctx = create_auth_context();
+    provide_context::<AuthContext>(ctx);
+    view! { <>{children()}</> }
+}
+
+pub fn use_auth() -> AuthContext {
+    use_context::<AuthContext>().expect("AuthProvider がマウントされていません")
 }
 
 async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, String> {
@@ -72,17 +93,22 @@ pub async fn login(
     totp_code: Option<String>,
     set_auth_state: WriteSignal<AuthState>,
 ) -> Result<(), String> {
-    set_auth_state.update(|state| state.loading = true);
-
-    let api_client = ApiClient::new();
     let request = LoginRequest {
         username,
         password,
         totp_code,
         device_label: None,
     };
+    login_request(request, set_auth_state).await
+}
 
-    match api_client.login(request).await {
+pub async fn login_request(
+    request: LoginRequest,
+    set_auth_state: WriteSignal<AuthState>,
+) -> Result<(), String> {
+    set_auth_state.update(|state| state.loading = true);
+
+    match login_repository::login(request).await {
         Ok(response) => {
             set_auth_state.update(|state| {
                 state.user = Some(response.user);
@@ -98,10 +124,11 @@ pub async fn login(
     }
 }
 
-pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
-    // Try to notify backend to revoke refresh token (best-effort)
-    let api_client = ApiClient::new();
-    let _ = api_client.logout(false).await;
+pub async fn logout(
+    all_sessions: bool,
+    set_auth_state: WriteSignal<AuthState>,
+) -> Result<(), String> {
+    let result = login_repository::logout(all_sessions).await;
 
     // Clear tokens from localStorage regardless of backend result
     if let Ok(storage) = storage_utils::local_storage() {
@@ -116,24 +143,45 @@ pub async fn logout(set_auth_state: WriteSignal<AuthState>) {
         state.is_authenticated = false;
         state.loading = false;
     });
+
+    result
+}
+
+pub async fn refresh_auth(set_auth_state: WriteSignal<AuthState>) -> Result<(), String> {
+    let api_client = ApiClient::new();
+    match refresh_session(&api_client).await {
+        Ok(user) => {
+            set_auth_state.update(|state| {
+                state.user = Some(user);
+                state.is_authenticated = true;
+                state.loading = false;
+            });
+            Ok(())
+        }
+        Err(err) => {
+            set_auth_state.update(|state| {
+                state.user = None;
+                state.is_authenticated = false;
+                state.loading = false;
+            });
+            Err(err)
+        }
+    }
 }
 
 pub async fn fetch_mfa_status() -> Result<MfaStatusResponse, String> {
-    let api_client = ApiClient::new();
-    api_client.get_mfa_status().await
+    ApiClient::new().get_mfa_status().await
 }
 
 pub async fn register_mfa() -> Result<MfaSetupResponse, String> {
-    let api_client = ApiClient::new();
-    api_client.register_mfa().await
+    ApiClient::new().register_mfa().await
 }
 
 pub async fn activate_mfa(
     code: String,
     set_auth_state: Option<WriteSignal<AuthState>>,
 ) -> Result<(), String> {
-    let api_client = ApiClient::new();
-    api_client.activate_mfa(&code).await?;
+    ApiClient::new().activate_mfa(&code).await?;
 
     if let Ok(storage) = storage_utils::local_storage() {
         if let Ok(Some(user_json)) = storage.get_item("current_user") {
@@ -157,4 +205,30 @@ pub async fn activate_mfa(
     }
 
     Ok(())
+}
+
+pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
+    let (_auth, set_auth) = use_auth();
+    create_action(move |request: &LoginRequest| {
+        let payload = request.clone();
+        let set_auth = set_auth.clone();
+        async move { login_request(payload, set_auth).await }
+    })
+}
+
+pub fn use_logout_action() -> Action<bool, Result<(), String>> {
+    let (_auth, set_auth) = use_auth();
+    create_action(move |all: &bool| {
+        let set_auth = set_auth.clone();
+        let flag = *all;
+        async move { logout(flag, set_auth).await }
+    })
+}
+
+pub fn use_refresh_action() -> Action<(), Result<(), String>> {
+    let (_auth, set_auth) = use_auth();
+    create_action(move |_| {
+        let set_auth = set_auth.clone();
+        async move { refresh_auth(set_auth).await }
+    })
 }

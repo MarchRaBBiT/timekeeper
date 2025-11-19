@@ -37,13 +37,12 @@ Attendance ページ以外の `frontend/src/pages` についても、`admin` リ
 - **コンポーネント**: `UserList`（並べ替え・検索付き）、`UserDetailDrawer`（モーダル）、`InviteForm` の 3 つを中心に組み立て、`panel` はイベントの受け渡しのみ行う。
 - **テスト**: `utils.rs` 内でメール・ロール入力検証を `#[cfg(test)]` で確認。
 
-### Login / MFA ✅（想定規模: 中）
-- **構成**: `login/mod.rs` と `mfa/mod.rs` を用意し、それぞれ `panel.rs`（フォーム＋ロジック）、`components/form.rs`, `components/message.rs`, `repository.rs`, `utils.rs` を持つ。
-- **API**: 認証系 API を `repository.rs` で `login(credentials)`, `request_mfa_code(user_id)`, `verify_mfa_code(request)` などに抽象化し、UI 層から直接 `ApiClient` を触らない。
-- **フォーム**: 入力状態とバリデーション（メール形式/パスワード長/MFA コード桁数）を `FormState` と `utils.rs` で管理。`Action` を利用して送信中の状態 (`pending()`) をボタンへ反映。
-- **メッセージ**: 成功/失敗メッセージを `components::AuthMessage` で統一し、再利用性とアクセシビリティを確保。
-- **テスト**: バリデーション関数とトークンパースを `#[cfg(test)]` で検証。
-
+### Login / MFA ✅（構成反映済み）
+- **構造**: login/mod.rs と mfa/mod.rs を導入済み。panel.rs がフォーム状態と create_action を担い、components/form.rs / components/messages.rs は UI のみを担当する。MFA は components/setup.rs／components/verify.rs の 2 ブロック構成。
+- **API**: Login 側は rontend/src/pages/login/repository.rs で API をラップし、MFA 側の API は state::auth に統合して UI からは uth::register_mfa() / uth::activate_mfa() などを利用する。
+- **フォーム/状態**: 送信処理は create_action で統一し、pending() によりボタン制御・ロード表示を実装済み。入力バリデーションは login/utils.rs / mfa/utils.rs へ集約。
+- **メッセージ/UX**: エラー/成功メッセージは再利用可能なコンポーネントへ切り出し、panel 層でメッセージ状態を管理することで UX を統一している。
+- **テスト**: login/utils.rs と mfa/utils.rs に wasm_bindgen_test を追加済み。加えて rontend/src/api/client.rs ではトークン/ラベル処理をブラウザテストで検証している。
 ### Attendance (補足) ✅（想定規模: 大）
 - `documents/attendance-refactor-plan.md` の詳細に沿い、`mod.rs`／`layout.rs`／`panel.rs`／`components/`／`repository.rs`／`utils.rs` の構造を構築する。
 - 打刻フォーム、サマリカード、履歴テーブルを個別コンポーネント化し、`repository` で API 呼び出しを一元化、`utils` でバリデーション・時間計算をテスト可能に整理する。
