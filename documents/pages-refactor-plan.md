@@ -39,13 +39,16 @@ Attendance ページ以外の `frontend/src/pages` についても、`admin` リ
 
 ### Login / MFA ✅（構成反映済み）
 - **構造**: login/mod.rs と mfa/mod.rs を導入済み。panel.rs がフォーム状態と create_action を担い、components/form.rs / components/messages.rs は UI のみを担当する。MFA は components/setup.rs／components/verify.rs の 2 ブロック構成。
-- **API**: Login 側は rontend/src/pages/login/repository.rs で API をラップし、MFA 側の API は state::auth に統合して UI からは uth::register_mfa() / uth::activate_mfa() などを利用する。
+- **API**: Login 側は 
+rontend/src/pages/login/repository.rs で API をラップし、MFA 側の API は state::auth に統合して UI からは uth::register_mfa() / uth::activate_mfa() などを利用する。
 - **フォーム/状態**: 送信処理は create_action で統一し、pending() によりボタン制御・ロード表示を実装済み。入力バリデーションは login/utils.rs / mfa/utils.rs へ集約。
 - **メッセージ/UX**: エラー/成功メッセージは再利用可能なコンポーネントへ切り出し、panel 層でメッセージ状態を管理することで UX を統一している。
-- **テスト**: login/utils.rs と mfa/utils.rs に wasm_bindgen_test を追加済み。加えて rontend/src/api/client.rs ではトークン/ラベル処理をブラウザテストで検証している。
+- **テスト**: login/utils.rs と mfa/utils.rs に wasm_bindgen_test を追加済み。加えて 
+rontend/src/api/client.rs ではトークン/ラベル処理をブラウザテストで検証している。
 ### Attendance (補足) ✅（想定規模: 大）
 - `documents/attendance-refactor-plan.md` の詳細に沿い、`mod.rs`／`layout.rs`／`panel.rs`／`components/`／`repository.rs`／`utils.rs` の構造を構築する。
 - 打刻フォーム、サマリカード、履歴テーブルを個別コンポーネント化し、`repository` で API 呼び出しを一元化、`utils` でバリデーション・時間計算をテスト可能に整理する。
+- 2025-02-??: `panel.rs` を `create_resource` / `create_action` ベースへ移行し、RangeForm・HolidayAlerts・HistorySection で `Resource`／`Action` の pending/error を `LoadingSpinner` / `ErrorMessage` で可視化できるようにした。
 
 ## 作業手順サマリ
 
