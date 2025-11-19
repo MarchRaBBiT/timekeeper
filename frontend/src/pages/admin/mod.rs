@@ -1,13 +1,11 @@
 use crate::components::guard::RequireAuth;
 use leptos::*;
 
-pub mod attendance;
-pub mod holidays;
+pub mod components;
 pub mod layout;
 pub mod panel;
-pub mod requests;
-pub mod system_tools;
-pub mod weekly_holidays;
+pub mod repository;
+pub mod utils;
 
 pub use panel::AdminPanel;
 
