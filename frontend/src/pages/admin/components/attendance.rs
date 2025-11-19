@@ -1,0 +1,238 @@
+use crate::{
+    api::{AdminAttendanceUpsert, AdminBreakItem},
+    components::layout::{ErrorMessage, SuccessMessage},
+    pages::admin::repository,
+};
+use chrono::{NaiveDate, NaiveDateTime};
+use leptos::{ev, *};
+
+fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
+    if input.len() == 16 {
+        NaiveDateTime::parse_from_str(&format!("{}:00", input), "%Y-%m-%dT%H:%M:%S").ok()
+    } else {
+        NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S").ok()
+    }
+}
+
+#[component]
+pub fn AdminAttendanceToolsSection(system_admin_allowed: Memo<bool>) -> impl IntoView {
+    let att_user = create_rw_signal(String::new());
+    let att_date = create_rw_signal(String::new());
+    let att_in = create_rw_signal(String::new());
+    let att_out = create_rw_signal(String::new());
+    let breaks = create_rw_signal(Vec::<(String, String)>::new());
+    let break_force_id = create_rw_signal(String::new());
+    let message = create_rw_signal(None::<String>);
+    let error = create_rw_signal(None::<String>);
+
+    let add_break = {
+        let breaks = breaks.clone();
+        move |_| {
+            breaks.update(|list| list.push((String::new(), String::new())));
+        }
+    };
+
+    let attendance_action = create_action(move |payload: &AdminAttendanceUpsert| {
+        let payload = payload.clone();
+        async move { repository::upsert_attendance(payload).await }
+    });
+    let attendance_pending = attendance_action.pending();
+
+    let force_break_action = create_action(move |break_id: &String| {
+        let break_id = break_id.clone();
+        async move { repository::force_end_break(&break_id).await }
+    });
+    let force_pending = force_break_action.pending();
+
+    {
+        let message = message.clone();
+        let error = error.clone();
+        create_effect(move |_| {
+            if let Some(result) = attendance_action.value().get() {
+                match result {
+                    Ok(_) => {
+                        message.set(Some("勤怠データを登録しました。".into()));
+                        error.set(None);
+                    }
+                    Err(err) => {
+                        message.set(None);
+                        error.set(Some(err));
+                    }
+                }
+            }
+        });
+    }
+    {
+        let message = message.clone();
+        let error = error.clone();
+        create_effect(move |_| {
+            if let Some(result) = force_break_action.value().get() {
+                match result {
+                    Ok(_) => {
+                        message.set(Some("休憩を強制終了しました。".into()));
+                        error.set(None);
+                    }
+                    Err(err) => {
+                        message.set(None);
+                        error.set(Some(err));
+                    }
+                }
+            }
+        });
+    }
+
+    let on_submit_attendance = {
+        let att_user = att_user.clone();
+        let att_date = att_date.clone();
+        let att_in = att_in.clone();
+        let att_out = att_out.clone();
+        let breaks = breaks.clone();
+        let attendance_action = attendance_action.clone();
+        let message = message.clone();
+        let error = error.clone();
+        move |ev: ev::SubmitEvent| {
+            ev.prevent_default();
+            if !system_admin_allowed.get_untracked() {
+                return;
+            }
+            let user_id = att_user.get();
+            let date_raw = att_date.get();
+            let clock_in = parse_dt_local(&att_in.get());
+            if user_id.trim().is_empty() || date_raw.trim().is_empty() || clock_in.is_none() {
+                error.set(Some(
+                    "ユーザーID・日付・出勤時刻を入力してください。".into(),
+                ));
+                message.set(None);
+                return;
+            }
+            let clock_out = if att_out.get().trim().is_empty() {
+                None
+            } else {
+                parse_dt_local(&att_out.get())
+            };
+            let date = NaiveDate::parse_from_str(&date_raw, "%Y-%m-%d").ok();
+            if date.is_none() {
+                error.set(Some("日付は YYYY-MM-DD 形式で入力してください。".into()));
+                message.set(None);
+                return;
+            }
+            let mut break_items: Vec<AdminBreakItem> = vec![];
+            for (start, end) in breaks.get() {
+                if start.trim().is_empty() {
+                    continue;
+                }
+                let start_dt = parse_dt_local(&start);
+                let end_dt = if end.trim().is_empty() {
+                    None
+                } else {
+                    parse_dt_local(&end)
+                };
+                if let Some(start_dt) = start_dt {
+                    break_items.push(AdminBreakItem {
+                        break_start_time: start_dt,
+                        break_end_time: end_dt,
+                    });
+                }
+            }
+            let payload = AdminAttendanceUpsert {
+                user_id,
+                date: date.unwrap(),
+                clock_in_time: clock_in.unwrap(),
+                clock_out_time: clock_out,
+                breaks: if break_items.is_empty() {
+                    None
+                } else {
+                    Some(break_items)
+                },
+            };
+            message.set(None);
+            error.set(None);
+            attendance_action.dispatch(payload);
+        }
+    };
+
+    let on_force_end = {
+        let break_force_id = break_force_id.clone();
+        let force_break_action = force_break_action.clone();
+        let error = error.clone();
+        let message = message.clone();
+        move |_| {
+            if !system_admin_allowed.get_untracked() {
+                return;
+            }
+            let id = break_force_id.get();
+            if id.trim().is_empty() {
+                error.set(Some("Break ID を入力してください。".into()));
+                message.set(None);
+                return;
+            }
+            error.set(None);
+            message.set(None);
+            force_break_action.dispatch(id);
+        }
+    };
+
+    view! {
+        <Show when=move || system_admin_allowed.get()>
+            <div class="bg-white shadow rounded-lg p-6 space-y-4">
+                <h3 class="text-lg font-medium text-gray-900">{"勤怠ツール"}</h3>
+                <form class="space-y-3" on:submit=on_submit_attendance>
+                    <input placeholder="User ID" class="w-full border rounded px-2 py-1" on:input=move |ev| att_user.set(event_target_value(&ev)) />
+                    <input type="date" class="w-full border rounded px-2 py-1" on:input=move |ev| att_date.set(event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_out.set(event_target_value(&ev)) />
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-sm text-gray-700">{"休憩（任意）"}</span>
+                            <button type="button" class="text-blue-600 text-sm" on:click=add_break>{"行を追加"}</button>
+                        </div>
+                        <For
+                            each=move || breaks.get()
+                            key=|pair| pair.clone()
+                            children=move |(s0, e0)| {
+                                let s = create_rw_signal(s0);
+                                let e = create_rw_signal(e0);
+                                view! {
+                                    <div class="flex space-x-2 mb-2">
+                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full" prop:value=s on:input=move |ev| s.set(event_target_value(&ev)) />
+                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full" prop:value=e on:input=move |ev| e.set(event_target_value(&ev)) />
+                                    </div>
+                                }
+                            }
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="w-full bg-green-600 text-white rounded py-2 disabled:opacity-50"
+                        disabled={move || attendance_pending.get()}
+                    >
+                        {move || if attendance_pending.get() { "登録中..." } else { "勤怠を登録" }}
+                    </button>
+                </form>
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-900 mb-2">{"休憩の強制終了"}</h4>
+                    <div class="flex space-x-2">
+                        <input
+                            placeholder="Break ID"
+                            class="border rounded px-2 py-1 w-full"
+                            on:input=move |ev| break_force_id.set(event_target_value(&ev))
+                        />
+                        <button
+                            class="px-3 py-1 bg-amber-600 text-white rounded disabled:opacity-50"
+                            disabled={move || force_pending.get()}
+                            on:click=on_force_end
+                        >
+                            {move || if force_pending.get() { "終了中..." } else { "強制終了" }}
+                        </button>
+                    </div>
+                </div>
+                <Show when=move || error.get().is_some()>
+                    <ErrorMessage message={error.get().unwrap_or_default()} />
+                </Show>
+                <Show when=move || message.get().is_some()>
+                    <SuccessMessage message={message.get().unwrap_or_default()} />
+                </Show>
+            </div>
+        </Show>
+    }
+}

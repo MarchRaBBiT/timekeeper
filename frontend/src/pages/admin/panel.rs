@@ -1,5 +1,12 @@
 use crate::components::layout::Layout;
-use crate::pages::admin::{attendance, holidays, layout, requests, system_tools, weekly_holidays};
+use crate::pages::admin::{
+    components::{
+        attendance::AdminAttendanceToolsSection, holidays::HolidayManagementSection,
+        requests::AdminRequestsSection, system_tools::AdminMfaResetSection,
+        weekly_holidays::WeeklyHolidaySection,
+    },
+    layout,
+};
 use crate::state::auth::use_auth;
 use leptos::*;
 
@@ -34,20 +41,20 @@ pub fn AdminPanel() -> impl IntoView {
                 }.into_view()
             >
                 <layout::AdminDashboardFrame>
-                    <weekly_holidays::WeeklyHolidaySection
+                    <WeeklyHolidaySection
                         admin_allowed=admin_allowed.clone()
                         system_admin_allowed=system_admin_allowed.clone()
                     />
                     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                        <requests::AdminRequestsSection admin_allowed=admin_allowed.clone() />
-                        <attendance::AdminAttendanceToolsSection
+                        <AdminRequestsSection admin_allowed=admin_allowed.clone() />
+                        <AdminAttendanceToolsSection
                             system_admin_allowed=system_admin_allowed.clone()
                         />
-                        <system_tools::AdminMfaResetSection
+                        <AdminMfaResetSection
                             system_admin_allowed=system_admin_allowed.clone()
                         />
                     </div>
-                    <holidays::HolidayManagementSection admin_allowed=admin_allowed.clone() />
+                    <HolidayManagementSection admin_allowed=admin_allowed.clone() />
                 </layout::AdminDashboardFrame>
             </Show>
         </Layout>
