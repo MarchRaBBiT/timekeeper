@@ -31,19 +31,7 @@ pub struct DashboardActivity {
     pub detail: Option<String>,
 }
 
-pub async fn fetch_summary() -> Result<DashboardSummary, String> {
-    let api = ApiClient::new();
-    let (y, m) = current_year_month();
-    let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
-    Ok(DashboardSummary {
-        total_work_hours: Some(summary.total_work_hours),
-        total_work_days: Some(summary.total_work_days),
-        average_daily_hours: Some(summary.average_daily_hours),
-    })
-}
-
-pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
-    let summary = fetch_summary().await?;
+pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     let mut alerts = Vec::new();
 
     if summary.total_work_days.unwrap_or_default() == 0 {
@@ -60,7 +48,23 @@ pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
         });
     }
 
-    Ok(alerts)
+    alerts
+}
+
+pub async fn fetch_summary() -> Result<DashboardSummary, String> {
+    let api = ApiClient::new();
+    let (y, m) = current_year_month();
+    let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
+    Ok(DashboardSummary {
+        total_work_hours: Some(summary.total_work_hours),
+        total_work_days: Some(summary.total_work_days),
+        average_daily_hours: Some(summary.average_daily_hours),
+    })
+}
+
+pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
+    let summary = fetch_summary().await?;
+    Ok(build_alerts(&summary))
 }
 
 pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
@@ -108,4 +112,42 @@ fn count(value: &Value, kind: &str, status: &str) -> i32 {
                 .count() as i32
         })
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn alerts_warn_when_no_workdays() {
+        let summary = DashboardSummary {
+            total_work_hours: Some(0.0),
+            total_work_days: Some(0),
+            average_daily_hours: None,
+        };
+        let alerts = build_alerts(&summary);
+        assert!(alerts
+            .iter()
+            .any(|a| matches!(a.level, DashboardAlertLevel::Warning)));
+    }
+
+    #[test]
+    fn count_handles_missing_kind() {
+        let value = json!({});
+        assert_eq!(count(&value, "leave_requests", "pending"), 0);
+    }
+
+    #[test]
+    fn count_filters_by_status() {
+        let value = json!({
+            "leave_requests": [
+                { "status": "pending" },
+                { "status": "approved" },
+                { "status": "pending" }
+            ]
+        });
+        assert_eq!(count(&value, "leave_requests", "pending"), 2);
+        assert_eq!(count(&value, "leave_requests", "approved"), 1);
+    }
 }
