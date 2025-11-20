@@ -4,7 +4,7 @@ use crate::{
         dashboard::utils::{current_year_month, ActivityStatusFilter},
         requests::{
             repository::RequestsRepository,
-            types::{flatten_requests, RequestKind, RequestSummary},
+            types::{flatten_requests, MyRequestsResponse, RequestKind, RequestSummary},
         },
     },
 };
@@ -145,7 +145,8 @@ mod tests {
     #[test]
     fn count_handles_missing_kind() {
         let value = json!({});
-        let summaries = flatten_requests(&serde_json::from_value(value).unwrap_or_default());
+        let empty: MyRequestsResponse = serde_json::from_value(value).unwrap_or_default();
+        let summaries = flatten_requests(&empty);
         // No data -> zero
         assert_eq!(count_by(&summaries, RequestKind::Leave, "pending"), 0);
     }
