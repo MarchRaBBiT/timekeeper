@@ -1,9 +1,14 @@
 use crate::{
     api::{ApiClient, AttendanceSummary},
-    pages::dashboard::utils::current_year_month,
+    pages::{
+        dashboard::utils::current_year_month,
+        requests::{
+            repository::RequestsRepository,
+            types::{flatten_requests, RequestKind, RequestSummary},
+        },
+    },
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DashboardSummary {
@@ -31,6 +36,17 @@ pub struct DashboardActivity {
     pub detail: Option<String>,
 }
 
+pub async fn fetch_summary() -> Result<DashboardSummary, String> {
+    let api = ApiClient::new();
+    let (y, m) = current_year_month();
+    let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
+    Ok(DashboardSummary {
+        total_work_hours: Some(summary.total_work_hours),
+        total_work_days: Some(summary.total_work_days),
+        average_daily_hours: Some(summary.average_daily_hours),
+    })
+}
+
 pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     let mut alerts = Vec::new();
 
@@ -51,50 +67,39 @@ pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     alerts
 }
 
-pub async fn fetch_summary() -> Result<DashboardSummary, String> {
-    let api = ApiClient::new();
-    let (y, m) = current_year_month();
-    let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
-    Ok(DashboardSummary {
-        total_work_hours: Some(summary.total_work_hours),
-        total_work_days: Some(summary.total_work_days),
-        average_daily_hours: Some(summary.average_daily_hours),
-    })
-}
-
 pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
     let summary = fetch_summary().await?;
     Ok(build_alerts(&summary))
 }
 
 pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
-    let api = ApiClient::new();
-    let value: Value = api.get_my_requests().await?;
+    let repo = RequestsRepository::new();
+    let response = repo.list_my_requests().await?;
+    let summaries = flatten_requests(&response);
 
-    let mut activities = Vec::new();
-    let leave_pending = count(&value, "leave_requests", "pending");
-    let overtime_pending = count(&value, "overtime_requests", "pending");
-    let leave_approved = count(&value, "leave_requests", "approved");
-    let overtime_approved = count(&value, "overtime_requests", "approved");
+    let leave_pending = count_by(&summaries, RequestKind::Leave, "pending");
+    let overtime_pending = count_by(&summaries, RequestKind::Overtime, "pending");
+    let leave_approved = count_by(&summaries, RequestKind::Leave, "approved");
+    let overtime_approved = count_by(&summaries, RequestKind::Overtime, "approved");
 
-    activities.push(DashboardActivity {
-        title: "休暇申請（承認待ち）".into(),
-        detail: Some(format!("{leave_pending} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "残業申請（承認待ち）".into(),
-        detail: Some(format!("{overtime_pending} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "休暇申請（承認済み）".into(),
-        detail: Some(format!("{leave_approved} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "残業申請（承認済み）".into(),
-        detail: Some(format!("{overtime_approved} 件")),
-    });
-
-    Ok(activities)
+    Ok(vec![
+        DashboardActivity {
+            title: "休暇申請（承認待ち）".into(),
+            detail: Some(format!("{leave_pending} 件")),
+        },
+        DashboardActivity {
+            title: "残業申請（承認待ち）".into(),
+            detail: Some(format!("{overtime_pending} 件")),
+        },
+        DashboardActivity {
+            title: "休暇申請（承認済み）".into(),
+            detail: Some(format!("{leave_approved} 件")),
+        },
+        DashboardActivity {
+            title: "残業申請（承認済み）".into(),
+            detail: Some(format!("{overtime_approved} 件")),
+        },
+    ])
 }
 
 pub async fn reload_announcements() -> Result<(), String> {
@@ -102,16 +107,11 @@ pub async fn reload_announcements() -> Result<(), String> {
     Ok(())
 }
 
-fn count(value: &Value, kind: &str, status: &str) -> i32 {
-    value
-        .get(kind)
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter(|item| item.get("status").and_then(|s| s.as_str()) == Some(status))
-                .count() as i32
-        })
-        .unwrap_or(0)
+fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i32 {
+    summaries
+        .iter()
+        .filter(|s| s.kind == kind && s.status == status)
+        .count() as i32
 }
 
 #[cfg(test)]
