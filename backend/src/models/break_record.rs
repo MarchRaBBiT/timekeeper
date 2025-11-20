@@ -3,9 +3,10 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Persistent representation of a single break interval.
 pub struct BreakRecord {
     /// Unique identifier for the break record.
@@ -24,7 +25,7 @@ pub struct BreakRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API-friendly representation of a break interval.
 pub struct BreakRecordResponse {
     pub id: String,

@@ -3,9 +3,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of an authenticated user account.
 pub struct User {
     /// Unique identifier for the user.
@@ -30,7 +31,7 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, sqlx::Type)]
+#[derive(Debug, Clone, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 /// Supported user roles stored in the database.
 pub enum UserRole {
@@ -86,7 +87,7 @@ impl<'de> Deserialize<'de> for UserRole {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Payload for creating a new user account.
 pub struct CreateUser {
     pub username: String,
@@ -97,7 +98,7 @@ pub struct CreateUser {
     pub is_system_admin: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Payload for updating portions of an existing user.
 pub struct UpdateUser {
     pub full_name: Option<String>,
@@ -105,7 +106,7 @@ pub struct UpdateUser {
     pub is_system_admin: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Credentials submitted by a user attempting to authenticate.
 pub struct LoginRequest {
     pub username: String,
@@ -118,7 +119,7 @@ pub struct LoginRequest {
     pub device_label: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Payload submitted when a user requests to change their password.
 pub struct ChangePasswordRequest {
     /// Existing password that will be verified before applying the change.
@@ -127,7 +128,7 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Authentication tokens returned after a successful login.
 pub struct LoginResponse {
     pub access_token: String,
@@ -135,27 +136,27 @@ pub struct LoginResponse {
     pub user: UserResponse,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Response returned when initiating MFA setup.
 pub struct MfaSetupResponse {
     pub secret: String,
     pub otpauth_url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload carrying a one-time MFA code.
 pub struct MfaCodeRequest {
     pub code: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Exposes MFA enrollment status for the current user.
 pub struct MfaStatusResponse {
     pub enabled: bool,
     pub pending: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Public-facing representation of a user returned by the API.
 pub struct UserResponse {
     pub id: String,

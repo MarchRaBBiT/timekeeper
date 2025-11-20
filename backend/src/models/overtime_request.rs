@@ -3,11 +3,12 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 pub use crate::models::request::RequestStatus;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of an overtime work request.
 pub struct OvertimeRequest {
     /// Unique identifier for the overtime request.
@@ -40,7 +41,7 @@ pub struct OvertimeRequest {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Payload used to create a new overtime request.
 pub struct CreateOvertimeRequest {
     pub date: NaiveDate,
@@ -48,7 +49,7 @@ pub struct CreateOvertimeRequest {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API response returned for overtime requests.
 pub struct OvertimeRequestResponse {
     pub id: String,

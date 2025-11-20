@@ -1,8 +1,9 @@
 //! Shared request-related enums used by multiple models.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 /// Common workflow status for leave and overtime requests.

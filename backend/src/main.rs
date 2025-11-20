@@ -11,9 +11,12 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 mod config;
 mod db;
+mod docs;
 mod handlers;
 mod middleware;
 mod models;
@@ -46,11 +49,14 @@ async fn main() -> anyhow::Result<()> {
     let holiday_service = Arc::new(HolidayService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
 
+    let openapi = docs::ApiDoc::openapi();
+
     let app = Router::new()
         .merge(public_routes())
         .merge(user_routes(shared_state.clone()))
         .merge(admin_routes(shared_state.clone()))
         .merge(system_admin_routes(shared_state.clone()))
+        .merge(SwaggerUi::new("/api/docs").url("/api-doc/openapi.json", openapi.clone()))
         .layer(
             ServiceBuilder::new()
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
