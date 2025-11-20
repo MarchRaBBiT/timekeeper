@@ -1,7 +1,7 @@
 use crate::{
     api::CreateHolidayRequest,
     components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
-    pages::admin::repository,
+    pages::admin::repository::AdminRepository,
     utils::time::now_in_app_tz,
 };
 use chrono::{Datelike, NaiveDate};
@@ -9,7 +9,10 @@ use leptos::{ev, *};
 use std::collections::HashSet;
 
 #[component]
-pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
+pub fn HolidayManagementSection(
+    repository: AdminRepository,
+    admin_allowed: Memo<bool>,
+) -> impl IntoView {
     let holidays_reload = create_rw_signal(0u32);
     let holiday_date_input = create_rw_signal(String::new());
     let holiday_name_input = create_rw_signal(String::new());
@@ -18,13 +21,17 @@ pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
     let holiday_error = create_rw_signal(None::<String>);
     let deleting_id = create_rw_signal(None::<String>);
 
+    let repo_for_holidays = repository.clone();
     let holidays_resource = create_resource(
         move || (admin_allowed.get(), holidays_reload.get()),
-        move |(allowed, _)| async move {
-            if !allowed {
-                Ok(Vec::new())
-            } else {
-                repository::list_holidays().await
+        move |(allowed, _)| {
+            let repo = repo_for_holidays.clone();
+            async move {
+                if !allowed {
+                    Ok(Vec::new())
+                } else {
+                    repo.list_holidays().await
+                }
             }
         },
     );
@@ -40,9 +47,11 @@ pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
     let holidays_fetch_error =
         Signal::derive(move || holidays_resource.get().and_then(|result| result.err()));
 
+    let repo_for_create = repository.clone();
     let create_holiday_action = create_action(move |payload: &CreateHolidayRequest| {
+        let repo = repo_for_create.clone();
         let payload = payload.clone();
-        async move { repository::create_holiday(payload).await }
+        async move { repo.create_holiday(payload).await }
     });
     let create_pending = create_holiday_action.pending();
     {
@@ -76,9 +85,11 @@ pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
         });
     }
 
+    let repo_for_delete = repository.clone();
     let delete_holiday_action = create_action(move |id: &String| {
+        let repo = repo_for_delete.clone();
         let id = id.clone();
-        async move { repository::delete_holiday(&id).await }
+        async move { repo.delete_holiday(&id).await }
     });
     {
         let deleting_id = deleting_id.clone();
@@ -107,9 +118,11 @@ pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
     let google_year_input = create_rw_signal(now_in_app_tz().year().to_string());
     let google_holidays = create_rw_signal(Vec::<CreateHolidayRequest>::new());
     let google_error = create_rw_signal(None::<String>);
+    let repo_for_google = repository.clone();
     let fetch_google_action = create_action(move |year: &Option<i32>| {
+        let repo = repo_for_google.clone();
         let year = *year;
-        async move { repository::fetch_google_holidays(year).await }
+        async move { repo.fetch_google_holidays(year).await }
     });
     let google_loading = fetch_google_action.pending();
     {
@@ -131,12 +144,14 @@ pub fn HolidayManagementSection(admin_allowed: Memo<bool>) -> impl IntoView {
         });
     }
 
+    let repo_for_import = repository.clone();
     let import_action = create_action(move |payload: &Vec<CreateHolidayRequest>| {
+        let repo = repo_for_import.clone();
         let payload = payload.clone();
         async move {
             let mut imported = 0usize;
             for item in payload {
-                repository::create_holiday(item.clone()).await?;
+                repo.create_holiday(item.clone()).await?;
                 imported += 1;
             }
             Ok(imported)

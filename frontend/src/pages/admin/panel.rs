@@ -1,4 +1,3 @@
-use crate::components::layout::Layout;
 use crate::pages::admin::{
     components::{
         attendance::AdminAttendanceToolsSection, holidays::HolidayManagementSection,
@@ -6,6 +5,7 @@ use crate::pages::admin::{
         weekly_holidays::WeeklyHolidaySection,
     },
     layout,
+    repository::AdminRepository,
 };
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -31,32 +31,33 @@ pub fn AdminPanel() -> impl IntoView {
             .map(|user| user.is_system_admin)
             .unwrap_or(false)
     });
+    let repository = store_value(AdminRepository::new());
 
     view! {
-        <Layout>
-            <Show
-                when=move || admin_allowed.get()
-                fallback=move || view! {
-                    <layout::UnauthorizedMessage />
-                }.into_view()
-            >
-                <layout::AdminDashboardFrame>
-                    <WeeklyHolidaySection
-                        admin_allowed=admin_allowed.clone()
-                        system_admin_allowed=system_admin_allowed.clone()
-                    />
-                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                        <AdminRequestsSection admin_allowed=admin_allowed.clone() />
-                        <AdminAttendanceToolsSection
-                            system_admin_allowed=system_admin_allowed.clone()
-                        />
-                        <AdminMfaResetSection
-                            system_admin_allowed=system_admin_allowed.clone()
-                        />
-                    </div>
-                    <HolidayManagementSection admin_allowed=admin_allowed.clone() />
-                </layout::AdminDashboardFrame>
-            </Show>
-        </Layout>
+        <layout::AdminDashboardScaffold admin_allowed=admin_allowed.clone()>
+            <WeeklyHolidaySection
+                repository=repository.get_value()
+                admin_allowed=admin_allowed.clone()
+                system_admin_allowed=system_admin_allowed.clone()
+            />
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <AdminRequestsSection
+                    repository=repository.get_value()
+                    admin_allowed=admin_allowed.clone()
+                />
+                <AdminAttendanceToolsSection
+                    repository=repository.get_value()
+                    system_admin_allowed=system_admin_allowed.clone()
+                />
+                <AdminMfaResetSection
+                    repository=repository.get_value()
+                    system_admin_allowed=system_admin_allowed.clone()
+                />
+            </div>
+            <HolidayManagementSection
+                repository=repository.get_value()
+                admin_allowed=admin_allowed.clone()
+            />
+        </layout::AdminDashboardScaffold>
     }
 }
