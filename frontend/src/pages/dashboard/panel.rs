@@ -45,10 +45,7 @@ pub fn DashboardPage() -> impl IntoView {
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <SummarySection summary=summary_resource />
-                    <AlertsSection
-                        alerts=alerts_resource
-                        on_reload=Callback::new(move |_| alerts_resource.refetch())
-                    />
+                    <AlertsSection alerts=alerts_resource />
                 </div>
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">

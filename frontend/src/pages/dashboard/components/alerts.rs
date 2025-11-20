@@ -5,23 +5,12 @@ use crate::{
 use leptos::*;
 
 #[component]
-pub fn AlertsSection(
-    alerts: Resource<(), Result<Vec<DashboardAlert>, String>>,
-    on_reload: Callback<()>,
-) -> impl IntoView {
+pub fn AlertsSection(alerts: Resource<(), Result<Vec<DashboardAlert>, String>>) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h3 class="text-base font-semibold text-gray-900">{"アラート"}</h3>
-                    <p class="text-sm text-gray-600">{"勤務や申請に関する注意事項"}</p>
-                </div>
-                <button
-                    class="px-3 py-1 text-sm rounded border text-gray-700 hover:bg-gray-50"
-                    on:click=move |_| on_reload.call(())
-                >
-                    {"再読み込み"}
-                </button>
+            <div class="flex flex-col gap-2">
+                <h3 class="text-base font-semibold text-gray-900">{"アラート"}</h3>
+                <p class="text-sm text-gray-600">{"勤務や申請に関する注意事項"}</p>
             </div>
             {move || match alerts.get() {
                 None => view! {

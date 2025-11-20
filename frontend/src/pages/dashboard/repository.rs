@@ -93,11 +93,6 @@ pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String>
     Ok(activities)
 }
 
-pub async fn reload_announcements() -> Result<(), String> {
-    // 追加のアナウンス API が用意されたらここで呼び出す。
-    Ok(())
-}
-
 fn count(value: &Value, kind: &str, status: &str) -> i32 {
     value
         .get(kind)
