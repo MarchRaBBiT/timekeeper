@@ -1,7 +1,7 @@
 use crate::{
     api::{ApiClient, AttendanceSummary},
     pages::{
-        dashboard::utils::current_year_month,
+        dashboard::utils::{current_year_month, ActivityStatusFilter},
         requests::{
             repository::RequestsRepository,
             types::{flatten_requests, RequestKind, RequestSummary},
@@ -72,7 +72,9 @@ pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
     Ok(build_alerts(&summary))
 }
 
-pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
+pub async fn fetch_recent_activities(
+    filter: ActivityStatusFilter,
+) -> Result<Vec<DashboardActivity>, String> {
     let repo = RequestsRepository::new();
     let response = repo.list_my_requests().await?;
     let summaries = flatten_requests(&response);
@@ -82,7 +84,7 @@ pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String>
     let leave_approved = count_by(&summaries, RequestKind::Leave, "approved");
     let overtime_approved = count_by(&summaries, RequestKind::Overtime, "approved");
 
-    Ok(vec![
+    let activities = vec![
         DashboardActivity {
             title: "休暇申請（承認待ち）".into(),
             detail: Some(format!("{leave_pending} 件")),
@@ -99,7 +101,15 @@ pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String>
             title: "残業申請（承認済み）".into(),
             detail: Some(format!("{overtime_approved} 件")),
         },
-    ])
+    ];
+
+    let filtered = match filter {
+        ActivityStatusFilter::All => activities,
+        ActivityStatusFilter::PendingOnly => activities.into_iter().take(2).collect(),
+        ActivityStatusFilter::ApprovedOnly => activities.into_iter().skip(2).collect(),
+    };
+
+    Ok(filtered)
 }
 
 pub async fn reload_announcements() -> Result<(), String> {
@@ -112,4 +122,31 @@ fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i3
         .iter()
         .filter(|s| s.kind == kind && s.status == status)
         .count() as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn alerts_warn_when_no_workdays() {
+        let summary = DashboardSummary {
+            total_work_hours: Some(0.0),
+            total_work_days: Some(0),
+            average_daily_hours: None,
+        };
+        let alerts = build_alerts(&summary);
+        assert!(alerts
+            .iter()
+            .any(|a| matches!(a.level, DashboardAlertLevel::Warning)));
+    }
+
+    #[test]
+    fn count_handles_missing_kind() {
+        let value = json!({});
+        let summaries = flatten_requests(&serde_json::from_value(value).unwrap_or_default());
+        // No data -> zero
+        assert_eq!(count_by(&summaries, RequestKind::Leave, "pending"), 0);
+    }
 }
