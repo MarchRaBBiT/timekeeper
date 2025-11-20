@@ -1,21 +1,26 @@
 use crate::{
     components::layout::{ErrorMessage, SuccessMessage},
-    pages::admin::repository,
+    pages::admin::repository::AdminRepository,
 };
 use leptos::*;
 
 #[component]
-pub fn AdminMfaResetSection(system_admin_allowed: Memo<bool>) -> impl IntoView {
+pub fn AdminMfaResetSection(
+    repository: AdminRepository,
+    system_admin_allowed: Memo<bool>,
+) -> impl IntoView {
     let user_id = create_rw_signal(String::new());
     let error = create_rw_signal(None::<String>);
     let success = create_rw_signal(None::<String>);
+    let repo_for_reset = repository.clone();
     let reset_action = create_action(move |target: &String| {
+        let repo = repo_for_reset.clone();
         let user_id = target.clone();
         async move {
             if user_id.trim().is_empty() {
                 Err("ユーザーIDを入力してください。".into())
             } else {
-                repository::reset_mfa(&user_id).await
+                repo.reset_mfa(&user_id).await
             }
         }
     });

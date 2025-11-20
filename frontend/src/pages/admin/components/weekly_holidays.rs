@@ -1,7 +1,7 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
     pages::admin::{
-        repository,
+        repository::AdminRepository,
         utils::{next_allowed_weekly_start, weekday_label, WeeklyHolidayFormState},
     },
     utils::time::today_in_app_tz,
@@ -10,6 +10,7 @@ use leptos::{ev, *};
 
 #[component]
 pub fn WeeklyHolidaySection(
+    repository: AdminRepository,
     admin_allowed: Memo<bool>,
     system_admin_allowed: Memo<bool>,
 ) -> impl IntoView {
@@ -27,13 +28,17 @@ pub fn WeeklyHolidaySection(
     let form_error = create_rw_signal(None::<String>);
     let reload = create_rw_signal(0u32);
 
+    let repo_for_resource = repository.clone();
     let holidays_resource = create_resource(
         move || (admin_allowed.get(), reload.get()),
-        move |(allowed, _)| async move {
-            if !allowed {
-                Ok(Vec::new())
-            } else {
-                repository::list_weekly_holidays().await
+        move |(allowed, _)| {
+            let repo = repo_for_resource.clone();
+            async move {
+                if !allowed {
+                    Ok(Vec::new())
+                } else {
+                    repo.list_weekly_holidays().await
+                }
             }
         },
     );
@@ -47,9 +52,11 @@ pub fn WeeklyHolidaySection(
     let holidays_error =
         Signal::derive(move || holidays_resource.get().and_then(|result| result.err()));
 
+    let repo_for_create = repository.clone();
     let create_action = create_action(move |payload: &crate::api::CreateWeeklyHolidayRequest| {
+        let repo = repo_for_create.clone();
         let payload = payload.clone();
-        async move { repository::create_weekly_holiday(payload).await }
+        async move { repo.create_weekly_holiday(payload).await }
     });
     let create_pending = create_action.pending();
     {

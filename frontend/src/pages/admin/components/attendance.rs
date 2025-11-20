@@ -1,7 +1,7 @@
 use crate::{
     api::{AdminAttendanceUpsert, AdminBreakItem},
     components::layout::{ErrorMessage, SuccessMessage},
-    pages::admin::repository,
+    pages::admin::repository::AdminRepository,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use leptos::{ev, *};
@@ -15,7 +15,10 @@ fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
 }
 
 #[component]
-pub fn AdminAttendanceToolsSection(system_admin_allowed: Memo<bool>) -> impl IntoView {
+pub fn AdminAttendanceToolsSection(
+    repository: AdminRepository,
+    system_admin_allowed: Memo<bool>,
+) -> impl IntoView {
     let att_user = create_rw_signal(String::new());
     let att_date = create_rw_signal(String::new());
     let att_in = create_rw_signal(String::new());
@@ -32,15 +35,19 @@ pub fn AdminAttendanceToolsSection(system_admin_allowed: Memo<bool>) -> impl Int
         }
     };
 
+    let repo_for_attendance = repository.clone();
     let attendance_action = create_action(move |payload: &AdminAttendanceUpsert| {
+        let repo = repo_for_attendance.clone();
         let payload = payload.clone();
-        async move { repository::upsert_attendance(payload).await }
+        async move { repo.upsert_attendance(payload).await }
     });
     let attendance_pending = attendance_action.pending();
 
+    let repo_for_break = repository.clone();
     let force_break_action = create_action(move |break_id: &String| {
+        let repo = repo_for_break.clone();
         let break_id = break_id.clone();
-        async move { repository::force_end_break(&break_id).await }
+        async move { repo.force_end_break(&break_id).await }
     });
     let force_pending = force_break_action.pending();
 

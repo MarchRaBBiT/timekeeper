@@ -1,6 +1,6 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
-    pages::admin::{repository, utils::RequestFilterState},
+    pages::admin::{repository::AdminRepository, utils::RequestFilterState},
 };
 use leptos::*;
 use serde_json::{json, Value};
@@ -13,7 +13,10 @@ struct RequestActionPayload {
 }
 
 #[component]
-pub fn AdminRequestsSection(admin_allowed: Memo<bool>) -> impl IntoView {
+pub fn AdminRequestsSection(
+    repository: AdminRepository,
+    admin_allowed: Memo<bool>,
+) -> impl IntoView {
     let filter_state = RequestFilterState::new();
     let reload = create_rw_signal(0u32);
     let modal_open = create_rw_signal(false);
@@ -23,19 +26,23 @@ pub fn AdminRequestsSection(admin_allowed: Memo<bool>) -> impl IntoView {
 
     let filter_state_for_snapshot = filter_state.clone();
     let snapshot = Signal::derive(move || filter_state_for_snapshot.snapshot());
+    let repo_for_requests = repository.clone();
     let requests_resource = create_resource(
         move || (admin_allowed.get(), snapshot.get(), reload.get()),
-        move |(allowed, snapshot, _)| async move {
-            if !allowed {
-                Ok(Value::Null)
-            } else {
-                repository::list_requests(
-                    snapshot.status.clone(),
-                    snapshot.user_id.clone(),
-                    snapshot.page,
-                    snapshot.per_page,
-                )
-                .await
+        move |(allowed, snapshot, _)| {
+            let repo = repo_for_requests.clone();
+            async move {
+                if !allowed {
+                    Ok(Value::Null)
+                } else {
+                    repo.list_requests(
+                        snapshot.status.clone(),
+                        snapshot.user_id.clone(),
+                        snapshot.page,
+                        snapshot.per_page,
+                    )
+                    .await
+                }
             }
         },
     );
@@ -49,15 +56,17 @@ pub fn AdminRequestsSection(admin_allowed: Memo<bool>) -> impl IntoView {
     let requests_error =
         Signal::derive(move || requests_resource.get().and_then(|result| result.err()));
 
+    let repo_for_action = repository.clone();
     let request_action = create_action(move |payload: &RequestActionPayload| {
+        let repo = repo_for_action.clone();
         let payload = payload.clone();
         async move {
             if payload.id.trim().is_empty() {
                 Err("リクエストIDを取得できませんでした。".into())
             } else if payload.approve {
-                repository::approve_request(&payload.id, &payload.comment).await
+                repo.approve_request(&payload.id, &payload.comment).await
             } else {
-                repository::reject_request(&payload.id, &payload.comment).await
+                repo.reject_request(&payload.id, &payload.comment).await
             }
         }
     });
