@@ -16,3 +16,36 @@ pub fn format_days(days: Option<i32>) -> String {
     days.map(|d| format!("{d} 日"))
         .unwrap_or_else(|| "-".into())
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActivityStatusFilter {
+    All,
+    PendingOnly,
+    ApprovedOnly,
+}
+
+impl ActivityStatusFilter {
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "pending" => ActivityStatusFilter::PendingOnly,
+            "approved" => ActivityStatusFilter::ApprovedOnly,
+            _ => ActivityStatusFilter::All,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ActivityStatusFilter::All => "すべて",
+            ActivityStatusFilter::PendingOnly => "承認待ちのみ",
+            ActivityStatusFilter::ApprovedOnly => "承認済みのみ",
+        }
+    }
+
+    pub fn as_value(self) -> &'static str {
+        match self {
+            ActivityStatusFilter::All => "all",
+            ActivityStatusFilter::PendingOnly => "pending",
+            ActivityStatusFilter::ApprovedOnly => "approved",
+        }
+    }
+}

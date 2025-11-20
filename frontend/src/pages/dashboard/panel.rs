@@ -3,6 +3,7 @@ use super::{
     layout::DashboardFrame,
     repository,
 };
+use crate::pages::dashboard::utils::ActivityStatusFilter;
 use crate::{
     components::forms::AttendanceActionButtons,
     state::{
@@ -16,6 +17,7 @@ use leptos::*;
 pub fn DashboardPage() -> impl IntoView {
     let (attendance_state, set_attendance_state) = use_attendance();
     let (auth, _) = use_auth();
+    let activity_filter = create_rw_signal(ActivityStatusFilter::All);
 
     create_effect(move |_| {
         let set_state = set_attendance_state.clone();
@@ -27,8 +29,8 @@ pub fn DashboardPage() -> impl IntoView {
     let summary_resource = create_resource(|| (), |_| async { repository::fetch_summary().await });
     let alerts_resource = create_resource(|| (), |_| async { repository::fetch_alerts().await });
     let activities_resource = create_resource(
-        || (),
-        |_| async { repository::fetch_recent_activities().await },
+        move || activity_filter.get(),
+        |filter| async move { repository::fetch_recent_activities(filter).await },
     );
 
     view! {
@@ -41,7 +43,7 @@ pub fn DashboardPage() -> impl IntoView {
                     </p>
                 </header>
 
-                <GlobalFilters />
+                <GlobalFilters filter=activity_filter />
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <SummarySection summary=summary_resource />

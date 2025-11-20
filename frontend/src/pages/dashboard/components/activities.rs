@@ -1,12 +1,12 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
-    pages::dashboard::repository::DashboardActivity,
+    pages::dashboard::{repository::DashboardActivity, utils::ActivityStatusFilter},
 };
 use leptos::*;
 
 #[component]
 pub fn ActivitiesSection(
-    activities: Resource<(), Result<Vec<DashboardActivity>, String>>,
+    activities: Resource<ActivityStatusFilter, Result<Vec<DashboardActivity>, String>>,
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">

@@ -1,6 +1,6 @@
 use crate::{
     api::{ApiClient, AttendanceSummary},
-    pages::dashboard::utils::current_year_month,
+    pages::dashboard::utils::{current_year_month, ActivityStatusFilter},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -63,7 +63,9 @@ pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
     Ok(alerts)
 }
 
-pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
+pub async fn fetch_recent_activities(
+    filter: ActivityStatusFilter,
+) -> Result<Vec<DashboardActivity>, String> {
     let api = ApiClient::new();
     let value: Value = api.get_my_requests().await?;
 
@@ -90,7 +92,13 @@ pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String>
         detail: Some(format!("{overtime_approved} 件")),
     });
 
-    Ok(activities)
+    let filtered = match filter {
+        ActivityStatusFilter::All => activities,
+        ActivityStatusFilter::PendingOnly => activities.into_iter().take(2).collect(),
+        ActivityStatusFilter::ApprovedOnly => activities.into_iter().skip(2).collect(),
+    };
+
+    Ok(filtered)
 }
 
 pub async fn reload_announcements() -> Result<(), String> {
