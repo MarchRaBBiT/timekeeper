@@ -1,6 +1,6 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
-    pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel},
+    pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel, DashboardSummary},
 };
 use leptos::*;
 

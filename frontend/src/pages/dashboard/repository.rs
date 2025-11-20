@@ -1,9 +1,14 @@
 use crate::{
     api::{ApiClient, AttendanceSummary},
-    pages::dashboard::utils::current_year_month,
+    pages::{
+        dashboard::utils::current_year_month,
+        requests::{
+            repository::RequestsRepository,
+            types::{flatten_requests, RequestKind, RequestSummary},
+        },
+    },
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DashboardSummary {
@@ -42,8 +47,7 @@ pub async fn fetch_summary() -> Result<DashboardSummary, String> {
     })
 }
 
-pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
-    let summary = fetch_summary().await?;
+pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     let mut alerts = Vec::new();
 
     if summary.total_work_days.unwrap_or_default() == 0 {
@@ -60,37 +64,42 @@ pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
         });
     }
 
-    Ok(alerts)
+    alerts
+}
+
+pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
+    let summary = fetch_summary().await?;
+    Ok(build_alerts(&summary))
 }
 
 pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
-    let api = ApiClient::new();
-    let value: Value = api.get_my_requests().await?;
+    let repo = RequestsRepository::new();
+    let response = repo.list_my_requests().await?;
+    let summaries = flatten_requests(&response);
 
-    let mut activities = Vec::new();
-    let leave_pending = count(&value, "leave_requests", "pending");
-    let overtime_pending = count(&value, "overtime_requests", "pending");
-    let leave_approved = count(&value, "leave_requests", "approved");
-    let overtime_approved = count(&value, "overtime_requests", "approved");
+    let leave_pending = count_by(&summaries, RequestKind::Leave, "pending");
+    let overtime_pending = count_by(&summaries, RequestKind::Overtime, "pending");
+    let leave_approved = count_by(&summaries, RequestKind::Leave, "approved");
+    let overtime_approved = count_by(&summaries, RequestKind::Overtime, "approved");
 
-    activities.push(DashboardActivity {
-        title: "休暇申請（承認待ち）".into(),
-        detail: Some(format!("{leave_pending} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "残業申請（承認待ち）".into(),
-        detail: Some(format!("{overtime_pending} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "休暇申請（承認済み）".into(),
-        detail: Some(format!("{leave_approved} 件")),
-    });
-    activities.push(DashboardActivity {
-        title: "残業申請（承認済み）".into(),
-        detail: Some(format!("{overtime_approved} 件")),
-    });
-
-    Ok(activities)
+    Ok(vec![
+        DashboardActivity {
+            title: "休暇申請（承認待ち）".into(),
+            detail: Some(format!("{leave_pending} 件")),
+        },
+        DashboardActivity {
+            title: "残業申請（承認待ち）".into(),
+            detail: Some(format!("{overtime_pending} 件")),
+        },
+        DashboardActivity {
+            title: "休暇申請（承認済み）".into(),
+            detail: Some(format!("{leave_approved} 件")),
+        },
+        DashboardActivity {
+            title: "残業申請（承認済み）".into(),
+            detail: Some(format!("{overtime_approved} 件")),
+        },
+    ])
 }
 
 fn count(value: &Value, kind: &str, status: &str) -> i32 {
