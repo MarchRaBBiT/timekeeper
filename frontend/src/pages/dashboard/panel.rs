@@ -25,7 +25,16 @@ pub fn DashboardPage() -> impl IntoView {
     });
 
     let summary_resource = create_resource(|| (), |_| async { repository::fetch_summary().await });
-    let alerts_resource = create_resource(|| (), |_| async { repository::fetch_alerts().await });
+    let alerts_resource = create_resource(
+        move || summary_resource.get(),
+        |summary_result| async move {
+            match summary_result {
+                None => Err("サマリー取得中...".into()),
+                Some(Err(err)) => Err(err),
+                Some(Ok(summary)) => Ok(repository::build_alerts(&summary)),
+            }
+        },
+    );
     let activities_resource = create_resource(
         || (),
         |_| async { repository::fetch_recent_activities().await },
@@ -47,7 +56,7 @@ pub fn DashboardPage() -> impl IntoView {
                     <SummarySection summary=summary_resource />
                     <AlertsSection
                         alerts=alerts_resource
-                        on_reload=Callback::new(move |_| alerts_resource.refetch())
+                        on_reload=Callback::new(move |_| summary_resource.refetch())
                     />
                 </div>
 

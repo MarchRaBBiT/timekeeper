@@ -42,8 +42,7 @@ pub async fn fetch_summary() -> Result<DashboardSummary, String> {
     })
 }
 
-pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
-    let summary = fetch_summary().await?;
+pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     let mut alerts = Vec::new();
 
     if summary.total_work_days.unwrap_or_default() == 0 {
@@ -60,7 +59,7 @@ pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
         });
     }
 
-    Ok(alerts)
+    alerts
 }
 
 pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String> {
