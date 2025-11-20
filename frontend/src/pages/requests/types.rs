@@ -67,7 +67,7 @@ impl RequestSummary {
         let hours = value
             .get("planned_hours")
             .and_then(|v| v.as_f64())
-            .map(|h| format!("{:.1} 時間", h));
+            .map(|h| format!("{} 時間", h));
         Self {
             id: extract_string(value, "id"),
             kind: RequestKind::Overtime,
