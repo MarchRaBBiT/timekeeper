@@ -1,12 +1,12 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
-    pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel},
+    pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel, DashboardSummary},
 };
 use leptos::*;
 
 #[component]
 pub fn AlertsSection(
-    alerts: Resource<(), Result<Vec<DashboardAlert>, String>>,
+    alerts: Resource<Option<Result<DashboardSummary, String>>, Result<Vec<DashboardAlert>, String>>,
     on_reload: Callback<()>,
 ) -> impl IntoView {
     view! {
