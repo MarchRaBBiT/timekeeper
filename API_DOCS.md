@@ -857,3 +857,23 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 - `rejected_by` (string|null)
 - `rejected_at` (datetime|null)
 - `cancelled_at` (datetime|null)
+
+## 管理系エンドポイント抜粋（フロント実装で使用）
+
+| 区分 | メソッド | パス | 主な用途 | 主なパラメータ/ボディ |
+| --- | --- | --- | --- | --- |
+| 管理・申請 | GET | `/api/admin/requests` | 管理者が申請一覧を取得 | `status`、`user_id`、`page`、`per_page` |
+| 管理・申請 | GET | `/api/admin/requests/{id}` | 申請詳細取得 | `id` (path) |
+| 管理・申請 | PUT | `/api/admin/requests/{id}/approve` | 申請承認 | `id` (path), BODY: `comment` |
+| 管理・申請 | PUT | `/api/admin/requests/{id}/reject` | 申請却下 | `id` (path), BODY: `comment` |
+| 管理・ユーザー | GET | `/api/admin/users` | ユーザー一覧取得 | なし |
+| 管理・ユーザー | POST | `/api/admin/users` | 新規ユーザー作成 | BODY: `username`, `full_name`, `role` など |
+| 管理・ユーザー | PUT | `/api/admin/users/{id}` | ユーザー更新 | `id` (path), BODY: `full_name`, `role` など |
+| 管理・MFA | POST | `/api/admin/mfa/reset` | MFA リセット | BODY: `user_id` |
+| 管理・休日 | GET | `/api/admin/holidays` | 休日一覧取得 | なし |
+| 管理・休日 | POST | `/api/admin/holidays` | 休日登録 | BODY: `date`, `reason` など |
+| 管理・休日 | DELETE | `/api/admin/holidays/{id}` | 休日削除 | `id` (path) |
+| 管理・休日（週次） | GET | `/api/admin/holidays/weekly` | 週次休日一覧取得 | なし |
+| 管理・休日（週次） | POST | `/api/admin/holidays/weekly` | 週次休日登録 | BODY: `weekday`, `reason` など |
+| 管理・休日（インポート） | GET | `/api/admin/holidays/google` | Google 祝日一覧取得 | `year` (optional) |
+| 管理・エクスポート | GET | `/api/admin/export` | 管理用エクスポート（CSV/JSON） | クエリ: `username`, `from`, `to` など |
