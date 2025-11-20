@@ -45,6 +45,14 @@ impl RequestsRepository {
         self.client.create_overtime_request(payload).await
     }
 
+    pub async fn update_request(&self, id: &str, payload: Value) -> Result<(), String> {
+        self.client.update_request(id, payload).await.map(|_| ())
+    }
+
+    pub async fn cancel_request(&self, id: &str) -> Result<(), String> {
+        self.client.cancel_request(id).await.map(|_| ())
+    }
+
     pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, String> {
         let value: Value = self.client.get_my_requests().await?;
         serde_json::from_value(value)

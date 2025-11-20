@@ -24,6 +24,7 @@ pub struct RequestSummary {
     pub primary_label: Option<String>,
     pub secondary_label: Option<String>,
     pub reason: Option<String>,
+    pub details: Value,
 }
 
 impl RequestSummary {
@@ -58,6 +59,7 @@ impl RequestSummary {
                 .get("reason")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            details: value.clone(),
         }
     }
 
@@ -83,6 +85,7 @@ impl RequestSummary {
                 .get("reason")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            details: value.clone(),
         }
     }
 }

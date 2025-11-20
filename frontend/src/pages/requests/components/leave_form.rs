@@ -1,25 +1,40 @@
 use crate::api::CreateLeaveRequest;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
-use crate::pages::requests::utils::{LeaveFormState, MessageState};
+use crate::pages::requests::panel::EditPayload;
+use crate::pages::requests::types::RequestKind;
+use crate::pages::requests::utils::{EditTarget, LeaveFormState, MessageState};
 use leptos::*;
+use serde_json::to_value;
 
 #[component]
 pub fn LeaveRequestForm(
     state: LeaveFormState,
     message: RwSignal<MessageState>,
     action: Action<CreateLeaveRequest, Result<(), String>>,
+    update_action: Action<EditPayload, Result<(), String>>,
+    editing: RwSignal<Option<EditTarget>>,
+    on_cancel_edit: Callback<()>,
 ) -> impl IntoView {
     let pending = action.pending();
+    let updating = update_action.pending();
+
     let on_submit = {
         let state = state.clone();
         let message = message.clone();
         let action = action.clone();
+        let update_action = update_action.clone();
+        let editing = editing.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             match state.to_payload() {
                 Ok(payload) => {
                     message.update(|msg| msg.clear());
-                    action.dispatch(payload);
+                    if let Some(target) = editing.get() {
+                        update_action
+                            .dispatch((target.id, to_value(payload).unwrap_or_default()).into());
+                    } else {
+                        action.dispatch(payload);
+                    }
                 }
                 Err(err) => {
                     message.update(|msg| msg.set_error(err));
@@ -37,6 +52,21 @@ pub fn LeaveRequestForm(
             <div>
                 <h3 class="text-lg font-medium text-gray-900">{"休暇申請"}</h3>
                 <p class="text-sm text-gray-600">{"休暇の種類と期間を入力して申請を送信します。"} </p>
+                <Show
+                    when=move || {
+                        editing
+                            .get()
+                            .map(|target| target.kind == RequestKind::Leave)
+                            .unwrap_or(false)
+                    }
+                >
+                    <p class="mt-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 inline-flex items-center gap-2">
+                        {"編集中: 既存の休暇申請を更新します。"}
+                        <button class="text-blue-700 underline" on:click=move |_| on_cancel_edit.call(())>
+                            {"キャンセル"}
+                        </button>
+                    </p>
+                </Show>
             </div>
             <Show when=move || message.get().error.is_some()>
                 <ErrorMessage message={message.get().error.clone().unwrap_or_default()} />
@@ -90,9 +120,21 @@ pub fn LeaveRequestForm(
                 <button
                     type="submit"
                     class="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-                    disabled=move || pending.get()
+                    disabled=move || pending.get() || updating.get()
                 >
-                    {move || if pending.get() { "送信中..." } else { "休暇申請を送信" }}
+                    {move || {
+                        if pending.get() || updating.get() {
+                            "送信中..."
+                        } else if editing
+                            .get()
+                            .map(|target| target.kind == RequestKind::Leave)
+                            .unwrap_or(false)
+                        {
+                            "休暇申請を更新"
+                        } else {
+                            "休暇申請を送信"
+                        }
+                    }}
                 </button>
             </form>
         </div>

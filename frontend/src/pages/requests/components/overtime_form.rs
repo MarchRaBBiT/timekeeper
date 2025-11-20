@@ -1,26 +1,40 @@
 use crate::api::CreateOvertimeRequest;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
-use crate::pages::requests::utils::{MessageState, OvertimeFormState};
+use crate::pages::requests::panel::EditPayload;
+use crate::pages::requests::types::RequestKind;
+use crate::pages::requests::utils::{EditTarget, MessageState, OvertimeFormState};
 use leptos::*;
+use serde_json::to_value;
 
 #[component]
 pub fn OvertimeRequestForm(
     state: OvertimeFormState,
     message: RwSignal<MessageState>,
     action: Action<CreateOvertimeRequest, Result<(), String>>,
+    update_action: Action<EditPayload, Result<(), String>>,
+    editing: RwSignal<Option<EditTarget>>,
+    on_cancel_edit: Callback<()>,
 ) -> impl IntoView {
     let pending = action.pending();
+    let updating = update_action.pending();
 
     let on_submit = {
         let state = state.clone();
         let message = message.clone();
         let action = action.clone();
+        let update_action = update_action.clone();
+        let editing = editing.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             match state.to_payload() {
                 Ok(payload) => {
                     message.update(|msg| msg.clear());
-                    action.dispatch(payload);
+                    if let Some(target) = editing.get() {
+                        update_action
+                            .dispatch((target.id, to_value(payload).unwrap_or_default()).into());
+                    } else {
+                        action.dispatch(payload);
+                    }
                 }
                 Err(err) => message.update(|msg| msg.set_error(err)),
             }
@@ -35,6 +49,17 @@ pub fn OvertimeRequestForm(
             <div>
                 <h3 class="text-lg font-medium text-gray-900">{"残業申請"}</h3>
                 <p class="text-sm text-gray-600">{"残業予定日と時間を入力して申請を送信します。"} </p>
+                <Show when=move || editing
+                    .get()
+                    .map(|target| target.kind == RequestKind::Overtime)
+                    .unwrap_or(false)>
+                    <p class="mt-1 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 inline-flex items-center gap-2">
+                        {"編集中: 既存の残業申請を更新します。"}
+                        <button class="text-indigo-700 underline" on:click=move |_| on_cancel_edit.call(())>
+                            {"キャンセル"}
+                        </button>
+                    </p>
+                </Show>
             </div>
             <Show when=move || message.get().error.is_some()>
                 <ErrorMessage message={message.get().error.clone().unwrap_or_default()} />
@@ -75,9 +100,21 @@ pub fn OvertimeRequestForm(
                 <button
                     type="submit"
                     class="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50"
-                    disabled=move || pending.get()
+                    disabled=move || pending.get() || updating.get()
                 >
-                    {move || if pending.get() { "送信中..." } else { "残業申請を送信" }}
+                    {move || {
+                        if pending.get() || updating.get() {
+                            "送信中..."
+                        } else if editing
+                            .get()
+                            .map(|target| target.kind == RequestKind::Overtime)
+                            .unwrap_or(false)
+                        {
+                            "残業申請を更新"
+                        } else {
+                            "残業申請を送信"
+                        }
+                    }}
                 </button>
             </form>
         </div>

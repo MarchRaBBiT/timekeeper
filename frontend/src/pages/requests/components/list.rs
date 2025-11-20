@@ -8,11 +8,24 @@ pub fn RequestsList(
     loading: Signal<bool>,
     error: Signal<Option<String>>,
     on_select: Callback<RequestSummary>,
+    on_edit: Callback<RequestSummary>,
+    on_cancel: Callback<RequestSummary>,
+    message: RwSignal<crate::pages::requests::utils::MessageState>,
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b">
                 <h3 class="text-lg font-medium text-gray-900">{"申請一覧"}</h3>
+                <Show when=move || message.get().error.is_some()>
+                    <div class="mt-2">
+                        <ErrorMessage message={message.get().error.clone().unwrap_or_default()} />
+                    </div>
+                </Show>
+                <Show when=move || message.get().success.is_some()>
+                    <div class="mt-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                        {message.get().success.clone().unwrap_or_default()}
+                    </div>
+                </Show>
             </div>
             <Show when=move || error.get().is_some()>
                 <div class="px-6 py-4">
@@ -40,6 +53,7 @@ pub fn RequestsList(
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"補足"}</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ステータス"}</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"提出日"}</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"操作"}</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -48,26 +62,63 @@ pub fn RequestsList(
                                 key=|summary| summary.id.clone()
                                 children=move |summary: RequestSummary| {
                                     let on_select = on_select.clone();
-                                    let row = summary.clone();
+                                    let summary = store_value(summary);
+                                    let summary_value = summary.get_value();
+                                    let status = summary_value.status.clone();
+                                    let status_for_pending = status.clone();
+                                    let status_for_not_pending = status.clone();
+                                    let primary_label =
+                                        summary_value.primary_label.clone().unwrap_or_else(|| "-".into());
+                                    let secondary_label =
+                                        summary_value.secondary_label.clone().unwrap_or_else(|| "-".into());
+                                    let submitted_at =
+                                        summary_value.submitted_at.clone().unwrap_or_else(|| "-".into());
                                     view! {
-                                        <tr class="hover:bg-gray-50 cursor-pointer" on:click=move |_| on_select.call(row.clone())>
+                                        <tr class="hover:bg-gray-50 cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {match summary.kind {
+                                                {match summary_value.kind {
                                                     RequestKind::Leave => "休暇",
                                                     RequestKind::Overtime => "残業",
                                                 }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {summary.primary_label.clone().unwrap_or_else(|| "-".into())}
+                                                {primary_label.clone()}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {summary.secondary_label.clone().unwrap_or_else(|| "-".into())}
+                                                {secondary_label.clone()}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
-                                                {summary.status.clone()}
+                                                {status.clone()}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {summary.submitted_at.clone().unwrap_or_else(|| "-".into())}
+                                                {submitted_at.clone()}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                <Show when=move || status_for_pending == "pending">
+                                                    <div class="flex gap-2">
+                                                        <button
+                                                            class="text-blue-600 hover:underline"
+                                                            on:click=move |ev| {
+                                                                ev.stop_propagation();
+                                                                on_edit.call(summary.get_value());
+                                                            }
+                                                        >
+                                                            {"編集"}
+                                                        </button>
+                                                        <button
+                                                            class="text-red-600 hover:underline"
+                                                            on:click=move |ev| {
+                                                                ev.stop_propagation();
+                                                                on_cancel.call(summary.get_value());
+                                                            }
+                                                        >
+                                                            {"取消"}
+                                                        </button>
+                                                    </div>
+                                                </Show>
+                                                <Show when=move || status_for_not_pending != "pending">
+                                                    <span class="text-gray-400">{"-"}</span>
+                                                </Show>
                                             </td>
                                         </tr>
                                     }

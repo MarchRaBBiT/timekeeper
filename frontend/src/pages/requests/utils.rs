@@ -1,6 +1,15 @@
 use crate::api::{CreateLeaveRequest, CreateOvertimeRequest};
 use chrono::NaiveDate;
 use leptos::*;
+use serde_json::Value;
+
+use super::types::RequestKind;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct EditTarget {
+    pub id: String,
+    pub kind: RequestKind,
+}
 
 #[derive(Clone)]
 pub struct LeaveFormState {
@@ -36,6 +45,28 @@ impl LeaveFormState {
 
     pub fn reason_signal(&self) -> RwSignal<String> {
         self.reason
+    }
+
+    pub fn reset(&self) {
+        self.leave_type.set("annual".into());
+        self.start_date.set(String::new());
+        self.end_date.set(String::new());
+        self.reason.set(String::new());
+    }
+
+    pub fn load_from_value(&self, value: &Value) {
+        if let Some(leave_type) = value.get("leave_type").and_then(|v| v.as_str()) {
+            self.leave_type.set(leave_type.to_string());
+        }
+        if let Some(start) = value.get("start_date").and_then(|v| v.as_str()) {
+            self.start_date.set(start.to_string());
+        }
+        if let Some(end) = value.get("end_date").and_then(|v| v.as_str()) {
+            self.end_date.set(end.to_string());
+        }
+        if let Some(reason) = value.get("reason").and_then(|v| v.as_str()) {
+            self.reason.set(reason.to_string());
+        }
     }
 
     pub fn to_payload(&self) -> Result<CreateLeaveRequest, String> {
@@ -87,6 +118,24 @@ impl OvertimeFormState {
 
     pub fn reason_signal(&self) -> RwSignal<String> {
         self.reason
+    }
+
+    pub fn reset(&self) {
+        self.date.set(String::new());
+        self.hours.set(String::new());
+        self.reason.set(String::new());
+    }
+
+    pub fn load_from_value(&self, value: &Value) {
+        if let Some(date) = value.get("date").and_then(|v| v.as_str()) {
+            self.date.set(date.to_string());
+        }
+        if let Some(hours) = value.get("planned_hours").and_then(|v| v.as_f64()) {
+            self.hours.set(format!("{:.2}", hours));
+        }
+        if let Some(reason) = value.get("reason").and_then(|v| v.as_str()) {
+            self.reason.set(reason.to_string());
+        }
     }
 
     pub fn to_payload(&self) -> Result<CreateOvertimeRequest, String> {

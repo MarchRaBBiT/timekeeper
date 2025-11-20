@@ -7,7 +7,7 @@ use crate::pages::requests::{
     layout::RequestsLayout,
     repository::RequestsRepository,
     types::{flatten_requests, RequestSummary},
-    utils::{LeaveFormState, MessageState, OvertimeFormState, RequestFilterState},
+    utils::{EditTarget, LeaveFormState, MessageState, OvertimeFormState, RequestFilterState},
 };
 use leptos::*;
 
@@ -19,7 +19,9 @@ pub fn RequestsPage() -> impl IntoView {
     let filter_state = RequestFilterState::default();
     let leave_message = create_rw_signal(MessageState::default());
     let overtime_message = create_rw_signal(MessageState::default());
+    let list_message = create_rw_signal(MessageState::default());
     let selected_request = create_rw_signal(None::<RequestSummary>);
+    let editing_request = create_rw_signal(None::<EditTarget>);
     let reload = create_rw_signal(0u32);
 
     let requests_resource = create_resource(
@@ -62,7 +64,88 @@ pub fn RequestsPage() -> impl IntoView {
         let payload = payload.clone();
         async move { repo.submit_overtime(payload).await.map(|_| ()) }
     });
+    let update_action = create_action(move |payload: &EditPayload| {
+        let repo = repository.get_value();
+        let payload = payload.clone();
+        async move { repo.update_request(&payload.id, payload.body.clone()).await }
+    });
+    let cancel_action = create_action(move |id: &String| {
+        let repo = repository.get_value();
+        let id = id.clone();
+        async move { repo.cancel_request(&id).await }
+    });
 
+    {
+        let reload = reload.clone();
+        let editing_request = editing_request.clone();
+        let leave_state = leave_state.clone();
+        let overtime_state = overtime_state.clone();
+        create_effect(move |_| {
+            if let Some(result) = update_action.value().get() {
+                match result {
+                    Ok(_) => {
+                        list_message.update(|msg| msg.set_success("申請内容を更新しました。"));
+                        editing_request.set(None);
+                        leave_state.reset();
+                        overtime_state.reset();
+                        reload.update(|value| *value = value.wrapping_add(1));
+                    }
+                    Err(err) => list_message.update(|msg| msg.set_error(err)),
+                }
+            }
+        });
+    }
+    {
+        let cancel_action = cancel_action.clone();
+        let list_message = list_message.clone();
+        let reload = reload.clone();
+        create_effect(move |_| {
+            if let Some(result) = cancel_action.value().get() {
+                match result {
+                    Ok(_) => {
+                        list_message.update(|msg| msg.set_success("申請を取消しました。"));
+                        reload.update(|value| *value = value.wrapping_add(1));
+                    }
+                    Err(err) => list_message.update(|msg| msg.set_error(err)),
+                }
+            }
+        });
+    }
+
+    let on_edit = Callback::new({
+        let editing_request = editing_request.clone();
+        let list_message = list_message.clone();
+        let leave_state = leave_state.clone();
+        let overtime_state = overtime_state.clone();
+        move |summary: RequestSummary| {
+            list_message.update(|msg| msg.clear());
+            let target = EditTarget {
+                id: summary.id.clone(),
+                kind: summary.kind,
+            };
+            editing_request.set(Some(target));
+            match summary.kind {
+                crate::pages::requests::types::RequestKind::Leave => {
+                    leave_state.load_from_value(&summary.details)
+                }
+                crate::pages::requests::types::RequestKind::Overtime => {
+                    overtime_state.load_from_value(&summary.details)
+                }
+            }
+        }
+    });
+    let on_cancel_request = Callback::new({
+        let cancel_action = cancel_action.clone();
+        let editing_request = editing_request.clone();
+        let leave_state = leave_state.clone();
+        let overtime_state = overtime_state.clone();
+        move |summary: RequestSummary| {
+            editing_request.set(None);
+            leave_state.reset();
+            overtime_state.reset();
+            cancel_action.dispatch(summary.id.clone());
+        }
+    });
     {
         let reload = reload.clone();
         let leave_message = leave_message.clone();
@@ -106,14 +189,38 @@ pub fn RequestsPage() -> impl IntoView {
             <RequestsLayout>
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <LeaveRequestForm
-                        state=leave_state
+                        state=leave_state.clone()
                         message=leave_message
                         action=leave_action
+                        update_action=update_action
+                        editing=editing_request
+                        on_cancel_edit=Callback::new({
+                            let editing_request = editing_request.clone();
+                            let list_message = list_message.clone();
+                            let leave_state = leave_state.clone();
+                            move |_| {
+                                editing_request.set(None);
+                                list_message.update(|msg| msg.clear());
+                                leave_state.reset();
+                            }
+                        })
                     />
                     <OvertimeRequestForm
-                        state=overtime_state
+                        state=overtime_state.clone()
                         message=overtime_message
                         action=overtime_action
+                        update_action=update_action
+                        editing=editing_request
+                        on_cancel_edit=Callback::new({
+                            let editing_request = editing_request.clone();
+                            let list_message = list_message.clone();
+                            let overtime_state = overtime_state.clone();
+                            move |_| {
+                                editing_request.set(None);
+                                list_message.update(|msg| msg.clear());
+                                overtime_state.reset();
+                            }
+                        })
                     />
                 </div>
                 <RequestsFilter filter_state=filter_state.clone() />
@@ -122,9 +229,27 @@ pub fn RequestsPage() -> impl IntoView {
                     loading=requests_loading
                     error=requests_error
                     on_select=on_select
+                    on_edit=on_edit
+                    on_cancel=on_cancel_request
+                    message=list_message
                 />
             </RequestsLayout>
             <RequestDetailModal selected=selected_request />
         </>
+    }
+}
+
+#[derive(Clone)]
+pub struct EditPayload {
+    id: String,
+    body: serde_json::Value,
+}
+
+impl From<(String, serde_json::Value)> for EditPayload {
+    fn from(value: (String, serde_json::Value)) -> Self {
+        Self {
+            id: value.0,
+            body: value.1,
+        }
     }
 }
