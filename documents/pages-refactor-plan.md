@@ -37,12 +37,12 @@ Attendance ページ以外の `frontend/src/pages` についても、`admin` リ
 - **コンポーネント**: `UserList`（並べ替え・検索付き）、`UserDetailDrawer`（モーダル）、`InviteForm` の 3 つを中心に組み立て、`panel` はイベントの受け渡しのみ行う。
 - **テスト**: `utils.rs` 内でメール・ロール入力検証を `#[cfg(test)]` で確認。
 
-### Admin Dashboard (未着手)
-- **現状**: `frontend/src/pages/admin/panel.rs` で WeeklyHoliday/Requests/Attendance/SystemTools/Holiday を一括で描画しているが、各セクションファイル（例: `frontend/src/pages/admin/weekly_holidays.rs`, `frontend/src/pages/admin/requests.rs`）が `ApiClient::new()` を直接生成し `spawn_local` で状態・バリデーション・エラー表示まで抱えている。`repository.rs` や `utils.rs` が存在せず、pending/error UI も統一されていない。
-- **構造**: `admin/` 直下に `repository.rs`（週次休日・申請・勤怠・システムツール・祝日管理 API ラッパー）と `utils.rs`（WeeklyHoliday フォーム検証、RequestFilter/Pagination state など）を追加し、`components/` へ `WeeklyHolidayList`, `AdminRequestTable`, `SystemToolCard` 等を切り出して `panel.rs` は権限判定とセクション配置に専念する。
-- **データ取得**: 週次休日やリクエスト一覧更新、MFA リセット・休日登録処理などは `create_resource` / `create_action` へ刷新し、`Resource`/`Action` の pending / error を `LoadingSpinner` / `ErrorMessage` で表示。既存の `create_rw_signal` + 生 API 呼び出しは repository 経由に差し替える。
+### Admin Dashboard (進行中)
+- **現状**: `frontend/src/pages/admin/panel.rs` で WeeklyHoliday/Requests/Attendance/SystemTools/Holiday を一括で描画しているが、各セクションファイル（例: `frontend/src/pages/admin/components/weekly_holidays.rs`, `frontend/src/pages/admin/components/requests.rs`）が肥大化しており、更なる責務分離が必要。
+- **構造**: `admin/` 直下に `repository.rs`（週次休日・申請・勤怠・システムツール・祝日管理 API ラッパー）と `utils.rs`（WeeklyHoliday フォーム検証、RequestFilter/Pagination state など）を維持しつつ、`AdminRepository` を導入して API 呼び出しを構造体経由に統一。`layout.rs` には `AdminDashboardScaffold` を追加し、`Layout` + 認可 `Show` + `AdminDashboardFrame` を隠蔽、`panel.rs` は権限計算とセクション配置のみを担当するように整理する。
+- **データ取得**: 週次休日やリクエスト一覧更新、MFA リセット・休日登録処理などは `create_resource` / `create_action` へ刷新し、`Resource`/`Action` の pending / error を `LoadingSpinner` / `ErrorMessage` で表示。`AdminRepository` が `ApiClient` をラップすることで `create_rw_signal` + 生 API 呼び出しを廃止した。
 - **テスト**: `utils.rs` に分離した曜日・日付・コメント検証やページングロジックを `wasm_bindgen_test` でカバーし、アクション完了時のモーダルクローズやトースト表示は Action の `value()` を観測して一元化する。
-- 2025-02-??: repository/utils/components を追加し、WeeklyHoliday/Requests/SystemTools/Attendance/Holiday の各セクションを Resource/Action ベースへ移行完了。
+- 2025-02-??: repository/utils/components を追加し、WeeklyHoliday/Requests/SystemTools/Attendance/Holiday の各セクションを Resource/Action ベースへ移行完了。2025-11-??: `AdminRepository` へ集約し、セクション側は依存注入のみで API を利用。
 
 ### Login / MFA ✅（構成反映済み）
 - **構造**: login/mod.rs と mfa/mod.rs を導入済み。panel.rs がフォーム状態と create_action を担い、components/form.rs / components/messages.rs は UI のみを担当する。MFA は components/setup.rs／components/verify.rs の 2 ブロック構成。
