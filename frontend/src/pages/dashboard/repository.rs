@@ -113,3 +113,41 @@ fn count(value: &Value, kind: &str, status: &str) -> i32 {
         })
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn alerts_warn_when_no_workdays() {
+        let summary = DashboardSummary {
+            total_work_hours: Some(0.0),
+            total_work_days: Some(0),
+            average_daily_hours: None,
+        };
+        let alerts = build_alerts(&summary);
+        assert!(alerts
+            .iter()
+            .any(|a| matches!(a.level, DashboardAlertLevel::Warning)));
+    }
+
+    #[test]
+    fn count_handles_missing_kind() {
+        let value = json!({});
+        assert_eq!(count(&value, "leave_requests", "pending"), 0);
+    }
+
+    #[test]
+    fn count_filters_by_status() {
+        let value = json!({
+            "leave_requests": [
+                { "status": "pending" },
+                { "status": "approved" },
+                { "status": "pending" }
+            ]
+        });
+        assert_eq!(count(&value, "leave_requests", "pending"), 2);
+        assert_eq!(count(&value, "leave_requests", "approved"), 1);
+    }
+}

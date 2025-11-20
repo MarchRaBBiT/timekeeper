@@ -16,3 +16,21 @@ pub fn format_days(days: Option<i32>) -> String {
     days.map(|d| format!("{d} 日"))
         .unwrap_or_else(|| "-".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_hours_with_two_decimals() {
+        assert_eq!(format_hours(Some(12.3456)), "12.35時間");
+        assert_eq!(format_hours(Some(0.0)), "0.00時間");
+        assert_eq!(format_hours(None), "-");
+    }
+
+    #[test]
+    fn formats_days_with_suffix() {
+        assert_eq!(format_days(Some(5)), "5 日");
+        assert_eq!(format_days(None), "-");
+    }
+}
