@@ -1,3 +1,4 @@
+use crate::components::layout::Layout;
 use leptos::*;
 
 #[component]
@@ -19,9 +20,28 @@ pub fn AdminDashboardFrame(children: Children) -> impl IntoView {
         <div class="space-y-6">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">{"管理者ツール"}</h1>
-                <p class="mt-1 text-sm text-gray-600">{"申請の承認/却下、各種の手動登録が行えます。"}</p>
+                <p class="mt-1 text-sm text-gray-600">
+                    {"週次休日や申請、勤怠、MFA、祝日管理をまとめて実行できます。"}
+                </p>
             </div>
             {children()}
         </div>
+    }
+}
+
+#[component]
+pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> impl IntoView {
+    let content = store_value(children());
+    view! {
+        <Layout>
+            <Show
+                when=move || admin_allowed.get()
+                fallback=move || view! { <UnauthorizedMessage /> }.into_view()
+            >
+                <AdminDashboardFrame>
+                    {content.get_value().clone()}
+                </AdminDashboardFrame>
+            </Show>
+        </Layout>
     }
 }
