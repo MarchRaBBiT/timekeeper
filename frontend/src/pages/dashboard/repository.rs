@@ -102,14 +102,14 @@ pub async fn fetch_recent_activities() -> Result<Vec<DashboardActivity>, String>
     ])
 }
 
-pub async fn reload_announcements() -> Result<(), String> {
-    // 追加のアナウンス API が用意されたらここで呼び出す。
-    Ok(())
-}
-
-fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i32 {
-    summaries
-        .iter()
-        .filter(|s| s.kind == kind && s.status == status)
-        .count() as i32
+fn count(value: &Value, kind: &str, status: &str) -> i32 {
+    value
+        .get(kind)
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|item| item.get("status").and_then(|s| s.as_str()) == Some(status))
+                .count() as i32
+        })
+        .unwrap_or(0)
 }
