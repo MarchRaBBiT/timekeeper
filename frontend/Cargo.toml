@@ -30,7 +30,7 @@ serde_json.workspace = true
 # Async runtime
 wasm-bindgen = "0.2"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["console", "Window", "Storage", "Document", "Element", "HtmlElement", "HtmlInputElement", "Event", "MouseEvent", "KeyboardEvent"] }
+web-sys = { version = "0.3", features = ["console", "Window", "Storage", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlSelectElement", "Event", "MouseEvent", "KeyboardEvent"] }
 gloo-timers = { version = "0.2", features = ["futures"] }
 base64 = { version = "0.21", default-features = false, features = ["alloc"] }
 
