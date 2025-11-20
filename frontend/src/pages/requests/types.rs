@@ -63,7 +63,7 @@ impl RequestSummary {
 
     pub fn from_overtime(value: &Value) -> Self {
         let hours = value
-            .get("hours")
+            .get("planned_hours")
             .and_then(|v| v.as_f64())
             .map(|h| format!("{:.1} 時間", h));
         Self {
@@ -75,7 +75,7 @@ impl RequestSummary {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             primary_label: value
-                .get("overtime_date")
+                .get("date")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             secondary_label: hours,
@@ -143,8 +143,8 @@ mod tests {
         let value = json!({
             "id": "ot-1",
             "status": "approved",
-            "overtime_date": "2025-01-15",
-            "hours": 3.5,
+            "date": "2025-01-15",
+            "planned_hours": 3.5,
             "reason": "deploy",
             "created_at": "2025-01-14T09:00:00Z"
         });
