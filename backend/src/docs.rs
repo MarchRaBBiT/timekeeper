@@ -112,7 +112,9 @@ use utoipa::{
             AdminHolidayListItem,
             AdminRequestListResponse,
             AdminRequestListPageInfo,
-            ExportQuery
+            ExportQuery,
+            ApprovePayload,
+            RejectPayload
         ),
         security_schemes(
             ("BearerAuth" = SecurityScheme::Http(
@@ -141,7 +143,8 @@ pub struct ApiDoc;
         (status = 200, description = "ログイン成功", body = LoginResponse),
         (status = 401, description = "認証失敗")
     ),
-    tag = "Auth"
+    tag = "Auth",
+    security(())
 )]
 fn login_doc() {}
 
@@ -150,7 +153,8 @@ fn login_doc() {}
     path = "/api/auth/refresh",
     request_body = serde_json::Value,
     responses((status = 200, description = "トークン更新", body = LoginResponse)),
-    tag = "Auth"
+    tag = "Auth",
+    security(())
 )]
 fn refresh_doc() {}
 
@@ -328,7 +332,7 @@ fn admin_request_detail_doc() {}
     put,
     path = "/api/admin/requests/{id}/approve",
     params(("id" = String, Path, description = "申請ID")),
-    request_body = Option<serde_json::Value>,
+    request_body = ApprovePayload,
     responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]
@@ -338,7 +342,7 @@ fn admin_approve_request_doc() {}
     put,
     path = "/api/admin/requests/{id}/reject",
     params(("id" = String, Path, description = "申請ID")),
-    request_body = Option<serde_json::Value>,
+    request_body = RejectPayload,
     responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]

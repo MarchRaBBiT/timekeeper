@@ -22,7 +22,7 @@ use crate::{
 
 const MAX_DECISION_COMMENT_LENGTH: usize = 500;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovePayload {
     pub comment: String,
 }
@@ -73,7 +73,7 @@ pub async fn approve_request(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct RejectPayload {
     pub comment: String,
 }
