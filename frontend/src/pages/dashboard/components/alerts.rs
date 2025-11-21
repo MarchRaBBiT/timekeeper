@@ -5,7 +5,9 @@ use crate::{
 use leptos::*;
 
 #[component]
-pub fn AlertsSection(alerts: Resource<(), Result<Vec<DashboardAlert>, String>>) -> impl IntoView {
+pub fn AlertsSection(
+    alerts: Resource<Option<Result<DashboardSummary, String>>, Result<Vec<DashboardAlert>, String>>,
+) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <div class="flex flex-col gap-2">
