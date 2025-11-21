@@ -4,9 +4,10 @@ use crate::models::break_record::BreakRecordResponse;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Persistent record of a single day's attendance for an employee.
 pub struct Attendance {
     /// Unique identifier for the attendance record.
@@ -29,7 +30,7 @@ pub struct Attendance {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 /// Normalized status values stored in the database.
@@ -50,31 +51,31 @@ impl Default for AttendanceStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload used when an employee clocks in.
 pub struct ClockInRequest {
     pub date: Option<NaiveDate>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload used when an employee clocks out.
 pub struct ClockOutRequest {
     pub date: Option<NaiveDate>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload for starting a break against an attendance record.
 pub struct BreakStartRequest {
     pub attendance_id: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload for ending a break session.
 pub struct BreakEndRequest {
     pub break_record_id: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API representation of attendance with associated break records.
 pub struct AttendanceResponse {
     pub id: String,
@@ -87,7 +88,7 @@ pub struct AttendanceResponse {
     pub break_records: Vec<BreakRecordResponse>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// High-level summary for reporting an employee's monthly attendance.
 pub struct AttendanceSummary {
     pub month: u32,

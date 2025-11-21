@@ -1,9 +1,10 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Holiday {
     pub id: String,
     pub holiday_date: NaiveDate,
@@ -27,7 +28,7 @@ impl Holiday {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateHolidayPayload {
     pub holiday_date: NaiveDate,
     pub name: String,
@@ -35,7 +36,7 @@ pub struct CreateHolidayPayload {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HolidayResponse {
     pub id: String,
     pub holiday_date: NaiveDate,
@@ -54,7 +55,7 @@ impl From<Holiday> for HolidayResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateWeeklyHolidayPayload {
     pub weekday: u8,
     pub starts_on: NaiveDate,
@@ -62,7 +63,7 @@ pub struct CreateWeeklyHolidayPayload {
     pub ends_on: Option<NaiveDate>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct WeeklyHoliday {
     pub id: String,
     pub weekday: i16,
@@ -97,7 +98,7 @@ impl WeeklyHoliday {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WeeklyHolidayResponse {
     pub id: String,
     pub weekday: u8,

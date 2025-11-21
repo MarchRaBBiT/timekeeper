@@ -47,6 +47,9 @@ impl ActivityStatusFilter {
             ActivityStatusFilter::PendingOnly => "pending",
             ActivityStatusFilter::ApprovedOnly => "approved",
         }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{Error as SqlxError, FromRow, PgPool, Postgres, QueryBuilder};
 use std::str::FromStr;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
@@ -397,7 +398,7 @@ async fn fetch_admin_holidays(
 }
 
 // Admin: create/replace attendance for a day (basic version)
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AdminAttendanceUpsert {
     pub user_id: String,
     pub date: String,          // YYYY-MM-DD
@@ -406,13 +407,13 @@ pub struct AdminAttendanceUpsert {
     pub breaks: Option<Vec<AdminBreakItem>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AdminBreakItem {
     pub break_start_time: String,
     pub break_end_time: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ResetMfaPayload {
     pub user_id: String,
 }
@@ -619,7 +620,7 @@ pub async fn force_end_break(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema, IntoParams)]
 pub struct ExportQuery {
     pub username: Option<String>,
     pub from: Option<String>, // YYYY-MM-DD
@@ -1042,7 +1043,7 @@ async fn get_break_records(
         .map(BreakRecordResponse::from)
         .collect())
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct AdminHolidayListQuery {
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -1052,7 +1053,7 @@ pub struct AdminHolidayListQuery {
     pub to: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminHolidayListResponse {
     pub page: i64,
     pub per_page: i64,
@@ -1060,7 +1061,7 @@ pub struct AdminHolidayListResponse {
     pub items: Vec<AdminHolidayListItem>,
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminHolidayKind {
     Public,
@@ -1091,7 +1092,7 @@ impl FromStr for AdminHolidayKind {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminHolidayListItem {
     pub id: String,
     pub kind: AdminHolidayKind,

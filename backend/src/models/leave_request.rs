@@ -3,11 +3,12 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 pub use crate::models::request::RequestStatus;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of a leave request submitted by an employee.
 pub struct LeaveRequest {
     /// Unique identifier for the leave request.
@@ -42,7 +43,7 @@ pub struct LeaveRequest {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 /// Supported leave categories.
@@ -68,7 +69,7 @@ impl LeaveType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Payload used to create a new leave request.
 pub struct CreateLeaveRequest {
     pub leave_type: LeaveType,
@@ -77,7 +78,7 @@ pub struct CreateLeaveRequest {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API representation shared with clients.
 pub struct LeaveRequestResponse {
     pub id: String,

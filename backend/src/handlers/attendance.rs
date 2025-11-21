@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::attendance_utils::{
     ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in, ensure_not_clocked_out,
@@ -27,7 +28,7 @@ use crate::{
     utils::{csv::append_csv_row, time},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct AttendanceQuery {
     pub year: Option<i32>,
     pub month: Option<u32>,
@@ -35,13 +36,13 @@ pub struct AttendanceQuery {
     pub to: Option<NaiveDate>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct AttendanceExportQuery {
     pub from: Option<NaiveDate>,
     pub to: Option<NaiveDate>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AttendanceStatusResponse {
     pub status: String,
     pub attendance_id: Option<String>,
