@@ -4,9 +4,10 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
@@ -123,9 +124,11 @@ pub async fn reject_request(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
 pub struct RequestListQuery {
     pub status: Option<String>,
+    #[serde(rename = "type")]
+    #[param(name = "type", description = "leave/overtime/all (default: all)")]
     pub r#type: Option<String>,
     pub user_id: Option<String>,
     pub from: Option<String>,
@@ -134,11 +137,24 @@ pub struct RequestListQuery {
     pub per_page: Option<i64>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRequestListResponse {
+    pub leave_requests: Vec<LeaveRequestResponse>,
+    pub overtime_requests: Vec<OvertimeRequestResponse>,
+    pub page_info: AdminRequestListPageInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRequestListPageInfo {
+    pub page: i64,
+    pub per_page: i64,
+}
+
 pub async fn list_requests(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<RequestListQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AdminRequestListResponse>, (StatusCode, Json<Value>)> {
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
@@ -210,11 +226,17 @@ pub async fn list_requests(
         Vec::new()
     };
 
-    Ok(Json(json!({
-        "leave_requests": leave_items.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
-        "overtime_requests": ot_items.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>(),
-        "page_info": {"page": page, "per_page": per_page}
-    })))
+    Ok(Json(AdminRequestListResponse {
+        leave_requests: leave_items
+            .into_iter()
+            .map(LeaveRequestResponse::from)
+            .collect::<Vec<_>>(),
+        overtime_requests: ot_items
+            .into_iter()
+            .map(OvertimeRequestResponse::from)
+            .collect::<Vec<_>>(),
+        page_info: AdminRequestListPageInfo { page, per_page },
+    }))
 }
 
 fn validate_decision_comment(comment: &str) -> Result<(), (StatusCode, Json<Value>)> {

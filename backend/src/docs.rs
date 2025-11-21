@@ -1,7 +1,8 @@
 use crate::{
     handlers::admin::{
-        AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
-        AdminHolidayListQuery, AdminHolidayListResponse, ExportQuery, ResetMfaPayload,
+        requests::RequestListQuery, AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind,
+        AdminHolidayListItem, AdminHolidayListQuery, AdminHolidayListResponse,
+        AdminRequestListPageInfo, AdminRequestListResponse, ExportQuery, ResetMfaPayload,
     },
     handlers::attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     models::{
@@ -95,6 +96,7 @@ use utoipa::{
             CreateOvertimeRequest,
             OvertimeRequestResponse,
             RequestStatus,
+            RequestListQuery,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
@@ -108,6 +110,8 @@ use utoipa::{
             AdminHolidayListResponse,
             AdminHolidayKind,
             AdminHolidayListItem,
+            AdminRequestListResponse,
+            AdminRequestListPageInfo,
             ExportQuery
         ),
         security_schemes(
@@ -305,11 +309,8 @@ fn my_requests_doc() {}
 #[utoipa::path(
     get,
     path = "/api/admin/requests",
-    params(
-        ("status" = Option<String>, Query, description = "pending/approved/rejected"),
-        ("user_id" = Option<String>, Query, description = "ユーザーIDで絞り込み")
-    ),
-    responses((status = 200, body = serde_json::Value)),
+    params(RequestListQuery),
+    responses((status = 200, body = AdminRequestListResponse)),
     tag = "Admin"
 )]
 fn admin_list_requests_doc() {}
@@ -363,7 +364,8 @@ fn admin_create_user_doc() {}
 #[utoipa::path(
     get,
     path = "/api/admin/holidays",
-    responses((status = 200, body = [HolidayResponse])),
+    params(AdminHolidayListQuery),
+    responses((status = 200, body = AdminHolidayListResponse)),
     tag = "Admin"
 )]
 fn admin_list_holidays_doc() {}
