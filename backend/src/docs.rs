@@ -23,7 +23,10 @@ use crate::{
         },
     },
 };
-use utoipa::OpenApi;
+use utoipa::{
+    openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
+    OpenApi,
+};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -106,6 +109,14 @@ use utoipa::OpenApi;
             AdminHolidayKind,
             AdminHolidayListItem,
             ExportQuery
+        ),
+        security_schemes(
+            ("BearerAuth" = SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .build()
+            ))
         )
     ),
     tags(
@@ -113,7 +124,8 @@ use utoipa::OpenApi;
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
         (name = "Requests", description = "申請 API (休暇/残業)"),
         (name = "Admin", description = "管理者向け API")
-    )
+    ),
+    security(("BearerAuth" = []))
 )]
 pub struct ApiDoc;
 
