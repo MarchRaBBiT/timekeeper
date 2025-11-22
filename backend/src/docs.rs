@@ -28,7 +28,10 @@ use crate::{
         },
     },
 };
-use utoipa::OpenApi;
+use utoipa::{
+    openapi::security::{Http, HttpAuthScheme, SecurityScheme},
+    Modify, OpenApi,
+};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -116,6 +119,7 @@ use utoipa::OpenApi;
             ExportQuery
         )
     ),
+    modifiers(&SecuritySchemes),
     tags(
         (name = "Auth", description = "認証・MFA・パスワード関連"),
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
@@ -125,6 +129,19 @@ use utoipa::OpenApi;
     security(("BearerAuth" = []))
 )]
 pub struct ApiDoc;
+
+struct SecuritySchemes;
+
+impl Modify for SecuritySchemes {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_default();
+
+        let mut bearer = Http::new(HttpAuthScheme::Bearer);
+        bearer.bearer_format = Some("JWT".to_string());
+
+        components.add_security_scheme("BearerAuth", SecurityScheme::Http(bearer));
+    }
+}
 
 #[utoipa::path(
     post,
