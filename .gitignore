@@ -7,6 +7,7 @@
 /frontend/build/
 /frontend/.wasm-pack/
 /frontend/wasm-pack.log
+backend/tests/support/swagger-ui.zip
 
 # Environment & secrets
 .env
