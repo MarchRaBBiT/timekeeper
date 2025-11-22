@@ -1,10 +1,37 @@
+use std::{
+    future::Future,
+    sync::{Arc, Mutex},
+};
+
 use axum::http::StatusCode;
 use chrono::Utc;
+use chrono_tz::UTC;
 use timekeeper_backend::{
-    handlers::auth::{enforce_mfa, ensure_password_matches},
-    models::user::{User, UserRole},
+    config::Config,
+    handlers::auth::process_login_for_user,
+    models::user::{LoginRequest, User, UserRole},
     utils::{mfa::generate_totp_secret, password::hash_password},
 };
+
+fn test_config() -> Config {
+    Config {
+        database_url: "".into(),
+        jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
+        jwt_expiration_hours: 1,
+        refresh_token_expiration_days: 7,
+        time_zone: UTC,
+        mfa_issuer: "Timekeeper Test".into(),
+    }
+}
+
+fn block_on_future<F, T>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    tokio::runtime::Runtime::new()
+        .expect("create runtime")
+        .block_on(future)
+}
 
 fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
     let mut user = User::new(
@@ -22,22 +49,81 @@ fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
 #[test]
 fn login_succeeds_when_password_matches_without_db() {
     let password_hash = hash_password("correct-horse-battery-staple").expect("hash password");
-    ensure_password_matches(
-        "correct-horse-battery-staple",
-        &password_hash,
-        "Invalid username or password",
-    )
-    .expect("passwords should match");
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let recorded = Arc::new(Mutex::new(Vec::new()));
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "correct-horse-battery-staple".into(),
+        device_label: Some("unit-test".into()),
+        totp_code: None,
+    };
+
+    let response = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        {
+            let recorded = Arc::clone(&recorded);
+            move |token| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(token.encoded());
+                    Ok(())
+                }
+            }
+        },
+        {
+            let recorded = Arc::clone(&recorded);
+            move |claims, _| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(claims.jti.clone());
+                    Ok(())
+                }
+            }
+        },
+    ))
+    .expect("login should succeed");
+
+    assert!(!response.access_token.is_empty());
+    assert!(!response.refresh_token.is_empty());
+    assert_eq!(response.user.username, "tester");
+    let recorded = recorded.lock().unwrap();
+    assert_eq!(
+        recorded.len(),
+        2,
+        "refresh token and access token jti should be recorded"
+    );
+    assert_ne!(recorded[0], recorded[1]);
+    assert_eq!(recorded[0], response.refresh_token);
 }
 
 #[test]
 fn login_rejects_invalid_password_without_db() {
     let password_hash = hash_password("expected-secret").expect("hash password");
-    let err = ensure_password_matches(
-        "wrong-secret",
-        &password_hash,
-        "Invalid username or password",
-    )
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "wrong-secret".into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
     .expect_err("mismatched password should fail");
     assert_eq!(err.0, StatusCode::UNAUTHORIZED);
     assert_eq!(
@@ -50,7 +136,22 @@ fn login_rejects_invalid_password_without_db() {
 fn login_requires_totp_code_when_mfa_is_enabled() {
     let secret = generate_totp_secret();
     let user = user_with_mfa_secret(secret, true);
-    let err = enforce_mfa(&user, None).expect_err("missing code should be rejected");
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "ignored".into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("missing code should be rejected");
     assert_eq!(err.0, StatusCode::UNAUTHORIZED);
     assert_eq!(
         err.1 .0.get("error").and_then(|v| v.as_str()),
@@ -76,5 +177,20 @@ fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
     .expect("build totp");
     let code = totp.generate_current().expect("generate code");
 
-    enforce_mfa(&user, Some(&code)).expect("valid code should pass");
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "ignored".into(),
+        device_label: Some("device".into()),
+        totp_code: Some(code),
+    };
+
+    block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect("valid code should pass");
 }
