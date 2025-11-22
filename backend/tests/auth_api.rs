@@ -1,11 +1,198 @@
-fn is_comment_too_long(comment: &str) -> bool {
-    comment.chars().count() > 500
+use std::{
+    future::Future,
+    sync::{Arc, Mutex},
+};
+
+use axum::http::StatusCode;
+use chrono::Utc;
+use chrono_tz::UTC;
+use timekeeper_backend::{
+    config::Config,
+    handlers::auth::process_login_for_user,
+    models::user::{LoginRequest, User, UserRole},
+    utils::{mfa::generate_totp_secret, password::hash_password},
+};
+
+const TEST_PASSWORD: &str = "correct-horse-battery-staple";
+
+fn test_config() -> Config {
+    Config {
+        database_url: "".into(),
+        jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
+        jwt_expiration_hours: 1,
+        refresh_token_expiration_days: 7,
+        time_zone: UTC,
+        mfa_issuer: "Timekeeper Test".into(),
+    }
+}
+
+fn block_on_future<F, T>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    tokio::runtime::Runtime::new()
+        .expect("create runtime")
+        .block_on(future)
+}
+
+fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
+    let mut user = User::new(
+        "tester".into(),
+        hash_password(TEST_PASSWORD).expect("hash test password"),
+        "Tester".into(),
+        UserRole::Employee,
+        false,
+    );
+    user.mfa_secret = Some(secret);
+    user.mfa_enabled_at = enabled.then_some(Utc::now());
+    user
 }
 
 #[test]
-fn reject_comment_over_500_chars_without_db() {
-    let long = "a".repeat(501);
-    assert!(is_comment_too_long(&long));
-    let short = "a".repeat(500);
-    assert!(!is_comment_too_long(&short));
+fn login_succeeds_when_password_matches_without_db() {
+    let password_hash = hash_password("correct-horse-battery-staple").expect("hash password");
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let recorded = Arc::new(Mutex::new(Vec::new()));
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "correct-horse-battery-staple".into(),
+        device_label: Some("unit-test".into()),
+        totp_code: None,
+    };
+
+    let response = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        {
+            let recorded = Arc::clone(&recorded);
+            move |token| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(token.encoded());
+                    Ok(())
+                }
+            }
+        },
+        {
+            let recorded = Arc::clone(&recorded);
+            move |claims, _| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(claims.jti.clone());
+                    Ok(())
+                }
+            }
+        },
+    ))
+    .expect("login should succeed");
+
+    assert!(!response.access_token.is_empty());
+    assert!(!response.refresh_token.is_empty());
+    assert_eq!(response.user.username, "tester");
+    let recorded = recorded.lock().unwrap();
+    assert_eq!(
+        recorded.len(),
+        2,
+        "refresh token and access token jti should be recorded"
+    );
+    assert_ne!(recorded[0], recorded[1]);
+    assert_eq!(recorded[0], response.refresh_token);
+}
+
+#[test]
+fn login_rejects_invalid_password_without_db() {
+    let password_hash = hash_password("expected-secret").expect("hash password");
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "wrong-secret".into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("mismatched password should fail");
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        err.1 .0.get("error").and_then(|v| v.as_str()),
+        Some("Invalid username or password")
+    );
+}
+
+#[test]
+fn login_requires_totp_code_when_mfa_is_enabled() {
+    let secret = generate_totp_secret();
+    let user = user_with_mfa_secret(secret, true);
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: TEST_PASSWORD.into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("missing code should be rejected");
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        err.1 .0.get("error").and_then(|v| v.as_str()),
+        Some("MFA code required")
+    );
+}
+
+#[test]
+fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
+    let secret = generate_totp_secret();
+    let user = user_with_mfa_secret(secret.clone(), true);
+    let secret_bytes = base32::decode(base32::Alphabet::RFC4648 { padding: false }, &secret)
+        .expect("decode secret");
+    let totp = totp_rs::TOTP::new(
+        totp_rs::Algorithm::SHA1,
+        6,
+        1,
+        30,
+        secret_bytes,
+        None,
+        "".into(),
+    )
+    .expect("build totp");
+    let code = totp.generate_current().expect("generate code");
+
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: TEST_PASSWORD.into(),
+        device_label: Some("device".into()),
+        totp_code: Some(code),
+    };
+
+    block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect("valid code should pass");
 }
