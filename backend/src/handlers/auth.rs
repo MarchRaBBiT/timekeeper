@@ -391,7 +391,7 @@ fn internal_error(message: &'static str) -> HandlerError {
     handler_error(StatusCode::INTERNAL_SERVER_ERROR, message)
 }
 
-fn ensure_password_matches(
+pub fn ensure_password_matches(
     candidate: &str,
     expected_hash: &str,
     unauthorized_message: &'static str,
@@ -405,7 +405,7 @@ fn ensure_password_matches(
     }
 }
 
-fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
+pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
     if !user.is_mfa_enabled() {
         return Ok(());
     }
