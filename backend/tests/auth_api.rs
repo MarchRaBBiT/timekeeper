@@ -13,6 +13,8 @@ use timekeeper_backend::{
     utils::{mfa::generate_totp_secret, password::hash_password},
 };
 
+const TEST_PASSWORD: &str = "correct-horse-battery-staple";
+
 fn test_config() -> Config {
     Config {
         database_url: "".into(),
@@ -36,7 +38,7 @@ where
 fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
     let mut user = User::new(
         "tester".into(),
-        "hash".into(),
+        hash_password(TEST_PASSWORD).expect("hash test password"),
         "Tester".into(),
         UserRole::Employee,
         false,
@@ -139,7 +141,7 @@ fn login_requires_totp_code_when_mfa_is_enabled() {
     let config = test_config();
     let payload = LoginRequest {
         username: user.username.clone(),
-        password: "ignored".into(),
+        password: TEST_PASSWORD.into(),
         device_label: None,
         totp_code: None,
     };
@@ -180,7 +182,7 @@ fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
     let config = test_config();
     let payload = LoginRequest {
         username: user.username.clone(),
-        password: "ignored".into(),
+        password: TEST_PASSWORD.into(),
         device_label: Some("device".into()),
         totp_code: Some(code),
     };

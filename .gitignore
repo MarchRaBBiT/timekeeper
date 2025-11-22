@@ -1,13 +1,13 @@
 # Build artifacts
 /target/
 /backend/target/
+/backend/tests/support/swagger-ui.zip
 /frontend/target/
 /frontend/pkg/
 /frontend/dist/
 /frontend/build/
 /frontend/.wasm-pack/
 /frontend/wasm-pack.log
-backend/tests/support/swagger-ui.zip
 
 # Environment & secrets
 .env
