@@ -173,11 +173,11 @@ pub async fn break_start(
     )
     .bind(&break_record.id)
     .bind(&break_record.attendance_id)
-    .bind(&break_record.break_start_time)
-    .bind(&break_record.break_end_time)
-    .bind(&break_record.duration_minutes)
-    .bind(&break_record.created_at)
-    .bind(&break_record.updated_at)
+    .bind(break_record.break_start_time)
+    .bind(break_record.break_end_time)
+    .bind(break_record.duration_minutes)
+    .bind(break_record.created_at)
+    .bind(break_record.updated_at)
     .execute(&pool)
     .await
     .map_err(|_| {
@@ -235,9 +235,9 @@ pub async fn break_end(
     sqlx::query(
         "UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4"
     )
-    .bind(&break_record.break_end_time)
-    .bind(&break_record.duration_minutes)
-    .bind(&break_record.updated_at)
+    .bind(break_record.break_end_time)
+    .bind(break_record.duration_minutes)
+    .bind(break_record.updated_at)
     .bind(&break_record.id)
     .execute(&pool)
     .await
@@ -347,8 +347,8 @@ pub async fn get_attendance_status(
     let attendance = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
-    .bind(&user_id)
-    .bind(&date)
+    .bind(user_id)
+    .bind(date)
     .fetch_optional(&pool)
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
@@ -655,8 +655,8 @@ pub(crate) async fn recalculate_total_hours(
     attendance.updated_at = updated_at;
 
     sqlx::query("UPDATE attendance SET total_work_hours = $1, updated_at = $2 WHERE id = $3")
-        .bind(&attendance.total_work_hours)
-        .bind(&attendance.updated_at)
+        .bind(attendance.total_work_hours)
+        .bind(attendance.updated_at)
         .bind(&attendance.id)
         .execute(pool)
         .await

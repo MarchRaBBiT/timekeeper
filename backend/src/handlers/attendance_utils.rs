@@ -113,13 +113,13 @@ pub async fn insert_attendance_record(
     )
     .bind(&attendance.id)
     .bind(&attendance.user_id)
-    .bind(&attendance.date)
-    .bind(&attendance.clock_in_time)
-    .bind(&attendance.clock_out_time)
+    .bind(attendance.date)
+    .bind(attendance.clock_in_time)
+    .bind(attendance.clock_out_time)
     .bind(status_to_str(&attendance.status))
-    .bind(&attendance.total_work_hours)
-    .bind(&attendance.created_at)
-    .bind(&attendance.updated_at)
+    .bind(attendance.total_work_hours)
+    .bind(attendance.created_at)
+    .bind(attendance.updated_at)
     .execute(pool)
     .await
     .map_err(|_| db_error_response())?;
@@ -132,8 +132,8 @@ pub async fn update_clock_in(
     attendance: &Attendance,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     sqlx::query("UPDATE attendance SET clock_in_time = $1, updated_at = $2 WHERE id = $3")
-        .bind(&attendance.clock_in_time)
-        .bind(&attendance.updated_at)
+        .bind(attendance.clock_in_time)
+        .bind(attendance.updated_at)
         .bind(&attendance.id)
         .execute(pool)
         .await
@@ -149,9 +149,9 @@ pub async fn update_clock_out(
     sqlx::query(
         "UPDATE attendance SET clock_out_time = $1, total_work_hours = $2, updated_at = $3 WHERE id = $4",
     )
-    .bind(&attendance.clock_out_time)
-    .bind(&attendance.total_work_hours)
-    .bind(&attendance.updated_at)
+    .bind(attendance.clock_out_time)
+    .bind(attendance.total_work_hours)
+    .bind(attendance.updated_at)
     .bind(&attendance.id)
     .execute(pool)
     .await

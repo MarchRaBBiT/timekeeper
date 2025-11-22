@@ -30,12 +30,13 @@ pub struct Attendance {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema, Default)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 /// Normalized status values stored in the database.
 pub enum AttendanceStatus {
     /// Employee was present and on time.
+    #[default]
     Present,
     /// Employee was absent for the entire day.
     Absent,
@@ -43,12 +44,6 @@ pub enum AttendanceStatus {
     Late,
     /// Employee was present for only part of the day.
     HalfDay,
-}
-
-impl Default for AttendanceStatus {
-    fn default() -> Self {
-        AttendanceStatus::Present
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

@@ -1,10 +1,14 @@
+#![allow(dead_code)] // OpenAPI doc stubs are only referenced by utoipa macros.
+
 use crate::{
-    handlers::admin::{
-        requests::RequestListQuery, AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind,
-        AdminHolidayListItem, AdminHolidayListQuery, AdminHolidayListResponse,
-        AdminRequestListPageInfo, AdminRequestListResponse, ExportQuery, ResetMfaPayload,
+    handlers::{
+        admin::{
+            AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
+            AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
+            AdminRequestListResponse, ExportQuery, RequestListQuery, ResetMfaPayload,
+        },
+        attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     },
-    handlers::attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     models::{
         attendance::{
             AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest,
@@ -24,10 +28,7 @@ use crate::{
         },
     },
 };
-use utoipa::{
-    openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
-    OpenApi,
-};
+use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -97,6 +98,8 @@ use utoipa::{
             OvertimeRequestResponse,
             RequestStatus,
             RequestListQuery,
+            AdminRequestListResponse,
+            AdminRequestListPageInfo,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
@@ -110,19 +113,7 @@ use utoipa::{
             AdminHolidayListResponse,
             AdminHolidayKind,
             AdminHolidayListItem,
-            AdminRequestListResponse,
-            AdminRequestListPageInfo,
-            ExportQuery,
-            ApprovePayload,
-            RejectPayload
-        ),
-        security_schemes(
-            ("BearerAuth" = SecurityScheme::Http(
-                HttpBuilder::new()
-                    .scheme(HttpAuthScheme::Bearer)
-                    .bearer_format("JWT")
-                    .build()
-            ))
+            ExportQuery
         )
     ),
     tags(

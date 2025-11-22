@@ -160,7 +160,7 @@ async fn begin_mfa_enrollment(
             )
         })?;
 
-    if let Err(_) = sqlx::query(
+    if sqlx::query(
         "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
     )
     .bind(&secret)
@@ -168,6 +168,7 @@ async fn begin_mfa_enrollment(
     .bind(&user.id)
     .execute(pool)
     .await
+    .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -213,12 +214,12 @@ pub async fn mfa_activate(
     }
 
     let now = Utc::now();
-    if let Err(_) =
-        sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
-            .bind(now)
-            .bind(&user.id)
-            .execute(&pool)
-            .await
+    if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -264,13 +265,14 @@ pub async fn mfa_disable(
         ));
     }
 
-    if let Err(_) = sqlx::query(
+    if sqlx::query(
         "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
     )
     .bind(Utc::now())
     .bind(&user.id)
     .execute(&pool)
     .await
+    .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -278,10 +280,11 @@ pub async fn mfa_disable(
         ));
     }
 
-    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+    if sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(&user.id)
         .execute(&pool)
         .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -325,13 +328,13 @@ pub async fn change_password(
         )
     })?;
 
-    if let Err(_) =
-        sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
-            .bind(&new_hash)
-            .bind(Utc::now())
-            .bind(&user.id)
-            .execute(&pool)
-            .await
+    if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
+        .bind(&new_hash)
+        .bind(Utc::now())
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,

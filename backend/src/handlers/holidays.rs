@@ -207,10 +207,10 @@ fn parse_google_calendar_ics(content: &str, year_filter: Option<i32>) -> Vec<Cre
                     current_date = Some(date);
                 }
             }
-        } else if line.starts_with("SUMMARY:") {
-            summary = Some(decode_ics_text(&line["SUMMARY:".len()..]));
-        } else if line.starts_with("DESCRIPTION:") {
-            description = Some(decode_ics_text(&line["DESCRIPTION:".len()..]));
+        } else if let Some(stripped) = line.strip_prefix("SUMMARY:") {
+            summary = Some(decode_ics_text(stripped));
+        } else if let Some(stripped) = line.strip_prefix("DESCRIPTION:") {
+            description = Some(decode_ics_text(stripped));
         } else if line.starts_with("END:VEVENT") {
             if let (Some(date), Some(name)) = (current_date, summary.clone()) {
                 if year_filter.map(|y| date.year() == y).unwrap_or(true) {
