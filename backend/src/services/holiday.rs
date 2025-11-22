@@ -179,6 +179,49 @@ struct HolidaySources {
     exception_overrides: HashMap<NaiveDate, bool>,
 }
 
+#[allow(dead_code)]
+pub struct HolidayServiceStub {
+    sources: HolidaySources,
+}
+
+#[allow(dead_code)]
+impl HolidayServiceStub {
+    pub fn new(
+        public_holidays: impl IntoIterator<Item = NaiveDate>,
+        weekly_holidays: impl IntoIterator<Item = NaiveDate>,
+        exception_overrides: impl IntoIterator<Item = (NaiveDate, bool)>,
+    ) -> Self {
+        let sources = HolidaySources {
+            public_holidays: public_holidays.into_iter().collect(),
+            weekly_holidays: weekly_holidays.into_iter().collect(),
+            exception_overrides: exception_overrides.into_iter().collect(),
+        };
+
+        Self { sources }
+    }
+
+    pub fn is_holiday(&self, date: NaiveDate) -> HolidayDecision {
+        self.sources.decision_for(date)
+    }
+
+    pub fn list_month(&self, year: i32, month: u32) -> sqlx::Result<Vec<HolidayCalendarEntry>> {
+        let (window_start, window_end) = month_bounds(year, month)?;
+
+        let mut cursor = window_start;
+        let mut entries = Vec::new();
+        while cursor < window_end {
+            if let Some(entry) = self.sources.entry_for(cursor) {
+                entries.push(entry);
+            }
+            cursor = cursor
+                .succ_opt()
+                .ok_or_else(|| sqlx::Error::Protocol("date overflow".into()))?;
+        }
+
+        Ok(entries)
+    }
+}
+
 impl HolidaySources {
     fn decision_for(&self, date: NaiveDate) -> HolidayDecision {
         if let Some(&flag) = self.exception_overrides.get(&date) {
