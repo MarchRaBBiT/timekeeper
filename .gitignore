@@ -1,6 +1,7 @@
 # Build artifacts
 /target/
 /backend/target/
+/backend/tests/support/swagger-ui.zip
 /frontend/target/
 /frontend/pkg/
 /frontend/dist/

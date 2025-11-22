@@ -77,6 +77,7 @@ pub fn create_refresh_token(user_id: String, expiration_days: u64) -> anyhow::Re
     })
 }
 
+#[allow(dead_code)]
 pub fn verify_access_token(token: &str, secret: &str) -> anyhow::Result<Claims> {
     let validation = Validation::default();
     let token_data = decode::<Claims>(

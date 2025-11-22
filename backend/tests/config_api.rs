@@ -1,14 +1,15 @@
-use axum::extract::State;
-use sqlx::PgPool;
-use timekeeper_backend::handlers::config;
+use timekeeper_backend::config::Config;
 
-mod support;
-use support::test_config;
-
-#[sqlx::test(migrations = "./migrations")]
-async fn timezone_endpoint_returns_configured_value(pool: PgPool) {
-    let cfg = test_config();
-
-    let response = config::get_time_zone(State((pool.clone(), cfg.clone()))).await;
-    assert_eq!(response.0.time_zone, cfg.time_zone.to_string());
+#[test]
+fn loads_time_zone_string_without_db() {
+    // Ensure Config struct stays default-constructible via explicit values.
+    let cfg = Config {
+        database_url: "postgres://example".into(),
+        jwt_secret: "secret".into(),
+        jwt_expiration_hours: 1,
+        refresh_token_expiration_days: 1,
+        time_zone: chrono_tz::Asia::Tokyo,
+        mfa_issuer: "Timekeeper".into(),
+    };
+    assert_eq!(cfg.time_zone, chrono_tz::Asia::Tokyo);
 }

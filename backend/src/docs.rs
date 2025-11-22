@@ -1,10 +1,14 @@
+#![allow(dead_code)] // OpenAPI doc stubs are only referenced by utoipa macros.
+
 use crate::{
-    handlers::admin::{
-        requests::RequestListQuery, AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind,
-        AdminHolidayListItem, AdminHolidayListQuery, AdminHolidayListResponse,
-        AdminRequestListPageInfo, AdminRequestListResponse, ExportQuery, ResetMfaPayload,
+    handlers::{
+        admin::{
+            AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
+            AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
+            AdminRequestListResponse, ExportQuery, RequestListQuery, ResetMfaPayload,
+        },
+        attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     },
-    handlers::attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     models::{
         attendance::{
             AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest,
@@ -25,8 +29,8 @@ use crate::{
     },
 };
 use utoipa::{
-    openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
-    OpenApi,
+    openapi::security::{Http, HttpAuthScheme, SecurityScheme},
+    Modify, OpenApi,
 };
 
 #[derive(OpenApi)]
@@ -97,6 +101,8 @@ use utoipa::{
             OvertimeRequestResponse,
             RequestStatus,
             RequestListQuery,
+            AdminRequestListResponse,
+            AdminRequestListPageInfo,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
@@ -110,21 +116,10 @@ use utoipa::{
             AdminHolidayListResponse,
             AdminHolidayKind,
             AdminHolidayListItem,
-            AdminRequestListResponse,
-            AdminRequestListPageInfo,
-            ExportQuery,
-            ApprovePayload,
-            RejectPayload
-        ),
-        security_schemes(
-            ("BearerAuth" = SecurityScheme::Http(
-                HttpBuilder::new()
-                    .scheme(HttpAuthScheme::Bearer)
-                    .bearer_format("JWT")
-                    .build()
-            ))
+            ExportQuery
         )
     ),
+    modifiers(&SecuritySchemes),
     tags(
         (name = "Auth", description = "認証・MFA・パスワード関連"),
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
@@ -134,6 +129,19 @@ use utoipa::{
     security(("BearerAuth" = []))
 )]
 pub struct ApiDoc;
+
+struct SecuritySchemes;
+
+impl Modify for SecuritySchemes {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_default();
+
+        let mut bearer = Http::new(HttpAuthScheme::Bearer);
+        bearer.bearer_format = Some("JWT".to_string());
+
+        components.add_security_scheme("BearerAuth", SecurityScheme::Http(bearer));
+    }
+}
 
 #[utoipa::path(
     post,

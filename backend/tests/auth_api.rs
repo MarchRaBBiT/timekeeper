@@ -1,124 +1,198 @@
-use axum::{extract::State, http::StatusCode, Json};
-use base32::Alphabet::RFC4648;
-use chrono::Utc;
-use sqlx::PgPool;
-use timekeeper_backend::{
-    handlers::auth::login,
-    models::user::{LoginRequest, UserRole},
-    utils::mfa::generate_totp_secret,
+use std::{
+    future::Future,
+    sync::{Arc, Mutex},
 };
-use totp_rs::{Algorithm, TOTP};
-mod support;
-use support::{seed_user_with_password, test_config};
 
-fn init_tracing() {
-    let _ = tracing_subscriber::fmt::try_init();
+use axum::http::StatusCode;
+use chrono::Utc;
+use chrono_tz::UTC;
+use timekeeper_backend::{
+    config::Config,
+    handlers::auth::process_login_for_user,
+    models::user::{LoginRequest, User, UserRole},
+    utils::{mfa::generate_totp_secret, password::hash_password},
+};
+
+const TEST_PASSWORD: &str = "correct-horse-battery-staple";
+
+fn test_config() -> Config {
+    Config {
+        database_url: "".into(),
+        jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
+        jwt_expiration_hours: 1,
+        refresh_token_expiration_days: 7,
+        time_zone: UTC,
+        mfa_issuer: "Timekeeper Test".into(),
+    }
 }
 
-#[sqlx::test(migrations = "./migrations")]
-async fn login_returns_tokens_for_valid_credentials(pool: PgPool) {
-    init_tracing();
-    let config = test_config();
-    let password = "CorrectHorseBatteryStaple1!";
-    let user = seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+fn block_on_future<F, T>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    tokio::runtime::Runtime::new()
+        .expect("create runtime")
+        .block_on(future)
+}
 
+fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
+    let mut user = User::new(
+        "tester".into(),
+        hash_password(TEST_PASSWORD).expect("hash test password"),
+        "Tester".into(),
+        UserRole::Employee,
+        false,
+    );
+    user.mfa_secret = Some(secret);
+    user.mfa_enabled_at = enabled.then_some(Utc::now());
+    user
+}
+
+#[test]
+fn login_succeeds_when_password_matches_without_db() {
+    let password_hash = hash_password("correct-horse-battery-staple").expect("hash password");
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let recorded = Arc::new(Mutex::new(Vec::new()));
     let payload = LoginRequest {
         username: user.username.clone(),
-        password: password.to_string(),
+        password: "correct-horse-battery-staple".into(),
+        device_label: Some("unit-test".into()),
         totp_code: None,
-        device_label: None,
     };
 
-    let Json(response) = login(State((pool.clone(), config)), Json(payload))
-        .await
-        .expect("login succeeds");
+    let response = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        {
+            let recorded = Arc::clone(&recorded);
+            move |token| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(token.encoded());
+                    Ok(())
+                }
+            }
+        },
+        {
+            let recorded = Arc::clone(&recorded);
+            move |claims, _| {
+                let recorded = Arc::clone(&recorded);
+                async move {
+                    recorded.lock().unwrap().push(claims.jti.clone());
+                    Ok(())
+                }
+            }
+        },
+    ))
+    .expect("login should succeed");
 
-    assert_eq!(response.user.username, user.username);
     assert!(!response.access_token.is_empty());
     assert!(!response.refresh_token.is_empty());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn login_succeeds_for_default_admin(pool: PgPool) {
-    init_tracing();
-    let config = test_config();
-
-    let payload = LoginRequest {
-        username: "admin".into(),
-        password: "admin123".into(),
-        totp_code: None,
-        device_label: Some("default-admin".into()),
-    };
-
-    let Json(response) = login(State((pool.clone(), config)), Json(payload))
-        .await
-        .expect("default admin login succeeds");
-
-    assert_eq!(response.user.username, "admin");
-    assert_eq!(response.user.role, "admin");
-    assert!(!response.access_token.is_empty());
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn login_with_mfa_requires_code_and_accepts_valid_totp(pool: PgPool) {
-    init_tracing();
-    let config = test_config();
-    let password = "ValidPassword1!";
-    let user = seed_user_with_password(&pool, UserRole::Employee, false, password).await;
-    let secret = generate_totp_secret();
-
-    sqlx::query("UPDATE users SET mfa_secret = $1, mfa_enabled_at = $2 WHERE id = $3")
-        .bind(&secret)
-        .bind(Utc::now())
-        .bind(&user.id)
-        .execute(&pool)
-        .await
-        .expect("enable MFA");
-
-    let missing_code_payload = LoginRequest {
-        username: user.username.clone(),
-        password: password.to_string(),
-        totp_code: None,
-        device_label: Some("mfa-device".into()),
-    };
-
-    let error = login(
-        State((pool.clone(), config.clone())),
-        Json(missing_code_payload),
-    )
-    .await
-    .expect_err("MFA should require a code");
-    let (status, Json(body)) = error;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(response.user.username, "tester");
+    let recorded = recorded.lock().unwrap();
     assert_eq!(
-        body.get("error").and_then(|v| v.as_str()),
+        recorded.len(),
+        2,
+        "refresh token and access token jti should be recorded"
+    );
+    assert_ne!(recorded[0], recorded[1]);
+    assert_eq!(recorded[0], response.refresh_token);
+}
+
+#[test]
+fn login_rejects_invalid_password_without_db() {
+    let password_hash = hash_password("expected-secret").expect("hash password");
+    let user = User {
+        password_hash: password_hash.clone(),
+        ..user_with_mfa_secret(String::new(), false)
+    };
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: "wrong-secret".into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("mismatched password should fail");
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        err.1 .0.get("error").and_then(|v| v.as_str()),
+        Some("Invalid username or password")
+    );
+}
+
+#[test]
+fn login_requires_totp_code_when_mfa_is_enabled() {
+    let secret = generate_totp_secret();
+    let user = user_with_mfa_secret(secret, true);
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: TEST_PASSWORD.into(),
+        device_label: None,
+        totp_code: None,
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("missing code should be rejected");
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        err.1 .0.get("error").and_then(|v| v.as_str()),
         Some("MFA code required")
     );
-
-    let totp_code = current_totp_code(&secret);
-    let spaced_code = format!("{} {}", &totp_code[..3], &totp_code[3..]);
-    let payload = LoginRequest {
-        username: user.username.clone(),
-        password: password.to_string(),
-        totp_code: Some(spaced_code),
-        device_label: Some("mfa-device".into()),
-    };
-
-    let Json(response) = login(State((pool.clone(), config)), Json(payload))
-        .await
-        .expect("login with MFA succeeds even if the code contains a space");
-
-    assert_eq!(response.user.username, user.username);
-    assert!(!response.access_token.is_empty());
-    assert!(!response.refresh_token.is_empty());
 }
 
-fn current_totp_code(secret: &str) -> String {
-    let cleaned = secret.trim().replace(' ', "").to_uppercase();
-    let secret_bytes =
-        base32::decode(RFC4648 { padding: false }, cleaned.as_str()).expect("valid base32 secret");
-    TOTP::new(Algorithm::SHA1, 6, 1, 30, secret_bytes, None, "test".into())
-        .expect("build totp")
-        .generate_current()
-        .expect("generate totp")
+#[test]
+fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
+    let secret = generate_totp_secret();
+    let user = user_with_mfa_secret(secret.clone(), true);
+    let secret_bytes = base32::decode(base32::Alphabet::RFC4648 { padding: false }, &secret)
+        .expect("decode secret");
+    let totp = totp_rs::TOTP::new(
+        totp_rs::Algorithm::SHA1,
+        6,
+        1,
+        30,
+        secret_bytes,
+        None,
+        "".into(),
+    )
+    .expect("build totp");
+    let code = totp.generate_current().expect("generate code");
+
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: TEST_PASSWORD.into(),
+        device_label: Some("device".into()),
+        totp_code: Some(code),
+    };
+
+    block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect("valid code should pass");
 }

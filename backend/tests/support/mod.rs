@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
 use ctor::ctor;
@@ -6,7 +7,7 @@ use pg_embed::{
     pg_fetch::{PgFetchSettings, PG_V15},
     postgres::{PgEmbed, PgSettings},
 };
-use sqlx::PgPool;
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{env, net::TcpListener, path::PathBuf, sync::OnceLock, time::Duration as StdDuration};
 use tempfile::TempDir;
 use timekeeper_backend::{
@@ -118,6 +119,16 @@ pub fn test_config() -> Config {
     }
 }
 
+pub async fn test_pool() -> PgPool {
+    let database_url = test_database_url();
+    PgPoolOptions::new()
+        .max_connections(5)
+        .acquire_timeout(StdDuration::from_secs(120))
+        .connect(&database_url)
+        .await
+        .expect("connect test database")
+}
+
 fn test_database_url() -> String {
     env::var("TEST_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
@@ -131,7 +142,7 @@ async fn insert_user_with_password_hash(
     password_hash: String,
 ) -> User {
     let user = User::new(
-        format!("user_{}", Uuid::new_v4().to_string()),
+        format!("user_{}", Uuid::new_v4()),
         password_hash,
         "Test User".into(),
         role,
@@ -147,11 +158,11 @@ async fn insert_user_with_password_hash(
     .bind(&user.password_hash)
     .bind(&user.full_name)
     .bind(user.role.as_str())
-    .bind(&user.is_system_admin)
+    .bind(user.is_system_admin)
     .bind(&user.mfa_secret)
-    .bind(&user.mfa_enabled_at)
-    .bind(&user.created_at)
-    .bind(&user.updated_at)
+    .bind(user.mfa_enabled_at)
+    .bind(user.created_at)
+    .bind(user.updated_at)
     .execute(pool)
     .await
     .expect("insert user");
@@ -215,8 +226,8 @@ pub async fn seed_leave_request(
         LeaveType::Personal => "personal",
         LeaveType::Other => "other",
     })
-    .bind(&request.start_date)
-    .bind(&request.end_date)
+    .bind(request.start_date)
+    .bind(request.end_date)
     .bind(&request.reason)
     .bind(match request.status {
         timekeeper_backend::models::leave_request::RequestStatus::Pending => "pending",
@@ -225,13 +236,13 @@ pub async fn seed_leave_request(
         timekeeper_backend::models::leave_request::RequestStatus::Cancelled => "cancelled",
     })
     .bind(&request.approved_by)
-    .bind(&request.approved_at)
+    .bind(request.approved_at)
     .bind(&request.decision_comment)
     .bind(&request.rejected_by)
-    .bind(&request.rejected_at)
-    .bind(&request.cancelled_at)
-    .bind(&request.created_at)
-    .bind(&request.updated_at)
+    .bind(request.rejected_at)
+    .bind(request.cancelled_at)
+    .bind(request.created_at)
+    .bind(request.updated_at)
     .execute(pool)
     .await
     .expect("insert leave request");
@@ -256,8 +267,8 @@ pub async fn seed_overtime_request(
     )
     .bind(&request.id)
     .bind(&request.user_id)
-    .bind(&request.date)
-    .bind(&request.planned_hours)
+    .bind(request.date)
+    .bind(request.planned_hours)
     .bind(&request.reason)
     .bind(match request.status {
         timekeeper_backend::models::overtime_request::RequestStatus::Pending => "pending",
@@ -266,13 +277,13 @@ pub async fn seed_overtime_request(
         timekeeper_backend::models::overtime_request::RequestStatus::Cancelled => "cancelled",
     })
     .bind(&request.approved_by)
-    .bind(&request.approved_at)
+    .bind(request.approved_at)
     .bind(&request.decision_comment)
     .bind(&request.rejected_by)
-    .bind(&request.rejected_at)
-    .bind(&request.cancelled_at)
-    .bind(&request.created_at)
-    .bind(&request.updated_at)
+    .bind(request.rejected_at)
+    .bind(request.cancelled_at)
+    .bind(request.created_at)
+    .bind(request.updated_at)
     .execute(pool)
     .await
     .expect("insert overtime request");
@@ -286,11 +297,11 @@ pub async fn seed_public_holiday(pool: &PgPool, date: NaiveDate, name: &str) -> 
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&holiday.id)
-    .bind(&holiday.holiday_date)
+    .bind(holiday.holiday_date)
     .bind(&holiday.name)
     .bind(&holiday.description)
-    .bind(&holiday.created_at)
-    .bind(&holiday.updated_at)
+    .bind(holiday.created_at)
+    .bind(holiday.updated_at)
     .execute(pool)
     .await
     .expect("insert holiday");

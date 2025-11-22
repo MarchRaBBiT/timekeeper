@@ -3,6 +3,7 @@ use sqlx::{FromRow, PgPool};
 
 use crate::{models::user::User, utils::jwt::RefreshToken};
 
+#[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct StoredRefreshToken {
     pub id: String,
@@ -49,7 +50,7 @@ pub async fn insert_refresh_token(pool: &PgPool, token: &RefreshToken) -> Result
     .bind(&token.id)
     .bind(&token.user_id)
     .bind(&token.token_hash)
-    .bind(&token.expires_at)
+    .bind(token.expires_at)
     .execute(pool)
     .await
     .map(|_| ())

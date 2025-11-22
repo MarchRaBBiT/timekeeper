@@ -259,6 +259,10 @@ fn is_valid_planned_hours(hours: f64) -> bool {
     hours > 0.0
 }
 
+fn error_response(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Value>) {
+    (status, Json(json!({ "error": message.into() })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,8 +281,4 @@ mod tests {
         assert!(!is_valid_planned_hours(0.0));
         assert!(!is_valid_planned_hours(-1.0));
     }
-}
-
-fn error_response(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (status, Json(json!({ "error": message.into() })))
 }

@@ -128,7 +128,7 @@ pub async fn reject_request(
 pub struct RequestListQuery {
     pub status: Option<String>,
     #[serde(rename = "type")]
-    #[param(name = "type", description = "leave/overtime/all (default: all)")]
+    #[param(value_type = Option<String>)]
     pub r#type: Option<String>,
     pub user_id: Option<String>,
     pub from: Option<String>,

@@ -1,16 +1,57 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+};
 
 use chrono::{Datelike, Duration, NaiveDate};
 use sqlx::{PgPool, Row};
 
+type SourceLoader = Arc<
+    dyn Fn(
+            NaiveDate,
+            NaiveDate,
+            Option<&str>,
+        ) -> Pin<Box<dyn Future<Output = sqlx::Result<HolidaySources>> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
 #[derive(Clone)]
 pub struct HolidayService {
-    pool: PgPool,
+    load_sources: SourceLoader,
 }
 
 impl HolidayService {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        let load_sources =
+            move |window_start: NaiveDate, window_end: NaiveDate, user_id: Option<&str>| {
+                let pool = pool.clone();
+                let user_id = user_id.map(str::to_owned);
+                Box::pin(async move {
+                    load_sources_from_db(&pool, window_start, window_end, user_id.as_deref()).await
+                })
+                    as Pin<Box<dyn Future<Output = sqlx::Result<HolidaySources>> + Send + 'static>>
+            };
+
+        Self {
+            load_sources: Arc::new(load_sources),
+        }
+    }
+
+    fn with_loader<F, Fut>(loader: F) -> Self
+    where
+        F: Fn(NaiveDate, NaiveDate, Option<&str>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = sqlx::Result<HolidaySources>> + Send + 'static,
+    {
+        Self {
+            load_sources: Arc::new(move |window_start, window_end, user_id| {
+                let user_id = user_id.map(str::to_owned);
+                Box::pin(loader(window_start, window_end, user_id.as_deref()))
+                    as Pin<Box<dyn Future<Output = sqlx::Result<HolidaySources>> + Send + 'static>>
+            }),
+        }
     }
 
     pub async fn is_holiday(
@@ -21,7 +62,7 @@ impl HolidayService {
         let end = date
             .succ_opt()
             .ok_or_else(|| sqlx::Error::Protocol("date overflow".into()))?;
-        let sources = self.load_sources(date, end, user_id).await?;
+        let sources = (self.load_sources)(date, end, user_id).await?;
         Ok(sources.decision_for(date))
     }
 
@@ -32,7 +73,7 @@ impl HolidayService {
         user_id: Option<&str>,
     ) -> sqlx::Result<Vec<HolidayCalendarEntry>> {
         let (window_start, window_end) = month_bounds(year, month)?;
-        let sources = self.load_sources(window_start, window_end, user_id).await?;
+        let sources = (self.load_sources)(window_start, window_end, user_id).await?;
 
         let mut cursor = window_start;
         let mut entries = Vec::new();
@@ -47,97 +88,93 @@ impl HolidayService {
 
         Ok(entries)
     }
+}
 
-    async fn load_sources(
-        &self,
-        window_start: NaiveDate,
-        window_end: NaiveDate,
-        user_id: Option<&str>,
-    ) -> sqlx::Result<HolidaySources> {
-        if window_start >= window_end {
-            return Err(sqlx::Error::Protocol(
-                "invalid calendar window: start must be before end".into(),
-            ));
-        }
+async fn load_sources_from_db(
+    pool: &PgPool,
+    window_start: NaiveDate,
+    window_end: NaiveDate,
+    user_id: Option<&str>,
+) -> sqlx::Result<HolidaySources> {
+    ensure_valid_window(window_start, window_end)?;
 
-        let mut sources = HolidaySources::default();
-        let last_inclusive = window_end
-            .pred_opt()
-            .ok_or_else(|| sqlx::Error::Protocol("invalid calendar window".into()))?;
+    let mut sources = HolidaySources::default();
+    let last_inclusive = window_end
+        .pred_opt()
+        .ok_or_else(|| sqlx::Error::Protocol("invalid calendar window".into()))?;
 
-        let public_rows = sqlx::query(
-            r#"
-            SELECT holiday_date
-            FROM holidays
-            WHERE holiday_date >= $1
-              AND holiday_date <= $2
-            ORDER BY holiday_date
-            "#,
-        )
-        .bind(window_start)
-        .bind(last_inclusive)
-        .fetch_all(&self.pool)
-        .await?;
+    let public_rows = sqlx::query(
+        r#"
+        SELECT holiday_date
+        FROM holidays
+        WHERE holiday_date >= $1
+          AND holiday_date <= $2
+        ORDER BY holiday_date
+        "#,
+    )
+    .bind(window_start)
+    .bind(last_inclusive)
+    .fetch_all(pool)
+    .await?;
 
-        for row in public_rows {
-            let date: NaiveDate = row.try_get("holiday_date")?;
-            sources.public_holidays.insert(date);
-        }
-
-        let weekly_rows = sqlx::query(
-            r#"
-            SELECT weekday, enforced_from, enforced_to
-            FROM weekly_holidays
-            WHERE enforced_from <= $1
-              AND (enforced_to IS NULL OR enforced_to >= $2)
-            "#,
-        )
-        .bind(last_inclusive)
-        .bind(window_start)
-        .fetch_all(&self.pool)
-        .await?;
-
-        for row in weekly_rows {
-            let weekday: i16 = row.try_get("weekday")?;
-            let enforced_from: NaiveDate = row.try_get("enforced_from")?;
-            let enforced_to: Option<NaiveDate> = row.try_get("enforced_to")?;
-            let dates = expand_weekly_dates(
-                weekday,
-                enforced_from,
-                enforced_to,
-                window_start,
-                window_end,
-            );
-            sources.weekly_holidays.extend(dates);
-        }
-
-        if let Some(user_id) = user_id {
-            let exception_rows = sqlx::query(
-                r#"
-                SELECT exception_date, override
-                FROM holiday_exceptions
-                WHERE user_id = $1
-                  AND exception_date >= $2
-                  AND exception_date <= $3
-                "#,
-            )
-            .bind(user_id)
-            .bind(window_start)
-            .bind(last_inclusive)
-            .fetch_all(&self.pool)
-            .await?;
-
-            for row in exception_rows {
-                let exception_date: NaiveDate = row.try_get("exception_date")?;
-                let override_value: bool = row.try_get("override")?;
-                sources
-                    .exception_overrides
-                    .insert(exception_date, override_value);
-            }
-        }
-
-        Ok(sources)
+    for row in public_rows {
+        let date: NaiveDate = row.try_get("holiday_date")?;
+        sources.public_holidays.insert(date);
     }
+
+    let weekly_rows = sqlx::query(
+        r#"
+        SELECT weekday, enforced_from, enforced_to
+        FROM weekly_holidays
+        WHERE enforced_from <= $1
+          AND (enforced_to IS NULL OR enforced_to >= $2)
+        "#,
+    )
+    .bind(last_inclusive)
+    .bind(window_start)
+    .fetch_all(pool)
+    .await?;
+
+    for row in weekly_rows {
+        let weekday: i16 = row.try_get("weekday")?;
+        let enforced_from: NaiveDate = row.try_get("enforced_from")?;
+        let enforced_to: Option<NaiveDate> = row.try_get("enforced_to")?;
+        let dates = expand_weekly_dates(
+            weekday,
+            enforced_from,
+            enforced_to,
+            window_start,
+            window_end,
+        );
+        sources.weekly_holidays.extend(dates);
+    }
+
+    if let Some(user_id) = user_id {
+        let exception_rows = sqlx::query(
+            r#"
+            SELECT exception_date, override
+            FROM holiday_exceptions
+            WHERE user_id = $1
+              AND exception_date >= $2
+              AND exception_date <= $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(window_start)
+        .bind(last_inclusive)
+        .fetch_all(pool)
+        .await?;
+
+        for row in exception_rows {
+            let exception_date: NaiveDate = row.try_get("exception_date")?;
+            let override_value: bool = row.try_get("override")?;
+            sources
+                .exception_overrides
+                .insert(exception_date, override_value);
+        }
+    }
+
+    Ok(sources)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,11 +209,48 @@ pub struct HolidayCalendarEntry {
     pub reason: HolidayReason,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct HolidaySources {
     public_holidays: BTreeSet<NaiveDate>,
     weekly_holidays: BTreeSet<NaiveDate>,
     exception_overrides: HashMap<NaiveDate, bool>,
+}
+
+#[allow(dead_code)]
+pub struct HolidayServiceStub {
+    sources: Arc<HolidaySources>,
+}
+
+#[allow(dead_code)]
+impl HolidayServiceStub {
+    pub fn new(
+        public_holidays: impl IntoIterator<Item = NaiveDate>,
+        weekly_holidays: impl IntoIterator<Item = NaiveDate>,
+        exception_overrides: impl IntoIterator<Item = (NaiveDate, bool)>,
+    ) -> Self {
+        let sources = HolidaySources {
+            public_holidays: public_holidays.into_iter().collect(),
+            weekly_holidays: weekly_holidays.into_iter().collect(),
+            exception_overrides: exception_overrides.into_iter().collect(),
+        };
+
+        Self {
+            sources: Arc::new(sources),
+        }
+    }
+
+    pub fn service(&self) -> HolidayService {
+        let sources = Arc::clone(&self.sources);
+
+        HolidayService::with_loader(move |window_start, window_end, _| {
+            let sources = Arc::clone(&sources);
+
+            async move {
+                ensure_valid_window(window_start, window_end)?;
+                Ok((*sources).clone())
+            }
+        })
+    }
 }
 
 impl HolidaySources {
@@ -233,6 +307,16 @@ fn month_bounds(year: i32, month: u32) -> sqlx::Result<(NaiveDate, NaiveDate)> {
     })?;
 
     Ok((start, end))
+}
+
+fn ensure_valid_window(window_start: NaiveDate, window_end: NaiveDate) -> sqlx::Result<()> {
+    if window_start >= window_end {
+        Err(sqlx::Error::Protocol(
+            "invalid calendar window: start must be before end".into(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn expand_weekly_dates(

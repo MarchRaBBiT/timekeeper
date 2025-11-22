@@ -116,6 +116,7 @@ impl OvertimeRequest {
     }
 
     /// Marks the request as approved.
+    #[allow(dead_code)]
     pub fn approve(&mut self, approved_by: String) {
         self.status = RequestStatus::Approved;
         self.approved_by = Some(approved_by);
@@ -124,6 +125,7 @@ impl OvertimeRequest {
     }
 
     /// Marks the request as rejected.
+    #[allow(dead_code)]
     pub fn reject(&mut self, approved_by: String) {
         self.status = RequestStatus::Rejected;
         self.rejected_by = Some(approved_by);

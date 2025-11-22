@@ -6,6 +6,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::future::Future;
 
 use crate::{
     config::Config,
@@ -24,8 +25,8 @@ use crate::{
     },
 };
 
-type HandlerError = (StatusCode, Json<Value>);
-type HandlerResult<T> = Result<T, HandlerError>;
+pub type HandlerError = (StatusCode, Json<Value>);
+pub type HandlerResult<T> = Result<T, HandlerError>;
 
 pub async fn login(
     State((pool, config)): State<(PgPool, Config)>,
@@ -36,34 +37,24 @@ pub async fn login(
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
 
-    ensure_password_matches(
-        &payload.password,
-        &user.password_hash,
-        "Invalid username or password",
-    )?;
-    enforce_mfa(&user, payload.totp_code.as_deref())?;
-
-    let (access_token, claims) = create_access_token(
-        user.id.clone(),
-        user.username.clone(),
-        user.role.as_str().to_string(),
-        &config.jwt_secret,
-        config.jwt_expiration_hours,
+    let response = process_login_for_user(
+        user,
+        payload,
+        &config,
+        {
+            let pool = pool.clone();
+            move |token| async move {
+                persist_refresh_token(&pool, &token, "Failed to store refresh token").await
+            }
+        },
+        {
+            let pool = pool.clone();
+            move |claims, context| async move {
+                persist_active_access_token(&pool, &claims, context.as_deref()).await
+            }
+        },
     )
-    .map_err(|_| internal_error("Token creation error"))?;
-
-    let refresh_token_data =
-        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days)
-            .map_err(|_| internal_error("Refresh token creation error"))?;
-
-    persist_refresh_token(&pool, &refresh_token_data, "Failed to store refresh token").await?;
-    persist_active_access_token(&pool, &claims, payload.device_label.as_deref()).await?;
-
-    let response = LoginResponse {
-        access_token,
-        refresh_token: refresh_token_data.encoded(),
-        user: UserResponse::from(user),
-    };
+    .await?;
 
     Ok(Json(response))
 }
@@ -160,7 +151,7 @@ async fn begin_mfa_enrollment(
             )
         })?;
 
-    if let Err(_) = sqlx::query(
+    if sqlx::query(
         "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
     )
     .bind(&secret)
@@ -168,6 +159,7 @@ async fn begin_mfa_enrollment(
     .bind(&user.id)
     .execute(pool)
     .await
+    .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -213,12 +205,12 @@ pub async fn mfa_activate(
     }
 
     let now = Utc::now();
-    if let Err(_) =
-        sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
-            .bind(now)
-            .bind(&user.id)
-            .execute(&pool)
-            .await
+    if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -264,13 +256,14 @@ pub async fn mfa_disable(
         ));
     }
 
-    if let Err(_) = sqlx::query(
+    if sqlx::query(
         "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
     )
     .bind(Utc::now())
     .bind(&user.id)
     .execute(&pool)
     .await
+    .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -278,10 +271,11 @@ pub async fn mfa_disable(
         ));
     }
 
-    if let Err(_) = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+    if sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(&user.id)
         .execute(&pool)
         .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -325,13 +319,13 @@ pub async fn change_password(
         )
     })?;
 
-    if let Err(_) =
-        sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
-            .bind(&new_hash)
-            .bind(Utc::now())
-            .bind(&user.id)
-            .execute(&pool)
-            .await
+    if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
+        .bind(&new_hash)
+        .bind(Utc::now())
+        .bind(&user.id)
+        .execute(&pool)
+        .await
+        .is_err()
     {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -388,7 +382,57 @@ fn internal_error(message: &'static str) -> HandlerError {
     handler_error(StatusCode::INTERNAL_SERVER_ERROR, message)
 }
 
-fn ensure_password_matches(
+pub async fn process_login_for_user<PF, AF, PFut, AFut>(
+    user: User,
+    payload: LoginRequest,
+    config: &Config,
+    persist_refresh_token: PF,
+    persist_active_access_token: AF,
+) -> HandlerResult<LoginResponse>
+where
+    PF: FnOnce(RefreshToken) -> PFut,
+    PFut: Future<Output = HandlerResult<()>>,
+    AF: FnOnce(Claims, Option<String>) -> AFut,
+    AFut: Future<Output = HandlerResult<()>>,
+{
+    ensure_password_matches(
+        &payload.password,
+        &user.password_hash,
+        "Invalid username or password",
+    )?;
+    enforce_mfa(&user, payload.totp_code.as_deref())?;
+
+    let (access_token, claims) = create_access_token(
+        user.id.clone(),
+        user.username.clone(),
+        user.role.as_str().to_string(),
+        &config.jwt_secret,
+        config.jwt_expiration_hours,
+    )
+    .map_err(|_| internal_error("Token creation error"))?;
+
+    let refresh_token_data =
+        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days)
+            .map_err(|_| internal_error("Refresh token creation error"))?;
+    let refresh_token = refresh_token_data.encoded();
+
+    persist_refresh_token(refresh_token_data).await?;
+    let context = payload
+        .device_label
+        .clone()
+        .map(|label| label.trim().to_string());
+    persist_active_access_token(claims.clone(), context).await?;
+
+    let response = LoginResponse {
+        access_token,
+        refresh_token,
+        user: UserResponse::from(user),
+    };
+
+    Ok(response)
+}
+
+pub fn ensure_password_matches(
     candidate: &str,
     expected_hash: &str,
     unauthorized_message: &'static str,
@@ -402,7 +446,7 @@ fn ensure_password_matches(
     }
 }
 
-fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
+pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
     if !user.is_mfa_enabled() {
         return Ok(());
     }

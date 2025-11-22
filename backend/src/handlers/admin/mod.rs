@@ -117,11 +117,11 @@ pub async fn create_user(
         crate::models::user::UserRole::Employee => "employee",
         crate::models::user::UserRole::Admin => "admin",
     })
-    .bind(&user.is_system_admin)
+    .bind(user.is_system_admin)
     .bind(&user.mfa_secret)
-    .bind(&user.mfa_enabled_at)
-    .bind(&user.created_at)
-    .bind(&user.updated_at)
+    .bind(user.mfa_enabled_at)
+    .bind(user.created_at)
+    .bind(user.updated_at)
     .execute(&pool)
     .await
     .map_err(|_| {
@@ -522,14 +522,14 @@ pub async fn upsert_attendance(
     sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
         .bind(&att.id)
         .bind(&att.user_id)
-        .bind(&att.date)
-        .bind(&att.clock_in_time)
-        .bind(&att.clock_out_time)
+        .bind(att.date)
+        .bind(att.clock_in_time)
+        .bind(att.clock_out_time)
           // Store enum as snake_case text to match sqlx mapping
           .bind(match att.status { AttendanceStatus::Present => "present", AttendanceStatus::Absent => "absent", AttendanceStatus::Late => "late", AttendanceStatus::HalfDay => "half_day" })
-          .bind(&att.total_work_hours)
-        .bind(&att.created_at)
-        .bind(&att.updated_at)
+          .bind(att.total_work_hours)
+        .bind(att.created_at)
+        .bind(att.updated_at)
         .execute(&pool)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
@@ -539,11 +539,11 @@ pub async fn upsert_attendance(
         sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(&br.id)
             .bind(&br.attendance_id)
-            .bind(&br.break_start_time)
-            .bind(&br.break_end_time)
-            .bind(&br.duration_minutes)
-            .bind(&br.created_at)
-            .bind(&br.updated_at)
+            .bind(br.break_start_time)
+            .bind(br.break_end_time)
+            .bind(br.duration_minutes)
+            .bind(br.created_at)
+            .bind(br.updated_at)
             .execute(&pool)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to insert break"}))))?;
@@ -595,9 +595,9 @@ pub async fn force_end_break(
     rec.updated_at = now_utc;
 
     sqlx::query("UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4")
-        .bind(&rec.break_end_time)
-        .bind(&rec.duration_minutes)
-        .bind(&rec.updated_at)
+        .bind(rec.break_end_time)
+        .bind(rec.duration_minutes)
+        .bind(rec.updated_at)
         .bind(&rec.id)
         .execute(&pool)
         .await
@@ -752,7 +752,7 @@ pub async fn reset_user_mfa(
     let result = sqlx::query(
         "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
     )
-    .bind(&now)
+    .bind(now)
     .bind(&payload.user_id)
     .execute(&pool)
     .await
@@ -793,16 +793,16 @@ pub async fn list_holidays(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
 
-    let page = q.page.unwrap_or(DEFAULT_PAGE).max(1).min(MAX_PAGE);
+    let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
     let per_page = q
         .per_page
         .unwrap_or(DEFAULT_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
     let offset = (page - 1) * per_page;
 
-    let type_filter = parse_type_filter(q.r#type.as_deref()).map_err(|msg| bad_request(msg))?;
-    let from = parse_optional_date(q.from.as_deref()).map_err(|msg| bad_request(msg))?;
-    let to = parse_optional_date(q.to.as_deref()).map_err(|msg| bad_request(msg))?;
+    let type_filter = parse_type_filter(q.r#type.as_deref()).map_err(bad_request)?;
+    let from = parse_optional_date(q.from.as_deref()).map_err(bad_request)?;
+    let to = parse_optional_date(q.to.as_deref()).map_err(bad_request)?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
@@ -870,11 +870,11 @@ pub async fn create_holiday(
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&holiday.id)
-    .bind(&holiday.holiday_date)
+    .bind(holiday.holiday_date)
     .bind(&holiday.name)
     .bind(&holiday.description)
-    .bind(&holiday.created_at)
-    .bind(&holiday.updated_at)
+    .bind(holiday.created_at)
+    .bind(holiday.updated_at)
     .execute(&pool)
     .await;
 
@@ -1001,14 +1001,14 @@ pub async fn create_weekly_holiday(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&weekly.id)
-    .bind(&weekly.weekday)
-    .bind(&weekly.starts_on)
-    .bind(&weekly.ends_on)
-    .bind(&weekly.enforced_from)
-    .bind(&weekly.enforced_to)
+    .bind(weekly.weekday)
+    .bind(weekly.starts_on)
+    .bind(weekly.ends_on)
+    .bind(weekly.enforced_from)
+    .bind(weekly.enforced_to)
     .bind(&weekly.created_by)
-    .bind(&weekly.created_at)
-    .bind(&weekly.updated_at)
+    .bind(weekly.created_at)
+    .bind(weekly.updated_at)
     .execute(&pool)
     .await
     .map_err(|_| {

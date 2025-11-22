@@ -31,20 +31,15 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, sqlx::Type, ToSchema)]
+#[derive(Debug, Clone, sqlx::Type, ToSchema, Default)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 /// Supported user roles stored in the database.
 pub enum UserRole {
     /// Standard employee role with limited permissions.
+    #[default]
     Employee,
     /// Administrator role with elevated permissions.
     Admin,
-}
-
-impl Default for UserRole {
-    fn default() -> Self {
-        UserRole::Employee
-    }
 }
 
 impl UserRole {
