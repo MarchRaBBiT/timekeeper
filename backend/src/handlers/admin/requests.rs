@@ -158,15 +158,7 @@ pub async fn list_requests(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    let page = q.page.unwrap_or(1).max(1);
-    let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
-    let offset = page
-        .checked_sub(1)
-        .and_then(|p| p.checked_mul(per_page))
-        .ok_or((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"page is too large"})),
-        ))?;
+    let (page, per_page, offset) = paginate_requests(&q)?;
 
     let type_filter = q.r#type.as_deref().map(|s| s.to_ascii_lowercase());
     let (include_leave, include_overtime) = match type_filter.as_deref() {
@@ -239,7 +231,22 @@ pub async fn list_requests(
     }))
 }
 
-fn validate_decision_comment(comment: &str) -> Result<(), (StatusCode, Json<Value>)> {
+pub fn paginate_requests(
+    q: &RequestListQuery,
+) -> Result<(i64, i64, i64), (StatusCode, Json<Value>)> {
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = page
+        .checked_sub(1)
+        .and_then(|p| p.checked_mul(per_page))
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"page is too large"})),
+        ))?;
+    Ok((page, per_page, offset))
+}
+
+pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), (StatusCode, Json<Value>)> {
     if comment.trim().is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,

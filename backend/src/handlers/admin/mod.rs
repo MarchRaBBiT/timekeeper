@@ -33,6 +33,56 @@ const DEFAULT_PER_PAGE: i64 = 25;
 const MAX_PER_PAGE: i64 = 100;
 const MAX_PAGE: i64 = 1_000;
 
+use query_validation::{validate_admin_holiday_query, AdminHolidayQueryParams};
+
+mod query_validation {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct AdminHolidayQueryParams {
+        pub page: i64,
+        pub per_page: i64,
+        pub kind: Option<AdminHolidayKind>,
+        pub from: Option<NaiveDate>,
+        pub to: Option<NaiveDate>,
+    }
+
+    pub fn validate_admin_holiday_query(
+        q: AdminHolidayListQuery,
+    ) -> Result<AdminHolidayQueryParams, (StatusCode, Json<Value>)> {
+        let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
+        let per_page = q
+            .per_page
+            .unwrap_or(DEFAULT_PER_PAGE)
+            .clamp(1, MAX_PER_PAGE);
+
+        let kind = parse_type_filter(q.r#type.as_deref()).map_err(bad_request)?;
+        let from = parse_optional_date(q.from.as_deref()).map_err(bad_request)?;
+        let to = parse_optional_date(q.to.as_deref()).map_err(bad_request)?;
+
+        if let (Some(from), Some(to)) = (from, to) {
+            if from > to {
+                return Err(bad_request("`from` must be before or equal to `to`"));
+            }
+        }
+
+        Ok(AdminHolidayQueryParams {
+            page,
+            per_page,
+            kind,
+            from,
+            to,
+        })
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+#[allow(unused_imports)]
+pub use query_validation::{
+    validate_admin_holiday_query as test_validate_admin_holiday_query,
+    AdminHolidayQueryParams as TestAdminHolidayQueryParams,
+};
+
 pub async fn get_users(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
@@ -793,24 +843,16 @@ pub async fn list_holidays(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
 
-    let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
-    let per_page = q
-        .per_page
-        .unwrap_or(DEFAULT_PER_PAGE)
-        .clamp(1, MAX_PER_PAGE);
+    let AdminHolidayQueryParams {
+        page,
+        per_page,
+        kind,
+        from,
+        to,
+    } = validate_admin_holiday_query(q)?;
     let offset = (page - 1) * per_page;
 
-    let type_filter = parse_type_filter(q.r#type.as_deref()).map_err(bad_request)?;
-    let from = parse_optional_date(q.from.as_deref()).map_err(bad_request)?;
-    let to = parse_optional_date(q.to.as_deref()).map_err(bad_request)?;
-
-    if let (Some(from), Some(to)) = (from, to) {
-        if from > to {
-            return Err(bad_request("`from` must be before or equal to `to`"));
-        }
-    }
-
-    let (items, total) = fetch_admin_holidays(&pool, type_filter, from, to, per_page, offset)
+    let (items, total) = fetch_admin_holidays(&pool, kind, from, to, per_page, offset)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list admin holidays");
