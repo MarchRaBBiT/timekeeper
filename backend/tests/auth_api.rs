@@ -135,6 +135,33 @@ fn login_rejects_invalid_password_without_db() {
 }
 
 #[test]
+fn login_rejects_invalid_totp_code_when_mfa_is_enabled() {
+    let secret = generate_totp_secret();
+    let user = user_with_mfa_secret(secret, true);
+    let config = test_config();
+    let payload = LoginRequest {
+        username: user.username.clone(),
+        password: TEST_PASSWORD.into(),
+        device_label: None,
+        totp_code: Some("000000".into()),
+    };
+
+    let err = block_on_future(process_login_for_user(
+        user,
+        payload,
+        &config,
+        |_| async { Ok(()) },
+        |_, _| async { Ok(()) },
+    ))
+    .expect_err("invalid code should be rejected");
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        err.1 .0.get("error").and_then(|v| v.as_str()),
+        Some("Invalid MFA code")
+    );
+}
+
+#[test]
 fn login_requires_totp_code_when_mfa_is_enabled() {
     let secret = generate_totp_secret();
     let user = user_with_mfa_secret(secret, true);
@@ -192,7 +219,10 @@ fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
         payload,
         &config,
         |_| async { Ok(()) },
-        |_, _| async { Ok(()) },
+        |_, context| async move {
+            assert_eq!(context.as_deref(), Some("device"));
+            Ok(())
+        },
     ))
     .expect("valid code should pass");
 }
