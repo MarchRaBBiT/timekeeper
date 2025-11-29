@@ -1,6 +1,7 @@
 use leptos::*;
 use leptos_router::*;
 use web_sys::console;
+use wasm_bindgen_futures::spawn_local;
 
 mod api;
 mod components;
@@ -18,15 +19,24 @@ use pages::{
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    console::log_1(&"Starting Timekeeper Frontend (wasm)".into());
+    let perf = web_sys::window().and_then(|w| w.performance().ok());
+    let t0 = perf.as_ref().map(|p| p.now());
+    console::log_1(&"Starting Timekeeper Frontend (wasm): initializing runtime config".into());
 
-    // Kick off runtime config load from ./config.json (non-blocking).
-    // If window.__TIMEKEEPER_ENV is present (env.js), it takes precedence.
-    leptos::spawn_local(async move {
+    spawn_local(async move {
         config::init().await;
-        web_sys::console::log_1(&"Runtime config initialized".into());
+        if let (Some(p), Some(start)) = (perf.as_ref(), t0) {
+            let elapsed = p.now() - start;
+            let msg = format!("Runtime config initialized ({} ms)", elapsed);
+            web_sys::console::log_1(&msg.into());
+        } else {
+            web_sys::console::log_1(&"Runtime config initialized".into());
+        }
+        mount_app();
     });
+}
 
+fn mount_app() {
     mount_to_body(|| {
         view! {
             <crate::state::auth::AuthProvider>

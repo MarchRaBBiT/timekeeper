@@ -1,6 +1,7 @@
 use leptos::*;
 use leptos_router::*;
 use web_sys::console;
+use wasm_bindgen_futures::spawn_local;
 
 mod api;
 mod components;
@@ -16,26 +17,32 @@ use pages::{
 
 fn main() {
     console_error_panic_hook::set_once();
-    console::log_1(&"Starting Timekeeper Frontend".into());
+    let perf = web_sys::window().and_then(|w| w.performance().ok());
+    let t0 = perf.as_ref().map(|p| p.now());
+    console::log_1(&"Starting Timekeeper Frontend: initializing runtime config".into());
 
-    leptos::spawn_local(async move {
+    spawn_local(async move {
         config::init().await;
-        console::log_1(&"Runtime config initialized".into());
-    });
-
-    mount_to_body(|| {
-        view! {
-            <Router>
-                <Routes>
-                    <Route path="/" view=HomePage/>
-                    <Route path="/login" view=LoginPage/>
-                    <Route path="/dashboard" view=DashboardPage/>
-                    <Route path="/attendance" view=AttendancePage/>
-                    <Route path="/requests" view=RequestsPage/>
-                    <Route path="/mfa/register" view=MfaRegisterPage/>
-                    <Route path="/admin" view=AdminPage/>
-                </Routes>
-            </Router>
+        if let (Some(p), Some(start)) = (perf.as_ref(), t0) {
+            let elapsed = p.now() - start;
+            console::log_1(&format!("Runtime config initialized ({} ms)", elapsed).into());
+        } else {
+            console::log_1(&"Runtime config initialized".into());
         }
-    })
+        mount_to_body(|| {
+            view! {
+                <Router>
+                    <Routes>
+                        <Route path="/" view=HomePage/>
+                        <Route path="/login" view=LoginPage/>
+                        <Route path="/dashboard" view=DashboardPage/>
+                        <Route path="/attendance" view=AttendancePage/>
+                        <Route path="/requests" view=RequestsPage/>
+                        <Route path="/mfa/register" view=MfaRegisterPage/>
+                        <Route path="/admin" view=AdminPage/>
+                    </Routes>
+                </Router>
+            }
+        });
+    });
 }
