@@ -283,6 +283,8 @@ pub async fn mfa_disable(
         ));
     }
 
+    revoke_active_tokens_for_user(&pool, &user.id).await?;
+
     Ok(Json(json!({"message": "MFA disabled"})))
 }
 
@@ -334,6 +336,7 @@ pub async fn change_password(
     }
 
     revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
+    revoke_active_tokens_for_user(&pool, &user.id).await?;
 
     Ok(Json(json!({"message": "Password updated successfully"})))
 }
