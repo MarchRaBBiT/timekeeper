@@ -49,7 +49,7 @@ pub async fn auth_admin(
         .and_then(|header| header.to_str().ok())
         .map(|value| value.to_owned());
     let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
-    if !user.is_admin() {
+    if !(user.is_admin() || user.is_system_admin()) {
         return Err(StatusCode::FORBIDDEN);
     }
 
