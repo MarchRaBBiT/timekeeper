@@ -1,61 +1,104 @@
-# Repository Guidelines
+# リポジトリ ガイドライン
 
-Timekeeper combines a Rust Axum backend, a Leptos/WASM frontend, and Playwright smoke checks. Use this guide to stay aligned with the structure, tooling, and delivery expectations.
+Timekeeper は Rust 製の Axum バックエンド、Leptos/WASM フロントエンド、Playwright のスモークチェックを組み合わせたプロジェクトです。本ドキュメントは「プロジェクト概要」と「開発規約」を分けて記載しています。構造と運用を押さえ、合意された規約に沿って作業してください。
 
-## Primary Directive
+## 最重要指針
 
-- Think ins English interact with the user in Japanese.
-- Use UTF-8 charset when output Non-ASCII character.
+- 英語で考え、日本語でユーザーとやり取りすること。
+- 非 ASCII 文字を出力する際は UTF-8 を使用すること。
 
-## Project Structure & Module Organization
-- `backend/` runs the API; `src/handlers`, `models`, `middleware`, and `db` mirror the service layers, while `migrations/*.sql` seed SQLx with schema changes.
-- `frontend/` is a Rust crate compiled to WASM; `src/components` covers reusable widgets, `src/pages` hosts routed screens, `src/api` centralizes HTTP calls, and `config.json` pairs with `src/config.rs` for runtime settings.
-- `e2e/` holds Playwright journeys (`run.mjs`, `guard.mjs`, `logout.mjs`) that assume the frontend at `FRONTEND_BASE_URL`.
-- `scripts/` bundles PowerShell helpers for dockerized backend control, frontend builds, and API smoke automation; keep new automation here.
+## プロジェクト概要
 
-## Build, Test, and Development Commands
+### サービス構成
+- `backend/` が API を動かす。`src/handlers`、`models`、`middleware`、`db` がサービス層に対応し、`migrations/*.sql` が SQLx 用のスキーマ変更を流し込む。
+- `frontend/` は WASM にコンパイルされる Rust クレート。`src/components` が再利用ウィジェット、`src/pages` がルーティングされた画面、`src/api` が HTTP 呼び出しの集約、`config.json` と `src/config.rs` が実行時設定を扱う。
+- `e2e/` には Playwright のシナリオ（`run.mjs`、`guard.mjs`、`logout.mjs`）を置き、`FRONTEND_BASE_URL` 上のフロントエンドを前提とする。
+- `scripts/` には docker 化されたバックエンド制御、フロントエンドビルド、API スモーク自動化のための PowerShell ヘルパーをまとめる。新しい自動化もここに追加する。
+
+### 実行・ビルド・開発コマンド
 ```powershell
-# backend (native)
+# backend（ネイティブ実行）
 cd backend; cargo run
-# backend (docker compose via helper)
+# backend（ヘルパー経由の docker compose）
 pwsh -File .\scripts\backend.ps1 start
-# frontend (rebuild + static server on :8000)
+# frontend（再ビルド + :8000 で静的サーバ）
 pwsh -File .\scripts\frontend.ps1 start
 ```
-Prefer the scripts’ `stop/status/logs` subcommands to avoid stale PID files.
+PID ファイルの取り残しを避けるため、`stop/status/logs` のサブコマンドを優先して使う。
 
-## Coding Style & Naming Conventions
-- Rust code uses `cargo fmt --all` (4-space indent) and `cargo clippy --all-targets -- -D warnings` before review; keep modules snake_case, types and components in PascalCase.
-- Frontend signals reactive state with `*_signal` or `use_*` helpers; keep Leptos components in `PascalCase`.
-- Keep configuration values in `.env`; never commit generated artifacts (`frontend/pkg/`, `.backend.pid`).
+### 環境と設定のヒント
+- `env.example` を `.env` にコピーし、`DATABASE_URL`（ローカルは SQLite か手元の Postgres DSN）を設定する。`JWT_SECRET` は一意にし、docker compose は `.env` から直接読み込む点に注意。
+- 設定値は `.env` に置き、生成物（`frontend/pkg/`、`.backend.pid`）はコミットしない。
 
-## Testing Guidelines
-- Run `cd backend; cargo test` plus `cargo clippy` for backend changes; `pwsh -File .\scripts\test_backend.ps1` exercises key API flows against a running server.
-- Frontend modules require `wasm-pack test --headless --firefox` from `frontend/` once you install Playwright’s browsers.
-- UI regressions: `cd e2e; node run.mjs` (set `FRONTEND_BASE_URL` when not on `http://localhost:8080`).
+## 開発ポリシー
 
-## Commit & Pull Request Guidelines
-- This archive omits Git history; align with Conventional Commits (`feat:`, `fix:`, `chore:`) so changelog tooling stays predictable and scope stays clear.
-- Each PR needs: concise summary, linked issue/Linear ticket, backend/frontend impact notes, env variable diffs, and test evidence (`cargo test`, `wasm-pack test`, Playwright smoke output).
-- Include screenshots or terminal transcripts for UI-facing changes and note follow-up migration steps for reviewers.
+### コミットと PR の指針
+- Git 履歴は含まれないため、Conventional Commits（`feat:`、`fix:`、`chore:`）に合わせて変更履歴ツールの予測性とスコープの明瞭さを保つ。
+- 各 PR には概要、紐づく issue/Linear チケット、バックエンド/フロントエンドへの影響、環境変数の差分、テストエビデンス（`cargo test`、`wasm-pack test`、Playwright のスモーク結果）を添付する。
+- UI 変更がある場合はスクリーンショットまたはターミナル出力を添付し、後続のマイグレーション手順があればレビュワー向けに記載する。
 
-## Environment & Configuration Tips
-- Copy `env.example` to `.env`, set `DATABASE_URL` (SQLite locally or your managed Postgres DSN), and keep `JWT_SECRET` unique because docker compose loads it straight from `.env`.
+### 追加の開発ポリシー
+- TDD を遵守し、機能実装前にその機能を検証するテストを書く。
+- 要件が矛盾する場合は実装を進めず、矛盾を指摘する。
+- コードやドキュメント内の日本語は UTF-8 エンコードで記述する。
+- コードとドキュメントの改行は LF を使用する。
+- 実装後に返答する前に、該当するテストやビルドを実行し、成功を確認する。
+- 実装案を提示する際は最大 5 個までとし、推薦順に並べてそれぞれの長所と短所を示す。推薦する案がある場合は、その理由を明示する。
+- 機能実装を始める前に専用のトピックブランチを作成し、PR の準備が整うまで関連するコミットをそのブランチにまとめる。
 
-## Additional Development Policies
-- Follow TDD: write the test that validates a feature before implementing the feature itself.
-- When requirements conflict, do not proceed with implementation; instead, point out the contradiction.
-- Write Japanese text in code or documentation using UTF-8 encoding.
-- Use LF for line endings in code and documentation.
-- Before replying after an implementation, run the relevant test build and confirm it completes successfully.
-- When proposing implementation options, list at most five in order of recommendation and include pros and cons for each.
-- When recommending an option, explain why it is being recommended.
-- Always create a dedicated topic branch before starting any feature implementation and keep related commits isolated on that branch until the PR is ready.
+## コーディングスタイルとテスト
+- Rust コードはレビュー前に `cargo fmt --all`（4 スペースインデント）と `cargo clippy --all-targets -- -D warnings` を実行する。モジュールは snake_case、型とコンポーネントは PascalCase にする。
+- フロントエンドのリアクティブ状態は `*_signal` または `use_*` のヘルパーで表現し、Leptos コンポーネントは PascalCase を維持する。
+- バックエンド変更時は `cd backend; cargo test` と `cargo clippy` を実行し、`pwsh -File .\scripts\test_backend.ps1` で起動中サーバーに対する主要 API フローを確認する。
+- フロントエンドは Playwright のブラウザをインストールしたうえで、`frontend/` から `wasm-pack test --headless --firefox` を実行する。
+- UI リグレッションは `cd e2e; node run.mjs` を実行（`http://localhost:8080` 以外の場合は `FRONTEND_BASE_URL` を設定）。
 
-## Backend Design Principles
-- Keep handlers slender and modular: move DB-heavy logic into helper modules or repositories (e.g., `handlers/admin/requests.rs`, `handlers/requests_repo.rs`) so each handler focuses on HTTP concerns.
-- Share cross-cutting enums and types (`models::request::RequestStatus`) instead of duplicating definitions across models.
-- Route holiday logic through `services::holiday::HolidayService`; handlers should consume service methods instead of issuing raw SQL.
-- Attendance and other complex handlers must use helper modules (`handlers/attendance_utils.rs` etc.) for repeated checks and error handling to keep each function single-responsibility.
-- Follow DRY/SOLID across the codebase: extract reusable code, keep abstractions focused, and favor dependency injection (services, repositories) over tight coupling to infrastructure details.
-- Favor composition over inheritance and keep modules small; as soon as a file grows beyond a single responsibility, split it into submodules and re-export what is needed.
+## バックエンド設計原則
+- ハンドラーはスリムかつモジュール化を徹底する。DB の重いロジックはヘルパーモジュールやリポジトリ（例: `handlers/admin/requests.rs`、`handlers/requests_repo.rs`）へ移し、各ハンドラーは HTTP の責務に集中させる。
+- 共有される列挙や型（`models::request::RequestStatus` など）は使い回し、モデル間で定義を重複させない。
+- 祝日ロジックは `services::holiday::HolidayService` を経由させ、ハンドラーが生 SQL を発行しないようにする。
+- 勤怠など複雑なハンドラーでは、繰り返しのチェックやエラーハンドリングをヘルパーモジュール（`handlers/attendance_utils.rs` など）に切り出し、各関数の単一責任を保つ。
+- コードベース全体で DRY/SOLID を守り、再利用コードを抽出しつつ抽象化は焦点を絞る。サービスやリポジトリなどの依存性注入を優先し、インフラへの密結合を避ける。
+- 継承より合成を優先し、モジュールを小さく保つ。一つの責務を超え始めたらサブモジュールへ分割し、必要なものだけを再エクスポートする。
+
+## コーディング規約（関数設計・リファクタリング・コード探索）
+
+この節の規約は、すべてのコーディングエージェントが共通して守ること。
+以下に要約版を記載する。全文は `CODING_STANDARD.md` を参照すること。
+
+
+### 1. 関数設計
+
+* 関数は「単一責務」が原則。1つの関数に複数の関心事（I/O、ビジネスロジック、ログなど）を混在させない。
+* すでに過密な関数には新たな責務を追加しない。分解・委譲を優先する。
+* 以下のような関数は分割を検討する：
+
+  * 論理段落が3つ以上ある
+  * ネストが3段以上
+  * 複数の外部コンポーネント（DB、外部API等）に直接アクセスしている
+
+### 2. リファクタリングでの禁止事項
+
+* 既存ロジックを中身のない関数に置き換えることを禁止。
+* ユーザの明示的な許可なく、挙動・仕様を簡略化したり、分岐やエラー処理を削除しない。
+* 「構造だけ分割して実装は空」のような未完成な分割を提案しない。必ず動作する実装まで行う。
+
+### 3. リファクタリング時の手順
+
+* まず対象関数の現状挙動を整理する（入力前提、正常系フロー、エラー処理、副作用）。
+* どの処理をどの新関数に切り出すかを決め、それぞれの責務を明確化する。
+* 新関数を実装し、元関数から呼び出す形に書き換えたあと、元の挙動と1対1で対応づけて確認する。
+* 関連テストがあれば、どのテストが影響を受けるかまで意識してコードを書く。
+
+### 4. コード探索ポリシー
+
+* 大きなファイル/リポジトリを、上から順に読むことをデフォルト戦略にしない。
+* 目的コードの「役割」を1文で定義し、そこからキーワード（関数名候補、ドメイン用語等）を出して探索範囲を絞る。
+* ファイル名・ディレクトリ構造・シンボル名・コメントなどを使って候補を絞り、優先度の高い箇所から読む。
+* ユーザが与えたファイルパス・クラス名・関数名・行番号などのポインタは必ず最優先で利用する。
+
+### 5. ドキュメントとの対応
+
+* ドキュメントも単一責務を守る（概要・入出力・副作用・例外・使用例などを分けて記述）。
+* コードをリファクタリングしたら、関連ドキュメントの内容・関数名・責務の説明を必ず確認・更新する。
+* ドキュメントだけ先に変えて実装が追いついていない状態を作らない。
