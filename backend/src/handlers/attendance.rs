@@ -117,6 +117,26 @@ pub async fn clock_out(
     ensure_not_clocked_out(&attendance)?;
     ensure_clock_in_exists(&attendance)?;
 
+    let active_break = sqlx::query(
+        "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL LIMIT 1",
+    )
+    .bind(&attendance.id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+    })?;
+
+    if active_break.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Break in progress. End break before clocking out"})),
+        ));
+    }
+
     attendance.clock_out_time = Some(clock_out_time);
     let break_minutes = total_break_minutes(&pool, &attendance.id).await?;
     attendance.calculate_work_hours(break_minutes);
