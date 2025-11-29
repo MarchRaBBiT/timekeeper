@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  test-db:
+    image: postgres:16
+    environment:
+      - POSTGRES_DB=timekeeper_test
+      - POSTGRES_USER=timekeeper_test
+      - POSTGRES_PASSWORD=timekeeper_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "timekeeper_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - timekeeper_net
+
+volumes:
+  postgres_test_data:
+
+networks:
+  timekeeper_net:
+    driver: bridge
