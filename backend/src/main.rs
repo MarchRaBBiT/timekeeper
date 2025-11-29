@@ -25,7 +25,7 @@ mod utils;
 
 use config::Config;
 use db::connection::{create_pool, DbPool};
-use services::holiday::HolidayService;
+use services::{holiday::HolidayService, holiday_exception::HolidayExceptionService};
 
 type AuthState = (DbPool, Config);
 
@@ -47,6 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
     let holiday_service = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_exception_service = Arc::new(HolidayExceptionService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
 
     let openapi = docs::ApiDoc::openapi();
@@ -64,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
                 .layer(cors_layer()),
         )
         .layer(Extension(holiday_service))
+        .layer(Extension(holiday_exception_service))
         .with_state(shared_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -210,6 +212,15 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
         .route(
             "/api/admin/holidays/google",
             get(handlers::holidays::fetch_google_holidays),
+        )
+        .route(
+            "/api/admin/users/:user_id/holiday-exceptions",
+            post(handlers::holiday_exceptions::create_holiday_exception)
+                .get(handlers::holiday_exceptions::list_holiday_exceptions),
+        )
+        .route(
+            "/api/admin/users/:user_id/holiday-exceptions/:id",
+            delete(handlers::holiday_exceptions::delete_holiday_exception),
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
