@@ -23,7 +23,10 @@ use timekeeper_backend::{
 #[cfg(feature = "test-utils")]
 fn integration_guard() -> std::sync::MutexGuard<'static, ()> {
     static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().expect("lock integration guard")
+    GUARD
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("lock integration guard")
 }
 
 fn build_item(
@@ -71,7 +74,7 @@ fn mock_list_holidays(
     let parse_date = |s: &str| {
         DateTime::parse_from_rfc3339(s)
             .map(|dt| dt.date_naive())
-            .or_else(|_| NaiveDate::parse_from_str(s, "%Y-%m-%d").map(|d| d))
+            .or_else(|_| NaiveDate::parse_from_str(s, "%Y-%m-%d"))
             .ok()
     };
 
@@ -159,7 +162,12 @@ fn admin_holiday_list_filters_by_type() {
     let items = vec![
         build_item("public", AdminHolidayKind::Public, base_date, created_at),
         build_item("weekly", AdminHolidayKind::Weekly, base_date, created_at),
-        build_item("exception", AdminHolidayKind::Exception, base_date, created_at),
+        build_item(
+            "exception",
+            AdminHolidayKind::Exception,
+            base_date,
+            created_at,
+        ),
     ];
 
     let query = AdminHolidayListQuery {
@@ -191,7 +199,12 @@ fn admin_holiday_list_supports_pagination_and_range() {
         .enumerate()
         .map(|(idx, d)| {
             let created_at = base_created + chrono::Duration::milliseconds(idx as i64);
-            build_item(&format!("Holiday {}", idx), AdminHolidayKind::Public, *d, created_at)
+            build_item(
+                &format!("Holiday {}", idx),
+                AdminHolidayKind::Public,
+                *d,
+                created_at,
+            )
         })
         .collect();
 
@@ -363,7 +376,7 @@ fn admin_holiday_list_orders_by_date_kind_and_created_at() {
             "public",             // then public
             "weekly-new-created", // then weekly (newer created_at first)
             "weekly-old-created",
-            "older"               // older date last
+            "older" // older date last
         ]
     );
 }
@@ -373,7 +386,14 @@ fn admin_holiday_list_clamps_page_and_per_page() {
     let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
     let created_at = Utc.timestamp_millis_opt(0).single().unwrap();
     let items = (0..3)
-        .map(|i| build_item(&format!("id-{i}"), AdminHolidayKind::Public, date, created_at))
+        .map(|i| {
+            build_item(
+                &format!("id-{i}"),
+                AdminHolidayKind::Public,
+                date,
+                created_at,
+            )
+        })
         .collect();
 
     let response = mock_list_holidays(
@@ -393,6 +413,7 @@ fn admin_holiday_list_clamps_page_and_per_page() {
     assert_eq!(response.total, 3);
 }
 
+#[allow(dead_code)]
 async fn prepare_holiday_tables(pool: &PgPool) {
     sqlx::query(
         r#"
@@ -453,8 +474,12 @@ async fn prepare_holiday_tables(pool: &PgPool) {
         .expect("truncate tables");
 }
 
+#[allow(dead_code)]
 async fn seed_integration_holidays(pool: &PgPool) {
-    let created_base = Utc.timestamp_millis_opt(1_742_961_600_000).single().unwrap(); // 2025-03-10T00:00:00Z
+    let created_base = Utc
+        .timestamp_millis_opt(1_742_961_600_000)
+        .single()
+        .unwrap(); // 2025-03-10T00:00:00Z
 
     sqlx::query(
         "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
