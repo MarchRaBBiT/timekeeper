@@ -74,7 +74,7 @@ fn mock_list_holidays(
     let parse_date = |s: &str| {
         DateTime::parse_from_rfc3339(s)
             .map(|dt| dt.date_naive())
-            .or_else(|_| NaiveDate::parse_from_str(s, "%Y-%m-%d").map(|d| d))
+            .or_else(|_| NaiveDate::parse_from_str(s, "%Y-%m-%d"))
             .ok()
     };
 
@@ -413,6 +413,7 @@ fn admin_holiday_list_clamps_page_and_per_page() {
     assert_eq!(response.total, 3);
 }
 
+#[allow(dead_code)]
 async fn prepare_holiday_tables(pool: &PgPool) {
     sqlx::query(
         r#"
@@ -473,6 +474,7 @@ async fn prepare_holiday_tables(pool: &PgPool) {
         .expect("truncate tables");
 }
 
+#[allow(dead_code)]
 async fn seed_integration_holidays(pool: &PgPool) {
     let created_base = Utc
         .timestamp_millis_opt(1_742_961_600_000)
