@@ -1,9 +1,49 @@
 use crate::api::{
-    AdminAttendanceUpsert, ApiClient, CreateHolidayRequest, CreateWeeklyHolidayRequest,
-    HolidayResponse, WeeklyHolidayResponse,
+    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient,
+    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, WeeklyHolidayResponse,
 };
+use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::rc::Rc;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HolidayListQuery {
+    pub page: i64,
+    pub per_page: i64,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+}
+
+impl Default for HolidayListQuery {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            per_page: 10,
+            from: None,
+            to: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HolidayListResult {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<HolidayResponse>,
+}
+
+impl HolidayListResult {
+    pub fn empty(page: i64, per_page: i64) -> Self {
+        Self {
+            page,
+            per_page,
+            total: 0,
+            items: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AdminRepository {
@@ -89,8 +129,27 @@ impl AdminRepository {
             .map(|_| ())
     }
 
-    pub async fn list_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
-        self.client.admin_list_holidays().await
+    pub async fn list_holidays(
+        &self,
+        query: HolidayListQuery,
+    ) -> Result<HolidayListResult, String> {
+        let response = self
+            .client
+            .admin_list_holidays(query.page, query.per_page, query.from, query.to)
+            .await?;
+
+        let items = response
+            .items
+            .into_iter()
+            .filter_map(convert_admin_holiday_item)
+            .collect::<Vec<_>>();
+
+        Ok(HolidayListResult {
+            page: response.page,
+            per_page: response.per_page,
+            total: response.total,
+            items,
+        })
     }
 
     pub async fn fetch_google_holidays(
@@ -110,4 +169,33 @@ impl AdminRepository {
     pub async fn delete_holiday(&self, id: &str) -> Result<(), String> {
         self.client.admin_delete_holiday(id).await.map(|_| ())
     }
+}
+
+fn convert_admin_holiday_item(item: AdminHolidayListItem) -> Option<HolidayResponse> {
+    if item.kind != AdminHolidayKind::Public {
+        return None;
+    }
+
+    let AdminHolidayListItem {
+        id,
+        applies_from,
+        date,
+        name,
+        description,
+        reason,
+        ..
+    } = item;
+
+    let mut fallback_reason = reason.clone();
+    let holiday_name = name
+        .or_else(|| fallback_reason.clone())
+        .unwrap_or_else(|| "Holiday".to_string());
+    let holiday_description = description.or(reason);
+
+    Some(HolidayResponse {
+        id,
+        holiday_date: date.unwrap_or(applies_from),
+        name: holiday_name,
+        description: holiday_description,
+    })
 }

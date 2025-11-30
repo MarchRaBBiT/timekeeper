@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -192,13 +193,31 @@ impl ApiClient {
         }
     }
 
-    pub async fn admin_list_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
+    pub async fn admin_list_holidays(
+        &self,
+        page: i64,
+        per_page: i64,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<AdminHolidayListResponse, String> {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
+        let mut params = vec![
+            ("type".to_string(), "public".to_string()),
+            ("page".to_string(), page.to_string()),
+            ("per_page".to_string(), per_page.to_string()),
+        ];
+        if let Some(from) = from {
+            params.push(("from".into(), from.format("%Y-%m-%d").to_string()));
+        }
+        if let Some(to) = to {
+            params.push(("to".into(), to.format("%Y-%m-%d").to_string()));
+        }
         let response = self
             .client
             .get(&format!("{}/admin/holidays", base_url))
             .headers(headers)
+            .query(&params)
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;

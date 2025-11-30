@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +74,41 @@ pub struct HolidayResponse {
     pub holiday_date: NaiveDate,
     pub name: String,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminHolidayListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<AdminHolidayListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminHolidayKind {
+    Public,
+    Weekly,
+    Exception,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminHolidayListItem {
+    pub id: String,
+    pub kind: AdminHolidayKind,
+    pub applies_from: NaiveDate,
+    pub applies_to: Option<NaiveDate>,
+    pub date: Option<NaiveDate>,
+    pub weekday: Option<i16>,
+    pub starts_on: Option<NaiveDate>,
+    pub ends_on: Option<NaiveDate>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub user_id: Option<String>,
+    pub reason: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub is_override: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

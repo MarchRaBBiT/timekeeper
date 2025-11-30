@@ -1,10 +1,10 @@
 use crate::{
     api::CreateHolidayRequest,
     components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
-    pages::admin::repository::AdminRepository,
+    pages::admin::repository::{AdminRepository, HolidayListQuery, HolidayListResult},
     utils::time::now_in_app_tz,
 };
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate};
 use leptos::{ev, *};
 use std::collections::HashSet;
 
@@ -20,32 +20,227 @@ pub fn HolidayManagementSection(
     let holiday_message = create_rw_signal(None::<String>);
     let holiday_error = create_rw_signal(None::<String>);
     let deleting_id = create_rw_signal(None::<String>);
+    let holiday_query = create_rw_signal(HolidayListQuery::default());
+    let filter_from_input = create_rw_signal(String::new());
+    let filter_to_input = create_rw_signal(String::new());
+    let calendar_month_input = create_rw_signal(format!(
+        "{:04}-{:02}",
+        now_in_app_tz().year(),
+        now_in_app_tz().month()
+    ));
 
     let repo_for_holidays = repository.clone();
     let holidays_resource = create_resource(
-        move || (admin_allowed.get(), holidays_reload.get()),
-        move |(allowed, _)| {
+        move || (admin_allowed.get(), holiday_query.get(), holidays_reload.get()),
+        move |(allowed, query, _)| {
             let repo = repo_for_holidays.clone();
             async move {
                 if !allowed {
-                    Ok(Vec::new())
+                    Ok(HolidayListResult::empty(query.page, query.per_page))
                 } else {
-                    repo.list_holidays().await
+                    repo.list_holidays(query).await
                 }
             }
         },
     );
     let holidays_loading = holidays_resource.loading();
-    let holidays_data = Signal::derive(move || {
-        let mut list = holidays_resource
-            .get()
-            .and_then(|result| result.ok())
-            .unwrap_or_default();
-        list.sort_by_key(|h| h.holiday_date);
-        list
-    });
     let holidays_fetch_error =
         Signal::derive(move || holidays_resource.get().and_then(|result| result.err()));
+    let holidays_page = Signal::derive(move || {
+        holidays_resource
+            .get()
+            .and_then(|result| result.ok())
+    });
+    let holidays_data = Signal::derive(move || {
+        holidays_page
+            .get()
+            .map(|page| {
+                let mut list = page.items.clone();
+                list.sort_by_key(|h| h.holiday_date);
+                list
+            })
+            .unwrap_or_default()
+    });
+    let page_total = Signal::derive(move || {
+        holidays_page
+            .get()
+            .map(|page| (page.page, page.per_page, page.total))
+    });
+    let total_pages = Signal::derive(move || {
+        page_total
+            .get()
+            .map(|(_, per_page, total)| {
+                if total == 0 {
+                    1
+                } else {
+                    ((total + per_page - 1) / per_page).max(1)
+                }
+            })
+            .unwrap_or(1)
+    });
+    let can_go_prev =
+        Signal::derive(move || page_total.get().map(|(page, _, _)| page > 1).unwrap_or(false));
+    let can_go_next = Signal::derive(move || {
+        page_total
+            .get()
+            .map(|(page, per_page, total)| {
+                let max_page = if total == 0 {
+                    1
+                } else {
+                    ((total + per_page - 1) / per_page).max(1)
+                };
+                page < max_page
+            })
+            .unwrap_or(false)
+    });
+    let page_bounds = Signal::derive(move || {
+        page_total.get().map(|(page, per_page, total)| {
+            if total == 0 {
+                (0, 0, 0)
+            } else {
+                let start = ((page - 1).max(0) * per_page) + 1;
+                let end = (page * per_page).min(total);
+                (start, end, total)
+            }
+        })
+    });
+    let on_prev_page = {
+        let holiday_query = holiday_query.clone();
+        move |_| {
+            holiday_query.update(|query| {
+                if query.page > 1 {
+                    query.page -= 1;
+                }
+            });
+        }
+    };
+    let on_next_page = {
+        let holiday_query = holiday_query.clone();
+        let can_go_next = can_go_next.clone();
+        move |_| {
+            if can_go_next.get_untracked() {
+                holiday_query.update(|query| query.page += 1);
+            }
+        }
+    };
+    let on_per_page_change = {
+        let holiday_query = holiday_query.clone();
+        move |ev: ev::Event| {
+            if let Ok(value) = event_target_value(&ev).parse::<i64>() {
+                holiday_query.update(|query| {
+                    query.per_page = value.max(1);
+                    query.page = 1;
+                });
+            }
+        }
+    };
+    let on_apply_filters = {
+        let filter_from_input = filter_from_input.clone();
+        let filter_to_input = filter_to_input.clone();
+        let holiday_error = holiday_error.clone();
+        let holiday_message = holiday_message.clone();
+        let holiday_query = holiday_query.clone();
+        move |_| {
+            let from_raw = filter_from_input.get();
+            let to_raw = filter_to_input.get();
+            let parse_input =
+                |value: &str, label: &str| -> Result<Option<NaiveDate>, String> {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        return Ok(None);
+                    }
+                    NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+                        .map(Some)
+                        .map_err(|_| format!("{}は YYYY-MM-DD 形式で入力してください。", label))
+                };
+            let parsed_from = match parse_input(&from_raw, "開始日") {
+                Ok(date) => date,
+                Err(err) => {
+                    holiday_error.set(Some(err));
+                    return;
+                }
+            };
+            let parsed_to = match parse_input(&to_raw, "終了日") {
+                Ok(date) => date,
+                Err(err) => {
+                    holiday_error.set(Some(err));
+                    return;
+                }
+            };
+            if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
+                if from > to {
+                    holiday_error
+                        .set(Some("開始日は終了日以前である必要があります。".into()));
+                    return;
+                }
+            }
+            holiday_error.set(None);
+            holiday_message.set(None);
+            holiday_query.update(|query| {
+                query.page = 1;
+                query.from = parsed_from;
+                query.to = parsed_to;
+            });
+        }
+    };
+    let on_clear_filters = {
+        let filter_from_input = filter_from_input.clone();
+        let filter_to_input = filter_to_input.clone();
+        let holiday_error = holiday_error.clone();
+        let holiday_message = holiday_message.clone();
+        let holiday_query = holiday_query.clone();
+        move |_| {
+            filter_from_input.set(String::new());
+            filter_to_input.set(String::new());
+            holiday_error.set(None);
+            holiday_message.set(None);
+            holiday_query.update(|query| {
+                query.page = 1;
+                query.from = None;
+                query.to = None;
+            });
+        }
+    };
+    let on_apply_calendar_range = {
+        let calendar_month_input = calendar_month_input.clone();
+        let filter_from_input = filter_from_input.clone();
+        let filter_to_input = filter_to_input.clone();
+        let holiday_error = holiday_error.clone();
+        let holiday_message = holiday_message.clone();
+        let holiday_query = holiday_query.clone();
+        move |_| {
+            let month_raw = calendar_month_input.get();
+            let trimmed = month_raw.trim();
+            if trimmed.is_empty() {
+                holiday_error.set(Some("月を選択してください。".into()));
+                return;
+            }
+            let first_day =
+                match NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d") {
+                    Ok(date) => date,
+                    Err(_) => {
+                        holiday_error.set(Some("月は YYYY-MM 形式で入力してください。".into()));
+                        return;
+                    }
+                };
+            let next_month = if first_day.month() == 12 {
+                NaiveDate::from_ymd_opt(first_day.year() + 1, 1, 1)
+            } else {
+                NaiveDate::from_ymd_opt(first_day.year(), first_day.month() + 1, 1)
+            }
+            .expect("next month boundary must exist");
+            let last_day = next_month - Duration::days(1);
+            filter_from_input.set(first_day.format("%Y-%m-%d").to_string());
+            filter_to_input.set(last_day.format("%Y-%m-%d").to_string());
+            holiday_error.set(None);
+            holiday_message.set(None);
+            holiday_query.update(|query| {
+                query.page = 1;
+                query.from = Some(first_day);
+                query.to = Some(last_day);
+            });
+        }
+    };
 
     let repo_for_create = repository.clone();
     let create_holiday_action = create_action(move |payload: &CreateHolidayRequest| {
@@ -319,6 +514,56 @@ pub fn HolidayManagementSection(
                     {"一覧から登録"}
                 </button>
             </div>
+            <div class="space-y-3 rounded-lg border border-dashed border-gray-200 p-4">
+                <div class="flex flex-col gap-1">
+                    <h4 class="text-sm font-medium text-gray-900">{"祝日一覧フィルター"}</h4>
+                    <p class="text-xs text-gray-500">{"期間を指定すると一致する祝日だけを表示します。"}</p>
+                </div>
+                <div class="grid gap-3 md:grid-cols-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600">{"開始日"}</label>
+                        <input
+                            type="date"
+                            class="mt-1 w-full border rounded px-2 py-1"
+                            prop:value={move || filter_from_input.get()}
+                            on:input=move |ev| filter_from_input.set(event_target_value(&ev))
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600">{"終了日"}</label>
+                        <input
+                            type="date"
+                            class="mt-1 w-full border rounded px-2 py-1"
+                            prop:value={move || filter_to_input.get()}
+                            on:input=move |ev| filter_to_input.set(event_target_value(&ev))
+                        />
+                    </div>
+                    <div class="md:col-span-2 flex items-end gap-2">
+                        <button class="px-3 py-1 rounded bg-gray-800 text-white" on:click=on_apply_filters>
+                            {"日付で絞り込み"}
+                        </button>
+                        <button class="px-3 py-1 rounded border" on:click=on_clear_filters>
+                            {"条件クリア"}
+                        </button>
+                    </div>
+                </div>
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600">{"カレンダー範囲 (YYYY-MM)"}</label>
+                        <input
+                            type="month"
+                            class="mt-1 w-full border rounded px-2 py-1"
+                            prop:value={move || calendar_month_input.get()}
+                            on:input=move |ev| calendar_month_input.set(event_target_value(&ev))
+                        />
+                    </div>
+                    <div class="md:col-span-2 flex items-end">
+                        <button class="px-3 py-1 rounded border border-blue-500 text-blue-600" on:click=on_apply_calendar_range>
+                            {"選択月の範囲を適用"}
+                        </button>
+                    </div>
+                </div>
+            </div>
             <Show when=move || holiday_error.get().is_some()>
                 <ErrorMessage message={holiday_error.get().unwrap_or_default()} />
             </Show>
@@ -337,6 +582,59 @@ pub fn HolidayManagementSection(
                     <span>{"祝日一覧を読み込み中..."}</span>
                 </div>
             </Show>
+            <div class="flex flex-col gap-2 rounded-lg border border-gray-100 p-3 text-sm text-gray-700 md:flex-row md:items-center md:justify-between">
+                <div>
+                    {move || {
+                        page_bounds
+                            .get()
+                            .map(|bounds| match bounds {
+                                (0, 0, 0) => "該当する祝日はありません。".to_string(),
+                                (start, end, total) => {
+                                    format!("{} 件中 {} - {} 件を表示中", total, start, end)
+                                }
+                            })
+                            .unwrap_or_else(|| "祝日一覧を取得しています...".into())
+                    }}
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <label class="flex items-center gap-1">
+                        <span class="text-xs uppercase tracking-wide text-gray-500">
+                            {"件数/ページ"}
+                        </span>
+                        <select
+                            class="border rounded px-2 py-1"
+                            prop:value={move || holiday_query.get().per_page.to_string()}
+                            on:change=on_per_page_change
+                        >
+                            <option value="10">{"10"}</option>
+                            <option value="25">{"25"}</option>
+                            <option value="50">{"50"}</option>
+                        </select>
+                    </label>
+                    <div class="inline-flex items-center gap-2">
+                        <button
+                            class="px-3 py-1 rounded border disabled:opacity-50"
+                            disabled={move || holidays_loading.get() || !can_go_prev.get()}
+                            on:click=on_prev_page
+                        >
+                            {"前へ"}
+                        </button>
+                        <span class="text-xs text-gray-500">
+                            {move || {
+                                let current = page_total.get().map(|(page, _, _)| page).unwrap_or(1);
+                                format!("ページ {}/{}", current, total_pages.get())
+                            }}
+                        </span>
+                        <button
+                            class="px-3 py-1 rounded border disabled:opacity-50"
+                            disabled={move || holidays_loading.get() || !can_go_next.get()}
+                            on:click=on_next_page
+                        >
+                            {"次へ"}
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
                     <thead class="bg-gray-50">
