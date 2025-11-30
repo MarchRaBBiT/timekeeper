@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -192,58 +193,49 @@ impl ApiClient {
         }
     }
 
-    pub async fn admin_list_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
+    pub async fn admin_list_holidays(
+        &self,
+        page: i64,
+        per_page: i64,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<AdminHolidayListResponse, String> {
         let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
-        let mut holidays = Vec::new();
-        let mut page: i64 = 1;
-        const PER_PAGE: i64 = 100;
-
-        loop {
-            let response = self
-                .client
-                .get(&format!(
-                    "{}/admin/holidays?page={}&per_page={}&type=public",
-                    base_url, page, PER_PAGE
-                ))
-                .headers(headers.clone())
-                .send()
-                .await
-                .map_err(|e| format!("Request failed: {}", e))?;
-
-            let status = response.status();
-            Self::handle_unauthorized_status(status);
-            if status.is_success() {
-                let body: AdminHolidayListResponse = response
-                    .json()
-                    .await
-                    .map_err(|e| format!("Failed to parse response: {}", e))?;
-                let AdminHolidayListResponse {
-                    page: resp_page,
-                    per_page: resp_per_page,
-                    total,
-                    items,
-                } = body;
-                let is_last_page = items.is_empty() || resp_page * resp_per_page >= total;
-                holidays.extend(
-                    items
-                        .into_iter()
-                        .filter_map(Self::convert_admin_holiday_item),
-                );
-                if is_last_page {
-                    break;
-                }
-                page += 1;
-            } else {
-                let error: ApiError = response
-                    .json()
-                    .await
-                    .map_err(|e| format!("Failed to parse error: {}", e))?;
-                return Err(error.error);
-            }
+        let mut params = vec![
+            ("type".to_string(), "public".to_string()),
+            ("page".to_string(), page.to_string()),
+            ("per_page".to_string(), per_page.to_string()),
+        ];
+        if let Some(from) = from {
+            params.push(("from".into(), from.format("%Y-%m-%d").to_string()));
         }
+        if let Some(to) = to {
+            params.push(("to".into(), to.format("%Y-%m-%d").to_string()));
+        }
+        let response = self
+            .client
+            .get(&format!("{}/admin/holidays", base_url))
+            .headers(headers)
+            .query(&params)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
 
-        Ok(holidays)
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
     }
 
     pub async fn admin_create_holiday(
@@ -535,37 +527,6 @@ impl ApiClient {
                 .map_err(|e| format!("Failed to parse error: {}", e))?;
             Err(error.error)
         }
-    }
-
-    fn convert_admin_holiday_item(item: AdminHolidayListItem) -> Option<HolidayResponse> {
-        let AdminHolidayListItem {
-            id,
-            kind,
-            applies_from,
-            date,
-            name,
-            description,
-            reason,
-            ..
-        } = item;
-
-        if kind != AdminHolidayKind::Public {
-            return None;
-        }
-
-        let holiday_date = date.unwrap_or(applies_from);
-        let fallback_reason = reason.clone();
-        let holiday_name = name
-            .or(fallback_reason)
-            .unwrap_or_else(|| "Holiday".to_string());
-        let holiday_description = description.or(reason);
-
-        Some(HolidayResponse {
-            id,
-            holiday_date,
-            name: holiday_name,
-            description: holiday_description,
-        })
     }
 }
 
