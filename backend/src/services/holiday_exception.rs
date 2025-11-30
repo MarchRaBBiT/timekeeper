@@ -81,13 +81,12 @@ impl HolidayExceptionService {
 
 impl HolidayExceptionService {
     async fn user_exists(&self, user_id: &str) -> Result<bool, HolidayExceptionError> {
-        let exists = sqlx::query_scalar::<_, i64>(
-            "SELECT 1 FROM users WHERE id = $1 LIMIT 1",
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 LIMIT 1)",
         )
         .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?
-        .is_some();
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(exists)
     }

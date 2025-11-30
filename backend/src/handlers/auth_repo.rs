@@ -121,11 +121,12 @@ pub async fn insert_active_access_token(
 }
 
 pub async fn access_token_exists(pool: &PgPool, jti: &str) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>("SELECT 1 FROM active_access_tokens WHERE jti = $1 LIMIT 1")
-        .bind(jti)
-        .fetch_optional(pool)
-        .await
-        .map(|row| row.is_some())
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM active_access_tokens WHERE jti = $1 LIMIT 1)",
+    )
+    .bind(jti)
+    .fetch_one(pool)
+    .await
 }
 
 pub async fn delete_active_access_token_by_jti(
