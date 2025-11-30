@@ -1,5 +1,5 @@
-use timekeeper_backend::handlers::admin::{AdminRequestListPageInfo, paginate_requests};
 use timekeeper_backend::handlers::admin::RequestListQuery;
+use timekeeper_backend::handlers::admin::{paginate_requests, AdminRequestListPageInfo};
 
 #[test]
 fn pagination_info_without_db() {
