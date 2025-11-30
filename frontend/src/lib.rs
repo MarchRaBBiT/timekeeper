@@ -1,3 +1,4 @@
+use js_sys::Date;
 use leptos::*;
 use leptos_router::*;
 use web_sys::console;
@@ -19,19 +20,14 @@ use pages::{
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    let perf = web_sys::window().and_then(|w| w.performance().ok());
-    let t0 = perf.as_ref().map(|p| p.now());
+    let t0 = Date::now();
     console::log_1(&"Starting Timekeeper Frontend (wasm): initializing runtime config".into());
 
     spawn_local(async move {
         config::init().await;
-        if let (Some(p), Some(start)) = (perf.as_ref(), t0) {
-            let elapsed = p.now() - start;
-            let msg = format!("Runtime config initialized ({} ms)", elapsed);
-            web_sys::console::log_1(&msg.into());
-        } else {
-            web_sys::console::log_1(&"Runtime config initialized".into());
-        }
+        let elapsed = Date::now() - t0;
+        let msg = format!("Runtime config initialized ({} ms)", elapsed);
+        web_sys::console::log_1(&msg.into());
         mount_app();
     });
 }
