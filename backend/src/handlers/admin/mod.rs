@@ -6,7 +6,7 @@ use axum::{
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Error as SqlxError, FromRow, PgPool, Postgres, QueryBuilder};
+use sqlx::{Error as SqlxError, FromRow, PgPool, Postgres, QueryBuilder, Transaction};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
@@ -515,12 +515,23 @@ pub async fn upsert_attendance(
         None => None,
     };
 
+    let mut tx: Transaction<'_, Postgres> = pool
+        .begin()
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
+
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
-    let _ = sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
+    sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
         .bind(&user_id)
         .bind(date)
-        .execute(&pool)
-        .await;
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to upsert attendance"})),
+            )
+        })?;
 
     let mut att = crate::models::attendance::Attendance::new(
         user_id.clone(),
@@ -580,7 +591,7 @@ pub async fn upsert_attendance(
           .bind(att.total_work_hours)
         .bind(att.created_at)
         .bind(att.updated_at)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
 
@@ -594,10 +605,14 @@ pub async fn upsert_attendance(
             .bind(br.duration_minutes)
             .bind(br.created_at)
             .bind(br.updated_at)
-            .execute(&pool)
+            .execute(&mut *tx)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to insert break"}))))?;
     }
+
+    tx.commit()
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
 
     let breaks = get_break_records(&pool, &att.id).await?;
     Ok(Json(AttendanceResponse {
@@ -687,37 +702,49 @@ pub async fn export_data(
     }
     // Build filtered SQL
     use sqlx::Row;
+    let parsed_from = match q.from.as_deref() {
+        Some(raw) => parse_date_value(raw)
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"`from` must be a valid date"})),
+            ))
+            .map(Some)?,
+        None => None,
+    };
+    let parsed_to = match q.to.as_deref() {
+        Some(raw) => parse_date_value(raw)
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"`to` must be a valid date"})),
+            ))
+            .map(Some)?,
+        None => None,
+    };
+    if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
+        if from > to {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"`from` must be on or before `to`"})),
+            ));
+        }
+    }
+
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
     );
-    enum ExportFilter<'a> {
-        Username(&'a String),
-        From(&'a String),
-        To(&'a String),
-    }
-    let mut filters = Vec::new();
+    let mut has_clause = false;
     if let Some(ref u_name) = q.username {
-        filters.push(ExportFilter::Username(u_name));
+        push_clause(&mut builder, &mut has_clause);
+        builder.push("u.username = ").push_bind(u_name);
     }
-    if let Some(ref from) = q.from {
-        filters.push(ExportFilter::From(from));
+    if let Some(from) = parsed_from {
+        push_clause(&mut builder, &mut has_clause);
+        builder.push("a.date >= ").push_bind(from);
     }
-    if let Some(ref to) = q.to {
-        filters.push(ExportFilter::To(to));
-    }
-    if !filters.is_empty() {
-        builder.push(" WHERE ");
-        for (idx, filter) in filters.into_iter().enumerate() {
-            if idx > 0 {
-                builder.push(" AND ");
-            }
-            match filter {
-                ExportFilter::Username(value) => builder.push("u.username = ").push_bind(value),
-                ExportFilter::From(value) => builder.push("a.date >= ").push_bind(value),
-                ExportFilter::To(value) => builder.push("a.date <= ").push_bind(value),
-            };
-        }
+    if let Some(to) = parsed_to {
+        push_clause(&mut builder, &mut has_clause);
+        builder.push("a.date <= ").push_bind(to);
     }
     builder.push(" ORDER BY a.date DESC, u.username");
     let data = builder.build().fetch_all(&pool).await.map_err(|_| {
