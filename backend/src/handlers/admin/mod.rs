@@ -515,10 +515,12 @@ pub async fn upsert_attendance(
         None => None,
     };
 
-    let mut tx: Transaction<'_, Postgres> = pool
-        .begin()
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
+    let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Database error"})),
+        )
+    })?;
 
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
     sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
@@ -610,9 +612,12 @@ pub async fn upsert_attendance(
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to insert break"}))))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to upsert attendance"}))))?;
+    tx.commit().await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":"Failed to upsert attendance"})),
+        )
+    })?;
 
     let breaks = get_break_records(&pool, &att.id).await?;
     Ok(Json(AttendanceResponse {

@@ -1,8 +1,8 @@
 use js_sys::Date;
 use leptos::*;
 use leptos_router::*;
-use web_sys::console;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::console;
 
 mod api;
 mod components;
