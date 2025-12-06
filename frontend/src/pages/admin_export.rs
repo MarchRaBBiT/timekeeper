@@ -179,6 +179,11 @@ fn AdminExportPanel() -> impl IntoView {
                 from_date: from_date.get_untracked(),
                 to_date: to_date.get_untracked(),
             };
+            if use_specific_user.get_untracked() && filters.username_param().is_none() {
+                error.set(Some("指定ユーザーを選択してください。".into()));
+                preview.set(None);
+                return;
+            }
             if let Err(msg) = filters.validate() {
                 error.set(Some(msg));
                 preview.set(None);
@@ -225,27 +230,27 @@ fn AdminExportPanel() -> impl IntoView {
                                     {"指定ユーザー"}
                                 </label>
                             </div>
-                            <Show when=move || use_specific_user.get()>
-                                <Show when=move || users_error.get().is_some()>
-                                    <div class="space-y-1">
-                                        <input
-                                            class="w-full border rounded px-2 py-1"
-                                            placeholder="username を直接入力"
-                                            prop:value={move || username.get()}
-                                            on:input=move |ev| username.set(event_target_value(&ev))
-                                        />
-                                        <ErrorMessage message={users_error.get().unwrap_or_default()} />
-                                    </div>
-                                </Show>
-                                <Show when=move || users_error.get().is_none()>
-                                    <AdminUserSelect
-                                        users=users_resource.clone()
-                                        selected=username
-                                        label=None
-                                        placeholder="ユーザーを選択してください".into()
-                                        value_kind=UserSelectValue::Username
+                            <Show when=move || users_error.get().is_some()>
+                                <div class="space-y-1">
+                                    <input
+                                        class="w-full border rounded px-2 py-1 disabled:opacity-50"
+                                        placeholder="username を直接入力"
+                                        prop:value={move || username.get()}
+                                        on:input=move |ev| username.set(event_target_value(&ev))
+                                        disabled={move || !use_specific_user.get()}
                                     />
-                                </Show>
+                                    <ErrorMessage message={users_error.get().unwrap_or_default()} />
+                                </div>
+                            </Show>
+                            <Show when=move || users_error.get().is_none()>
+                                <AdminUserSelect
+                                    users=users_resource.clone()
+                                    selected=username
+                                    label=None
+                                    placeholder="ユーザーを選択してください".into()
+                                    value_kind=UserSelectValue::Username
+                                    disabled=move || !use_specific_user.get()
+                                />
                             </Show>
                         </div>
                     </div>
