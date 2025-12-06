@@ -31,7 +31,13 @@ pub fn HolidayManagementSection(
 
     let repo_for_holidays = repository.clone();
     let holidays_resource = create_resource(
-        move || (admin_allowed.get(), holiday_query.get(), holidays_reload.get()),
+        move || {
+            (
+                admin_allowed.get(),
+                holiday_query.get(),
+                holidays_reload.get(),
+            )
+        },
         move |(allowed, query, _)| {
             let repo = repo_for_holidays.clone();
             async move {
@@ -46,11 +52,8 @@ pub fn HolidayManagementSection(
     let holidays_loading = holidays_resource.loading();
     let holidays_fetch_error =
         Signal::derive(move || holidays_resource.get().and_then(|result| result.err()));
-    let holidays_page = Signal::derive(move || {
-        holidays_resource
-            .get()
-            .and_then(|result| result.ok())
-    });
+    let holidays_page =
+        Signal::derive(move || holidays_resource.get().and_then(|result| result.ok()));
     let holidays_data = Signal::derive(move || {
         holidays_page
             .get()
@@ -78,8 +81,12 @@ pub fn HolidayManagementSection(
             })
             .unwrap_or(1)
     });
-    let can_go_prev =
-        Signal::derive(move || page_total.get().map(|(page, _, _)| page > 1).unwrap_or(false));
+    let can_go_prev = Signal::derive(move || {
+        page_total
+            .get()
+            .map(|(page, _, _)| page > 1)
+            .unwrap_or(false)
+    });
     let can_go_next = Signal::derive(move || {
         page_total
             .get()
@@ -143,16 +150,15 @@ pub fn HolidayManagementSection(
         move |_| {
             let from_raw = filter_from_input.get();
             let to_raw = filter_to_input.get();
-            let parse_input =
-                |value: &str, label: &str| -> Result<Option<NaiveDate>, String> {
-                    let trimmed = value.trim();
-                    if trimmed.is_empty() {
-                        return Ok(None);
-                    }
-                    NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
-                        .map(Some)
-                        .map_err(|_| format!("{}は YYYY-MM-DD 形式で入力してください。", label))
-                };
+            let parse_input = |value: &str, label: &str| -> Result<Option<NaiveDate>, String> {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Ok(None);
+                }
+                NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+                    .map(Some)
+                    .map_err(|_| format!("{}は YYYY-MM-DD 形式で入力してください。", label))
+            };
             let parsed_from = match parse_input(&from_raw, "開始日") {
                 Ok(date) => date,
                 Err(err) => {
@@ -169,8 +175,7 @@ pub fn HolidayManagementSection(
             };
             if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
                 if from > to {
-                    holiday_error
-                        .set(Some("開始日は終了日以前である必要があります。".into()));
+                    holiday_error.set(Some("開始日は終了日以前である必要があります。".into()));
                     return;
                 }
             }
@@ -215,14 +220,14 @@ pub fn HolidayManagementSection(
                 holiday_error.set(Some("月を選択してください。".into()));
                 return;
             }
-            let first_day =
-                match NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d") {
-                    Ok(date) => date,
-                    Err(_) => {
-                        holiday_error.set(Some("月は YYYY-MM 形式で入力してください。".into()));
-                        return;
-                    }
-                };
+            let first_day = match NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
+            {
+                Ok(date) => date,
+                Err(_) => {
+                    holiday_error.set(Some("月は YYYY-MM 形式で入力してください。".into()));
+                    return;
+                }
+            };
             let next_month = if first_day.month() == 12 {
                 NaiveDate::from_ymd_opt(first_day.year() + 1, 1, 1)
             } else {

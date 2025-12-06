@@ -1,6 +1,10 @@
 use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
-    pages::admin::{repository::AdminRepository, utils::RequestFilterState},
+    pages::admin::{
+        components::user_select::{AdminUserSelect, UsersResource},
+        repository::AdminRepository,
+        utils::RequestFilterState,
+    },
 };
 use leptos::*;
 use serde_json::{json, Value};
@@ -16,6 +20,7 @@ struct RequestActionPayload {
 pub fn AdminRequestsSection(
     repository: AdminRepository,
     admin_allowed: Memo<bool>,
+    users: UsersResource,
 ) -> impl IntoView {
     let filter_state = RequestFilterState::new();
     let reload = create_rw_signal(0u32);
@@ -158,11 +163,14 @@ pub fn AdminRequestsSection(
                     <option value="rejected">{ "却下" }</option>
                     <option value="cancelled">{ "取消" }</option>
                 </select>
-                <input
-                    placeholder="User ID"
-                    class="border rounded-md px-2 py-1"
-                    on:input=move |ev| filter_state.user_id_signal().set(event_target_value(&ev))
-                />
+                <div class="min-w-[220px] flex-1">
+                    <AdminUserSelect
+                        users=users
+                        selected=filter_state.user_id_signal()
+                        label=Some("ユーザー".into())
+                        placeholder="全ユーザー".into()
+                    />
+                </div>
                 <button
                     class="px-3 py-1 bg-blue-600 text-white rounded"
                     on:click=on_search
