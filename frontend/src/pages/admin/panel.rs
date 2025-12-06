@@ -32,6 +32,21 @@ pub fn AdminPanel() -> impl IntoView {
             .unwrap_or(false)
     });
     let repository = store_value(AdminRepository::new());
+    let users_repository = repository.get_value();
+    let users_allowed = admin_allowed.clone();
+    let users_resource = create_resource(
+        move || users_allowed.get(),
+        move |allowed| {
+            let repo = users_repository.clone();
+            async move {
+                if allowed {
+                    repo.fetch_users().await
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        },
+    );
 
     view! {
         <layout::AdminDashboardScaffold admin_allowed=admin_allowed.clone()>
@@ -44,14 +59,17 @@ pub fn AdminPanel() -> impl IntoView {
                 <AdminRequestsSection
                     repository=repository.get_value()
                     admin_allowed=admin_allowed.clone()
+                    users=users_resource.clone()
                 />
                 <AdminAttendanceToolsSection
                     repository=repository.get_value()
                     system_admin_allowed=system_admin_allowed.clone()
+                    users=users_resource.clone()
                 />
                 <AdminMfaResetSection
                     repository=repository.get_value()
                     system_admin_allowed=system_admin_allowed.clone()
+                    users=users_resource.clone()
                 />
             </div>
             <HolidayManagementSection

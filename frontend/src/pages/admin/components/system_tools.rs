@@ -1,6 +1,9 @@
 use crate::{
     components::layout::{ErrorMessage, SuccessMessage},
-    pages::admin::repository::AdminRepository,
+    pages::admin::{
+        components::user_select::{AdminUserSelect, UsersResource},
+        repository::AdminRepository,
+    },
 };
 use leptos::*;
 
@@ -8,6 +11,7 @@ use leptos::*;
 pub fn AdminMfaResetSection(
     repository: AdminRepository,
     system_admin_allowed: Memo<bool>,
+    users: UsersResource,
 ) -> impl IntoView {
     let user_id = create_rw_signal(String::new());
     let error = create_rw_signal(None::<String>);
@@ -70,10 +74,11 @@ pub fn AdminMfaResetSection(
             <div class="bg-white shadow rounded-lg p-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">{"MFA リセット"}</h3>
                 <div class="flex flex-col gap-2">
-                    <input
-                        placeholder="User ID"
-                        class="border rounded px-2 py-1"
-                        on:input=move |ev| user_id.set(event_target_value(&ev))
+                    <AdminUserSelect
+                        users=users
+                        selected=user_id
+                        label=Some("対象ユーザー".into())
+                        placeholder="ユーザーを選択してください".into()
                     />
                     <button
                         class="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"

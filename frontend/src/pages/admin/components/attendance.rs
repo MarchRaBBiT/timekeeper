@@ -1,7 +1,10 @@
 use crate::{
     api::{AdminAttendanceUpsert, AdminBreakItem},
     components::layout::{ErrorMessage, SuccessMessage},
-    pages::admin::repository::AdminRepository,
+    pages::admin::{
+        components::user_select::{AdminUserSelect, UsersResource},
+        repository::AdminRepository,
+    },
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use leptos::{ev, *};
@@ -18,6 +21,7 @@ fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
 pub fn AdminAttendanceToolsSection(
     repository: AdminRepository,
     system_admin_allowed: Memo<bool>,
+    users: UsersResource,
 ) -> impl IntoView {
     let att_user = create_rw_signal(String::new());
     let att_date = create_rw_signal(String::new());
@@ -184,7 +188,12 @@ pub fn AdminAttendanceToolsSection(
             <div class="bg-white shadow rounded-lg p-6 space-y-4">
                 <h3 class="text-lg font-medium text-gray-900">{"勤怠ツール"}</h3>
                 <form class="space-y-3" on:submit=on_submit_attendance>
-                    <input placeholder="User ID" class="w-full border rounded px-2 py-1" on:input=move |ev| att_user.set(event_target_value(&ev)) />
+                    <AdminUserSelect
+                        users=users
+                        selected=att_user
+                        label=Some("対象ユーザー".into())
+                        placeholder="ユーザーを選択してください".into()
+                    />
                     <input type="date" class="w-full border rounded px-2 py-1" on:input=move |ev| att_date.set(event_target_value(&ev)) />
                     <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />
                     <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_out.set(event_target_value(&ev)) />

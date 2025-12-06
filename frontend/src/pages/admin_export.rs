@@ -1,5 +1,8 @@
-use crate::api::ApiClient;
+use crate::api::{ApiClient, UserResponse};
 use crate::components::layout::*;
+use crate::pages::admin::components::user_select::{
+    AdminUserSelect, UserSelectValue, UsersResource,
+};
 use crate::state::auth::use_auth;
 use crate::utils::trigger_csv_download;
 use chrono::NaiveDate;
@@ -101,12 +104,18 @@ pub fn AdminExportPage() -> impl IntoView {
 
 #[component]
 fn AdminExportPanel() -> impl IntoView {
+    let users_resource: UsersResource = create_resource(
+        || true,
+        |_| async move { ApiClient::new().get_users().await },
+    );
+    let users_error = Signal::derive(move || users_resource.get().and_then(|res| res.err()));
     let error = create_rw_signal(None::<String>);
     let preview = create_rw_signal(None::<String>);
     let filename_state = create_rw_signal(String::new());
     let username = create_rw_signal(String::new());
     let from_date = create_rw_signal(String::new());
     let to_date = create_rw_signal(String::new());
+    let use_specific_user = create_rw_signal(false);
 
     let export_action = create_action(move |filters: &ExportFilters| {
         let snapshot = filters.clone();
@@ -159,9 +168,14 @@ fn AdminExportPanel() -> impl IntoView {
         let username = username.clone();
         let from_date = from_date.clone();
         let to_date = to_date.clone();
+        let use_specific_user = use_specific_user.clone();
         move |_| {
             let filters = ExportFilters {
-                username: username.get_untracked(),
+                username: if use_specific_user.get_untracked() {
+                    username.get_untracked()
+                } else {
+                    String::new()
+                },
                 from_date: from_date.get_untracked(),
                 to_date: to_date.get_untracked(),
             };
@@ -184,13 +198,56 @@ fn AdminExportPanel() -> impl IntoView {
                 <h2 class="text-lg font-medium text-gray-900 mb-4">{"データエクスポート (CSV)"}</h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                     <div>
-                        <label class="block text-sm text-gray-700">{"ユーザー名 (任意)"}</label>
-                        <input
-                            class="mt-1 w-full border rounded px-2 py-1"
-                            placeholder="username"
-                            prop:value={move || username.get()}
-                            on:input=move |ev| username.set(event_target_value(&ev))
-                        />
+                        <label class="block text-sm text-gray-700">{"ユーザー"}</label>
+                        <div class="mt-1 space-y-2">
+                            <div class="flex items-center gap-4 text-sm text-gray-700">
+                                <label class="flex items-center gap-1">
+                                    <input
+                                        type="radio"
+                                        name="export_user_filter"
+                                        value="all"
+                                        checked=move || !use_specific_user.get()
+                                        on:change=move |_| {
+                                            use_specific_user.set(false);
+                                            username.set(String::new());
+                                        }
+                                    />
+                                    {"全ユーザー"}
+                                </label>
+                                <label class="flex items-center gap-1">
+                                    <input
+                                        type="radio"
+                                        name="export_user_filter"
+                                        value="specific"
+                                        checked=move || use_specific_user.get()
+                                        on:change=move |_| use_specific_user.set(true)
+                                    />
+                                    {"指定ユーザー"}
+                                </label>
+                            </div>
+                            <Show when=move || use_specific_user.get()>
+                                <Show when=move || users_error.get().is_some()>
+                                    <div class="space-y-1">
+                                        <input
+                                            class="w-full border rounded px-2 py-1"
+                                            placeholder="username を直接入力"
+                                            prop:value={move || username.get()}
+                                            on:input=move |ev| username.set(event_target_value(&ev))
+                                        />
+                                        <ErrorMessage message={users_error.get().unwrap_or_default()} />
+                                    </div>
+                                </Show>
+                                <Show when=move || users_error.get().is_none()>
+                                    <AdminUserSelect
+                                        users=users_resource.clone()
+                                        selected=username
+                                        label=None
+                                        placeholder="ユーザーを選択してください".into()
+                                        value_kind=UserSelectValue::Username
+                                    />
+                                </Show>
+                            </Show>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">{"From (YYYY-MM-DD)"}</label>

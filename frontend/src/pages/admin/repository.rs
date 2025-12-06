@@ -1,6 +1,6 @@
 use crate::api::{
-    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient,
-    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, WeeklyHolidayResponse,
+    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient, CreateHolidayRequest,
+    CreateWeeklyHolidayRequest, HolidayResponse, UserResponse, WeeklyHolidayResponse,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -168,6 +168,10 @@ impl AdminRepository {
 
     pub async fn delete_holiday(&self, id: &str) -> Result<(), String> {
         self.client.admin_delete_holiday(id).await.map(|_| ())
+    }
+
+    pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, String> {
+        self.client.get_users().await
     }
 }
 
