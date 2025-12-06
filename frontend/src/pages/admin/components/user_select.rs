@@ -1,4 +1,7 @@
-use crate::{api::UserResponse, components::layout::ErrorMessage};
+use crate::{
+    api::UserResponse,
+    components::layout::{ErrorMessage, LoadingSpinner},
+};
 use leptos::{ev, *};
 
 pub type UsersResource = Resource<bool, Result<Vec<UserResponse>, String>>;
@@ -19,6 +22,7 @@ pub fn AdminUserSelect(
     #[prop(default = UserSelectValue::Id)] value_kind: UserSelectValue,
 ) -> impl IntoView {
     let fetch_error = create_rw_signal(None::<String>);
+    let loading = users.loading();
 
     {
         let fetch_error = fetch_error.clone();
@@ -43,30 +47,47 @@ pub fn AdminUserSelect(
 
     let has_label = label.as_ref().map(|l| !l.is_empty()).unwrap_or(false);
     let label_value = label.unwrap_or_default();
+    let users_resource = users.clone();
 
-    let options_view = move || match users.get() {
-        None => {
-            view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }.into_view()
+    let on_retry = {
+        let fetch_error = fetch_error.clone();
+        move |_| {
+            fetch_error.set(None);
+            users_resource.refetch();
         }
-        Some(Err(_)) => {
-            view! { <option value="" disabled>{"ユーザーの取得に失敗しました"}</option> }
-                .into_view()
+    };
+
+    let options_view = move || {
+        if loading.get() {
+            return view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }
+                .into_view();
         }
-        Some(Ok(list)) => view! {
-            <For
-                each=move || list.clone()
-                key=|user| user.id.clone()
-                children=move |user| {
-                    let label = format!("{} ({})", user.full_name, user.username);
-                    let value = match value_kind {
-                        UserSelectValue::Id => user.id.clone(),
-                        UserSelectValue::Username => user.username.clone(),
-                    };
-                    view! { <option value=value>{label}</option> }
-                }
-            />
+        match users.get() {
+            None => view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }
+                .into_view(),
+            Some(Err(_)) => {
+                view! { <option value="" disabled>{"ユーザーの取得に失敗しました"}</option> }
+                    .into_view()
+            }
+            Some(Ok(list)) if list.is_empty() => {
+                view! { <option value="" disabled>{"ユーザーが0件です"}</option> }.into_view()
+            }
+            Some(Ok(list)) => view! {
+                <For
+                    each=move || list.clone()
+                    key=|user| user.id.clone()
+                    children=move |user| {
+                        let label = format!("{} ({})", user.full_name, user.username);
+                        let value = match value_kind {
+                            UserSelectValue::Id => user.id.clone(),
+                            UserSelectValue::Username => user.username.clone(),
+                        };
+                        view! { <option value=value>{label}</option> }
+                    }
+                />
+            }
+            .into_view(),
         }
-        .into_view(),
     };
 
     view! {
@@ -85,7 +106,19 @@ pub fn AdminUserSelect(
                 {move || options_view()}
             </select>
             <Show when=move || fetch_error.get().is_some()>
-                <ErrorMessage message={fetch_error.get().unwrap_or_default()} />
+                <div class="flex items-center gap-2">
+                    <ErrorMessage message={fetch_error.get().unwrap_or_default()} />
+                    <button
+                        class="text-sm text-blue-700 hover:underline disabled:opacity-50"
+                        on:click=on_retry
+                        disabled=move || loading.get()
+                    >
+                        {"再試行"}
+                    </button>
+                    <Show when=move || loading.get()>
+                        <LoadingSpinner />
+                    </Show>
+                </div>
             </Show>
         </div>
     }
