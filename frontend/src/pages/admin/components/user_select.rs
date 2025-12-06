@@ -20,6 +20,7 @@ pub fn AdminUserSelect(
     #[prop(optional_no_strip)] label: Option<String>,
     #[prop(default = "ユーザーを選択".to_string())] placeholder: String,
     #[prop(default = UserSelectValue::Id)] value_kind: UserSelectValue,
+    #[prop(into, default = MaybeSignal::Static(false))] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
     let fetch_error = create_rw_signal(None::<String>);
     let loading = users.loading();
@@ -63,8 +64,9 @@ pub fn AdminUserSelect(
                 .into_view();
         }
         match users.get() {
-            None => view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }
-                .into_view(),
+            None => {
+                view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }.into_view()
+            }
             Some(Err(_)) => {
                 view! { <option value="" disabled>{"ユーザーの取得に失敗しました"}</option> }
                     .into_view()
@@ -101,6 +103,7 @@ pub fn AdminUserSelect(
                 class="w-full border rounded px-2 py-1 bg-white disabled:opacity-50"
                 on:change=on_change
                 prop:value=selected
+                disabled=disabled
             >
                 <option value="">{placeholder.clone()}</option>
                 {move || options_view()}
