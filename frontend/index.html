@@ -10,13 +10,23 @@
 <body>
     <div id="app"></div>
     <script type="module">
-        // Optional runtime env overrides (if present). Ignored if 404.
-        const envScript = document.createElement('script');
-        envScript.src = './env.js';
-        document.head.appendChild(envScript);
+        // env.js での上書きを待ってから WASM を起動する
+        const loadEnv = new Promise((resolve) => {
+            const envScript = document.createElement('script');
+            envScript.src = './env.js';
+            envScript.async = false;
+            envScript.onload = () => resolve(true);
+            envScript.onerror = () => resolve(false); // env.js が無くても続行
+            document.head.appendChild(envScript);
+        });
 
-        import init from './pkg/timekeeper_frontend.js';
-        init();
+        async function bootstrap() {
+            await loadEnv;
+            const { default: init } = await import('./pkg/timekeeper_frontend.js');
+            await init();
+        }
+
+        bootstrap();
     </script>
 </body>
 </html>

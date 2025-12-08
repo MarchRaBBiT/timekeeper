@@ -307,3 +307,26 @@ mod tests {
         assert_eq!(refreshed.time_zone.as_deref(), Some("Asia/Tokyo"));
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test(async)]
+    async fn reads_api_base_url_from_window_env() {
+        let window = web_sys::window().expect("window available");
+        let env = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(
+            &env,
+            &"API_BASE_URL".into(),
+            &wasm_bindgen::JsValue::from_str("https://example.test/api"),
+        );
+        let _ = js_sys::Reflect::set(&window, &"__TIMEKEEPER_ENV".into(), &env);
+
+        let resolved = await_api_base_url().await;
+        assert_eq!(resolved, "https://example.test/api");
+    }
+}
