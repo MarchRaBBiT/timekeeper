@@ -1,5 +1,18 @@
+FROM rust:1.88 as chef
+WORKDIR /app
+RUN cargo install cargo-chef
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json --bin timekeeper-frontend
+
 FROM rust:1.88 as builder
 WORKDIR /app
+RUN rustup target add wasm32-unknown-unknown
+COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
+COPY --from=chef /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --recipe-path recipe.json --target wasm32-unknown-unknown --bin timekeeper-frontend
+
 # Copy the full workspace to resolve workspace-inherited fields
 COPY . .
 
@@ -10,7 +23,9 @@ RUN cargo install wasm-pack
 WORKDIR /app/frontend
 ENV RUST_MIN_STACK=16777216 \
     CARGO_BUILD_JOBS=1
-RUN wasm-pack build --target web --out-dir pkg --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    wasm-pack build --target web --out-dir pkg --release
 
 FROM nginx:alpine
 WORKDIR /usr/share/nginx/html

@@ -1,5 +1,16 @@
+FROM rust:1.88 as chef
+WORKDIR /app
+RUN cargo install cargo-chef
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
 FROM rust:1.88 as builder
 WORKDIR /app
+COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
+COPY --from=chef /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --release --recipe-path recipe.json
 
 # Copy workspace manifests first (better layer caching)
 COPY Cargo.toml ./
@@ -12,7 +23,9 @@ COPY . .
 # Build only backend binary in release
 ENV RUST_MIN_STACK=16777216 \
     CARGO_BUILD_JOBS=1
-RUN cargo build -p timekeeper-backend --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build -p timekeeper-backend --release
 
 FROM debian:bookworm-slim
 WORKDIR /app
