@@ -116,6 +116,7 @@ fn AdminExportPanel() -> impl IntoView {
     let from_date = create_rw_signal(String::new());
     let to_date = create_rw_signal(String::new());
     let use_specific_user = create_rw_signal(false);
+    let specific_user_disabled = Signal::derive(move || !use_specific_user.get());
 
     let export_action = create_action(move |filters: &ExportFilters| {
         let snapshot = filters.clone();
@@ -237,7 +238,7 @@ fn AdminExportPanel() -> impl IntoView {
                                         placeholder="username を直接入力"
                                         prop:value={move || username.get()}
                                         on:input=move |ev| username.set(event_target_value(&ev))
-                                        disabled={move || !use_specific_user.get()}
+                                        disabled=specific_user_disabled
                                     />
                                     <ErrorMessage message={users_error.get().unwrap_or_default()} />
                                 </div>
@@ -249,7 +250,7 @@ fn AdminExportPanel() -> impl IntoView {
                                     label=None
                                     placeholder="ユーザーを選択してください".into()
                                     value_kind=UserSelectValue::Username
-                                    disabled=move || !use_specific_user.get()
+                                    disabled=specific_user_disabled
                                 />
                             </Show>
                         </div>
