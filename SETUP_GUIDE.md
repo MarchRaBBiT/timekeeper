@@ -195,7 +195,7 @@ RUST_LOG=debug cargo run
 
 ## 本番環境へのデプロイ
 
-### Dockerを使用したデプロイ
+### Podmanを使用したデプロイ
 
 #### 1. Dockerfileの作成
 
@@ -227,7 +227,7 @@ COPY frontend/index.html /usr/share/nginx/html/
 EXPOSE 80
 ```
 
-#### 2. docker-compose.ymlの作成
+#### 2. compose.yml（docker-compose.yml）の作成
 
 ```yaml
 version: '3.8'
@@ -254,13 +254,13 @@ services:
 
 ```bash
 # イメージビルド
-docker-compose build
+podman compose build
 
 # サービス起動
-docker-compose up -d
+podman compose up -d
 
 # ログ確認
-docker-compose logs -f
+podman compose logs -f
 ```
 
 ### 手動デプロイ
