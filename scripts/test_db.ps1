@@ -15,12 +15,12 @@ $port = 55432
 
 function Invoke-Compose {
   param([string[]]$ComposeArgs)
-  if (Get-Command docker -ErrorAction SilentlyContinue) {
-    & docker compose @('-f', $composeFile) @ComposeArgs
-  } elseif (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-    & docker-compose @('-f', $composeFile) @ComposeArgs
+  if (Get-Command podman -ErrorAction SilentlyContinue) {
+    & podman compose @('-f', $composeFile) @ComposeArgs
+  } elseif (Get-Command podman-compose -ErrorAction SilentlyContinue) {
+    & podman-compose @('-f', $composeFile) @ComposeArgs
   } else {
-    throw "Docker Compose not found. Please install Docker Desktop or docker-compose."
+    throw "Podman Compose not found. Please install Podman Desktop or podman-compose."
   }
 }
 

@@ -13,13 +13,13 @@ Timekeeper は Rust 製の Axum バックエンド、Leptos/WASM フロントエ
 - `backend/` が API を動かす。`src/handlers`、`models`、`middleware`、`db` がサービス層に対応し、`migrations/*.sql` が SQLx 用のスキーマ変更を流し込む。
 - `frontend/` は WASM にコンパイルされる Rust クレート。`src/components` が再利用ウィジェット、`src/pages` がルーティングされた画面、`src/api` が HTTP 呼び出しの集約、`config.json` と `src/config.rs` が実行時設定を扱う。
 - `e2e/` には Playwright のシナリオ（`run.mjs`、`guard.mjs`、`logout.mjs`）を置き、`FRONTEND_BASE_URL` 上のフロントエンドを前提とする。
-- `scripts/` には docker 化されたバックエンド制御、フロントエンドビルド、API スモーク自動化のための PowerShell ヘルパーをまとめる。新しい自動化もここに追加する。
+- `scripts/` には Podman を使ったバックエンド制御、フロントエンドビルド、API スモーク自動化のための PowerShell ヘルパーをまとめる。新しい自動化もここに追加する。
 
 ### 実行・ビルド・開発コマンド
 ```powershell
 # backend（ネイティブ実行）
 cd backend; cargo run
-# backend（ヘルパー経由の docker compose）
+# backend（ヘルパー経由の podman compose）
 pwsh -File .\scripts\backend.ps1 start
 # frontend（再ビルド + :8000 で静的サーバ）
 pwsh -File .\scripts\frontend.ps1 start
@@ -27,7 +27,7 @@ pwsh -File .\scripts\frontend.ps1 start
 PID ファイルの取り残しを避けるため、`stop/status/logs` のサブコマンドを優先して使う。
 
 ### 環境と設定のヒント
-- `env.example` を `.env` にコピーし、`DATABASE_URL`（ローカルは SQLite か手元の Postgres DSN）を設定する。`JWT_SECRET` は一意にし、docker compose は `.env` から直接読み込む点に注意。
+- `env.example` を `.env` にコピーし、`DATABASE_URL`（ローカルは SQLite か手元の Postgres DSN）を設定する。`JWT_SECRET` は一意にし、podman compose は `.env` から直接読み込む点に注意。
 - 設定値は `.env` に置き、生成物（`frontend/pkg/`、`.backend.pid`）はコミットしない。
 
 ## 開発ポリシー

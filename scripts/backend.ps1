@@ -9,23 +9,23 @@ $projectRoot = Split-Path -Parent $scriptDir
 if (-not $projectRoot) { $projectRoot = (Get-Location).Path }
 Set-Location $projectRoot
 
-# Helper: choose Docker Compose v2 (`docker compose`) or legacy (`docker-compose`)
+# Helper: choose Podman Compose (`podman compose`) or legacy (`podman-compose`)
 function Invoke-Compose {
   param([string[]]$ComposeArgs)
-  if (Get-Command docker -ErrorAction SilentlyContinue) {
-    & docker compose @ComposeArgs
-  } elseif (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-    & docker-compose @ComposeArgs
+  if (Get-Command podman -ErrorAction SilentlyContinue) {
+    & podman compose @ComposeArgs
+  } elseif (Get-Command podman-compose -ErrorAction SilentlyContinue) {
+    & podman-compose @ComposeArgs
   } else {
-    throw "Docker Compose not found. Please install Docker Desktop or docker-compose."
+    throw "Podman Compose not found. Please install Podman Desktop or podman-compose."
   }
 }
 
 function Start-Backend {
   # Start only the backend service in detached mode
-  Write-Host "Starting backend via Docker Compose..." -ForegroundColor Cyan
+  Write-Host "Starting backend via Podman Compose..." -ForegroundColor Cyan
   Invoke-Compose @('up','-d','backend') | Out-Null
-  # Remove stale PID file from previous non-Docker runner, if any
+  # Remove stale PID file from previous non-container runner, if any
   $pidFile = Join-Path $projectRoot '.backend.pid'
   if (Test-Path $pidFile) { Remove-Item $pidFile -ErrorAction SilentlyContinue }
   Write-Host "Backend container started (service: backend)." -ForegroundColor Green
@@ -42,7 +42,7 @@ function Stop-Backend {
 }
 
 function Status-Backend {
-  Write-Host "Backend status (docker compose ps backend):" -ForegroundColor Cyan
+  Write-Host "Backend status (podman compose ps backend):" -ForegroundColor Cyan
   try {
     Invoke-Compose @('ps','backend')
   } catch {

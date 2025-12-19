@@ -9,7 +9,7 @@
 | バックエンド | [Rust 1.70+](https://www.rust-lang.org/tools/install)（`cargo` 付き） |
 | フロントエンド（WASM） | `wasm-pack`（`cargo install wasm-pack`）と Python 3（静的サーバ用） |
 | データベース | ローカル実行は SQLite（同梱）、PostgreSQL も `DATABASE_URL` で利用可 |
-| 自動化（任意） | Docker Desktop + Docker Compose |
+| 自動化（任意） | Podman Desktop + Podman Compose |
 | テスト | Firefox（`wasm-pack test --headless --firefox`）、Node.js 18+（Playwright/E2E） |
 
 > 補足: Windows では `scripts/backend.ps1` / `scripts/frontend.ps1` を使えば start/stop/status/logs を一括操作できます。
@@ -34,7 +34,7 @@ cd timekeeper
    JWT_EXPIRATION_HOURS=1
    REFRESH_TOKEN_EXPIRATION_DAYS=7
    ```
-3. ローカル PostgreSQL / ステージングで利用する場合は `DATABASE_URL` を DSN に置き換え、`JWT_SECRET` を十分ランダムな値に更新してください（Docker Compose でも `.env` を直接読むため）。
+3. ローカル PostgreSQL / ステージングで利用する場合は `DATABASE_URL` を DSN に置き換え、`JWT_SECRET` を十分ランダムな値に更新してください（Podman Compose でも `.env` を直接読むため）。
 
 > SQLite を利用する場合は `DATABASE_URL=sqlite:./timekeeper.db` のように書き換えてください。既定値と `env.example` は PostgreSQL を前提としています。
 
@@ -80,18 +80,18 @@ password: admin123
 
 このユーザーでログインし、UI や `POST /api/admin/users` から従業員/管理者を追加してください。
 
-## 7. Docker（任意）
+## 7. Podman（任意）
 
 リポジトリには以下のコンテナ定義が含まれています。
 
 - `backend/Dockerfile`（Rust ビルド → Debian スリム）
 - `frontend/Dockerfile`（Rust ビルド + nginx）
-- `docker-compose.yml` / `.example`
+- compose 定義（`docker-compose.yml` / `.example`）
 
 クイックスタート:
 
 ```bash
-docker compose up --build
+podman compose up --build
 ```
 
 `.env` あるいは Compose の `environment` セクションでシークレットを上書きし、SQLite/PostgreSQL を永続化したい場合はボリュームをマウントしてください。
