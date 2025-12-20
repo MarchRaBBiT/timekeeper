@@ -8,6 +8,7 @@ use log::error;
 #[component]
 pub fn Header() -> impl IntoView {
     let (auth, _set_auth) = use_auth();
+    let (menu_open, set_menu_open) = create_signal(false);
     let can_access_admin = move || {
         auth.get()
             .user
@@ -37,12 +38,18 @@ pub fn Header() -> impl IntoView {
     let on_logout = {
         let logout_action = logout_action.clone();
         let logout_pending = logout_pending.clone();
+        let set_menu_open = set_menu_open.clone();
         move |_| {
             if logout_pending.get_untracked() {
                 return;
             }
+            set_menu_open.set(false);
             logout_action.dispatch(false);
         }
+    };
+    let toggle_menu = {
+        let set_menu_open = set_menu_open.clone();
+        move |_| set_menu_open.update(|open| *open = !*open)
     };
     view! {
         <header class="bg-white shadow-sm border-b">
@@ -53,41 +60,148 @@ pub fn Header() -> impl IntoView {
                             "Timekeeper"
                         </h1>
                     </div>
-                    <nav class="flex space-x-4">
-                        <a href="/dashboard" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                            "ダッシュボード"
-                        </a>
-                        <a href="/attendance" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                            "勤怠"
-                        </a>
-                        <a href="/requests" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                            "申請"
-                        </a>
-                        <a href="/mfa/register" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                            "MFA設定"
-                        </a>
-                        <Show when=move || can_access_admin()>
-                            <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                                "管理"
+                    <div class="flex items-center">
+                        <nav class="hidden md:flex space-x-4">
+                            <a href="/dashboard" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "ダッシュボード"
                             </a>
-                            <a href="/admin/export" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                                "データエクスポート"
+                            <a href="/attendance" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "勤怠"
                             </a>
-                        </Show>
-                        <Show when=move || can_manage_users()>
-                            <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                                "ユーザー追加"
+                            <a href="/requests" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "申請"
                             </a>
-                        </Show>
+                            <a href="/mfa/register" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "MFA設定"
+                            </a>
+                            <Show when=move || can_access_admin()>
+                                <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                    "管理"
+                                </a>
+                                <a href="/admin/export" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                    "データエクスポート"
+                                </a>
+                            </Show>
+                            <Show when=move || can_manage_users()>
+                                <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                    "ユーザー追加"
+                                </a>
+                            </Show>
+                            <button
+                                on:click=on_logout
+                                class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                                disabled={move || logout_pending.get()}
+                            >
+                                "ログアウト"
+                            </button>
+                        </nav>
                         <button
-                            on:click=on_logout
-                            class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
-                            disabled={move || logout_pending.get()}
+                            type="button"
+                            class="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                            on:click=toggle_menu
+                            aria-expanded=move || menu_open.get()
+                            aria-controls="mobile-nav"
                         >
-                            "ログアウト"
+                            <span class="sr-only">
+                                {move || if menu_open.get() { "メニューを閉じる" } else { "メニューを開く" }}
+                            </span>
+                            <svg
+                                class="h-6 w-6"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <Show
+                                    when=move || menu_open.get()
+                                    fallback=move || {
+                                        view! {
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M4 6h16M4 12h16M4 18h16"
+                                            />
+                                        }
+                                    }
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12"
+                                    />
+                                </Show>
+                            </svg>
                         </button>
-                    </nav>
+                    </div>
                 </div>
+                <Show when=move || menu_open.get()>
+                    <div id="mobile-nav" class="md:hidden border-t">
+                        <nav class="px-4 py-3 space-y-2">
+                            <a
+                                href="/dashboard"
+                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                on:click=move |_| set_menu_open.set(false)
+                            >
+                                "ダッシュボード"
+                            </a>
+                            <a
+                                href="/attendance"
+                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                on:click=move |_| set_menu_open.set(false)
+                            >
+                                "勤怠"
+                            </a>
+                            <a
+                                href="/requests"
+                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                on:click=move |_| set_menu_open.set(false)
+                            >
+                                "申請"
+                            </a>
+                            <a
+                                href="/mfa/register"
+                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                on:click=move |_| set_menu_open.set(false)
+                            >
+                                "MFA設定"
+                            </a>
+                            <Show when=move || can_access_admin()>
+                                <a
+                                    href="/admin"
+                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                    on:click=move |_| set_menu_open.set(false)
+                                >
+                                    "管理"
+                                </a>
+                                <a
+                                    href="/admin/export"
+                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                    on:click=move |_| set_menu_open.set(false)
+                                >
+                                    "データエクスポート"
+                                </a>
+                            </Show>
+                            <Show when=move || can_manage_users()>
+                                <a
+                                    href="/admin/users"
+                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                    on:click=move |_| set_menu_open.set(false)
+                                >
+                                    "ユーザー追加"
+                                </a>
+                            </Show>
+                            <button
+                                on:click=on_logout
+                                class="w-full text-left text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                                disabled={move || logout_pending.get()}
+                            >
+                                "ログアウト"
+                            </button>
+                        </nav>
+                    </div>
+                </Show>
             </div>
         </header>
     }
