@@ -51,7 +51,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .get(&format!("{}/admin/requests/{}", base_url, id))
+                    .get(format!("{}/admin/requests/{}", base_url, id))
                     .headers(headers))
             })
             .await?;
@@ -78,7 +78,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .put(&format!("{}/admin/requests/{}/{}", base_url, id, action))
+                    .put(format!("{}/admin/requests/{}/{}", base_url, id, action))
                     .headers(headers)
                     .json(&json!({ "comment": comment })))
             })
@@ -93,7 +93,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .put(&format!("{}/requests/{}", base_url, id))
+                    .put(format!("{}/requests/{}", base_url, id))
                     .headers(headers)
                     .json(&payload))
             })
@@ -108,7 +108,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .delete(&format!("{}/requests/{}", base_url, id))
+                    .delete(format!("{}/requests/{}", base_url, id))
                     .headers(headers))
             })
             .await?;
@@ -140,7 +140,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .post(&format!("{}/requests/{}", base_url, kind))
+                    .post(format!("{}/requests/{}", base_url, kind))
                     .headers(headers)
                     .json(&payload))
             })
@@ -169,7 +169,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .get(&format!("{}/requests/me", base_url))
+                    .get(format!("{}/requests/me", base_url))
                     .headers(headers))
             })
             .await?;

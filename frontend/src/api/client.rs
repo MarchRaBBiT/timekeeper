@@ -121,7 +121,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/admin/users", base_url))
+                    .get(format!("{}/admin/users", base_url))
                     .headers(headers))
             })
             .await?;
@@ -149,7 +149,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .post(&format!("{}/admin/users", base_url))
+                    .post(format!("{}/admin/users", base_url))
                     .headers(headers)
                     .json(&request))
             })
@@ -178,7 +178,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .post(&format!("{}/admin/mfa/reset", base_url))
+                    .post(format!("{}/admin/mfa/reset", base_url))
                     .headers(headers)
                     .json(&json!({ "user_id": user_id })))
             })
@@ -203,7 +203,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/holidays", base_url))
+                    .get(format!("{}/holidays", base_url))
                     .headers(headers))
             })
             .await?;
@@ -248,7 +248,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/admin/holidays", base_url))
+                    .get(format!("{}/admin/holidays", base_url))
                     .headers(headers)
                     .query(&params))
             })
@@ -280,7 +280,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .post(&format!("{}/admin/holidays", base_url))
+                    .post(format!("{}/admin/holidays", base_url))
                     .headers(headers)
                     .json(payload))
             })
@@ -309,7 +309,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .delete(&format!("{}/admin/holidays/{}", base_url, id))
+                    .delete(format!("{}/admin/holidays/{}", base_url, id))
                     .headers(headers))
             })
             .await?;
@@ -337,7 +337,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/holidays/check", base_url))
+                    .get(format!("{}/holidays/check", base_url))
                     .query(&[("date", date.format("%Y-%m-%d").to_string())])
                     .headers(headers))
             })
@@ -370,7 +370,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/holidays/month", base_url))
+                    .get(format!("{}/holidays/month", base_url))
                     .query(&[("year", year.to_string()), ("month", month.to_string())])
                     .headers(headers))
             })
@@ -399,7 +399,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/admin/holidays/weekly", base_url))
+                    .get(format!("{}/admin/holidays/weekly", base_url))
                     .headers(headers))
             })
             .await?;
@@ -430,7 +430,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .post(&format!("{}/admin/holidays/weekly", base_url))
+                    .post(format!("{}/admin/holidays/weekly", base_url))
                     .headers(headers)
                     .json(payload))
             })
@@ -491,7 +491,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(&format!("{}/admin/export", base_url))
+                    .get(format!("{}/admin/export", base_url))
                     .headers(headers))
             })
             .await?;
@@ -541,7 +541,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 let mut request = self
                     .client
-                    .get(&format!("{}/admin/export", base_url))
+                    .get(format!("{}/admin/export", base_url))
                     .headers(headers);
                 if !params.is_empty() {
                     request = request.query(&params);

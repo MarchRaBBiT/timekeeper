@@ -15,7 +15,7 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .http_client()
-            .post(&format!("{}/auth/login", base_url))
+            .post(format!("{}/auth/login", base_url))
             .json(&request)
             .send()
             .await
@@ -60,7 +60,7 @@ impl ApiClient {
 
         let response = self
             .http_client()
-            .post(&format!("{}/auth/refresh", base_url))
+            .post(format!("{}/auth/refresh", base_url))
             .json(&payload)
             .send()
             .await
@@ -105,7 +105,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .post(&format!("{}/auth/logout", base_url))
+                    .post(format!("{}/auth/logout", base_url))
                     .headers(headers)
                     .json(&body))
             })
@@ -129,7 +129,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .get(&format!("{}/auth/mfa", base_url))
+                    .get(format!("{}/auth/mfa", base_url))
                     .headers(headers))
             })
             .await?;
@@ -157,7 +157,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .post(&format!("{}/auth/mfa/register", base_url))
+                    .post(format!("{}/auth/mfa/register", base_url))
                     .headers(headers)
                     .json(&json!({})))
             })
@@ -186,7 +186,7 @@ impl ApiClient {
                 let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .post(&format!("{}/auth/mfa/activate", base_url))
+                    .post(format!("{}/auth/mfa/activate", base_url))
                     .headers(headers)
                     .json(&json!({ "code": code })))
             })
