@@ -13,7 +13,7 @@
         // env.js での上書きを待ってから WASM を起動する
         const loadEnv = new Promise((resolve) => {
             const envScript = document.createElement('script');
-            envScript.src = './env.js';
+            envScript.src = '/env.js';
             envScript.async = false;
             envScript.onload = () => resolve(true);
             envScript.onerror = () => resolve(false); // env.js が無くても続行
@@ -22,7 +22,7 @@
 
         async function bootstrap() {
             await loadEnv;
-            const { default: init } = await import('./pkg/timekeeper_frontend.js');
+            const { default: init } = await import('/pkg/timekeeper_frontend.js');
             await init();
         }
 

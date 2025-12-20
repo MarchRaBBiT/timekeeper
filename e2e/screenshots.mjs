@@ -7,8 +7,8 @@ const base = process.env.FRONTEND_BASE_URL || "http://localhost:8080";
 const adminUsername = process.env.E2E_ADMIN_USER || "admin";
 const adminPassword = process.env.E2E_ADMIN_PASS || "admin123";
 const adminTotpCode = process.env.E2E_TOTP_CODE || "";
-const nonAdminUsername = process.env.E2E_NON_ADMIN_USER || "";
-const nonAdminPassword = process.env.E2E_NON_ADMIN_PASS || "";
+const nonAdminUsername = process.env.E2E_NON_ADMIN_USER || "guest";
+const nonAdminPassword = process.env.E2E_NON_ADMIN_PASS || "guest123";
 const nonAdminTotpCode = process.env.E2E_NON_ADMIN_TOTP_CODE || "";
 
 const viewports = [
@@ -27,9 +27,27 @@ const pages = [
   { name: "dashboard", path: "/dashboard", waitFor: "text=ダッシュボード", requiresAuth: true },
   { name: "attendance", path: "/attendance", waitFor: "text=勤怠管理", requiresAuth: true },
   { name: "requests", path: "/requests", waitFor: "text=申請管理", requiresAuth: true },
-  { name: "mfa", path: "/mfa/register", waitFor: "text=MFA 設定", requiresAuth: true },
+  {
+    name: "mfa",
+    path: "/mfa/register",
+    waitForAny: [
+      'h1:has-text("MFA 設定")',
+      'button:has-text("シークレットを発行")',
+      "text=/MFA\\s*設定/",
+    ],
+    waitForUrl: "**/mfa/register",
+    requiresAuth: true,
+  },
   { name: "admin", path: "/admin", waitFor: "text=管理者ツール", requiresAuth: true },
-  { name: "admin-users", path: "/admin/users", waitFor: "text=ユーザー管理", requiresAuth: true },
+  {
+    name: "admin-users",
+    path: "/admin/users",
+    waitForAny: [
+      "text=ユーザー管理",
+      "text=このページはシステム管理者のみ利用できます。",
+    ],
+    requiresAuth: true,
+  },
   {
     name: "admin-export-empty",
     path: "/admin/export",
@@ -68,11 +86,43 @@ async function login(page, { username, password, totp }) {
   log("ログイン成功");
 }
 
+async function waitForAnySelector(page, selectors, timeoutMs) {
+  const tasks = selectors.map((selector) =>
+    page.waitForSelector(selector, { timeout: timeoutMs })
+  );
+  await Promise.any(tasks);
+}
+
 async function capturePage(page, viewportName, pageDef) {
   const url = `${base}${pageDef.path}`;
   log(`${viewportName} ${pageDef.name} を取得中: ${url}`);
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(pageDef.waitFor, { timeout: 20000 });
+  if (pageDef.waitForUrl) {
+    await page.waitForURL(pageDef.waitForUrl, { timeout: 20000 });
+  }
+  if (pageDef.waitForAny && pageDef.waitForAny.length > 0) {
+    try {
+      await waitForAnySelector(page, pageDef.waitForAny, 20000);
+    } catch (error) {
+      if (!pageDef.allowMissingSelector) {
+        throw error;
+      }
+      log(
+        `${pageDef.name} の待機セレクタに失敗しました。現在のURL: ${page.url()}`
+      );
+    }
+  } else if (pageDef.waitFor) {
+    try {
+      await page.waitForSelector(pageDef.waitFor, { timeout: 20000 });
+    } catch (error) {
+      if (!pageDef.allowMissingSelector) {
+        throw error;
+      }
+      log(
+        `${pageDef.name} の待機セレクタに失敗しました。現在のURL: ${page.url()}`
+      );
+    }
+  }
   if (pageDef.expectAbsentSelector) {
     const count = await page.locator(pageDef.expectAbsentSelector).count();
     if (count > 0) {
