@@ -119,7 +119,10 @@ impl ApiClient {
         let response = self
             .send_with_refresh(|| {
                 let headers = self.get_auth_headers()?;
-                Ok(self.client.get(&format!("{}/admin/users", base_url)).headers(headers))
+                Ok(self
+                    .client
+                    .get(&format!("{}/admin/users", base_url))
+                    .headers(headers))
             })
             .await?;
 
@@ -198,7 +201,10 @@ impl ApiClient {
         let response = self
             .send_with_refresh(|| {
                 let headers = self.get_auth_headers()?;
-                Ok(self.client.get(&format!("{}/holidays", base_url)).headers(headers))
+                Ok(self
+                    .client
+                    .get(&format!("{}/holidays", base_url))
+                    .headers(headers))
             })
             .await?;
 
