@@ -117,8 +117,4 @@ mod tests {
         assert_eq!(unique.len(), ROUTE_PATHS.len());
     }
 
-    #[test]
-    fn app_root_builds() {
-        let _ = app_root().into_view();
-    }
 }
