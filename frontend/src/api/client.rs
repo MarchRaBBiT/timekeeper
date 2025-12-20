@@ -66,6 +66,33 @@ impl ApiClient {
         }
     }
 
+    pub(super) async fn send_with_refresh<F>(
+        &self,
+        build_request: F,
+    ) -> Result<reqwest_wasm::Response, String>
+    where
+        F: Fn() -> Result<reqwest_wasm::RequestBuilder, String>,
+    {
+        let response = build_request()?
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        if response.status() != StatusCode::UNAUTHORIZED {
+            return Ok(response);
+        }
+
+        if self.refresh_token().await.is_ok() {
+            let retry_response = build_request()?
+                .send()
+                .await
+                .map_err(|e| format!("Request failed: {}", e))?;
+            return Ok(retry_response);
+        }
+
+        Ok(response)
+    }
+
     fn clear_auth_session() {
         if let Ok(storage) = storage_utils::local_storage() {
             let _ = storage.remove_item("access_token");
@@ -88,15 +115,13 @@ impl ApiClient {
     }
 
     pub async fn get_users(&self) -> Result<Vec<UserResponse>, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/admin/users", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self.client.get(&format!("{}/admin/users", base_url)).headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -115,16 +140,17 @@ impl ApiClient {
     }
 
     pub async fn create_user(&self, request: CreateUser) -> Result<UserResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .post(&format!("{}/admin/users", base_url))
-            .headers(headers)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .post(&format!("{}/admin/users", base_url))
+                    .headers(headers)
+                    .json(&request))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -143,16 +169,17 @@ impl ApiClient {
     }
 
     pub async fn admin_reset_mfa(&self, user_id: &str) -> Result<(), String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let resp = self
-            .client
-            .post(&format!("{}/admin/mfa/reset", base_url))
-            .headers(headers)
-            .json(&json!({ "user_id": user_id }))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .post(&format!("{}/admin/mfa/reset", base_url))
+                    .headers(headers)
+                    .json(&json!({ "user_id": user_id })))
+            })
+            .await?;
         let status = resp.status();
         Self::handle_unauthorized_status(status);
         if status.is_success() {
@@ -167,15 +194,13 @@ impl ApiClient {
     }
 
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/holidays", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self.client.get(&format!("{}/holidays", base_url)).headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -200,7 +225,6 @@ impl ApiClient {
         from: Option<NaiveDate>,
         to: Option<NaiveDate>,
     ) -> Result<AdminHolidayListResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let mut params = vec![
             ("type".to_string(), "public".to_string()),
@@ -214,13 +238,15 @@ impl ApiClient {
             params.push(("to".into(), to.format("%Y-%m-%d").to_string()));
         }
         let response = self
-            .client
-            .get(&format!("{}/admin/holidays", base_url))
-            .headers(headers)
-            .query(&params)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .get(&format!("{}/admin/holidays", base_url))
+                    .headers(headers)
+                    .query(&params))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -242,16 +268,17 @@ impl ApiClient {
         &self,
         payload: &CreateHolidayRequest,
     ) -> Result<HolidayResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .post(&format!("{}/admin/holidays", base_url))
-            .headers(headers)
-            .json(payload)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .post(&format!("{}/admin/holidays", base_url))
+                    .headers(headers)
+                    .json(payload))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -270,15 +297,16 @@ impl ApiClient {
     }
 
     pub async fn admin_delete_holiday(&self, id: &str) -> Result<(), String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .delete(&format!("{}/admin/holidays/{}", base_url, id))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .delete(&format!("{}/admin/holidays/{}", base_url, id))
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -297,16 +325,17 @@ impl ApiClient {
         &self,
         date: chrono::NaiveDate,
     ) -> Result<HolidayCheckResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/holidays/check", base_url))
-            .query(&[("date", date.format("%Y-%m-%d").to_string())])
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .get(&format!("{}/holidays/check", base_url))
+                    .query(&[("date", date.format("%Y-%m-%d").to_string())])
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -329,16 +358,17 @@ impl ApiClient {
         year: i32,
         month: u32,
     ) -> Result<Vec<HolidayCalendarEntry>, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/holidays/month", base_url))
-            .query(&[("year", year.to_string()), ("month", month.to_string())])
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .get(&format!("{}/holidays/month", base_url))
+                    .query(&[("year", year.to_string()), ("month", month.to_string())])
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -357,15 +387,16 @@ impl ApiClient {
     }
 
     pub async fn admin_list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/admin/holidays/weekly", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .get(&format!("{}/admin/holidays/weekly", base_url))
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -387,16 +418,17 @@ impl ApiClient {
         &self,
         payload: &CreateWeeklyHolidayRequest,
     ) -> Result<WeeklyHolidayResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .post(&format!("{}/admin/holidays/weekly", base_url))
-            .headers(headers)
-            .json(payload)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .post(&format!("{}/admin/holidays/weekly", base_url))
+                    .headers(headers)
+                    .json(payload))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -418,19 +450,17 @@ impl ApiClient {
         &self,
         year: Option<i32>,
     ) -> Result<Vec<CreateHolidayRequest>, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/admin/holidays/google", base_url);
         if let Some(year) = year {
             url.push_str(&format!("?year={}", year));
         }
         let response = self
-            .client
-            .get(&url)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self.client.get(&url).headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -449,15 +479,16 @@ impl ApiClient {
     }
 
     pub async fn export_data(&self) -> Result<serde_json::Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .client
-            .get(&format!("{}/admin/export", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .client
+                    .get(&format!("{}/admin/export", base_url))
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -481,7 +512,6 @@ impl ApiClient {
         from: Option<&str>,
         to: Option<&str>,
     ) -> Result<serde_json::Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(u) = username {
@@ -500,18 +530,19 @@ impl ApiClient {
             }
         }
 
-        let mut request = self
-            .client
-            .get(&format!("{}/admin/export", base_url))
-            .headers(headers);
-        if !params.is_empty() {
-            request = request.query(&params);
-        }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+        let response = self
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                let mut request = self
+                    .client
+                    .get(&format!("{}/admin/export", base_url))
+                    .headers(headers);
+                if !params.is_empty() {
+                    request = request.query(&params);
+                }
+                Ok(request)
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);

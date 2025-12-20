@@ -16,7 +16,6 @@ impl ApiClient {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/admin/requests", base_url);
         let mut qp = vec![];
@@ -37,25 +36,25 @@ impl ApiClient {
             url.push_str(&qp.join("&"));
         }
         let response = self
-            .http_client()
-            .get(&url)
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self.http_client().get(&url).headers(headers))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
     pub async fn admin_get_request_detail(&self, id: &str) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .get(&format!("{}/admin/requests/{}", base_url, id))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .get(&format!("{}/admin/requests/{}", base_url, id))
+                    .headers(headers))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
@@ -73,43 +72,46 @@ impl ApiClient {
         action: &str,
         comment: &str,
     ) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .put(&format!("{}/admin/requests/{}/{}", base_url, id, action))
-            .headers(headers)
-            .json(&json!({ "comment": comment }))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .put(&format!("{}/admin/requests/{}/{}", base_url, id, action))
+                    .headers(headers)
+                    .json(&json!({ "comment": comment })))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
     pub async fn update_request(&self, id: &str, payload: Value) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .put(&format!("{}/requests/{}", base_url, id))
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .put(&format!("{}/requests/{}", base_url, id))
+                    .headers(headers)
+                    .json(&payload))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
     pub async fn cancel_request(&self, id: &str) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .delete(&format!("{}/requests/{}", base_url, id))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .delete(&format!("{}/requests/{}", base_url, id))
+                    .headers(headers))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
@@ -132,16 +134,17 @@ impl ApiClient {
         T: serde::Serialize,
         R: serde::de::DeserializeOwned,
     {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .post(&format!("{}/requests/{}", base_url, kind))
-            .headers(headers)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .post(&format!("{}/requests/{}", base_url, kind))
+                    .headers(headers)
+                    .json(&payload))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -160,15 +163,16 @@ impl ApiClient {
     }
 
     pub async fn get_my_requests(&self) -> Result<Value, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .get(&format!("{}/requests/me", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .get(&format!("{}/requests/me", base_url))
+                    .headers(headers))
+            })
+            .await?;
         self.map_json_response(response).await
     }
 
