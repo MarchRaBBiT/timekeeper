@@ -14,7 +14,7 @@ where
     R: Fn() + 'static,
 {
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-white shadow rounded-lg p-6 space-y-3">
             <h1 class="text-xl font-semibold text-gray-900">{"MFA 設定"}</h1>
 
             <Show when=move || status_loading.get() fallback=|| ()>
@@ -46,7 +46,7 @@ where
                 }}
             </Show>
 
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                     class="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
                     on:click=move |_| on_register()
@@ -59,7 +59,7 @@ where
                     }}
                 </button>
                 <button
-                    class="text-sm text-blue-600 hover:text-blue-700"
+                    class="px-4 py-2 border border-gray-200 text-gray-700 rounded hover:bg-gray-50"
                     on:click=move |_| on_refresh()
                 >
                     {"ステータスを再取得"}
