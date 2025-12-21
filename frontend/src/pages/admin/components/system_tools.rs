@@ -85,7 +85,12 @@ pub fn AdminMfaResetSection(
                         disabled={move || pending.get()}
                         on:click=on_reset
                     >
-                        {move || if pending.get() { "リセット中..." } else { "MFA をリセット" }}
+                        <span class="inline-flex items-center gap-2">
+                            <Show when=move || pending.get()>
+                                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                            </Show>
+                            {move || if pending.get() { "リセット中..." } else { "MFA をリセット" }}
+                        </span>
                     </button>
                     <Show when=move || error.get().is_some()>
                         <ErrorMessage message={error.get().unwrap_or_default()} />

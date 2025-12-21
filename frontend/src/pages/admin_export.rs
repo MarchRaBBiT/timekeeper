@@ -300,7 +300,12 @@ fn AdminExportPanel() -> impl IntoView {
                     on:click=on_export
                     disabled=move || downloading.get() || specific_user_required.get()
                 >
-                    {move || if downloading.get() { "エクスポート中..." } else { "CSVをエクスポート" }}
+                    <span class="inline-flex items-center gap-2">
+                        <Show when=move || downloading.get()>
+                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                        </Show>
+                        {move || if downloading.get() { "エクスポート中..." } else { "CSVをエクスポート" }}
+                    </span>
                 </button>
                 <Show when=move || preview.get().is_some()>
                     <div class="mt-4">
