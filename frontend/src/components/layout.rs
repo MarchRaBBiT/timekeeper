@@ -61,7 +61,7 @@ pub fn Header() -> impl IntoView {
                         </h1>
                     </div>
                     <div class="flex items-center">
-                        <nav class="hidden md:flex space-x-4">
+                        <nav class="hidden lg:flex space-x-4">
                             <a href="/dashboard" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                 "ダッシュボード"
                             </a>
@@ -97,7 +97,7 @@ pub fn Header() -> impl IntoView {
                         </nav>
                         <button
                             type="button"
-                            class="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                            class="lg:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100"
                             on:click=toggle_menu
                             aria-expanded=move || menu_open.get()
                             aria-controls="mobile-nav"
@@ -137,7 +137,7 @@ pub fn Header() -> impl IntoView {
                     </div>
                 </div>
                 <Show when=move || menu_open.get()>
-                    <div id="mobile-nav" class="md:hidden border-t">
+                    <div id="mobile-nav" class="lg:hidden border-t">
                         <nav class="px-4 py-3 space-y-2">
                             <a
                                 href="/dashboard"
