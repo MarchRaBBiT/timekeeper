@@ -15,7 +15,7 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .http_client()
-            .post(&format!("{}/auth/login", base_url))
+            .post(format!("{}/auth/login", base_url))
             .json(&request)
             .send()
             .await
@@ -60,7 +60,7 @@ impl ApiClient {
 
         let response = self
             .http_client()
-            .post(&format!("{}/auth/refresh", base_url))
+            .post(format!("{}/auth/refresh", base_url))
             .json(&payload)
             .send()
             .await
@@ -86,7 +86,6 @@ impl ApiClient {
     }
 
     pub async fn logout(&self, all: bool) -> Result<(), String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
 
         let refresh = storage_utils::local_storage()
@@ -102,13 +101,15 @@ impl ApiClient {
         };
 
         let resp = self
-            .http_client()
-            .post(&format!("{}/auth/logout", base_url))
-            .headers(headers)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .post(format!("{}/auth/logout", base_url))
+                    .headers(headers)
+                    .json(&body))
+            })
+            .await?;
         let status = resp.status();
         Self::handle_unauthorized_status(status);
         if status.is_success() {
@@ -122,15 +123,16 @@ impl ApiClient {
     }
 
     pub async fn get_mfa_status(&self) -> Result<MfaStatusResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .get(&format!("{}/auth/mfa", base_url))
-            .headers(headers)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .get(format!("{}/auth/mfa", base_url))
+                    .headers(headers))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -149,16 +151,17 @@ impl ApiClient {
     }
 
     pub async fn register_mfa(&self) -> Result<MfaSetupResponse, String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .post(&format!("{}/auth/mfa/register", base_url))
-            .headers(headers)
-            .json(&json!({}))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .post(format!("{}/auth/mfa/register", base_url))
+                    .headers(headers)
+                    .json(&json!({})))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -177,16 +180,17 @@ impl ApiClient {
     }
 
     pub async fn activate_mfa(&self, code: &str) -> Result<(), String> {
-        let headers = self.get_auth_headers()?;
         let base_url = self.resolved_base_url().await;
         let response = self
-            .http_client()
-            .post(&format!("{}/auth/mfa/activate", base_url))
-            .headers(headers)
-            .json(&json!({ "code": code }))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .send_with_refresh(|| {
+                let headers = self.get_auth_headers()?;
+                Ok(self
+                    .http_client()
+                    .post(format!("{}/auth/mfa/activate", base_url))
+                    .headers(headers)
+                    .json(&json!({ "code": code })))
+            })
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);

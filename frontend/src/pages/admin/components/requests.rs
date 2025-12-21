@@ -152,9 +152,9 @@ pub fn AdminRequestsSection(
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <h3 class="text-lg font-medium text-gray-900">{"申請一覧"}</h3>
-            <div class="flex flex-wrap gap-3">
+            <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
                 <select
-                    class="border-gray-300 rounded-md px-2 py-1"
+                    class="w-full md:w-auto border-gray-300 rounded-md px-2 py-1"
                     on:change=move |ev| on_status_change(event_target_value(&ev))
                 >
                     <option value="">{ "すべて" }</option>
@@ -163,7 +163,7 @@ pub fn AdminRequestsSection(
                     <option value="rejected">{ "却下" }</option>
                     <option value="cancelled">{ "取消" }</option>
                 </select>
-                <div class="min-w-[220px] flex-1">
+                <div class="w-full md:min-w-[220px] md:flex-1">
                     <AdminUserSelect
                         users=users
                         selected=filter_state.user_id_signal()
@@ -172,7 +172,7 @@ pub fn AdminRequestsSection(
                     />
                 </div>
                 <button
-                    class="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                    class="w-full md:w-auto px-3 py-1 bg-blue-600 text-white rounded"
                     disabled={move || requests_loading.get()}
                     on:click=on_search
                 >

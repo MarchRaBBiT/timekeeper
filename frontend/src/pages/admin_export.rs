@@ -67,6 +67,10 @@ impl ExportFilters {
     }
 }
 
+fn needs_specific_user_selection(use_specific_user: bool, username: &str) -> bool {
+    use_specific_user && username.trim().is_empty()
+}
+
 #[component]
 pub fn AdminExportPage() -> impl IntoView {
     let (auth, _set_auth) = use_auth();
@@ -117,6 +121,9 @@ fn AdminExportPanel() -> impl IntoView {
     let to_date = create_rw_signal(String::new());
     let use_specific_user = create_rw_signal(false);
     let specific_user_disabled = Signal::derive(move || !use_specific_user.get());
+    let specific_user_required = Signal::derive(move || {
+        needs_specific_user_selection(use_specific_user.get(), &username.get())
+    });
 
     let export_action = create_action(move |filters: &ExportFilters| {
         let snapshot = filters.clone();
@@ -180,7 +187,7 @@ fn AdminExportPanel() -> impl IntoView {
                 from_date: from_date.get_untracked(),
                 to_date: to_date.get_untracked(),
             };
-            if use_specific_user.get_untracked() && filters.username_param().is_none() {
+            if needs_specific_user_selection(use_specific_user.get_untracked(), &filters.username) {
                 error.set(Some("指定ユーザーを選択してください。".into()));
                 preview.set(None);
                 return;
@@ -216,6 +223,8 @@ fn AdminExportPanel() -> impl IntoView {
                                         on:change=move |_| {
                                             use_specific_user.set(false);
                                             username.set(String::new());
+                                            error.set(None);
+                                            preview.set(None);
                                         }
                                     />
                                     {"全ユーザー"}
@@ -226,7 +235,11 @@ fn AdminExportPanel() -> impl IntoView {
                                         name="export_user_filter"
                                         value="specific"
                                         checked=move || use_specific_user.get()
-                                        on:change=move |_| use_specific_user.set(true)
+                                        on:change=move |_| {
+                                            use_specific_user.set(true);
+                                            error.set(None);
+                                            preview.set(None);
+                                        }
                                     />
                                     {"指定ユーザー"}
                                 </label>
@@ -252,6 +265,11 @@ fn AdminExportPanel() -> impl IntoView {
                                     value_kind=UserSelectValue::Username
                                     disabled=specific_user_disabled
                                 />
+                            </Show>
+                            <Show when=move || specific_user_required.get()>
+                                <p class="text-xs text-amber-600">
+                                    {"指定ユーザーを選択してください。"}
+                                </p>
                             </Show>
                         </div>
                     </div>
@@ -280,7 +298,7 @@ fn AdminExportPanel() -> impl IntoView {
                 <button
                     class="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
                     on:click=on_export
-                    disabled={move || downloading.get()}
+                    disabled=move || downloading.get() || specific_user_required.get()
                 >
                     <span class="inline-flex items-center gap-2">
                         <Show when=move || downloading.get()>
@@ -302,5 +320,18 @@ fn AdminExportPanel() -> impl IntoView {
                 </Show>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::needs_specific_user_selection;
+
+    #[test]
+    fn specific_user_requires_selection() {
+        assert!(needs_specific_user_selection(true, ""));
+        assert!(needs_specific_user_selection(true, "   "));
+        assert!(!needs_specific_user_selection(true, "admin"));
+        assert!(!needs_specific_user_selection(false, ""));
     }
 }

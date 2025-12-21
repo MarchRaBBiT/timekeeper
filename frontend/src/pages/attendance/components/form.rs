@@ -17,8 +17,8 @@ pub fn RangeFormSection(
     on_export_csv: Callback<MouseEvent>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-white shadow rounded-lg p-4 flex items-end space-x-3">
-            <div>
+        <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 md:flex-row md:items-end">
+            <div class="w-full md:w-auto">
                 <label class="block text-sm font-medium text-gray-700">{"開始日"}</label>
                 <input
                     type="date"
@@ -27,7 +27,7 @@ pub fn RangeFormSection(
                     on:input=move |ev| from_input.set(event_target_value(&ev))
                 />
             </div>
-            <div>
+            <div class="w-full md:w-auto">
                 <label class="block text-sm font-medium text-gray-700">{"終了日"}</label>
                 <input
                     type="date"
@@ -37,20 +37,20 @@ pub fn RangeFormSection(
                 />
             </div>
             <button
-                class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                class="w-full md:w-auto px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
                 on:click=move |ev| on_select_current_month.call(ev)
             >
                 {"今月"}
             </button>
             <button
-                class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                class="w-full md:w-auto px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
                 disabled={move || history_loading.get()}
                 on:click=move |ev| on_load_range.call(ev)
             >
                 {move || if history_loading.get() { "読み込み中..." } else { "読み込み" }}
             </button>
             <button
-                class="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
+                class="w-full md:w-auto px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
                 disabled={move || exporting.get()}
                 on:click=move |ev| on_export_csv.call(ev)
             >
