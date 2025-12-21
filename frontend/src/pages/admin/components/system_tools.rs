@@ -30,8 +30,6 @@ pub fn AdminMfaResetSection(
     });
     let pending = reset_action.pending();
     {
-        let error = error.clone();
-        let success = success.clone();
         create_effect(move |_| {
             if let Some(result) = reset_action.value().get() {
                 match result {
@@ -49,10 +47,6 @@ pub fn AdminMfaResetSection(
     }
 
     let on_reset = {
-        let user_id = user_id.clone();
-        let error = error.clone();
-        let success = success.clone();
-        let reset_action = reset_action.clone();
         move |_| {
             if !system_admin_allowed.get_untracked() {
                 return;

@@ -44,20 +44,6 @@ impl ApiClient {
         self.map_json_response(response).await
     }
 
-    pub async fn admin_get_request_detail(&self, id: &str) -> Result<Value, String> {
-        let base_url = self.resolved_base_url().await;
-        let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .http_client()
-                    .get(format!("{}/admin/requests/{}", base_url, id))
-                    .headers(headers))
-            })
-            .await?;
-        self.map_json_response(response).await
-    }
-
     pub async fn admin_approve_request(&self, id: &str, comment: &str) -> Result<Value, String> {
         self.admin_mutate_request(id, "approve", comment).await
     }

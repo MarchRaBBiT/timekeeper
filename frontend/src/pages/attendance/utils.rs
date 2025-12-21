@@ -15,23 +15,17 @@ impl AttendanceFormState {
         }
     }
 
-    pub fn from_signal(&self) -> RwSignal<String> {
+    pub fn start_date_signal(&self) -> RwSignal<String> {
         self.from
     }
 
-    pub fn to_signal(&self) -> RwSignal<String> {
+    pub fn end_date_signal(&self) -> RwSignal<String> {
         self.to
     }
 
     pub fn set_range(&self, from: NaiveDate, to: NaiveDate) {
         self.from.set(from.format("%Y-%m-%d").to_string());
         self.to.set(to.format("%Y-%m-%d").to_string());
-    }
-
-    #[allow(dead_code)]
-    pub fn reset(&self) {
-        self.from.set(String::new());
-        self.to.set(String::new());
     }
 
     pub fn to_payload(&self) -> Result<(Option<NaiveDate>, Option<NaiveDate>), String> {
@@ -83,8 +77,8 @@ mod tests {
     #[wasm_bindgen_test]
     fn form_state_validates_order() {
         let state = AttendanceFormState::new();
-        state.from_signal().set("2025-02-10".into());
-        state.to_signal().set("2025-02-01".into());
+        state.start_date_signal().set("2025-02-10".into());
+        state.end_date_signal().set("2025-02-01".into());
         assert!(state.to_payload().is_err());
     }
 

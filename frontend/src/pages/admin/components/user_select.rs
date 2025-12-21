@@ -26,7 +26,6 @@ pub fn AdminUserSelect(
     let loading = users.loading();
 
     {
-        let fetch_error = fetch_error.clone();
         create_effect(move |_| {
             if let Some(result) = users.get() {
                 match result {
@@ -40,7 +39,6 @@ pub fn AdminUserSelect(
     }
 
     let on_change = {
-        let selected = selected.clone();
         move |ev: ev::Event| {
             selected.set(event_target_value(&ev));
         }
@@ -48,13 +46,11 @@ pub fn AdminUserSelect(
 
     let has_label = label.as_ref().map(|l| !l.is_empty()).unwrap_or(false);
     let label_value = label.unwrap_or_default();
-    let users_resource = users.clone();
 
     let on_retry = {
-        let fetch_error = fetch_error.clone();
         move |_| {
             fetch_error.set(None);
-            users_resource.refetch();
+            users.refetch();
         }
     };
 

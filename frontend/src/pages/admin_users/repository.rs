@@ -19,12 +19,6 @@ impl AdminUsersRepository {
         }
     }
 
-    pub fn with_client(client: ApiClient) -> Self {
-        Self {
-            client: Rc::new(client),
-        }
-    }
-
     pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, String> {
         self.client.get_users().await
     }

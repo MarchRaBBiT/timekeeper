@@ -13,8 +13,6 @@ pub fn UserDetailDrawer(
 ) -> impl IntoView {
     let pending = reset_mfa_action.pending();
     {
-        let messages = messages.clone();
-        let reset_mfa_action = reset_mfa_action.clone();
         create_effect(move |_| {
             if let Some(result) = reset_mfa_action.value().get() {
                 match result {
@@ -43,24 +41,18 @@ pub fn UserDetailDrawer(
                     .get()
                     .map(|user| {
                         let overlay_close = {
-                            let selected_user = selected_user.clone();
-                            let messages = messages.clone();
                             move |_| {
                                 messages.update(MessageState::clear);
                                 selected_user.set(None);
                             }
                         };
                         let button_close = {
-                            let selected_user = selected_user.clone();
-                            let messages = messages.clone();
                             move |_| {
                                 messages.update(MessageState::clear);
                                 selected_user.set(None);
                             }
                         };
                         let reset_click = {
-                            let selected_user = selected_user.clone();
-                            let messages = messages.clone();
                             move |_| {
                                 if let Some(current) = selected_user.get_untracked() {
                                     messages.update(MessageState::clear);

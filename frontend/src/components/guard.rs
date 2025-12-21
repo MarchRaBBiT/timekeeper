@@ -22,7 +22,7 @@ pub fn RequireAuth(children: ChildrenFn) -> impl IntoView {
                 if is_loading.get() {
                     view! { <LoadingSpinner /> }.into_view()
                 } else {
-                    view! { <></> }.into_view()
+                    ().into_view()
                 }
             }
         >
