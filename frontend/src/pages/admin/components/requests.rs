@@ -172,10 +172,16 @@ pub fn AdminRequestsSection(
                     />
                 </div>
                 <button
-                    class="px-3 py-1 bg-blue-600 text-white rounded"
+                    class="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                    disabled={move || requests_loading.get()}
                     on:click=on_search
                 >
-                    {"検索"}
+                    <span class="inline-flex items-center gap-2">
+                        <Show when=move || requests_loading.get()>
+                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                        </Show>
+                        {move || if requests_loading.get() { "検索中..." } else { "検索" }}
+                    </span>
                 </button>
             </div>
             <Show when=move || requests_error.get().is_some()>
