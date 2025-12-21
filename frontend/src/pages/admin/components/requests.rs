@@ -77,9 +77,6 @@ pub fn AdminRequestsSection(
     });
     let action_pending = request_action.pending();
     {
-        let modal_open = modal_open.clone();
-        let action_error = action_error.clone();
-        let reload = reload.clone();
         create_effect(move |_| {
             if let Some(result) = request_action.value().get() {
                 match result {
@@ -94,14 +91,10 @@ pub fn AdminRequestsSection(
         });
     }
 
-    let trigger_reload = {
-        let reload = reload.clone();
-        move || reload.update(|value| *value = value.wrapping_add(1))
-    };
+    let trigger_reload = { move || reload.update(|value| *value = value.wrapping_add(1)) };
 
     let on_status_change = {
         let filter_state = filter_state.clone();
-        let trigger_reload = trigger_reload.clone();
         move |value: String| {
             filter_state.status_signal().set(value);
             filter_state.reset_page();
@@ -111,7 +104,6 @@ pub fn AdminRequestsSection(
 
     let on_search = {
         let filter_state = filter_state.clone();
-        let trigger_reload = trigger_reload.clone();
         move |_| {
             filter_state.reset_page();
             trigger_reload();
@@ -119,9 +111,6 @@ pub fn AdminRequestsSection(
     };
 
     let open_modal = {
-        let modal_open = modal_open.clone();
-        let modal_data = modal_data.clone();
-        let modal_comment = modal_comment.clone();
         move |data: Value| {
             modal_data.set(data);
             modal_comment.set(String::new());
@@ -130,9 +119,6 @@ pub fn AdminRequestsSection(
     };
 
     let on_action = {
-        let modal_data = modal_data.clone();
-        let modal_comment = modal_comment.clone();
-        let request_action = request_action.clone();
         move |approve: bool| {
             let id = modal_data
                 .get()

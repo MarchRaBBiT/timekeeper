@@ -45,10 +45,8 @@ pub fn UserList(
                             each=move || users.get()
                             key=|user| user.id.clone()
                             children=move |user: UserResponse| {
-                                let on_select = on_select.clone();
                                 let row_user = user.clone();
                                 let click_handler = {
-                                    let on_select = on_select.clone();
                                     let selected = row_user.clone();
                                     move |_| on_select.call(selected.clone())
                                 };
@@ -121,10 +119,8 @@ pub fn UserList(
                                     each=move || users.get()
                                     key=|user| user.id.clone()
                                     children=move |user: UserResponse| {
-                                        let on_select = on_select.clone();
                                         let row_user = user.clone();
                                         let click_handler = {
-                                            let on_select = on_select.clone();
                                             let selected = row_user.clone();
                                             move |_| on_select.call(selected.clone())
                                         };

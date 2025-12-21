@@ -20,10 +20,6 @@ pub fn OvertimeRequestForm(
 
     let on_submit = {
         let state = state.clone();
-        let message = message.clone();
-        let action = action.clone();
-        let update_action = update_action.clone();
-        let editing = editing.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             match state.to_payload() {

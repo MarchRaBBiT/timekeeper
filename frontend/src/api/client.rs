@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
@@ -18,13 +17,6 @@ impl ApiClient {
         Self {
             client: Client::new(),
             base_url: None,
-        }
-    }
-
-    pub fn new_with_base_url(base_url: impl Into<String>) -> Self {
-        Self {
-            client: Client::new(),
-            base_url: Some(base_url.into()),
         }
     }
 
@@ -189,34 +181,6 @@ impl ApiClient {
             Ok(())
         } else {
             let error: ApiError = resp
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
-        }
-    }
-
-    pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
-        let base_url = self.resolved_base_url().await;
-        let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .client
-                    .get(format!("{}/holidays", base_url))
-                    .headers(headers))
-            })
-            .await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
-        } else {
-            let error: ApiError = response
                 .json()
                 .await
                 .map_err(|e| format!("Failed to parse error: {}", e))?;
@@ -465,34 +429,6 @@ impl ApiClient {
             .send_with_refresh(|| {
                 let headers = self.get_auth_headers()?;
                 Ok(self.client.get(&url).headers(headers))
-            })
-            .await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
-        } else {
-            let error: ApiError = response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
-        }
-    }
-
-    pub async fn export_data(&self) -> Result<serde_json::Value, String> {
-        let base_url = self.resolved_base_url().await;
-        let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .client
-                    .get(format!("{}/admin/export", base_url))
-                    .headers(headers))
             })
             .await?;
 

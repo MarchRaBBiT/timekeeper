@@ -20,45 +20,29 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     let (totp_code, set_totp_code) = create_signal(String::new());
 
     let fetch_status = {
-        let set_status = set_status.clone();
-        let set_status_loading = set_status_loading.clone();
-        let set_error = set_error.clone();
-        create_action(move |_| {
-            let set_status = set_status.clone();
-            let set_status_loading = set_status_loading.clone();
-            let set_error = set_error.clone();
-            async move {
-                set_error.set(None);
-                set_status_loading.set(true);
-                match auth::fetch_mfa_status().await {
-                    Ok(resp) => set_status.set(Some(resp)),
-                    Err(err) => set_error.set(Some(err)),
-                }
-                set_status_loading.set(false);
+        create_action(move |_| async move {
+            set_error.set(None);
+            set_status_loading.set(true);
+            match auth::fetch_mfa_status().await {
+                Ok(resp) => set_status.set(Some(resp)),
+                Err(err) => set_error.set(Some(err)),
             }
+            set_status_loading.set(false);
         })
     };
     fetch_status.dispatch(());
 
     let register_action = {
-        let fetch_status = fetch_status.clone();
-        create_action(move |_| {
-            let fetch_status = fetch_status.clone();
-            async move {
-                let result = auth::register_mfa().await;
-                if result.is_ok() {
-                    fetch_status.dispatch(());
-                }
-                result
+        create_action(move |_| async move {
+            let result = auth::register_mfa().await;
+            if result.is_ok() {
+                fetch_status.dispatch(());
             }
+            result
         })
     };
 
     {
-        let register_action = register_action.clone();
-        let set_setup_info = set_setup_info.clone();
-        let set_success = set_success.clone();
-        let set_error = set_error.clone();
         create_effect(move |_| {
             if let Some(result) = register_action.value().get() {
                 match result {
@@ -79,11 +63,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     let register_loading = register_action.pending();
 
     let activate_action = {
-        let fetch_status = fetch_status.clone();
-        let set_auth_state = set_auth_state.clone();
         create_action(move |code: &String| {
-            let fetch_status = fetch_status.clone();
-            let set_auth_state = set_auth_state.clone();
             let payload = code.clone();
             async move {
                 let result = auth::activate_mfa(payload, Some(set_auth_state)).await;
@@ -96,11 +76,6 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     };
 
     {
-        let activate_action = activate_action.clone();
-        let set_setup_info = set_setup_info.clone();
-        let set_totp_code = set_totp_code.clone();
-        let set_success = set_success.clone();
-        let set_error = set_error.clone();
         create_effect(move |_| {
             if let Some(result) = activate_action.value().get() {
                 match result {
@@ -122,11 +97,6 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     let activate_loading = activate_action.pending();
 
     let start_registration = {
-        let register_action = register_action.clone();
-        let register_loading = register_loading;
-        let set_error = set_error.clone();
-        let set_success = set_success.clone();
-        let set_setup_info = set_setup_info.clone();
         move || {
             if register_loading.get() {
                 return;
@@ -139,17 +109,12 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     };
 
     let handle_activate = {
-        let activate_action = activate_action.clone();
-        let activate_loading = activate_loading;
-        let totp_code_signal = totp_code.clone();
-        let set_error = set_error.clone();
-        let set_success = set_success.clone();
         move |ev: SubmitEvent| {
             ev.prevent_default();
             if activate_loading.get() {
                 return;
             }
-            let code_value = totp_code_signal.get();
+            let code_value = totp_code.get();
             let trimmed = match utils::validate_totp_code(&code_value) {
                 Ok(code) => code,
                 Err(msg) => {

@@ -26,7 +26,6 @@ pub fn Header() -> impl IntoView {
     let logout_action = auth::use_logout_action();
     let logout_pending = logout_action.pending();
     {
-        let logout_action = logout_action.clone();
         create_effect(move |_| {
             if logout_action.value().get().is_some() {
                 if let Some(win) = web_sys::window() {
@@ -36,9 +35,6 @@ pub fn Header() -> impl IntoView {
         });
     }
     let on_logout = {
-        let logout_action = logout_action.clone();
-        let logout_pending = logout_pending.clone();
-        let set_menu_open = set_menu_open.clone();
         move |_| {
             if logout_pending.get_untracked() {
                 return;
@@ -47,10 +43,7 @@ pub fn Header() -> impl IntoView {
             logout_action.dispatch(false);
         }
     };
-    let toggle_menu = {
-        let set_menu_open = set_menu_open.clone();
-        move |_| set_menu_open.update(|open| *open = !*open)
-    };
+    let toggle_menu = { move |_| set_menu_open.update(|open| *open = !*open) };
     view! {
         <header class="bg-white shadow-sm border-b">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -226,7 +219,6 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
     let (refreshing, set_refreshing) = create_signal(false);
 
     {
-        let set_status = set_status.clone();
         spawn_local(async move {
             config::await_time_zone().await;
             set_status.set(config::time_zone_status());
@@ -239,8 +231,6 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
         }
         set_refreshing.set(true);
         set_status.update(|state| state.loading = true);
-        let set_status = set_status.clone();
-        let set_refreshing = set_refreshing.clone();
         spawn_local(async move {
             let new_status = config::refresh_time_zone().await;
             if new_status.last_error.is_some() {

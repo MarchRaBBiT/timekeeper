@@ -37,11 +37,6 @@ pub struct MfaSetupResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MfaCodeRequest {
-    pub code: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MfaStatusResponse {
     pub enabled: bool,
     pub pending: bool,

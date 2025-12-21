@@ -68,50 +68,6 @@ impl ApiClient {
         }
     }
 
-    pub async fn get_my_attendance(
-        &self,
-        year: Option<i32>,
-        month: Option<u32>,
-    ) -> Result<Vec<AttendanceResponse>, String> {
-        let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/attendance/me", base_url);
-        let mut query_params = Vec::new();
-
-        if let Some(year) = year {
-            query_params.push(format!("year={}", year));
-        }
-        if let Some(month) = month {
-            query_params.push(format!("month={}", month));
-        }
-
-        if !query_params.is_empty() {
-            url.push('?');
-            url.push_str(&query_params.join("&"));
-        }
-
-        let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
-            .await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
-        } else {
-            let error: ApiError = response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
-        }
-    }
-
     pub async fn break_start(&self, attendance_id: &str) -> Result<BreakRecordResponse, String> {
         let base_url = self.resolved_base_url().await;
         let response = self

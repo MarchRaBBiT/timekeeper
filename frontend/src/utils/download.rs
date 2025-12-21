@@ -27,7 +27,7 @@ pub fn trigger_csv_download(filename: &str, csv_data: &str) -> Result<(), String
         .append_child(&a)
         .map_err(|_| "Append failed".to_string())?;
     a.click();
-    let _ = a.remove();
+    a.remove();
     let _ = web_sys::Url::revoke_object_url(&url);
     Ok(())
 }

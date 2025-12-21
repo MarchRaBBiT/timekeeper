@@ -33,14 +33,6 @@ impl ActivityStatusFilter {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            ActivityStatusFilter::All => "すべて",
-            ActivityStatusFilter::PendingOnly => "承認待ちのみ",
-            ActivityStatusFilter::ApprovedOnly => "承認済みのみ",
-        }
-    }
-
     pub fn as_value(self) -> &'static str {
         match self {
             ActivityStatusFilter::All => "all",

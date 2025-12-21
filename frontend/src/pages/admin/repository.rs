@@ -63,12 +63,6 @@ impl AdminRepository {
         }
     }
 
-    pub fn with_client(client: ApiClient) -> Self {
-        Self {
-            client: Rc::new(client),
-        }
-    }
-
     pub async fn list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, String> {
         self.client.admin_list_weekly_holidays().await
     }
@@ -190,7 +184,7 @@ fn convert_admin_holiday_item(item: AdminHolidayListItem) -> Option<HolidayRespo
         ..
     } = item;
 
-    let mut fallback_reason = reason.clone();
+    let fallback_reason = reason.clone();
     let holiday_name = name
         .or_else(|| fallback_reason.clone())
         .unwrap_or_else(|| "Holiday".to_string());

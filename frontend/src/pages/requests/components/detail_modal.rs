@@ -3,10 +3,7 @@ use leptos::*;
 
 #[component]
 pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl IntoView {
-    let on_close = {
-        let selected = selected.clone();
-        move |_| selected.set(None)
-    };
+    let on_close = { move |_| selected.set(None) };
     view! {
         <Show when=move || selected.get().is_some()>
             {move || {
@@ -15,7 +12,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                     .map(|summary| {
                         view! {
                             <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-                                <div class="fixed inset-0 bg-black/40" on:click=on_close.clone()></div>
+                                <div class="fixed inset-0 bg-black/40" on:click=on_close></div>
                                 <div class="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
                                     <div class="flex items-center justify-between">
                                         <div>
@@ -27,7 +24,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                                 }}
                                             </p>
                                         </div>
-                                        <button class="text-gray-500 hover:text-gray-700" on:click=on_close.clone()>
+                                        <button class="text-gray-500 hover:text-gray-700" on:click=on_close>
                                             {"✕"}
                                         </button>
                                     </div>
@@ -54,7 +51,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                         </div>
                                     </div>
                                     <div class="flex justify-end">
-                                        <button class="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300" on:click=on_close.clone()>
+                                        <button class="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300" on:click=on_close>
                                             {"閉じる"}
                                         </button>
                                     </div>

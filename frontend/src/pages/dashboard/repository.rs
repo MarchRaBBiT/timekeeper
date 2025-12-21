@@ -67,11 +67,6 @@ pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     alerts
 }
 
-pub async fn fetch_alerts() -> Result<Vec<DashboardAlert>, String> {
-    let summary = fetch_summary().await?;
-    Ok(build_alerts(&summary))
-}
-
 pub async fn fetch_recent_activities(
     filter: ActivityStatusFilter,
 ) -> Result<Vec<DashboardActivity>, String> {

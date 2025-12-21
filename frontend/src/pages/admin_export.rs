@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, UserResponse};
+use crate::api::ApiClient;
 use crate::components::layout::*;
 use crate::pages::admin::components::user_select::{
     AdminUserSelect, UserSelectValue, UsersResource,
@@ -29,11 +29,11 @@ impl ExportFilters {
         Self::normalized_str(&self.username)
     }
 
-    fn from_param(&self) -> Option<&str> {
+    fn start_date_param(&self) -> Option<&str> {
         Self::normalized_str(&self.from_date)
     }
 
-    fn to_param(&self) -> Option<&str> {
+    fn end_date_param(&self) -> Option<&str> {
         Self::normalized_str(&self.to_date)
     }
 
@@ -74,10 +74,8 @@ fn needs_specific_user_selection(use_specific_user: bool, username: &str) -> boo
 #[component]
 pub fn AdminExportPage() -> impl IntoView {
     let (auth, _set_auth) = use_auth();
-    let auth_for_guard = auth.clone();
     let is_admin = create_memo(move |_| {
-        auth_for_guard
-            .get()
+        auth.get()
             .user
             .as_ref()
             .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
@@ -131,18 +129,14 @@ fn AdminExportPanel() -> impl IntoView {
             let api = ApiClient::new();
             api.export_data_filtered(
                 snapshot.username_param(),
-                snapshot.from_param(),
-                snapshot.to_param(),
+                snapshot.start_date_param(),
+                snapshot.end_date_param(),
             )
             .await
         }
     });
 
     {
-        let export_action = export_action.clone();
-        let preview = preview.clone();
-        let filename_state = filename_state.clone();
-        let error = error.clone();
         create_effect(move |_| {
             if let Some(result) = export_action.value().get() {
                 match result {
@@ -170,13 +164,6 @@ fn AdminExportPanel() -> impl IntoView {
     }
 
     let on_export = {
-        let export_action = export_action.clone();
-        let preview = preview.clone();
-        let error = error.clone();
-        let username = username.clone();
-        let from_date = from_date.clone();
-        let to_date = to_date.clone();
-        let use_specific_user = use_specific_user.clone();
         move |_| {
             let filters = ExportFilters {
                 username: if use_specific_user.get_untracked() {
@@ -258,7 +245,7 @@ fn AdminExportPanel() -> impl IntoView {
                             </Show>
                             <Show when=move || users_error.get().is_none()>
                                 <AdminUserSelect
-                                    users=users_resource.clone()
+                            users=users_resource
                                     selected=username
                                     label=None
                                     placeholder="ユーザーを選択してください".into()

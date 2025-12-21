@@ -16,10 +16,8 @@ use super::{
 pub fn AdminUsersPage() -> impl IntoView {
     let repository = AdminUsersRepository::new();
     let (auth, _set_auth) = use_auth();
-    let auth_for_guard = auth.clone();
     let is_system_admin = create_memo(move |_| {
-        auth_for_guard
-            .get()
+        auth.get()
             .user
             .as_ref()
             .map(|user| user.is_system_admin)
@@ -63,10 +61,6 @@ pub fn AdminUsersPage() -> impl IntoView {
     });
 
     {
-        let invite_action = invite_action.clone();
-        let invite_messages = invite_messages.clone();
-        let invite_form = invite_form.clone();
-        let users_reload = users_reload.clone();
         create_effect(move |_| {
             if let Some(result) = invite_action.value().get() {
                 match result {
@@ -89,8 +83,6 @@ pub fn AdminUsersPage() -> impl IntoView {
     }
 
     let select_user = Callback::new({
-        let selected_user = selected_user.clone();
-        let drawer_messages = drawer_messages.clone();
         move |user: UserResponse| {
             drawer_messages.set(MessageState::default());
             selected_user.set(Some(user));

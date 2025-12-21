@@ -13,19 +13,15 @@ use leptos::*;
 #[component]
 pub fn AdminPanel() -> impl IntoView {
     let (auth, _set_auth) = use_auth();
-    let auth_for_admin = auth.clone();
     let admin_allowed = create_memo(move |_| {
-        auth_for_admin
-            .get()
+        auth.get()
             .user
             .as_ref()
             .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
             .unwrap_or(false)
     });
-    let auth_for_system = auth.clone();
     let system_admin_allowed = create_memo(move |_| {
-        auth_for_system
-            .get()
+        auth.get()
             .user
             .as_ref()
             .map(|user| user.is_system_admin)
@@ -33,9 +29,8 @@ pub fn AdminPanel() -> impl IntoView {
     });
     let repository = store_value(AdminRepository::new());
     let users_repository = repository.get_value();
-    let users_allowed = admin_allowed.clone();
     let users_resource = create_resource(
-        move || users_allowed.get(),
+        move || admin_allowed.get(),
         move |allowed| {
             let repo = users_repository.clone();
             async move {
@@ -49,32 +44,32 @@ pub fn AdminPanel() -> impl IntoView {
     );
 
     view! {
-        <layout::AdminDashboardScaffold admin_allowed=admin_allowed.clone()>
+        <layout::AdminDashboardScaffold admin_allowed=admin_allowed>
             <WeeklyHolidaySection
                 repository=repository.get_value()
-                admin_allowed=admin_allowed.clone()
-                system_admin_allowed=system_admin_allowed.clone()
+                admin_allowed=admin_allowed
+                system_admin_allowed=system_admin_allowed
             />
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <AdminRequestsSection
                     repository=repository.get_value()
-                    admin_allowed=admin_allowed.clone()
-                    users=users_resource.clone()
+                    admin_allowed=admin_allowed
+                    users=users_resource
                 />
                 <AdminAttendanceToolsSection
                     repository=repository.get_value()
-                    system_admin_allowed=system_admin_allowed.clone()
-                    users=users_resource.clone()
+                    system_admin_allowed=system_admin_allowed
+                    users=users_resource
                 />
                 <AdminMfaResetSection
                     repository=repository.get_value()
-                    system_admin_allowed=system_admin_allowed.clone()
-                    users=users_resource.clone()
+                    system_admin_allowed=system_admin_allowed
+                    users=users_resource
                 />
             </div>
             <HolidayManagementSection
                 repository=repository.get_value()
-                admin_allowed=admin_allowed.clone()
+                admin_allowed=admin_allowed
             />
         </layout::AdminDashboardScaffold>
     }
