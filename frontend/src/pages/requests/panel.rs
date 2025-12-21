@@ -23,6 +23,7 @@ pub fn RequestsPage() -> impl IntoView {
     let selected_request = create_rw_signal(None::<RequestSummary>);
     let editing_request = create_rw_signal(None::<EditTarget>);
     let reload = create_rw_signal(0u32);
+    let (active_form, set_active_form) = create_signal(RequestFormKind::Leave);
 
     let requests_resource = create_resource(
         move || reload.get(),
@@ -117,6 +118,7 @@ pub fn RequestsPage() -> impl IntoView {
         let list_message = list_message.clone();
         let leave_state = leave_state.clone();
         let overtime_state = overtime_state.clone();
+        let set_active_form = set_active_form.clone();
         move |summary: RequestSummary| {
             list_message.update(|msg| msg.clear());
             let target = EditTarget {
@@ -126,10 +128,12 @@ pub fn RequestsPage() -> impl IntoView {
             editing_request.set(Some(target));
             match summary.kind {
                 crate::pages::requests::types::RequestKind::Leave => {
-                    leave_state.load_from_value(&summary.details)
+                    leave_state.load_from_value(&summary.details);
+                    set_active_form.set(RequestFormKind::Leave);
                 }
                 crate::pages::requests::types::RequestKind::Overtime => {
-                    overtime_state.load_from_value(&summary.details)
+                    overtime_state.load_from_value(&summary.details);
+                    set_active_form.set(RequestFormKind::Overtime);
                 }
             }
         }
@@ -183,13 +187,85 @@ pub fn RequestsPage() -> impl IntoView {
             selected_request.set(Some(summary));
         }
     });
+    let leave_state_mobile = leave_state.clone();
+    let leave_state_desktop = leave_state.clone();
+    let overtime_state_mobile = overtime_state.clone();
+    let overtime_state_desktop = overtime_state.clone();
 
     view! {
         <>
             <RequestsLayout>
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div class="md:hidden space-y-4">
+                    <div class="flex items-center gap-2">
+                        <button
+                            class=move || {
+                                let base = "flex-1 px-4 py-2 rounded text-sm font-medium border";
+                                if matches!(active_form.get(), RequestFormKind::Leave) {
+                                    format!("{base} bg-blue-600 text-white border-blue-600")
+                                } else {
+                                    format!("{base} bg-white text-gray-700 border-gray-200")
+                                }
+                            }
+                            on:click=move |_| set_active_form.set(RequestFormKind::Leave)
+                        >
+                            {"休暇申請"}
+                        </button>
+                        <button
+                            class=move || {
+                                let base = "flex-1 px-4 py-2 rounded text-sm font-medium border";
+                                if matches!(active_form.get(), RequestFormKind::Overtime) {
+                                    format!("{base} bg-blue-600 text-white border-blue-600")
+                                } else {
+                                    format!("{base} bg-white text-gray-700 border-gray-200")
+                                }
+                            }
+                            on:click=move |_| set_active_form.set(RequestFormKind::Overtime)
+                        >
+                            {"残業申請"}
+                        </button>
+                    </div>
+                    <Show when=move || matches!(active_form.get(), RequestFormKind::Leave)>
+                        <LeaveRequestForm
+                            state=leave_state_mobile.clone()
+                            message=leave_message
+                            action=leave_action
+                            update_action=update_action
+                            editing=editing_request
+                            on_cancel_edit=Callback::new({
+                                let editing_request = editing_request.clone();
+                                let list_message = list_message.clone();
+                                let leave_state = leave_state_mobile.clone();
+                                move |_| {
+                                    editing_request.set(None);
+                                    list_message.update(|msg| msg.clear());
+                                    leave_state.reset();
+                                }
+                            })
+                        />
+                    </Show>
+                    <Show when=move || matches!(active_form.get(), RequestFormKind::Overtime)>
+                        <OvertimeRequestForm
+                            state=overtime_state_mobile.clone()
+                            message=overtime_message
+                            action=overtime_action
+                            update_action=update_action
+                            editing=editing_request
+                            on_cancel_edit=Callback::new({
+                                let editing_request = editing_request.clone();
+                                let list_message = list_message.clone();
+                                let overtime_state = overtime_state_mobile.clone();
+                                move |_| {
+                                    editing_request.set(None);
+                                    list_message.update(|msg| msg.clear());
+                                    overtime_state.reset();
+                                }
+                            })
+                        />
+                    </Show>
+                </div>
+                <div class="hidden md:grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <LeaveRequestForm
-                        state=leave_state.clone()
+                        state=leave_state_desktop.clone()
                         message=leave_message
                         action=leave_action
                         update_action=update_action
@@ -197,7 +273,7 @@ pub fn RequestsPage() -> impl IntoView {
                         on_cancel_edit=Callback::new({
                             let editing_request = editing_request.clone();
                             let list_message = list_message.clone();
-                            let leave_state = leave_state.clone();
+                            let leave_state = leave_state_desktop.clone();
                             move |_| {
                                 editing_request.set(None);
                                 list_message.update(|msg| msg.clear());
@@ -206,7 +282,7 @@ pub fn RequestsPage() -> impl IntoView {
                         })
                     />
                     <OvertimeRequestForm
-                        state=overtime_state.clone()
+                        state=overtime_state_desktop.clone()
                         message=overtime_message
                         action=overtime_action
                         update_action=update_action
@@ -214,7 +290,7 @@ pub fn RequestsPage() -> impl IntoView {
                         on_cancel_edit=Callback::new({
                             let editing_request = editing_request.clone();
                             let list_message = list_message.clone();
-                            let overtime_state = overtime_state.clone();
+                            let overtime_state = overtime_state_desktop.clone();
                             move |_| {
                                 editing_request.set(None);
                                 list_message.update(|msg| msg.clear());
@@ -243,6 +319,12 @@ pub fn RequestsPage() -> impl IntoView {
 pub struct EditPayload {
     id: String,
     body: serde_json::Value,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RequestFormKind {
+    Leave,
+    Overtime,
 }
 
 impl From<(String, serde_json::Value)> for EditPayload {
