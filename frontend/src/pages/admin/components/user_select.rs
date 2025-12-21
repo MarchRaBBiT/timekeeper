@@ -74,21 +74,32 @@ pub fn AdminUserSelect(
             Some(Ok(list)) if list.is_empty() => {
                 view! { <option value="" disabled>{"ユーザーが0件です"}</option> }.into_view()
             }
-            Some(Ok(list)) => view! {
-                <For
-                    each=move || list.clone()
-                    key=|user| user.id.clone()
-                    children=move |user| {
-                        let label = format!("{} ({})", user.full_name, user.username);
-                        let value = match value_kind {
-                            UserSelectValue::Id => user.id.clone(),
-                            UserSelectValue::Username => user.username.clone(),
+            Some(Ok(list)) => {
+                let mut sorted = list.clone();
+                sorted.sort_by(|left, right| {
+                    let name_cmp = left.full_name.cmp(&right.full_name);
+                    if name_cmp == std::cmp::Ordering::Equal {
+                        left.username.cmp(&right.username)
+                    } else {
+                        name_cmp
+                    }
+                });
+                view! {
+                    <For
+                        each=move || sorted.clone()
+                        key=|user| user.id.clone()
+                        children=move |user| {
+                            let label = format!("{} ({})", user.full_name, user.username);
+                            let value = match value_kind {
+                                UserSelectValue::Id => user.id.clone(),
+                                UserSelectValue::Username => user.username.clone(),
                         };
                         view! { <option value=value>{label}</option> }
                     }
-                />
+                    />
+                }
+                .into_view()
             }
-            .into_view(),
         }
     };
 
