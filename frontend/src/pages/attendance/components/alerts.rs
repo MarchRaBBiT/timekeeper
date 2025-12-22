@@ -15,7 +15,7 @@ pub fn HolidayAlerts(
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-4 space-y-3">
-            <div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h3 class="text-base font-semibold text-gray-900">{"今月の休日"}</h3>
                     <p class="text-sm text-gray-600">

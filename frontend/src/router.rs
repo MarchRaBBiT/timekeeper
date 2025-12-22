@@ -116,5 +116,4 @@ mod tests {
         let unique: HashSet<&str> = ROUTE_PATHS.iter().copied().collect();
         assert_eq!(unique.len(), ROUTE_PATHS.len());
     }
-
 }

@@ -5,7 +5,7 @@ use leptos::*;
 pub fn RequestsFilter(filter_state: RequestFilterState) -> impl IntoView {
     let status_signal = filter_state.status_signal();
     view! {
-        <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
                 <h3 class="text-sm font-semibold text-gray-900">{"申請の絞り込み"}</h3>
                 <p class="text-xs text-gray-600">{"ステータスで一覧の表示を切り替えます。"} </p>

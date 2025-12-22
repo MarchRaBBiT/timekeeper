@@ -20,7 +20,7 @@ pub fn UserList(
 
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h3 class="text-lg font-medium text-gray-900">{"ユーザー一覧"}</h3>
                     <p class="text-sm text-gray-600">{"行をクリックすると詳細ドロワーが開きます。"}</p>
@@ -40,7 +40,7 @@ pub fn UserList(
             </Show>
             <Show when=move || !users.get().is_empty()>
                 <>
-                    <div class="space-y-3 md:hidden">
+                    <div class="space-y-3 lg:hidden">
                         <For
                             each=move || users.get()
                             key=|user| user.id.clone()
@@ -95,7 +95,7 @@ pub fn UserList(
                             }
                         />
                     </div>
-                    <div class="hidden md:block overflow-x-auto">
+                    <div class="hidden lg:block overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead>
                                 <tr>

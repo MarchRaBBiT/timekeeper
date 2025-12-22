@@ -25,7 +25,7 @@ pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, String>>) -
                     }.into_view(),
                     Some(Err(err)) => view! { <ErrorMessage message={err.clone()} /> }.into_view(),
                     Some(Ok(data)) => view! {
-                        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
                             <Metric label="総労働時間".to_string() value={format_hours(data.total_work_hours)} />
                             <Metric label="勤務日数".to_string() value={format_days(data.total_work_days)} />
                             <Metric label="平均日次労働時間".to_string() value={format_hours(data.average_daily_hours)} />

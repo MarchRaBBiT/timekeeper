@@ -209,7 +209,7 @@ fn AdminExportPanel() -> impl IntoView {
         <div class="space-y-6">
             <div class="bg-white shadow rounded-lg p-6">
                 <h2 class="text-lg font-medium text-gray-900 mb-4">{"データエクスポート (CSV)"}</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
                     <div>
                         <label class="block text-sm text-gray-700">{"ユーザー"}</label>
                         <div class="mt-1 space-y-2">

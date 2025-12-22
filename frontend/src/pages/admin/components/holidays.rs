@@ -472,7 +472,7 @@ pub fn HolidayManagementSection(
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <h3 class="text-lg font-medium text-gray-900">{"祝日管理"}</h3>
-            <form class="grid gap-3 md:grid-cols-3" on:submit=on_create_holiday>
+            <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"日付"}</label>
                     <input type="date" class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_date_input.set(event_target_value(&ev)) />
@@ -485,7 +485,7 @@ pub fn HolidayManagementSection(
                     <label class="block text-sm font-medium text-gray-700">{"備考（任意）"}</label>
                     <input class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
                 </div>
-                <div class="md:col-span-3">
+                <div class="lg:col-span-3">
                     <button
                         type="submit"
                         class="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
@@ -495,7 +495,7 @@ pub fn HolidayManagementSection(
                     </button>
                 </div>
             </form>
-            <div class="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
                 <div class="flex items-center gap-2">
                     <input
                         type="number"
@@ -524,7 +524,7 @@ pub fn HolidayManagementSection(
                     <h4 class="text-sm font-medium text-gray-900">{"祝日一覧フィルター"}</h4>
                     <p class="text-xs text-gray-500">{"期間を指定すると一致する祝日だけを表示します。"}</p>
                 </div>
-                <div class="grid gap-3 md:grid-cols-4">
+                <div class="grid gap-3 lg:grid-cols-4">
                     <div>
                         <label class="block text-xs font-medium text-gray-600">{"開始日"}</label>
                         <input
@@ -543,7 +543,7 @@ pub fn HolidayManagementSection(
                             on:input=move |ev| filter_to_input.set(event_target_value(&ev))
                         />
                     </div>
-                    <div class="md:col-span-2 flex items-end gap-2">
+                    <div class="lg:col-span-2 flex items-end gap-2">
                         <button class="px-3 py-1 rounded bg-gray-800 text-white" on:click=on_apply_filters>
                             {"日付で絞り込み"}
                         </button>
@@ -552,7 +552,7 @@ pub fn HolidayManagementSection(
                         </button>
                     </div>
                 </div>
-                <div class="grid gap-3 md:grid-cols-3">
+                <div class="grid gap-3 lg:grid-cols-3">
                     <div>
                         <label class="block text-xs font-medium text-gray-600">{"カレンダー範囲 (YYYY-MM)"}</label>
                         <input
@@ -562,7 +562,7 @@ pub fn HolidayManagementSection(
                             on:input=move |ev| calendar_month_input.set(event_target_value(&ev))
                         />
                     </div>
-                    <div class="md:col-span-2 flex items-end">
+                    <div class="lg:col-span-2 flex items-end">
                         <button class="px-3 py-1 rounded border border-blue-500 text-blue-600" on:click=on_apply_calendar_range>
                             {"選択月の範囲を適用"}
                         </button>
@@ -587,7 +587,7 @@ pub fn HolidayManagementSection(
                     <span>{"祝日一覧を読み込み中..."}</span>
                 </div>
             </Show>
-            <div class="flex flex-col gap-2 rounded-lg border border-gray-100 p-3 text-sm text-gray-700 md:flex-row md:items-center md:justify-between">
+            <div class="flex flex-col gap-2 rounded-lg border border-gray-100 p-3 text-sm text-gray-700 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     {move || {
                         page_bounds

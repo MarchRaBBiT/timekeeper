@@ -36,10 +36,7 @@ impl ApiClient {
             url.push_str(&qp.join("&"));
         }
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
         self.map_json_response(response).await
     }
@@ -48,11 +45,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .get(format!("{}/admin/requests/{}", base_url, id))
-                    .headers(headers))
+                    .get(format!("{}/admin/requests/{}", base_url, id)))
             })
             .await?;
         self.map_json_response(response).await
@@ -75,11 +70,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .put(format!("{}/admin/requests/{}/{}", base_url, id, action))
-                    .headers(headers)
                     .json(&json!({ "comment": comment })))
             })
             .await?;
@@ -90,11 +83,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .put(format!("{}/requests/{}", base_url, id))
-                    .headers(headers)
                     .json(&payload))
             })
             .await?;
@@ -105,11 +96,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .delete(format!("{}/requests/{}", base_url, id))
-                    .headers(headers))
+                    .delete(format!("{}/requests/{}", base_url, id)))
             })
             .await?;
         self.map_json_response(response).await
@@ -137,11 +126,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .post(format!("{}/requests/{}", base_url, kind))
-                    .headers(headers)
                     .json(&payload))
             })
             .await?;
@@ -165,13 +152,7 @@ impl ApiClient {
     pub async fn get_my_requests(&self) -> Result<Value, String> {
         let base_url = self.resolved_base_url().await;
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .http_client()
-                    .get(format!("{}/requests/me", base_url))
-                    .headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(format!("{}/requests/me", base_url))))
             .await?;
         self.map_json_response(response).await
     }

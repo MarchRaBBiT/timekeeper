@@ -1,8 +1,7 @@
 #![allow(dead_code)]
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
-use serde_json::{json, Value};
+use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
@@ -40,28 +39,8 @@ impl ApiClient {
         &self.client
     }
 
-    pub(super) fn get_auth_headers(&self) -> Result<reqwest_wasm::header::HeaderMap, String> {
-        let mut headers = reqwest_wasm::header::HeaderMap::new();
-
-        let storage = storage_utils::local_storage()?;
-        let token = storage
-            .get_item("access_token")
-            .map_err(|_| "Failed to get token")?
-            .ok_or("No token")?;
-
-        headers.insert(
-            reqwest_wasm::header::AUTHORIZATION,
-            format!("Bearer {}", token)
-                .parse()
-                .map_err(|_| "Invalid token format")?,
-        );
-
-        Ok(headers)
-    }
-
     pub(super) fn handle_unauthorized_status(status: StatusCode) {
         if status == StatusCode::UNAUTHORIZED {
-            Self::clear_auth_session();
             Self::redirect_to_login_if_needed();
         }
     }
@@ -74,6 +53,7 @@ impl ApiClient {
         F: Fn() -> Result<reqwest_wasm::RequestBuilder, String>,
     {
         let response = build_request()?
+            .fetch_credentials_include()
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -84,6 +64,7 @@ impl ApiClient {
 
         if self.refresh_token().await.is_ok() {
             let retry_response = build_request()?
+                .fetch_credentials_include()
                 .send()
                 .await
                 .map_err(|e| format!("Request failed: {}", e))?;
@@ -91,15 +72,6 @@ impl ApiClient {
         }
 
         Ok(response)
-    }
-
-    fn clear_auth_session() {
-        if let Ok(storage) = storage_utils::local_storage() {
-            let _ = storage.remove_item("access_token");
-            let _ = storage.remove_item("access_token_jti");
-            let _ = storage.remove_item("refresh_token");
-            let _ = storage.remove_item("current_user");
-        }
     }
 
     fn redirect_to_login_if_needed() {
@@ -114,16 +86,32 @@ impl ApiClient {
         }
     }
 
+    pub async fn get_me(&self) -> Result<UserResponse, String> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/auth/me", base_url))))
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn get_users(&self) -> Result<Vec<UserResponse>, String> {
         let base_url = self.resolved_base_url().await;
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .client
-                    .get(format!("{}/admin/users", base_url))
-                    .headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/users", base_url))))
             .await?;
 
         let status = response.status();
@@ -146,11 +134,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .post(format!("{}/admin/users", base_url))
-                    .headers(headers)
                     .json(&request))
             })
             .await?;
@@ -175,11 +161,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let resp = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .post(format!("{}/admin/mfa/reset", base_url))
-                    .headers(headers)
                     .json(&json!({ "user_id": user_id })))
             })
             .await?;
@@ -199,13 +183,7 @@ impl ApiClient {
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
         let base_url = self.resolved_base_url().await;
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .client
-                    .get(format!("{}/holidays", base_url))
-                    .headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/holidays", base_url))))
             .await?;
 
         let status = response.status();
@@ -245,11 +223,9 @@ impl ApiClient {
         }
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .get(format!("{}/admin/holidays", base_url))
-                    .headers(headers)
                     .query(&params))
             })
             .await?;
@@ -277,11 +253,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .post(format!("{}/admin/holidays", base_url))
-                    .headers(headers)
                     .json(payload))
             })
             .await?;
@@ -306,11 +280,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .delete(format!("{}/admin/holidays/{}", base_url, id))
-                    .headers(headers))
+                    .delete(format!("{}/admin/holidays/{}", base_url, id)))
             })
             .await?;
 
@@ -334,12 +306,10 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .get(format!("{}/holidays/check", base_url))
-                    .query(&[("date", date.format("%Y-%m-%d").to_string())])
-                    .headers(headers))
+                    .query(&[("date", date.format("%Y-%m-%d").to_string())]))
             })
             .await?;
 
@@ -367,12 +337,10 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .get(format!("{}/holidays/month", base_url))
-                    .query(&[("year", year.to_string()), ("month", month.to_string())])
-                    .headers(headers))
+                    .query(&[("year", year.to_string()), ("month", month.to_string())]))
             })
             .await?;
 
@@ -396,11 +364,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
-                    .get(format!("{}/admin/holidays/weekly", base_url))
-                    .headers(headers))
+                    .get(format!("{}/admin/holidays/weekly", base_url)))
             })
             .await?;
 
@@ -427,11 +393,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .client
                     .post(format!("{}/admin/holidays/weekly", base_url))
-                    .headers(headers)
                     .json(payload))
             })
             .await?;
@@ -461,12 +425,7 @@ impl ApiClient {
         if let Some(year) = year {
             url.push_str(&format!("?year={}", year));
         }
-        let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.client.get(&url).headers(headers))
-            })
-            .await?;
+        let response = self.send_with_refresh(|| Ok(self.client.get(&url))).await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -487,13 +446,7 @@ impl ApiClient {
     pub async fn export_data(&self) -> Result<serde_json::Value, String> {
         let base_url = self.resolved_base_url().await;
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self
-                    .client
-                    .get(format!("{}/admin/export", base_url))
-                    .headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/export", base_url))))
             .await?;
 
         let status = response.status();
@@ -538,11 +491,7 @@ impl ApiClient {
 
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                let mut request = self
-                    .client
-                    .get(format!("{}/admin/export", base_url))
-                    .headers(headers);
+                let mut request = self.client.get(format!("{}/admin/export", base_url));
                 if !params.is_empty() {
                     request = request.query(&params);
                 }
@@ -580,51 +529,6 @@ pub(super) fn ensure_device_label(storage: &Storage) -> Result<String, String> {
     Ok(label)
 }
 
-pub(super) fn decode_jti(token: &str) -> Option<String> {
-    let mut parts = token.split('.');
-    parts.next()?;
-    let payload = parts.next()?;
-    let decoded = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let value: Value = serde_json::from_slice(&decoded).ok()?;
-    value
-        .get("jti")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
-pub(super) fn persist_session(storage: &Storage, response: &LoginResponse) -> Result<(), String> {
-    storage
-        .set_item("access_token", &response.access_token)
-        .map_err(|_| "Failed to store token")?;
-    storage
-        .set_item("refresh_token", &response.refresh_token)
-        .map_err(|_| "Failed to store refresh token")?;
-    let user_json =
-        serde_json::to_string(&response.user).map_err(|_| "Failed to serialize user profile")?;
-    storage
-        .set_item("current_user", &user_json)
-        .map_err(|_| "Failed to store user profile")?;
-    if let Some(jti) = decode_jti(&response.access_token) {
-        let _ = storage.set_item("access_token_jti", &jti);
-    } else {
-        let _ = storage.remove_item("access_token_jti");
-    }
-    Ok(())
-}
-
-pub(super) fn current_access_jti(storage: &Storage) -> Option<String> {
-    if let Ok(Some(jti)) = storage.get_item("access_token_jti") {
-        return Some(jti);
-    }
-    if let Ok(Some(token)) = storage.get_item("access_token") {
-        if let Some(jti) = decode_jti(&token) {
-            let _ = storage.set_item("access_token_jti", &jti);
-            return Some(jti);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,26 +557,5 @@ mod tests {
         let second = ensure_device_label(&store).expect("label reused");
         assert_eq!(first, second);
         cleanup(&["device_label"]);
-    }
-
-    #[wasm_bindgen_test]
-    fn decode_jti_extracts_payload_value() {
-        let token = "aaa.eyJqdGkiOiJhYmMifQ.sig";
-        assert_eq!(decode_jti(token).as_deref(), Some("abc"));
-    }
-
-    #[wasm_bindgen_test]
-    fn current_access_jti_decodes_and_caches() {
-        cleanup(&["access_token", "access_token_jti"]);
-        let store = storage();
-        let token = "bbb.eyJqdGkiOiJ0ZXN0LWp0aSJ9.sig";
-        store.set_item("access_token", token).unwrap();
-        let resolved = current_access_jti(&store).expect("jti present");
-        assert_eq!(resolved, "test-jti");
-        assert_eq!(
-            store.get_item("access_token_jti").unwrap().as_deref(),
-            Some("test-jti")
-        );
-        cleanup(&["access_token", "access_token_jti"]);
     }
 }
