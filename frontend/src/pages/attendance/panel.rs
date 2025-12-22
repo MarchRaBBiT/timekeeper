@@ -95,19 +95,15 @@ pub fn AttendancePanel() -> impl IntoView {
 
     let form_state = AttendanceFormState::new();
     form_state.set_range(initial_today, initial_today);
-    let from_input = form_state.from_signal();
-    let to_input = form_state.to_signal();
+    let from_input = form_state.start_date_signal();
+    let to_input = form_state.end_date_signal();
 
     let (history_query, set_history_query) =
         create_signal(HistoryQuery::new(Some(initial_today), Some(initial_today)));
     let history_resource = {
-        let set_state = set_state.clone();
         create_resource(
             move || history_query.get(),
-            move |query| {
-                let set_state = set_state.clone();
-                async move { load_attendance_range(set_state, query.from, query.to).await }
-            },
+            move |query| async move { load_attendance_range(set_state, query.from, query.to).await },
         )
     };
     let history_loading = history_resource.loading();
@@ -135,13 +131,9 @@ pub fn AttendancePanel() -> impl IntoView {
         Signal::derive(move || holiday_query.with(|query| (query.year, query.month)));
 
     let _context_resource = {
-        let set_state = set_state.clone();
         create_resource(
             || (),
-            move |_| {
-                let set_state = set_state.clone();
-                async move { refresh_today_context(set_state).await }
-            },
+            move |_| async move { refresh_today_context(set_state).await },
         )
     };
 
@@ -156,9 +148,6 @@ pub fn AttendancePanel() -> impl IntoView {
     });
     let exporting = export_action.pending();
     {
-        let export_action = export_action.clone();
-        let export_error = export_error.clone();
-        let export_success = export_success.clone();
         create_effect(move |_| {
             if let Some(result) = export_action.value().get() {
                 match result {
@@ -189,11 +178,7 @@ pub fn AttendancePanel() -> impl IntoView {
     }
 
     let on_select_current_month = {
-        let export_error = export_error.clone();
-        let export_success = export_success.clone();
         let form_state = form_state.clone();
-        let set_history_query = set_history_query.clone();
-        let set_holiday_query = set_holiday_query.clone();
         Callback::new(move |_ev: MouseEvent| {
             range_error.set(None);
             export_error.set(None);
@@ -213,10 +198,6 @@ pub fn AttendancePanel() -> impl IntoView {
 
     let on_load_range = {
         let form_state = form_state.clone();
-        let set_history_query = set_history_query.clone();
-        let set_holiday_query = set_holiday_query.clone();
-        let export_success = export_success.clone();
-        let export_error = export_error.clone();
         Callback::new(move |_ev: MouseEvent| {
             export_error.set(None);
             export_success.set(None);
@@ -237,9 +218,6 @@ pub fn AttendancePanel() -> impl IntoView {
 
     let on_export_csv = {
         let form_state = form_state.clone();
-        let export_error = export_error.clone();
-        let export_success = export_success.clone();
-        let export_action = export_action.clone();
         Callback::new(move |_ev: MouseEvent| {
             export_error.set(None);
             export_success.set(None);
@@ -255,7 +233,6 @@ pub fn AttendancePanel() -> impl IntoView {
 
     let last_refresh_error = Signal::derive(move || state.get().last_refresh_error.clone());
     let refresh_holidays = {
-        let set_holiday_query = set_holiday_query.clone();
         Callback::new(move |_| {
             set_holiday_query.update(|query| {
                 *query = query.refresh();

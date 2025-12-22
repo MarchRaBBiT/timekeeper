@@ -60,9 +60,6 @@ pub fn WeeklyHolidaySection(
     });
     let create_pending = create_action.pending();
     {
-        let message = message.clone();
-        let form_error = form_error.clone();
-        let reload = reload.clone();
         let form_state = form_state.clone();
         create_effect(move |_| {
             if let Some(result) = create_action.value().get() {
@@ -86,10 +83,6 @@ pub fn WeeklyHolidaySection(
 
     let on_submit = {
         let form_state = form_state.clone();
-        let form_error = form_error.clone();
-        let message = message.clone();
-        let create_action = create_action.clone();
-        let system_admin_allowed = system_admin_allowed.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             if !admin_allowed.get_untracked() {
@@ -108,10 +101,7 @@ pub fn WeeklyHolidaySection(
         }
     };
 
-    let on_refresh = {
-        let reload = reload.clone();
-        move |_| reload.update(|value| *value = value.wrapping_add(1))
-    };
+    let on_refresh = { move |_| reload.update(|value| *value = value.wrapping_add(1)) };
 
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">

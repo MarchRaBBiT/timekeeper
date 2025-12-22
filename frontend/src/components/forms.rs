@@ -94,17 +94,16 @@ pub fn AttendanceActionButtons(
     let last_event = create_rw_signal(None::<ClockEventKind>);
 
     let clock_action = {
-        let set_attendance_state = set_attendance_state.clone();
         create_action(move |payload: &ClockEventPayload| {
-            let set_attendance_state = set_attendance_state.clone();
+            let set_attendance_state = set_attendance_state;
             let payload = payload.clone();
             async move {
                 match payload.kind {
                     ClockEventKind::ClockIn => {
-                        attendance_state::clock_in(set_attendance_state.clone()).await?
+                        attendance_state::clock_in(set_attendance_state).await?
                     }
                     ClockEventKind::ClockOut => {
-                        attendance_state::clock_out(set_attendance_state.clone()).await?
+                        attendance_state::clock_out(set_attendance_state).await?
                     }
                     ClockEventKind::BreakStart => {
                         let attendance_id = payload
@@ -127,9 +126,6 @@ pub fn AttendanceActionButtons(
     };
     let action_pending = clock_action.pending();
     {
-        let clock_action = clock_action.clone();
-        let set_message = set_message.clone();
-        let last_event = last_event.clone();
         create_effect(move |_| {
             if let Some(result) = clock_action.value().get() {
                 match result {
@@ -150,10 +146,6 @@ pub fn AttendanceActionButtons(
     }
 
     let handle_clock_in = {
-        let clock_action = clock_action.clone();
-        let action_pending = action_pending;
-        let set_message = set_message.clone();
-        let last_event = last_event.clone();
         move |_| {
             if action_pending.get() {
                 return;
@@ -165,10 +157,6 @@ pub fn AttendanceActionButtons(
     };
 
     let handle_clock_out = {
-        let clock_action = clock_action.clone();
-        let action_pending = action_pending;
-        let set_message = set_message.clone();
-        let last_event = last_event.clone();
         move |_| {
             if action_pending.get() {
                 return;
@@ -180,11 +168,6 @@ pub fn AttendanceActionButtons(
     };
 
     let handle_break_start = {
-        let attendance_state = attendance_state.clone();
-        let set_message = set_message.clone();
-        let clock_action = clock_action.clone();
-        let action_pending = action_pending;
-        let last_event = last_event.clone();
         move |_| {
             if action_pending.get() {
                 return;
@@ -208,11 +191,6 @@ pub fn AttendanceActionButtons(
     };
 
     let handle_break_end = {
-        let attendance_state = attendance_state.clone();
-        let set_message = set_message.clone();
-        let clock_action = clock_action.clone();
-        let action_pending = action_pending;
-        let last_event = last_event.clone();
         move |_| {
             if action_pending.get() {
                 return;

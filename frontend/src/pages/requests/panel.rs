@@ -77,8 +77,6 @@ pub fn RequestsPage() -> impl IntoView {
     });
 
     {
-        let reload = reload.clone();
-        let editing_request = editing_request.clone();
         let leave_state = leave_state.clone();
         let overtime_state = overtime_state.clone();
         create_effect(move |_| {
@@ -97,9 +95,6 @@ pub fn RequestsPage() -> impl IntoView {
         });
     }
     {
-        let cancel_action = cancel_action.clone();
-        let list_message = list_message.clone();
-        let reload = reload.clone();
         create_effect(move |_| {
             if let Some(result) = cancel_action.value().get() {
                 match result {
@@ -114,11 +109,8 @@ pub fn RequestsPage() -> impl IntoView {
     }
 
     let on_edit = Callback::new({
-        let editing_request = editing_request.clone();
-        let list_message = list_message.clone();
         let leave_state = leave_state.clone();
         let overtime_state = overtime_state.clone();
-        let set_active_form = set_active_form.clone();
         move |summary: RequestSummary| {
             list_message.update(|msg| msg.clear());
             let target = EditTarget {
@@ -139,8 +131,6 @@ pub fn RequestsPage() -> impl IntoView {
         }
     });
     let on_cancel_request = Callback::new({
-        let cancel_action = cancel_action.clone();
-        let editing_request = editing_request.clone();
         let leave_state = leave_state.clone();
         let overtime_state = overtime_state.clone();
         move |summary: RequestSummary| {
@@ -151,8 +141,6 @@ pub fn RequestsPage() -> impl IntoView {
         }
     });
     {
-        let reload = reload.clone();
-        let leave_message = leave_message.clone();
         create_effect(move |_| {
             if let Some(result) = leave_action.value().get() {
                 match result {
@@ -166,8 +154,6 @@ pub fn RequestsPage() -> impl IntoView {
         });
     }
     {
-        let reload = reload.clone();
-        let overtime_message = overtime_message.clone();
         create_effect(move |_| {
             if let Some(result) = overtime_action.value().get() {
                 match result {
@@ -182,7 +168,6 @@ pub fn RequestsPage() -> impl IntoView {
     }
 
     let on_select = Callback::new({
-        let selected_request = selected_request.clone();
         move |summary: RequestSummary| {
             selected_request.set(Some(summary));
         }
@@ -232,8 +217,6 @@ pub fn RequestsPage() -> impl IntoView {
                             update_action=update_action
                             editing=editing_request
                             on_cancel_edit=Callback::new({
-                                let editing_request = editing_request.clone();
-                                let list_message = list_message.clone();
                                 let leave_state = leave_state_mobile.clone();
                                 move |_| {
                                     editing_request.set(None);
@@ -251,8 +234,6 @@ pub fn RequestsPage() -> impl IntoView {
                             update_action=update_action
                             editing=editing_request
                             on_cancel_edit=Callback::new({
-                                let editing_request = editing_request.clone();
-                                let list_message = list_message.clone();
                                 let overtime_state = overtime_state_mobile.clone();
                                 move |_| {
                                     editing_request.set(None);
@@ -271,8 +252,6 @@ pub fn RequestsPage() -> impl IntoView {
                         update_action=update_action
                         editing=editing_request
                         on_cancel_edit=Callback::new({
-                            let editing_request = editing_request.clone();
-                            let list_message = list_message.clone();
                             let leave_state = leave_state_desktop.clone();
                             move |_| {
                                 editing_request.set(None);
@@ -288,8 +267,6 @@ pub fn RequestsPage() -> impl IntoView {
                         update_action=update_action
                         editing=editing_request
                         on_cancel_edit=Callback::new({
-                            let editing_request = editing_request.clone();
-                            let list_message = list_message.clone();
                             let overtime_state = overtime_state_desktop.clone();
                             move |_| {
                                 editing_request.set(None);

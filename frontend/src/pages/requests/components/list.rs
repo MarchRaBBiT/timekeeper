@@ -61,7 +61,6 @@ pub fn RequestsList(
                                 each=move || summaries.get()
                                 key=|summary| summary.id.clone()
                                 children=move |summary: RequestSummary| {
-                                    let on_select = on_select.clone();
                                     let summary = store_value(summary);
                                     let summary_value = summary.get_value();
                                     let status = summary_value.status.clone();

@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
 use serde_json::json;
@@ -17,13 +17,6 @@ impl ApiClient {
         Self {
             client: Client::new(),
             base_url: None,
-        }
-    }
-
-    pub fn new_with_base_url(base_url: impl Into<String>) -> Self {
-        Self {
-            client: Client::new(),
-            base_url: Some(base_url.into()),
         }
     }
 

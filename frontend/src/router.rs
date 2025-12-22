@@ -35,7 +35,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
 pub const PUBLIC_ROUTE_PATHS: &[&str] = &["/", "/login", "/mfa/register"];
 
 pub fn mount_app() {
-    mount_to_body(|| app_root());
+    mount_to_body(app_root);
 }
 
 pub fn app_root() -> impl IntoView {

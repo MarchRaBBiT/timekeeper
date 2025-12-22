@@ -25,12 +25,6 @@ impl RequestsRepository {
         }
     }
 
-    pub fn with_client(client: ApiClient) -> Self {
-        Self {
-            client: Rc::new(client),
-        }
-    }
-
     pub async fn submit_leave(
         &self,
         payload: CreateLeaveRequest,

@@ -15,8 +15,6 @@ pub fn InviteForm(
 ) -> impl IntoView {
     let pending = invite_action.pending();
     let on_submit = {
-        let form_state = form_state.clone();
-        let messages = messages.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             messages.update(MessageState::clear);

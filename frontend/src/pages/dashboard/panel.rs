@@ -20,9 +20,8 @@ pub fn DashboardPage() -> impl IntoView {
     let activity_filter = create_rw_signal(ActivityStatusFilter::All);
 
     create_effect(move |_| {
-        let set_state = set_attendance_state.clone();
         spawn_local(async move {
-            let _ = refresh_today_context(set_state).await;
+            let _ = refresh_today_context(set_attendance_state).await;
         });
     });
 

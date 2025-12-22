@@ -112,7 +112,6 @@ pub fn HolidayManagementSection(
         })
     });
     let on_prev_page = {
-        let holiday_query = holiday_query.clone();
         move |_| {
             holiday_query.update(|query| {
                 if query.page > 1 {
@@ -122,8 +121,6 @@ pub fn HolidayManagementSection(
         }
     };
     let on_next_page = {
-        let holiday_query = holiday_query.clone();
-        let can_go_next = can_go_next.clone();
         move |_| {
             if can_go_next.get_untracked() {
                 holiday_query.update(|query| query.page += 1);
@@ -131,7 +128,6 @@ pub fn HolidayManagementSection(
         }
     };
     let on_per_page_change = {
-        let holiday_query = holiday_query.clone();
         move |ev: ev::Event| {
             if let Ok(value) = event_target_value(&ev).parse::<i64>() {
                 holiday_query.update(|query| {
@@ -142,11 +138,6 @@ pub fn HolidayManagementSection(
         }
     };
     let on_apply_filters = {
-        let filter_from_input = filter_from_input.clone();
-        let filter_to_input = filter_to_input.clone();
-        let holiday_error = holiday_error.clone();
-        let holiday_message = holiday_message.clone();
-        let holiday_query = holiday_query.clone();
         move |_| {
             let from_raw = filter_from_input.get();
             let to_raw = filter_to_input.get();
@@ -189,11 +180,6 @@ pub fn HolidayManagementSection(
         }
     };
     let on_clear_filters = {
-        let filter_from_input = filter_from_input.clone();
-        let filter_to_input = filter_to_input.clone();
-        let holiday_error = holiday_error.clone();
-        let holiday_message = holiday_message.clone();
-        let holiday_query = holiday_query.clone();
         move |_| {
             filter_from_input.set(String::new());
             filter_to_input.set(String::new());
@@ -207,12 +193,6 @@ pub fn HolidayManagementSection(
         }
     };
     let on_apply_calendar_range = {
-        let calendar_month_input = calendar_month_input.clone();
-        let filter_from_input = filter_from_input.clone();
-        let filter_to_input = filter_to_input.clone();
-        let holiday_error = holiday_error.clone();
-        let holiday_message = holiday_message.clone();
-        let holiday_query = holiday_query.clone();
         move |_| {
             let month_raw = calendar_month_input.get();
             let trimmed = month_raw.trim();
@@ -255,12 +235,6 @@ pub fn HolidayManagementSection(
     });
     let create_pending = create_holiday_action.pending();
     {
-        let holiday_message = holiday_message.clone();
-        let holiday_error = holiday_error.clone();
-        let holidays_reload = holidays_reload.clone();
-        let holiday_date_input = holiday_date_input.clone();
-        let holiday_name_input = holiday_name_input.clone();
-        let holiday_desc_input = holiday_desc_input.clone();
         create_effect(move |_| {
             if let Some(result) = create_holiday_action.value().get() {
                 match result {
@@ -292,10 +266,6 @@ pub fn HolidayManagementSection(
         async move { repo.delete_holiday(&id).await }
     });
     {
-        let deleting_id = deleting_id.clone();
-        let holidays_reload = holidays_reload.clone();
-        let holiday_message = holiday_message.clone();
-        let holiday_error = holiday_error.clone();
         create_effect(move |_| {
             if let Some(result) = delete_holiday_action.value().get() {
                 match result {
@@ -326,8 +296,6 @@ pub fn HolidayManagementSection(
     });
     let google_loading = fetch_google_action.pending();
     {
-        let google_holidays = google_holidays.clone();
-        let google_error = google_error.clone();
         create_effect(move |_| {
             if let Some(result) = fetch_google_action.value().get() {
                 match result {
@@ -358,9 +326,6 @@ pub fn HolidayManagementSection(
         }
     });
     {
-        let holiday_message = holiday_message.clone();
-        let holiday_error = holiday_error.clone();
-        let holidays_reload = holidays_reload.clone();
         create_effect(move |_| {
             if let Some(result) = import_action.value().get() {
                 match result {
@@ -384,8 +349,6 @@ pub fn HolidayManagementSection(
     }
 
     let on_fetch_google = {
-        let google_year_input = google_year_input.clone();
-        let fetch_google_action = fetch_google_action.clone();
         move |_| {
             let parsed_year = google_year_input.get().trim().parse::<i32>().ok();
             fetch_google_action.dispatch(parsed_year);
@@ -393,12 +356,6 @@ pub fn HolidayManagementSection(
     };
 
     let on_create_holiday = {
-        let holiday_date_input = holiday_date_input.clone();
-        let holiday_name_input = holiday_name_input.clone();
-        let holiday_desc_input = holiday_desc_input.clone();
-        let holiday_error = holiday_error.clone();
-        let holiday_message = holiday_message.clone();
-        let create_holiday_action = create_holiday_action.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             let date_raw = holiday_date_input.get();
@@ -433,8 +390,6 @@ pub fn HolidayManagementSection(
     };
 
     let on_delete_holiday = {
-        let delete_holiday_action = delete_holiday_action.clone();
-        let deleting_id = deleting_id.clone();
         move |id: String| {
             deleting_id.set(Some(id.clone()));
             delete_holiday_action.dispatch(id);
@@ -442,11 +397,6 @@ pub fn HolidayManagementSection(
     };
 
     let on_import_google = {
-        let google_holidays = google_holidays.clone();
-        let holidays_data = holidays_data.clone();
-        let import_action = import_action.clone();
-        let holiday_error = holiday_error.clone();
-        let holiday_message = holiday_message.clone();
         move |_| {
             let existing: HashSet<NaiveDate> = holidays_data
                 .get()

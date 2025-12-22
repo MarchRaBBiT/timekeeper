@@ -16,9 +16,6 @@ pub fn LoginPanel() -> impl IntoView {
     let pending = login_action.pending();
 
     {
-        let login_action = login_action.clone();
-        let set_error = set_error.clone();
-        let set_totp_code = set_totp_code.clone();
         create_effect(move |_| {
             if let Some(result) = login_action.value().get() {
                 match result {
@@ -36,12 +33,6 @@ pub fn LoginPanel() -> impl IntoView {
     }
 
     let handle_submit = {
-        let pending = pending.clone();
-        let username = username.clone();
-        let password = password.clone();
-        let totp_code = totp_code.clone();
-        let set_error = set_error.clone();
-        let login_action = login_action.clone();
         Callback::new(move |ev: SubmitEvent| {
             ev.prevent_default();
             if pending.get_untracked() {

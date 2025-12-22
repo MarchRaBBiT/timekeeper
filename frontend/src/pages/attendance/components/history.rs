@@ -57,14 +57,11 @@ fn HistoryRow(
     });
 
     let toggle = {
-        let expanded = expanded.clone();
-        let breaks = breaks.clone();
         let attendance_id = item.id.clone();
         move |_| {
             let now_expanded = !expanded.get();
             expanded.set(now_expanded);
             if now_expanded {
-                let breaks = breaks.clone();
                 let attendance_id = attendance_id.clone();
                 spawn_local(async move {
                     match repository::fetch_breaks_by_attendance(&attendance_id).await {

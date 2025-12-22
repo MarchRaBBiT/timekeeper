@@ -33,7 +33,6 @@ pub fn AdminAttendanceToolsSection(
     let error = create_rw_signal(None::<String>);
 
     let add_break = {
-        let breaks = breaks.clone();
         move |_| {
             breaks.update(|list| list.push((String::new(), String::new())));
         }
@@ -56,8 +55,6 @@ pub fn AdminAttendanceToolsSection(
     let force_pending = force_break_action.pending();
 
     {
-        let message = message.clone();
-        let error = error.clone();
         create_effect(move |_| {
             if let Some(result) = attendance_action.value().get() {
                 match result {
@@ -74,8 +71,6 @@ pub fn AdminAttendanceToolsSection(
         });
     }
     {
-        let message = message.clone();
-        let error = error.clone();
         create_effect(move |_| {
             if let Some(result) = force_break_action.value().get() {
                 match result {
@@ -93,14 +88,6 @@ pub fn AdminAttendanceToolsSection(
     }
 
     let on_submit_attendance = {
-        let att_user = att_user.clone();
-        let att_date = att_date.clone();
-        let att_in = att_in.clone();
-        let att_out = att_out.clone();
-        let breaks = breaks.clone();
-        let attendance_action = attendance_action.clone();
-        let message = message.clone();
-        let error = error.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             if !system_admin_allowed.get_untracked() {
@@ -163,10 +150,6 @@ pub fn AdminAttendanceToolsSection(
     };
 
     let on_force_end = {
-        let break_force_id = break_force_id.clone();
-        let force_break_action = force_break_action.clone();
-        let error = error.clone();
-        let message = message.clone();
         move |_| {
             if !system_admin_allowed.get_untracked() {
                 return;

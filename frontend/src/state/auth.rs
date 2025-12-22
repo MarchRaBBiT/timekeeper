@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::{
     api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse},
     pages::login::repository as login_repository,
@@ -7,21 +6,11 @@ use leptos::*;
 
 type AuthContext = (ReadSignal<AuthState>, WriteSignal<AuthState>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AuthState {
     pub user: Option<UserResponse>,
     pub is_authenticated: bool,
     pub loading: bool,
-}
-
-impl Default for AuthState {
-    fn default() -> Self {
-        Self {
-            user: None,
-            is_authenticated: false,
-            loading: false,
-        }
-    }
 }
 
 fn create_auth_context() -> AuthContext {
@@ -68,21 +57,6 @@ async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, String>
     Ok(response.user)
 }
 
-pub async fn login(
-    username: String,
-    password: String,
-    totp_code: Option<String>,
-    set_auth_state: WriteSignal<AuthState>,
-) -> Result<(), String> {
-    let request = LoginRequest {
-        username,
-        password,
-        totp_code,
-        device_label: None,
-    };
-    login_request(request, set_auth_state).await
-}
-
 pub async fn login_request(
     request: LoginRequest,
     set_auth_state: WriteSignal<AuthState>,
@@ -120,28 +94,6 @@ pub async fn logout(
     result
 }
 
-pub async fn refresh_auth(set_auth_state: WriteSignal<AuthState>) -> Result<(), String> {
-    let api_client = ApiClient::new();
-    match refresh_session(&api_client).await {
-        Ok(user) => {
-            set_auth_state.update(|state| {
-                state.user = Some(user);
-                state.is_authenticated = true;
-                state.loading = false;
-            });
-            Ok(())
-        }
-        Err(err) => {
-            set_auth_state.update(|state| {
-                state.user = None;
-                state.is_authenticated = false;
-                state.loading = false;
-            });
-            Err(err)
-        }
-    }
-}
-
 pub async fn fetch_mfa_status() -> Result<MfaStatusResponse, String> {
     ApiClient::new().get_mfa_status().await
 }
@@ -171,7 +123,6 @@ pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
     create_action(move |request: &LoginRequest| {
         let payload = request.clone();
-        let set_auth = set_auth.clone();
         async move { login_request(payload, set_auth).await }
     })
 }
@@ -179,16 +130,7 @@ pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
 pub fn use_logout_action() -> Action<bool, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
     create_action(move |all: &bool| {
-        let set_auth = set_auth.clone();
         let flag = *all;
         async move { logout(flag, set_auth).await }
-    })
-}
-
-pub fn use_refresh_action() -> Action<(), Result<(), String>> {
-    let (_auth, set_auth) = use_auth();
-    create_action(move |_| {
-        let set_auth = set_auth.clone();
-        async move { refresh_auth(set_auth).await }
     })
 }

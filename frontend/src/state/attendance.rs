@@ -3,7 +3,7 @@ use crate::utils::time::today_in_app_tz;
 use chrono::NaiveDate;
 use leptos::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AttendanceState {
     pub current_attendance: Option<AttendanceResponse>,
     pub attendance_history: Vec<AttendanceResponse>,
@@ -13,21 +13,6 @@ pub struct AttendanceState {
     pub range_from: Option<NaiveDate>,
     pub range_to: Option<NaiveDate>,
     pub loading: bool,
-}
-
-impl Default for AttendanceState {
-    fn default() -> Self {
-        Self {
-            current_attendance: None,
-            attendance_history: Vec::new(),
-            today_status: None,
-            today_holiday_reason: None,
-            last_refresh_error: None,
-            range_from: None,
-            range_to: None,
-            loading: false,
-        }
-    }
 }
 
 pub fn use_attendance() -> (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>) {
@@ -149,6 +134,29 @@ pub async fn load_today_holiday_reason(
     }
 }
 
+pub async fn refresh_today_context(
+    set_attendance_state: WriteSignal<AttendanceState>,
+) -> Result<(), String> {
+    if let Err(err) = load_today_status(set_attendance_state).await {
+        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
+        return Err(err);
+    }
+
+    let today = today_in_app_tz();
+    if let Err(err) = load_attendance_range(set_attendance_state, Some(today), Some(today)).await {
+        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
+        return Err(err);
+    }
+
+    if let Err(err) = load_today_holiday_reason(set_attendance_state).await {
+        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
+        return Err(err);
+    }
+
+    set_attendance_state.update(|state| state.last_refresh_error = None);
+    Ok(())
+}
+
 pub fn describe_holiday_reason(code: &str) -> &'static str {
     match code {
         "public holiday" => "祝日",
@@ -191,36 +199,12 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn can_store_refresh_error_message() {
-        let mut state = AttendanceState::default();
-        state.last_refresh_error = Some("network error".into());
+        let state = AttendanceState {
+            last_refresh_error: Some("network error".into()),
+            ..Default::default()
+        };
         assert_eq!(state.last_refresh_error.as_deref(), Some("network error"));
     }
-}
-
-pub async fn refresh_today_context(
-    set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
-    let status_set = set_attendance_state.clone();
-    if let Err(err) = load_today_status(status_set).await {
-        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
-        return Err(err);
-    }
-
-    let today = today_in_app_tz();
-    let range_set = set_attendance_state.clone();
-    if let Err(err) = load_attendance_range(range_set, Some(today), Some(today)).await {
-        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
-        return Err(err);
-    }
-
-    let holiday_set = set_attendance_state.clone();
-    if let Err(err) = load_today_holiday_reason(holiday_set).await {
-        set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
-        return Err(err);
-    }
-
-    set_attendance_state.update(|state| state.last_refresh_error = None);
-    Ok(())
 }
 
 // load_attendance_summary was unused; consider adding a call site before reintroducing.
