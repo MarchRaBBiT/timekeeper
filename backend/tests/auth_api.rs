@@ -10,7 +10,7 @@ use timekeeper_backend::{
     config::Config,
     handlers::auth::process_login_for_user,
     models::user::{LoginRequest, User, UserRole},
-    utils::{mfa::generate_totp_secret, password::hash_password},
+    utils::{cookies::SameSite, mfa::generate_totp_secret, password::hash_password},
 };
 
 const TEST_PASSWORD: &str = "correct-horse-battery-staple";
@@ -21,6 +21,9 @@ fn test_config() -> Config {
         jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        cookie_secure: false,
+        cookie_same_site: SameSite::Lax,
+        cors_allow_origins: vec!["http://localhost:8000".into()],
         time_zone: UTC,
         mfa_issuer: "Timekeeper Test".into(),
     }

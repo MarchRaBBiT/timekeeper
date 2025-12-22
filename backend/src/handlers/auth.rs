@@ -1,6 +1,6 @@
 use axum::{
     extract::{Extension, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -16,6 +16,10 @@ use crate::{
         MfaStatusResponse, User, UserResponse,
     },
     utils::{
+        cookies::{
+            build_auth_cookie, build_clear_cookie, extract_cookie_value, CookieOptions,
+            ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH,
+        },
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
             Claims, RefreshToken,
@@ -28,16 +32,23 @@ use crate::{
 pub type HandlerError = (StatusCode, Json<Value>);
 pub type HandlerResult<T> = Result<T, HandlerError>;
 
+#[derive(Debug)]
+pub struct AuthSession {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub user: UserResponse,
+}
+
 pub async fn login(
     State((pool, config)): State<(PgPool, Config)>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
     let user = auth_repo::find_user_by_username(&pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
 
-    let response = process_login_for_user(
+    let session = process_login_for_user(
         user,
         payload,
         &config,
@@ -56,18 +67,27 @@ pub async fn login(
     )
     .await?;
 
-    Ok(Json(response))
+    let mut headers = HeaderMap::new();
+    set_auth_cookies(&mut headers, &session, &config);
+    Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
 pub async fn refresh(
     State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
-    let refresh_token = payload
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| bad_request("Refresh token is required"))?;
-    let (refresh_token_id, refresh_token_secret) = decode_refresh_token(refresh_token)
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
+    let cookie_header = cookie_header_value(&headers);
+    let refresh_token =
+        extract_cookie_value(cookie_header.unwrap_or_default(), REFRESH_COOKIE_NAME)
+            .or_else(|| {
+                payload
+                    .get("refresh_token")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+            })
+            .ok_or_else(|| bad_request("Refresh token is required"))?;
+    let (refresh_token_id, refresh_token_secret) = decode_refresh_token(&refresh_token)
         .map_err(|_| unauthorized("Invalid or expired refresh token"))?;
 
     let token_record = fetch_refresh_token_or_unauthorized(&pool, &refresh_token_id).await?;
@@ -112,13 +132,15 @@ pub async fn refresh(
         let _ = revoke_active_access_token(&pool, old_jti).await;
     }
 
-    let response = LoginResponse {
+    let session = AuthSession {
         access_token,
         refresh_token: new_refresh_token_data.encoded(),
         user: UserResponse::from(user),
     };
 
-    Ok(Json(response))
+    let mut response_headers = HeaderMap::new();
+    set_auth_cookies(&mut response_headers, &session, &config);
+    Ok((response_headers, Json(LoginResponse { user: session.user })))
 }
 
 pub async fn mfa_status(
@@ -128,6 +150,12 @@ pub async fn mfa_status(
         enabled: user.is_mfa_enabled(),
         pending: user.has_pending_mfa(),
     }))
+}
+
+pub async fn me(
+    Extension(user): Extension<User>,
+) -> Result<Json<UserResponse>, (StatusCode, Json<Value>)> {
+    Ok(Json(UserResponse::from(user)))
 }
 
 async fn begin_mfa_enrollment(
@@ -342,11 +370,12 @@ pub async fn change_password(
 }
 
 pub async fn logout(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
     let all = payload
         .get("all")
         .and_then(|v| v.as_bool())
@@ -354,19 +383,33 @@ pub async fn logout(
     if all {
         revoke_tokens_for_user(&pool, &user.id, "Failed to revoke tokens").await?;
         revoke_active_tokens_for_user(&pool, &user.id).await?;
-        return Ok(Json(json!({"message":"Logged out"})));
+        let mut response_headers = HeaderMap::new();
+        clear_auth_cookies(&mut response_headers, &config);
+        return Ok((response_headers, Json(json!({"message":"Logged out"}))));
     }
 
-    if let Some(rt) = payload.get("refresh_token").and_then(|v| v.as_str()) {
+    if let Some(rt) = payload
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .or_else(|| {
+            cookie_header_value(&headers)
+                .and_then(|value| extract_cookie_value(value, REFRESH_COOKIE_NAME))
+        })
+    {
         let (token_id, _) =
-            decode_refresh_token(rt).map_err(|_| bad_request("Invalid refresh token"))?;
+            decode_refresh_token(&rt).map_err(|_| bad_request("Invalid refresh token"))?;
         revoke_refresh_token_for_user(&pool, &token_id, &user.id).await?;
         revoke_active_access_token(&pool, &claims.jti).await?;
-        return Ok(Json(json!({"message":"Logged out"})));
+        let mut response_headers = HeaderMap::new();
+        clear_auth_cookies(&mut response_headers, &config);
+        return Ok((response_headers, Json(json!({"message":"Logged out"}))));
     }
 
     revoke_active_access_token(&pool, &claims.jti).await?;
-    Ok(Json(json!({"message":"Logged out"})))
+    let mut response_headers = HeaderMap::new();
+    clear_auth_cookies(&mut response_headers, &config);
+    Ok((response_headers, Json(json!({"message":"Logged out"}))))
 }
 
 fn handler_error(status: StatusCode, message: &'static str) -> HandlerError {
@@ -391,7 +434,7 @@ pub async fn process_login_for_user<PF, AF, PFut, AFut>(
     config: &Config,
     persist_refresh_token: PF,
     persist_active_access_token: AF,
-) -> HandlerResult<LoginResponse>
+) -> HandlerResult<AuthSession>
 where
     PF: FnOnce(RefreshToken) -> PFut,
     PFut: Future<Output = HandlerResult<()>>,
@@ -426,13 +469,68 @@ where
         .map(|label| label.trim().to_string());
     persist_active_access_token(claims.clone(), context).await?;
 
-    let response = LoginResponse {
+    let response = AuthSession {
         access_token,
         refresh_token,
         user: UserResponse::from(user),
     };
 
     Ok(response)
+}
+
+fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Config) {
+    let options = CookieOptions {
+        secure: config.cookie_secure,
+        same_site: config.cookie_same_site,
+    };
+    let access_max_age = std::time::Duration::from_secs(config.jwt_expiration_hours * 3600);
+    let refresh_max_age =
+        std::time::Duration::from_secs(config.refresh_token_expiration_days * 24 * 60 * 60);
+    let access_cookie = build_auth_cookie(
+        ACCESS_COOKIE_NAME,
+        &session.access_token,
+        access_max_age,
+        ACCESS_COOKIE_PATH,
+        options,
+    );
+    let refresh_cookie = build_auth_cookie(
+        REFRESH_COOKIE_NAME,
+        &session.refresh_token,
+        refresh_max_age,
+        REFRESH_COOKIE_PATH,
+        options,
+    );
+    let access_value = access_cookie
+        .parse()
+        .expect("valid Set-Cookie header for access token");
+    let refresh_value = refresh_cookie
+        .parse()
+        .expect("valid Set-Cookie header for refresh token");
+    headers.append(header::SET_COOKIE, access_value);
+    headers.append(header::SET_COOKIE, refresh_value);
+}
+
+fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
+    let options = CookieOptions {
+        secure: config.cookie_secure,
+        same_site: config.cookie_same_site,
+    };
+    let access_cookie = build_clear_cookie(ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, options);
+    let refresh_cookie = build_clear_cookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH, options);
+    let access_value = access_cookie
+        .parse()
+        .expect("valid Set-Cookie header for access token");
+    let refresh_value = refresh_cookie
+        .parse()
+        .expect("valid Set-Cookie header for refresh token");
+    headers.append(header::SET_COOKIE, access_value);
+    headers.append(header::SET_COOKIE, refresh_value);
+}
+
+fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
 }
 
 pub fn ensure_password_matches(

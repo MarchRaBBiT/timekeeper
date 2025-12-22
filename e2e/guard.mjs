@@ -8,7 +8,8 @@ try {
   await page.fill('#password', 'admin123');
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 15000 });
-  // Clear tokens to simulate logged-out session
+  // Clear auth state to simulate logged-out session
+  await page.context().clearCookies();
   await page.evaluate(() => { localStorage.removeItem('access_token'); localStorage.removeItem('refresh_token'); });
   // Navigate to a protected route
   await page.goto(base + '/attendance');

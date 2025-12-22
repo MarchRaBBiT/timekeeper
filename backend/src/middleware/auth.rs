@@ -7,19 +7,29 @@ use axum::{
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sqlx::PgPool;
 
-use crate::{config::Config, handlers::auth_repo, models::user::User, utils::jwt::Claims};
+use crate::{
+    config::Config,
+    handlers::auth_repo,
+    models::user::User,
+    utils::{
+        cookies::{extract_cookie_value, ACCESS_COOKIE_NAME},
+        jwt::Claims,
+    },
+};
 
 pub async fn auth(
     State((pool, config)): State<(PgPool, Config)>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let auth_header = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok())
-        .map(|value| value.to_owned());
-    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
+    let (auth_header, cookie_header) = extract_auth_headers(request.headers());
+    let (claims, user) = authenticate_request(
+        auth_header.as_deref(),
+        cookie_header.as_deref(),
+        &pool,
+        &config,
+    )
+    .await?;
     request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user);
 
@@ -43,12 +53,14 @@ pub async fn auth_admin(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let auth_header = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok())
-        .map(|value| value.to_owned());
-    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
+    let (auth_header, cookie_header) = extract_auth_headers(request.headers());
+    let (claims, user) = authenticate_request(
+        auth_header.as_deref(),
+        cookie_header.as_deref(),
+        &pool,
+        &config,
+    )
+    .await?;
     if !(user.is_admin() || user.is_system_admin()) {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -64,12 +76,14 @@ pub async fn auth_system_admin(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let auth_header = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok())
-        .map(|value| value.to_owned());
-    let (claims, user) = authenticate_request(auth_header.as_deref(), &pool, &config).await?;
+    let (auth_header, cookie_header) = extract_auth_headers(request.headers());
+    let (claims, user) = authenticate_request(
+        auth_header.as_deref(),
+        cookie_header.as_deref(),
+        &pool,
+        &config,
+    )
+    .await?;
     if !user.is_system_admin() {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -108,15 +122,17 @@ fn parse_bearer_token(header: &str) -> Option<&str> {
 
 async fn authenticate_request(
     auth_header: Option<&str>,
+    cookie_header: Option<&str>,
     pool: &PgPool,
     config: &Config,
 ) -> Result<(Claims, User), StatusCode> {
-    let token = match auth_header.and_then(parse_bearer_token) {
-        Some(token) => token,
-        None => return Err(StatusCode::UNAUTHORIZED),
-    };
+    let token = auth_header
+        .and_then(parse_bearer_token)
+        .map(|value| value.to_string())
+        .or_else(|| cookie_header.and_then(|raw| extract_cookie_value(raw, ACCESS_COOKIE_NAME)))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let claims = verify_token(token, &config.jwt_secret).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = verify_token(&token, &config.jwt_secret).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     let is_active = auth_repo::access_token_exists(pool, &claims.jti)
         .await
@@ -131,4 +147,16 @@ async fn authenticate_request(
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     Ok((claims, user))
+}
+
+fn extract_auth_headers(headers: &axum::http::HeaderMap) -> (Option<String>, Option<String>) {
+    let auth_header = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_owned());
+    let cookie_header = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_owned());
+    (auth_header, cookie_header)
 }

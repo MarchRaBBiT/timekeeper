@@ -105,7 +105,7 @@ pub fn WeeklyHolidaySection(
 
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">{"週次休日"}</h2>
                     <p class="text-sm text-gray-600">
@@ -120,8 +120,8 @@ pub fn WeeklyHolidaySection(
                     {"再取得"}
                 </button>
             </div>
-            <form class="grid gap-3 md:grid-cols-3" on:submit=on_submit>
-                <div class="md:col-span-1">
+            <form class="grid gap-3 lg:grid-cols-3" on:submit=on_submit>
+                <div class="lg:col-span-1">
                     <label class="block text-sm font-medium text-gray-700">{"曜日"}</label>
                     <select
                         class="mt-1 w-full border rounded px-2 py-1"
@@ -137,7 +137,7 @@ pub fn WeeklyHolidaySection(
                         <option value="6">{"土 (6)"}</option>
                     </select>
                 </div>
-                <div class="md:col-span-1">
+                <div class="lg:col-span-1">
                     <label class="block text-sm font-medium text-gray-700">{"稼働開始日"}</label>
                     <input
                         type="date"
@@ -155,7 +155,7 @@ pub fn WeeklyHolidaySection(
                         }}
                     </p>
                 </div>
-                <div class="md:col-span-1">
+                <div class="lg:col-span-1">
                     <label class="block text-sm font-medium text-gray-700">{"稼働終了日（任意）"}</label>
                     <input
                         type="date"
@@ -164,10 +164,10 @@ pub fn WeeklyHolidaySection(
                         on:input=move |ev| ends_on_signal.set(event_target_value(&ev))
                     />
                 </div>
-                <div class="md:col-span-3">
+                <div class="lg:col-span-3">
                     <button
                         type="submit"
-                        class="w-full md:w-auto px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        class="w-full lg:w-auto px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
                         {move || if create_pending.get() { "登録中..." } else { "週次休日を登録" }}

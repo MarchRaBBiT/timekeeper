@@ -49,7 +49,7 @@ pub fn InviteForm(
                 <SuccessMessage message={messages.get().success.unwrap_or_default()} />
             </Show>
 
-            <form class="grid grid-cols-1 md:grid-cols-2 gap-4" on:submit=on_submit>
+            <form class="grid grid-cols-1 lg:grid-cols-2 gap-4" on:submit=on_submit>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"ユーザー名"}</label>
                     <input
@@ -100,7 +100,7 @@ pub fn InviteForm(
                         <option value="admin">{"admin"}</option>
                     </select>
                 </div>
-                <div class="flex items-center space-x-2 md:col-span-2">
+                <div class="flex items-center space-x-2 lg:col-span-2">
                     <input
                         type="checkbox"
                         class="h-4 w-4 text-blue-600 border-gray-300 rounded"
@@ -115,7 +115,7 @@ pub fn InviteForm(
                     />
                     <span class="text-sm text-gray-700">{"システム管理者権限を付与"}</span>
                 </div>
-                <div class="md:col-span-2">
+                <div class="lg:col-span-2">
                     <button
                         type="submit"
                         disabled=move || pending.get()

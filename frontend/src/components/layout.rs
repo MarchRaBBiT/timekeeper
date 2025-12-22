@@ -268,7 +268,7 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
         <Show when=should_show>
             <div class="mb-4">
                 <div class="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded">
-                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <p class="font-semibold">{"タイムゾーン情報に関する警告"}</p>
                             <p class="text-sm mt-1">{warning_message}</p>

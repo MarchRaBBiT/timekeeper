@@ -14,11 +14,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/clock-in", base_url))
-                    .headers(headers)
                     .json(&json!({})))
             })
             .await?;
@@ -43,13 +41,52 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/clock-out", base_url))
-                    .headers(headers)
                     .json(&json!({})))
             })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    pub async fn get_my_attendance(
+        &self,
+        year: Option<i32>,
+        month: Option<u32>,
+    ) -> Result<Vec<AttendanceResponse>, String> {
+        let base_url = self.resolved_base_url().await;
+        let mut url = format!("{}/attendance/me", base_url);
+        let mut query_params = Vec::new();
+
+        if let Some(year) = year {
+            query_params.push(format!("year={}", year));
+        }
+        if let Some(month) = month {
+            query_params.push(format!("month={}", month));
+        }
+
+        if !query_params.is_empty() {
+            url.push('?');
+            url.push_str(&query_params.join("&"));
+        }
+
+        let response = self
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
 
         let status = response.status();
@@ -72,11 +109,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/break-start", base_url))
-                    .headers(headers)
                     .json(&json!({ "attendance_id": attendance_id })))
             })
             .await?;
@@ -100,11 +135,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/break-end", base_url))
-                    .headers(headers)
                     .json(&json!({ "break_record_id": break_record_id })))
             })
             .await?;
@@ -146,10 +179,7 @@ impl ApiClient {
         }
 
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
 
         let status = response.status();
@@ -178,10 +208,7 @@ impl ApiClient {
             url.push_str(&format!("?date={}", d));
         }
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -206,10 +233,7 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let url = format!("{}/attendance/{}/breaks", base_url, attendance_id);
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -234,11 +258,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
                     .put(format!("{}/admin/attendance", base_url))
-                    .headers(headers)
                     .json(&payload))
             })
             .await?;
@@ -265,11 +287,9 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 Ok(self
                     .http_client()
-                    .put(format!("{}/admin/breaks/{}/force-end", base_url, break_id))
-                    .headers(headers))
+                    .put(format!("{}/admin/breaks/{}/force-end", base_url, break_id)))
             })
             .await?;
         let status = response.status();
@@ -310,10 +330,7 @@ impl ApiClient {
         }
 
         let response = self
-            .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
-                Ok(self.http_client().get(&url).headers(headers))
-            })
+            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
 
         let status = response.status();
@@ -352,11 +369,9 @@ impl ApiClient {
 
         let response = self
             .send_with_refresh(|| {
-                let headers = self.get_auth_headers()?;
                 let mut request = self
                     .http_client()
-                    .get(format!("{}/attendance/export", base_url))
-                    .headers(headers);
+                    .get(format!("{}/attendance/export", base_url));
                 if !params.is_empty() {
                     request = request.query(&params);
                 }

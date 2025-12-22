@@ -180,7 +180,7 @@ pub fn RequestsPage() -> impl IntoView {
     view! {
         <>
             <RequestsLayout>
-                <div class="md:hidden space-y-4">
+                <div class="lg:hidden space-y-4">
                     <div class="flex items-center gap-2">
                         <button
                             class=move || {
@@ -244,7 +244,7 @@ pub fn RequestsPage() -> impl IntoView {
                         />
                     </Show>
                 </div>
-                <div class="hidden md:grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div class="hidden lg:grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <LeaveRequestForm
                         state=leave_state_desktop.clone()
                         message=leave_message

@@ -8,9 +8,13 @@ Timekeeper勤怠管理システムのREST API仕様書です。
 
 ## 認証
 
-すべてのAPIエンドポイント（ログイン・リフレッシュ以外）はJWT認証が必要です。
+すべてのAPIエンドポイント（ログイン・リフレッシュ以外）は認証が必要です。
 
-### 認証ヘッダー
+### 認証方式
+- ブラウザ向け: HttpOnly Cookie（`access_token`/`refresh_token`）を使用します。
+- 代替手段: `Authorization: Bearer <access_token>` も利用可能です。
+
+### 認証ヘッダー（代替手段）
 ```
 Authorization: Bearer <access_token>
 ```
@@ -33,8 +37,32 @@ Content-Type: application/json
 **レスポンス**
 ```json
 {
-  "access_token": "string",
-  "refresh_token": "string",
+  "id": "string",
+  "username": "string",
+  "full_name": "string",
+  "role": "employee" | "admin"
+}
+```
+※ `Set-Cookie` で `access_token`/`refresh_token` を発行します。
+
+#### トークンリフレッシュ
+```http
+POST /api/auth/refresh
+Content-Type: application/json
+
+{
+  "device_label": "string"
+}
+```
+
+#### ログインユーザー情報
+```http
+GET /api/auth/me
+```
+
+**レスポンス**
+```json
+{
   "user": {
     "id": "string",
     "username": "string",
@@ -44,23 +72,12 @@ Content-Type: application/json
 }
 ```
 
-#### トークンリフレッシュ
-```http
-POST /api/auth/refresh
-Content-Type: application/json
-
-{
-  "refresh_token": "string"
-}
-```
-
 #### ログアウト（トークン失効）
 ```http
 POST /api/auth/logout
-Authorization: Bearer <token>
 Content-Type: application/json
 
-{ "refresh_token": "string" }
+{ }
 ```
 
 もしくは全リフレッシュトークンを失効させる場合:
@@ -169,8 +186,6 @@ Authorization: Bearer <token>
 **レスポンス**
 ```json
 {
-  "access_token": "string",
-  "refresh_token": "string",
   "user": {
     "id": "string",
     "username": "string",

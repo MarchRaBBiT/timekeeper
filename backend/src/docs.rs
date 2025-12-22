@@ -38,6 +38,7 @@ use utoipa::{
     paths(
         login_doc,
         refresh_doc,
+        me_doc,
         mfa_status_doc,
         mfa_setup_doc,
         mfa_activate_doc,
@@ -165,6 +166,14 @@ fn login_doc() {}
     security(())
 )]
 fn refresh_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    responses((status = 200, description = "ログイン中のユーザー", body = UserResponse)),
+    tag = "Auth"
+)]
+fn me_doc() {}
 
 #[utoipa::path(
     get,

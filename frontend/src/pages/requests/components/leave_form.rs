@@ -84,7 +84,7 @@ pub fn LeaveRequestForm(
                         <option value="other">{"その他"}</option>
                     </select>
                 </div>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div>
                         <label class="block text-sm font-medium text-gray-700">{"開始日"}</label>
                         <input

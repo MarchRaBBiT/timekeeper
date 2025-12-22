@@ -1,5 +1,8 @@
 use axum::{
-    http::Method,
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
     middleware as axum_middleware,
     routing::{delete, get, post, put},
     Extension, Router,
@@ -7,7 +10,7 @@ use axum::{
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -62,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
             ServiceBuilder::new()
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
                 .layer(TraceLayer::new_for_http())
-                .layer(cors_layer()),
+                .layer(cors_layer(&config)),
         )
         .layer(Extension(holiday_service))
         .layer(Extension(holiday_exception_service))
@@ -93,6 +96,9 @@ fn log_config(config: &Config) {
         jwt_secret = %mask_secret(&config.jwt_secret),
         jwt_expiration_hours = config.jwt_expiration_hours,
         refresh_token_expiration_days = config.refresh_token_expiration_days,
+        cookie_secure = config.cookie_secure,
+        cookie_same_site = ?config.cookie_same_site,
+        cors_allow_origins = ?config.cors_allow_origins,
         time_zone = %config.time_zone,
         mfa_issuer = %config.mfa_issuer,
         "Loaded configuration from environment/.env"
@@ -162,6 +168,7 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
         .route("/api/auth/mfa/register", post(handlers::auth::mfa_register))
         .route("/api/auth/mfa/setup", post(handlers::auth::mfa_setup))
         .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
+        .route("/api/auth/me", get(handlers::auth::me))
         .route(
             "/api/auth/change-password",
             put(handlers::auth::change_password),
@@ -253,9 +260,20 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
         ))
 }
 
-fn cors_layer() -> CorsLayer {
+fn cors_layer(config: &Config) -> CorsLayer {
+    let origins = config
+        .cors_allow_origins
+        .iter()
+        .filter_map(|origin| HeaderValue::from_str(origin).ok())
+        .collect::<Vec<_>>();
+    let allow_origin = if config.cors_allow_origins.iter().any(|o| o == "*") || origins.is_empty() {
+        AllowOrigin::predicate(|_, _| true)
+    } else {
+        AllowOrigin::list(origins)
+    };
     CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(allow_origin)
+        .allow_credentials(true)
         .allow_methods([
             Method::GET,
             Method::POST,
@@ -263,6 +281,123 @@ fn cors_layer() -> CorsLayer {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers(Any)
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE, ACCEPT])
         .max_age(Duration::from_secs(24 * 60 * 60))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request, routing::get};
+    use chrono_tz::UTC;
+    use tower::Service;
+
+    fn test_config(cors_allow_origins: Vec<String>) -> Config {
+        Config {
+            database_url: "postgres://test".to_string(),
+            jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
+            jwt_expiration_hours: 1,
+            refresh_token_expiration_days: 7,
+            cookie_secure: false,
+            cookie_same_site: crate::utils::cookies::SameSite::Lax,
+            cors_allow_origins,
+            time_zone: UTC,
+            mfa_issuer: "Timekeeper".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn cors_allows_request_origin_when_wildcard_configured() {
+        let config = test_config(vec!["*".to_string()]);
+        let app = Router::new()
+            .route("/ping", get(|| async { "ok" }))
+            .layer(cors_layer(&config));
+
+        let origin = "http://example.com";
+        let mut app = app;
+        let response = app
+            .call(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/ping")
+                    .header("Origin", origin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("access-control-allow-origin"),
+            Some(&HeaderValue::from_static(origin))
+        );
+        assert_eq!(
+            response.headers().get("access-control-allow-credentials"),
+            Some(&HeaderValue::from_static("true"))
+        );
+    }
+
+    #[tokio::test]
+    async fn cors_allows_request_origin_when_origin_list_empty() {
+        let config = test_config(Vec::new());
+        let app = Router::new()
+            .route("/ping", get(|| async { "ok" }))
+            .layer(cors_layer(&config));
+
+        let origin = "http://localhost:8000";
+        let mut app = app;
+        let response = app
+            .call(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/ping")
+                    .header("Origin", origin)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("access-control-allow-origin"),
+            Some(&HeaderValue::from_static(origin))
+        );
+    }
+
+    #[tokio::test]
+    async fn cors_preflight_allows_configured_headers() {
+        let config = test_config(vec!["http://localhost:8000".to_string()]);
+        let app = Router::new()
+            .route("/ping", get(|| async { "ok" }))
+            .layer(cors_layer(&config));
+
+        let origin = "http://localhost:8000";
+        let mut app = app;
+        let response = app
+            .call(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/ping")
+                    .header("Origin", origin)
+                    .header("Access-Control-Request-Method", "POST")
+                    .header(
+                        "Access-Control-Request-Headers",
+                        "content-type,authorization",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let allow_headers = response
+            .headers()
+            .get("access-control-allow-headers")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        assert!(allow_headers.contains("content-type"));
+        assert!(allow_headers.contains("authorization"));
+    }
 }

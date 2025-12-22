@@ -1,7 +1,6 @@
 use crate::{
     api::{ApiClient, LoginRequest, MfaSetupResponse, MfaStatusResponse, UserResponse},
     pages::login::repository as login_repository,
-    utils::storage as storage_utils,
 };
 use leptos::*;
 
@@ -50,25 +49,7 @@ pub fn use_auth() -> AuthContext {
 }
 
 async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, String> {
-    // Try to get user info by making a request to a protected endpoint
-    // For now, we'll just check if token exists in localStorage
-    let storage = storage_utils::local_storage()?;
-    let token = storage
-        .get_item("access_token")
-        .map_err(|_| "Failed to get token")?;
-
-    if token.as_deref().map(|t| t.is_empty()).unwrap_or(true) {
-        return refresh_session(api_client).await;
-    }
-
-    match storage
-        .get_item("current_user")
-        .map_err(|_| "Failed to read user profile")?
-    {
-        Some(user_json) => serde_json::from_str(&user_json)
-            .map_err(|_| "Failed to parse stored user profile".to_string()),
-        None => refresh_session(api_client).await,
-    }
+    api_client.get_me().await
 }
 
 async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, String> {
@@ -104,14 +85,6 @@ pub async fn logout(
 ) -> Result<(), String> {
     let result = login_repository::logout(all_sessions).await;
 
-    // Clear tokens from localStorage regardless of backend result
-    if let Ok(storage) = storage_utils::local_storage() {
-        let _ = storage.remove_item("access_token");
-        let _ = storage.remove_item("access_token_jti");
-        let _ = storage.remove_item("refresh_token");
-        let _ = storage.remove_item("current_user");
-    }
-
     set_auth_state.update(|state| {
         state.user = None;
         state.is_authenticated = false;
@@ -134,19 +107,6 @@ pub async fn activate_mfa(
     set_auth_state: Option<WriteSignal<AuthState>>,
 ) -> Result<(), String> {
     ApiClient::new().activate_mfa(&code).await?;
-
-    if let Ok(storage) = storage_utils::local_storage() {
-        if let Ok(Some(user_json)) = storage.get_item("current_user") {
-            if let Ok(mut user) = serde_json::from_str::<UserResponse>(&user_json) {
-                if !user.mfa_enabled {
-                    user.mfa_enabled = true;
-                    if let Ok(updated) = serde_json::to_string(&user) {
-                        let _ = storage.set_item("current_user", &updated);
-                    }
-                }
-            }
-        }
-    }
 
     if let Some(setter) = set_auth_state {
         setter.update(|state| {

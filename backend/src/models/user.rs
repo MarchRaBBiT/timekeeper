@@ -124,10 +124,8 @@ pub struct ChangePasswordRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// Authentication tokens returned after a successful login.
+/// Authentication payload returned after a successful login.
 pub struct LoginResponse {
-    pub access_token: String,
-    pub refresh_token: String,
     pub user: UserResponse,
 }
 

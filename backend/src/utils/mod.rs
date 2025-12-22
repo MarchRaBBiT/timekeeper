@@ -1,3 +1,4 @@
+pub mod cookies;
 pub mod csv;
 pub mod jwt;
 pub mod mfa;

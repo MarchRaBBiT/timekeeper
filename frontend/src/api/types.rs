@@ -13,8 +13,6 @@ pub struct LoginRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
-    pub access_token: String,
-    pub refresh_token: String,
     pub user: UserResponse,
 }
 
@@ -267,8 +265,6 @@ mod tests {
     #[wasm_bindgen_test]
     fn deserialize_login_response_role_snake_case() {
         let raw = r#"{
-            "access_token": "t",
-            "refresh_token": "r",
             "user": { "id": "u1", "username": "bob", "full_name": "Bob", "role": "admin" }
         }"#;
         let lr: LoginResponse = serde_json::from_str(raw).unwrap();
