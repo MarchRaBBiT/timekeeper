@@ -18,6 +18,7 @@ use timekeeper_backend::{
         AdminHolidayListResponse,
     },
     models::user::{User, UserRole},
+    utils::cookies::SameSite,
 };
 
 #[cfg(feature = "test-utils")]
@@ -150,6 +151,9 @@ fn dummy_config() -> Config {
         jwt_secret: "this_is_a_long_enough_jwt_secret_string_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        cookie_secure: false,
+        cookie_same_site: SameSite::Lax,
+        cors_allow_origins: vec!["http://localhost:8000".into()],
         time_zone: UTC,
         mfa_issuer: "Timekeeper".into(),
     }
