@@ -51,6 +51,9 @@ DATABASE_URL=sqlite:./timekeeper.db
 JWT_SECRET=your-secret-key-change-this-in-production
 JWT_EXPIRATION_HOURS=1
 REFRESH_TOKEN_EXPIRATION_DAYS=7
+COOKIE_SECURE=false
+COOKIE_SAMESITE=Lax
+CORS_ALLOW_ORIGINS=http://localhost:8000
 ```
 
 **重要**: 本番環境では`JWT_SECRET`を強力なランダム文字列に変更してください。
@@ -180,7 +183,7 @@ cargo update
 ```
 
 #### 4. CORSエラー
-バックエンドのCORS設定を確認し、フロントエンドのURLが許可されているか確認してください。
+バックエンドのCORS設定を確認し、`CORS_ALLOW_ORIGINS` にフロントエンドのURLが含まれているか確認してください。
 
 ### ログの確認
 
@@ -299,6 +302,9 @@ DATABASE_URL=postgresql://user:password@localhost/timekeeper
 JWT_SECRET=your-very-secure-random-secret-key-here
 JWT_EXPIRATION_HOURS=1
 REFRESH_TOKEN_EXPIRATION_DAYS=7
+COOKIE_SECURE=true
+COOKIE_SAMESITE=Lax
+CORS_ALLOW_ORIGINS=https://your-frontend.example.com
 RUST_LOG=info
 ```
 
