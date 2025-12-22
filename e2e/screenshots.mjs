@@ -24,7 +24,12 @@ const pages = [
     requiresAuth: false,
   },
   { name: "login", path: "/login", waitFor: "#username", requiresAuth: false },
-  { name: "dashboard", path: "/dashboard", waitFor: "text=ダッシュボード", requiresAuth: true },
+  {
+    name: "dashboard",
+    path: "/dashboard",
+    waitForAny: ['h1:has-text("ダッシュボード")', "text=ダッシュボード"],
+    requiresAuth: true,
+  },
   { name: "attendance", path: "/attendance", waitFor: "text=勤怠管理", requiresAuth: true },
   { name: "requests", path: "/requests", waitFor: "text=申請管理", requiresAuth: true },
   {
@@ -51,7 +56,7 @@ const pages = [
   {
     name: "admin-export-empty",
     path: "/admin/export",
-    waitFor: "text=データエクスポート",
+    waitForAny: ['h2:has-text("データエクスポート")', "text=データエクスポート"],
     requiresAuth: true,
     expectAbsentSelector: "text=プレビュー (先頭2KB)",
   },
