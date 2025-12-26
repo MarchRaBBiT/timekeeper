@@ -11,7 +11,7 @@ pub struct EditTarget {
     pub kind: RequestKind,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct LeaveFormState {
     leave_type: RwSignal<String>,
     start_date: RwSignal<String>,
@@ -28,6 +28,18 @@ impl Default for LeaveFormState {
             reason: create_rw_signal(String::new()),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct OvertimeFormState {
+    date: RwSignal<String>,
+    hours: RwSignal<String>,
+    reason: RwSignal<String>,
+}
+
+#[derive(Clone, Copy)]
+pub struct RequestFilterState {
+    status: RwSignal<String>,
 }
 
 impl LeaveFormState {
@@ -88,13 +100,6 @@ impl LeaveFormState {
             reason: optional_string(self.reason.get()),
         })
     }
-}
-
-#[derive(Clone)]
-pub struct OvertimeFormState {
-    date: RwSignal<String>,
-    hours: RwSignal<String>,
-    reason: RwSignal<String>,
 }
 
 impl Default for OvertimeFormState {
@@ -180,11 +185,6 @@ impl MessageState {
         self.success = None;
         self.error = None;
     }
-}
-
-#[derive(Clone)]
-pub struct RequestFilterState {
-    status: RwSignal<String>,
 }
 
 impl Default for RequestFilterState {

@@ -81,8 +81,6 @@ fn HistoryRow(
                 let attendance_id = attendance_id.clone();
                 set_loading_breaks.set(true);
                 spawn_local(async move {
-                    let api = use_context::<crate::api::ApiClient>()
-                        .expect("ApiClient should be provided");
                     match repository::fetch_breaks_by_attendance(&api, &attendance_id).await {
                         Ok(list) => {
                             breaks.set(list);
