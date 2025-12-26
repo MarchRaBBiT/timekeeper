@@ -59,11 +59,12 @@ async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, String>
 
 pub async fn login_request(
     request: LoginRequest,
+    repo: &login_repository::LoginRepository,
     set_auth_state: WriteSignal<AuthState>,
 ) -> Result<(), String> {
     set_auth_state.update(|state| state.loading = true);
 
-    match login_repository::login(request).await {
+    match repo.login(request).await {
         Ok(response) => {
             set_auth_state.update(|state| {
                 state.user = Some(response.user);
@@ -81,9 +82,10 @@ pub async fn login_request(
 
 pub async fn logout(
     all_sessions: bool,
+    repo: &login_repository::LoginRepository,
     set_auth_state: WriteSignal<AuthState>,
 ) -> Result<(), String> {
-    let result = login_repository::logout(all_sessions).await;
+    let result = repo.logout(all_sessions).await;
 
     set_auth_state.update(|state| {
         state.user = None;
@@ -124,16 +126,24 @@ pub async fn activate_mfa(
 
 pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
+
     create_action(move |request: &LoginRequest| {
         let payload = request.clone();
-        async move { login_request(payload, set_auth).await }
+        let repo = repo.clone();
+        async move { login_request(payload, &repo, set_auth).await }
     })
 }
 
 pub fn use_logout_action() -> Action<bool, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
+
     create_action(move |all: &bool| {
         let flag = *all;
-        async move { logout(flag, set_auth).await }
+        let repo = repo.clone();
+        async move { logout(flag, &repo, set_auth).await }
     })
 }
