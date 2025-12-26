@@ -1,0 +1,33 @@
+    Checking timekeeper-frontend v0.1.0 (I:\marra\Documents\projects\timekeeper\frontend)
+warning: unused imports: `Engine as _` and `engine::general_purpose::URL_SAFE_NO_PAD`
+ --> frontend\src\api\client.rs:1:14
+  |
+1 | use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `utils::storage as storage_utils`
+ --> frontend\src\api\client.rs:8:36
+  |
+8 | use crate::{api::types::*, config, utils::storage as storage_utils};
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `state::auth::use_auth`
+ --> frontend\src\pages\mfa\panel.rs:7:5
+  |
+7 |     state::auth::use_auth,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\panel.rs:70:30
+   |
+70 |                     on_input=vm.totp_code
+   |                              ^^^^^^^^^^^^ expected `WriteSignal<String>`, found `RwSignal<String>`
+   |
+   = note: expected struct `leptos::WriteSignal<std::string::String>`
+              found struct `leptos::RwSignal<std::string::String>`
+
+For more information about this error, try `rustc --explain E0308`.
+warning: `timekeeper-frontend` (lib) generated 3 warnings
+error: could not compile `timekeeper-frontend` (lib) due to 1 previous error; 3 warnings emitted

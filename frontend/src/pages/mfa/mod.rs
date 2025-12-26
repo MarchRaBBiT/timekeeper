@@ -1,9 +1,10 @@
 use leptos::*;
 
 pub mod components;
+pub mod panel;
+pub mod repository;
 pub mod utils;
-
-mod panel;
+pub mod view_model;
 
 pub use panel::MfaRegisterPanel;
 
