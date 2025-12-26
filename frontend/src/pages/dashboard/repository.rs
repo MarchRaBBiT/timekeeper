@@ -36,8 +36,7 @@ pub struct DashboardActivity {
     pub detail: Option<String>,
 }
 
-pub async fn fetch_summary() -> Result<DashboardSummary, String> {
-    let api = ApiClient::new();
+pub async fn fetch_summary(api: &ApiClient) -> Result<DashboardSummary, String> {
     let (y, m) = current_year_month();
     let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
     Ok(DashboardSummary {
@@ -68,9 +67,10 @@ pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
 }
 
 pub async fn fetch_recent_activities(
+    api: &ApiClient,
     filter: ActivityStatusFilter,
 ) -> Result<Vec<DashboardActivity>, String> {
-    let repo = RequestsRepository::new();
+    let repo = RequestsRepository::new(api.clone());
     let response = repo.list_my_requests().await?;
     let summaries = flatten_requests(&response);
 

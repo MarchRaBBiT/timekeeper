@@ -13,7 +13,8 @@ use leptos::*;
 
 #[component]
 pub fn RequestsPage() -> impl IntoView {
-    let repository = store_value(RequestsRepository::new());
+    let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+    let repository = store_value(RequestsRepository::new(api));
     let leave_state = LeaveFormState::default();
     let overtime_state = OvertimeFormState::default();
     let filter_state = RequestFilterState::default();

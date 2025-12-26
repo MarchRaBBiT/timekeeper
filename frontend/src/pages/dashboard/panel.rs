@@ -21,11 +21,18 @@ pub fn DashboardPage() -> impl IntoView {
 
     create_effect(move |_| {
         spawn_local(async move {
-            let _ = refresh_today_context(set_attendance_state).await;
+            let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+            let _ = refresh_today_context(&api, set_attendance_state).await;
         });
     });
 
-    let summary_resource = create_resource(|| (), |_| async { repository::fetch_summary().await });
+    let summary_resource = create_resource(
+        || (),
+        |_| {
+            let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+            async move { repository::fetch_summary(&api).await }
+        },
+    );
     let alerts_resource = create_resource(
         move || summary_resource.get(),
         |summary_result| async move {
@@ -38,7 +45,10 @@ pub fn DashboardPage() -> impl IntoView {
     );
     let activities_resource = create_resource(
         move || activity_filter.get(),
-        |filter| async move { repository::fetch_recent_activities(filter).await },
+        |filter| {
+            let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+            async move { repository::fetch_recent_activities(&api, filter).await }
+        },
     );
 
     view! {

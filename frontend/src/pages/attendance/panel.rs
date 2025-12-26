@@ -103,7 +103,11 @@ pub fn AttendancePanel() -> impl IntoView {
     let history_resource = {
         create_resource(
             move || history_query.get(),
-            move |query| async move { load_attendance_range(set_state, query.from, query.to).await },
+            move |query| {
+                let api =
+                    use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+                async move { load_attendance_range(&api, set_state, query.from, query.to).await }
+            },
         )
     };
     let history_loading = history_resource.loading();
@@ -116,7 +120,10 @@ pub fn AttendancePanel() -> impl IntoView {
     ));
     let holiday_resource = create_resource(
         move || holiday_query.get(),
-        move |query| async move { repository::fetch_monthly_holidays(query.year, query.month).await },
+        move |query| {
+            let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+            async move { repository::fetch_monthly_holidays(&api, query.year, query.month).await }
+        },
     );
     let holiday_loading = holiday_resource.loading();
     let holiday_entries = Signal::derive(move || {
@@ -133,7 +140,11 @@ pub fn AttendancePanel() -> impl IntoView {
     let _context_resource = {
         create_resource(
             || (),
-            move |_| async move { refresh_today_context(set_state).await },
+            move |_| {
+                let api =
+                    use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+                async move { refresh_today_context(&api, set_state).await }
+            },
         )
     };
 
@@ -143,7 +154,9 @@ pub fn AttendancePanel() -> impl IntoView {
     let export_action = create_action(move |payload: &ExportPayload| {
         let request = payload.clone();
         async move {
-            repository::export_attendance_csv(request.from.as_deref(), request.to.as_deref()).await
+            let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+            repository::export_attendance_csv(&api, request.from.as_deref(), request.to.as_deref())
+                .await
         }
     });
     let exporting = export_action.pending();
