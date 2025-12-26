@@ -99,7 +99,7 @@ pub struct AttendanceViewModel {
 
 impl AttendanceViewModel {
     pub fn new() -> Self {
-        let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+        let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
         let (state, set_state) = use_attendance();
         let initial_today = today_in_app_tz();
 

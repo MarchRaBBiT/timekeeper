@@ -15,8 +15,12 @@ impl Default for AdminUsersRepository {
 impl AdminUsersRepository {
     pub fn new() -> Self {
         Self {
-            client: Rc::new(ApiClient::new()),
+            client: std::rc::Rc::new(ApiClient::new()),
         }
+    }
+
+    pub fn new_with_client(client: Rc<ApiClient>) -> Self {
+        Self { client }
     }
 
     pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, String> {

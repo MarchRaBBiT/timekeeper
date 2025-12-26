@@ -19,7 +19,7 @@ pub struct MfaViewModel {
 
 pub fn use_mfa_view_model() -> MfaViewModel {
     let (_auth, set_auth) = use_auth();
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repository = MfaRepository::new_with_client(std::rc::Rc::new(api));
 
     let status = create_rw_signal(None);

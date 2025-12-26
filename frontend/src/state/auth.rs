@@ -17,7 +17,7 @@ fn create_auth_context() -> AuthContext {
     let (auth_state, set_auth_state) = create_signal(AuthState::default());
     set_auth_state.update(|state| state.loading = true);
 
-    let api_client = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api_client = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let set_auth_for_check = set_auth_state;
     spawn_local(async move {
         match check_auth_status(&api_client).await {

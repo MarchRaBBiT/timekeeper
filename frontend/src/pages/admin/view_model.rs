@@ -31,7 +31,9 @@ pub struct AdminViewModel {
 
 pub fn use_admin_view_model() -> AdminViewModel {
     let (auth, _) = use_auth();
-    let api = use_context::<ApiClient>().expect("ApiClient must be provided");
+    // ApiClient is typically provided by AuthProvider/router context.
+    // We use a fallback to provide robustness if AuthProvider is not mounted.
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = AdminRepository::new_with_client(std::rc::Rc::new(api));
 
     // Admin Access Check
