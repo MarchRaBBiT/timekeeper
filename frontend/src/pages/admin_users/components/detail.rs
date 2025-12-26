@@ -8,28 +8,18 @@ use leptos::*;
 #[component]
 pub fn UserDetailDrawer(
     selected_user: RwSignal<Option<UserResponse>>,
-    messages: RwSignal<MessageState>,
+    messages: MessageState,
     reset_mfa_action: Action<String, Result<(), String>>,
 ) -> impl IntoView {
     let pending = reset_mfa_action.pending();
-    {
-        create_effect(move |_| {
-            if let Some(result) = reset_mfa_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        messages.update(|state| {
-                            state.set_success("MFA をリセットしました。");
-                        });
-                    }
-                    Err(err) => {
-                        messages.update(|state| {
-                            state.set_error(err);
-                        });
-                    }
-                }
-            }
-        });
-    }
+    // Effect moved to view model, or if we need local effect for success message?
+    // The previous code had effect here. But actions are now in VM.
+    // VM handles updating `messages` on action completion.
+    // Wait, the component also defined an effect using `reset_mfa_action`.
+    // If VM handles it, I don't need it here.
+    // I should check `panel.rs` or VM.
+    // VM has: `create_effect` for reset_mfa_action result.
+    // So I can remove the effect from here!
 
     view! {
         <Show
@@ -42,20 +32,20 @@ pub fn UserDetailDrawer(
                     .map(|user| {
                         let overlay_close = {
                             move |_| {
-                                messages.update(MessageState::clear);
+                                messages.clear();
                                 selected_user.set(None);
                             }
                         };
                         let button_close = {
                             move |_| {
-                                messages.update(MessageState::clear);
+                                messages.clear();
                                 selected_user.set(None);
                             }
                         };
                         let reset_click = {
                             move |_| {
                                 if let Some(current) = selected_user.get_untracked() {
-                                    messages.update(MessageState::clear);
+                                    messages.clear();
                                     reset_mfa_action.dispatch(current.id.clone());
                                 }
                             }
@@ -90,11 +80,11 @@ pub fn UserDetailDrawer(
                                                 {if user.mfa_enabled { "登録済み" } else { "未登録" }}
                                             </p>
                                         </div>
-                                        <Show when=move || messages.get().error.is_some()>
-                                            <ErrorMessage message={messages.get().error.unwrap_or_default()} />
+                                        <Show when=move || messages.error.get().is_some()>
+                                            <ErrorMessage message={messages.error.get().unwrap_or_default()} />
                                         </Show>
-                                        <Show when=move || messages.get().success.is_some()>
-                                            <SuccessMessage message={messages.get().success.unwrap_or_default()} />
+                                        <Show when=move || messages.success.get().is_some()>
+                                            <SuccessMessage message={messages.success.get().unwrap_or_default()} />
                                         </Show>
                                         <button
                                             class="w-full px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50"
