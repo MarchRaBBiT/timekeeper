@@ -63,6 +63,10 @@ impl AdminRepository {
         }
     }
 
+    pub fn new_with_client(client: Rc<ApiClient>) -> Self {
+        Self { client }
+    }
+
     pub async fn list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, String> {
         self.client.admin_list_weekly_holidays().await
     }

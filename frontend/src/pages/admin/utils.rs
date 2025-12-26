@@ -2,7 +2,7 @@ use crate::api::CreateWeeklyHolidayRequest;
 use chrono::NaiveDate;
 use leptos::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct WeeklyHolidayFormState {
     weekday: RwSignal<String>,
     starts_on: RwSignal<String>,
@@ -92,7 +92,7 @@ pub struct RequestFilterSnapshot {
     pub per_page: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct RequestFilterState {
     status: RwSignal<String>,
     user_id: RwSignal<String>,
@@ -116,6 +116,10 @@ impl RequestFilterState {
 
     pub fn user_id_signal(&self) -> RwSignal<String> {
         self.user_id
+    }
+
+    pub fn page_signal(&self) -> RwSignal<u32> {
+        self.page
     }
 
     pub fn snapshot(&self) -> RequestFilterSnapshot {

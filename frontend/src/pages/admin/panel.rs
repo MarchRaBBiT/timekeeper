@@ -5,14 +5,14 @@ use crate::pages::admin::{
         weekly_holidays::WeeklyHolidaySection,
     },
     layout,
-    repository::AdminRepository,
+    view_model::use_admin_view_model,
 };
 use crate::state::auth::use_auth;
 use leptos::*;
 
 #[component]
 pub fn AdminPanel() -> impl IntoView {
-    let (auth, _set_auth) = use_auth();
+    let (auth, _) = use_auth();
     let admin_allowed = create_memo(move |_| {
         auth.get()
             .user
@@ -27,48 +27,43 @@ pub fn AdminPanel() -> impl IntoView {
             .map(|user| user.is_system_admin)
             .unwrap_or(false)
     });
-    let repository = store_value(AdminRepository::new());
-    let users_repository = repository.get_value();
-    let users_resource = create_resource(
-        move || admin_allowed.get(),
-        move |allowed| {
-            let repo = users_repository.clone();
-            async move {
-                if allowed {
-                    repo.fetch_users().await
-                } else {
-                    Ok(Vec::new())
-                }
-            }
-        },
-    );
+
+    let vm = use_admin_view_model();
 
     view! {
         <layout::AdminDashboardScaffold admin_allowed=admin_allowed>
             <WeeklyHolidaySection
-                repository=repository.get_value()
+                state=vm.weekly_holiday_state
+                resource=vm.weekly_holidays_resource
+                action=vm.create_weekly_action
+                reload=vm.reload_weekly
+                message=vm.weekly_action_message
+                error=vm.weekly_action_error
                 admin_allowed=admin_allowed
                 system_admin_allowed=system_admin_allowed
             />
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <AdminRequestsSection
-                    repository=repository.get_value()
-                    admin_allowed=admin_allowed
-                    users=users_resource
+                    users=vm.users_resource
+                    filter=vm.requests_filter
+                    resource=vm.requests_resource
+                    action=vm.request_action
+                    action_error=vm.requests_action_error
+                    reload=vm.reload_requests
                 />
                 <AdminAttendanceToolsSection
-                    repository=repository.get_value()
+                    repository=vm.repository.clone()
                     system_admin_allowed=system_admin_allowed
-                    users=users_resource
+                    users=vm.users_resource
                 />
                 <AdminMfaResetSection
-                    repository=repository.get_value()
+                    repository=vm.repository.clone()
                     system_admin_allowed=system_admin_allowed
-                    users=users_resource
+                    users=vm.users_resource
                 />
             </div>
             <HolidayManagementSection
-                repository=repository.get_value()
+                repository=vm.repository.clone()
                 admin_allowed=admin_allowed
             />
         </layout::AdminDashboardScaffold>
