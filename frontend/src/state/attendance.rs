@@ -20,10 +20,12 @@ pub fn use_attendance() -> (ReadSignal<AttendanceState>, WriteSignal<AttendanceS
     (attendance_state, set_attendance_state)
 }
 
-pub async fn clock_in(set_attendance_state: WriteSignal<AttendanceState>) -> Result<(), String> {
+pub async fn clock_in(
+    api: &ApiClient,
+    set_attendance_state: WriteSignal<AttendanceState>,
+) -> Result<(), String> {
     set_attendance_state.update(|state| state.loading = true);
-    let api_client = ApiClient::new();
-    match api_client.clock_in().await {
+    match api.clock_in().await {
         Ok(attendance) => {
             set_attendance_state.update(|state| {
                 state.current_attendance = Some(attendance);
@@ -38,10 +40,12 @@ pub async fn clock_in(set_attendance_state: WriteSignal<AttendanceState>) -> Res
     }
 }
 
-pub async fn clock_out(set_attendance_state: WriteSignal<AttendanceState>) -> Result<(), String> {
+pub async fn clock_out(
+    api: &ApiClient,
+    set_attendance_state: WriteSignal<AttendanceState>,
+) -> Result<(), String> {
     set_attendance_state.update(|state| state.loading = true);
-    let api_client = ApiClient::new();
-    match api_client.clock_out().await {
+    match api.clock_out().await {
         Ok(attendance) => {
             set_attendance_state.update(|state| {
                 state.current_attendance = Some(attendance);
@@ -56,25 +60,22 @@ pub async fn clock_out(set_attendance_state: WriteSignal<AttendanceState>) -> Re
     }
 }
 
-pub async fn start_break(attendance_id: &str) -> Result<(), String> {
-    ApiClient::new()
-        .break_start(attendance_id)
-        .await
-        .map(|_| ())
+pub async fn start_break(api: &ApiClient, attendance_id: &str) -> Result<(), String> {
+    api.break_start(attendance_id).await.map(|_| ())
 }
 
-pub async fn end_break(break_id: &str) -> Result<(), String> {
-    ApiClient::new().break_end(break_id).await.map(|_| ())
+pub async fn end_break(api: &ApiClient, break_id: &str) -> Result<(), String> {
+    api.break_end(break_id).await.map(|_| ())
 }
 
 pub async fn load_attendance_range(
+    api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
 ) -> Result<(), String> {
     set_attendance_state.update(|state| state.loading = true);
-    let api_client = ApiClient::new();
-    match api_client.get_my_attendance_range(from, to).await {
+    match api.get_my_attendance_range(from, to).await {
         Ok(history) => {
             set_attendance_state.update(|state| {
                 state.attendance_history = history;
@@ -92,11 +93,11 @@ pub async fn load_attendance_range(
 }
 
 pub async fn load_today_status(
+    api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> Result<(), String> {
     set_attendance_state.update(|state| state.loading = true);
-    let api_client = ApiClient::new();
-    match api_client.get_attendance_status(None).await {
+    match api.get_attendance_status(None).await {
         Ok(status) => {
             set_attendance_state.update(|state| {
                 state.today_status = Some(status);
@@ -112,11 +113,11 @@ pub async fn load_today_status(
 }
 
 pub async fn load_today_holiday_reason(
+    api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> Result<(), String> {
-    let api_client = ApiClient::new();
     let today = today_in_app_tz();
-    match api_client.check_holiday(today).await {
+    match api.check_holiday(today).await {
         Ok(response) => {
             set_attendance_state.update(|state| {
                 if response.is_holiday {
@@ -135,20 +136,23 @@ pub async fn load_today_holiday_reason(
 }
 
 pub async fn refresh_today_context(
+    api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> Result<(), String> {
-    if let Err(err) = load_today_status(set_attendance_state).await {
+    if let Err(err) = load_today_status(api, set_attendance_state).await {
         set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
         return Err(err);
     }
 
     let today = today_in_app_tz();
-    if let Err(err) = load_attendance_range(set_attendance_state, Some(today), Some(today)).await {
+    if let Err(err) =
+        load_attendance_range(api, set_attendance_state, Some(today), Some(today)).await
+    {
         set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
         return Err(err);
     }
 
-    if let Err(err) = load_today_holiday_reason(set_attendance_state).await {
+    if let Err(err) = load_today_holiday_reason(api, set_attendance_state).await {
         set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
         return Err(err);
     }

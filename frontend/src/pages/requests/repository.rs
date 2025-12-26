@@ -12,16 +12,10 @@ pub struct RequestsRepository {
     client: Rc<ApiClient>,
 }
 
-impl Default for RequestsRepository {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl RequestsRepository {
-    pub fn new() -> Self {
+    pub fn new(api: ApiClient) -> Self {
         Self {
-            client: Rc::new(ApiClient::new()),
+            client: Rc::new(api),
         }
     }
 
