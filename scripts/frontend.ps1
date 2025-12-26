@@ -13,9 +13,30 @@ Set-Location $projectRoot
 $pidFile = Join-Path $projectRoot '.frontend.pid'
 $logFile = Join-Path $projectRoot 'frontend\frontend-dev.log'
 
+function Build-Tailwind {
+  Set-Location (Join-Path $projectRoot 'frontend')
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Node.js is not installed. Please install Node.js to build Tailwind CSS." -ForegroundColor Red
+    throw "node missing"
+  }
+  $tailwindBin = Join-Path $projectRoot 'frontend' 'node_modules/.bin/tailwindcss'
+  $tailwindCmd = "${tailwindBin}.cmd"
+  if (!(Test-Path $tailwindBin) -and !(Test-Path $tailwindCmd)) {
+    Write-Host "Tailwind CSS is not installed. Please run: npm install (in frontend/)" -ForegroundColor Red
+    throw "tailwindcss missing"
+  }
+  $input = Join-Path $projectRoot 'frontend' 'tailwind.input.css'
+  $outputDir = Join-Path $projectRoot 'frontend' 'assets'
+  $output = Join-Path $outputDir 'tailwind.css'
+  New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+  $bin = if (Test-Path $tailwindCmd) { $tailwindCmd } else { $tailwindBin }
+  & $bin -i $input -o $output --minify
+}
+
 function Build-Frontend {
   Set-Location (Join-Path $projectRoot 'frontend')
   $mode = if ($release) { '--release' } else { '--dev' }
+  Build-Tailwind
   if (-not (Get-Command wasm-pack -ErrorAction SilentlyContinue)) {
     Write-Host "wasm-pack is not installed. Please run: cargo install wasm-pack" -ForegroundColor Red
     throw "wasm-pack missing"
@@ -59,4 +80,3 @@ switch ($cmd) {
   'status' { Status-Frontend }
   'logs'   { if (Test-Path $logFile) { Get-Content $logFile -Tail 200 -Wait } else { Write-Host "No log file yet: $logFile" -ForegroundColor Yellow } }
 }
-

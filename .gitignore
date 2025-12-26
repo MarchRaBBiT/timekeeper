@@ -8,6 +8,7 @@
 /frontend/build/
 /frontend/.wasm-pack/
 /frontend/wasm-pack.log
+/frontend/assets/tailwind.css
 
 # Environment & secrets
 .env
@@ -39,5 +40,6 @@ Thumbs.db
 .vscode/
 
 # Node modules
+/frontend/node_modules/
 /e2e/node_modules/
 /node_modules/

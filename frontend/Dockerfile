@@ -27,11 +27,19 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     wasm-pack build --target web --out-dir pkg --release
 
+FROM node:20-alpine as tailwind
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/tailwind.config.js frontend/tailwind.input.css ./
+COPY frontend/src ./src
+RUN npm install
+RUN npm run build:css
+
 FROM nginx:alpine
 WORKDIR /usr/share/nginx/html
 
 # Place WASM pkg under /pkg to match index.html import path
 COPY --from=builder /app/frontend/pkg/ ./pkg/
+COPY --from=tailwind /app/frontend/assets/ ./assets/
 
 # Static entry
 COPY frontend/index.html ./index.html

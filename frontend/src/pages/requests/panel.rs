@@ -181,15 +181,15 @@ pub fn RequestsPage() -> impl IntoView {
     view! {
         <>
             <RequestsLayout>
-                <div class="lg:hidden space-y-4">
-                    <div class="flex items-center gap-2">
+                <div class="lg:hidden space-y-6">
+                    <div class="flex p-1.5 gap-1.5 rounded-2xl bg-slate-100/50 border border-slate-200/50 shadow-inner">
                         <button
                             class=move || {
-                                let base = "flex-1 px-4 py-2 rounded text-sm font-medium border";
+                                let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
                                 if matches!(active_form.get(), RequestFormKind::Leave) {
-                                    format!("{base} bg-blue-600 text-white border-blue-600")
+                                    format!("{base} bg-white text-slate-900 shadow-sm transition-all duration-300")
                                 } else {
-                                    format!("{base} bg-white text-gray-700 border-gray-200")
+                                    format!("{base} text-slate-500 hover:text-slate-700")
                                 }
                             }
                             on:click=move |_| set_active_form.set(RequestFormKind::Leave)
@@ -198,11 +198,11 @@ pub fn RequestsPage() -> impl IntoView {
                         </button>
                         <button
                             class=move || {
-                                let base = "flex-1 px-4 py-2 rounded text-sm font-medium border";
+                                let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
                                 if matches!(active_form.get(), RequestFormKind::Overtime) {
-                                    format!("{base} bg-blue-600 text-white border-blue-600")
+                                    format!("{base} bg-white text-slate-900 shadow-sm transition-all duration-300")
                                 } else {
-                                    format!("{base} bg-white text-gray-700 border-gray-200")
+                                    format!("{base} text-slate-500 hover:text-slate-700")
                                 }
                             }
                             on:click=move |_| set_active_form.set(RequestFormKind::Overtime)
