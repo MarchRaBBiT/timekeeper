@@ -1,13 +1,7 @@
-use crate::{
-    api::{ApiClient, AttendanceSummary},
-    pages::{
-        dashboard::utils::{current_year_month, ActivityStatusFilter},
-        requests::{
-            repository::RequestsRepository,
-            types::{flatten_requests, RequestKind, RequestSummary},
-        },
-    },
-};
+use crate::api::{ApiClient, AttendanceSummary};
+use crate::pages::dashboard::utils::{current_year_month, ActivityStatusFilter};
+use crate::pages::requests::repository::RequestsRepository;
+use crate::pages::requests::types::{flatten_requests, RequestKind, RequestSummary};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
