@@ -4,7 +4,6 @@ use crate::{
         components::{setup::SetupSection, verify::VerificationSection},
         utils,
     },
-    state::auth::use_auth,
 };
 use leptos::{ev::SubmitEvent, Callback, *};
 
@@ -67,7 +66,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
                     setup_info=vm.setup_info.read_only()
                     activate_loading=activate_loading.into()
                     on_submit=handle_activate
-                    on_input=vm.totp_code
+                    on_input=vm.totp_code.write_only()
                 />
             </div>
         </Layout>
