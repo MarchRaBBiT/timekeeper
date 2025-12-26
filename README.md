@@ -38,6 +38,7 @@ Rustで構築された少人数向けの勤怠管理Webアプリケーション�
 ### 前提条件
 - Rust 1.70+
 - wasm-pack (フロントエンドビルド用)
+- Node.js 18+ (Tailwind CSS ビルド用)
 
 ### インストール
 
@@ -67,6 +68,8 @@ cargo run
 5. フロントエンドをビルド・起動
 ```bash
 cd frontend
+npm install
+npm run build:css
 wasm-pack build --target web --out-dir pkg
 python -m http.server 8000
 ```

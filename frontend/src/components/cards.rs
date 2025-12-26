@@ -10,11 +10,14 @@ pub fn AttendanceCard(
     attendance_state: ReadSignal<AttendanceState>,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> impl IntoView {
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
     {
+        let api = api.clone();
         let set_state = set_attendance_state;
         create_effect(move |_| {
+            let api = api.clone();
             spawn_local(async move {
-                if let Err(err) = refresh_today_context(set_state).await {
+                if let Err(err) = refresh_today_context(&api, set_state).await {
                     log::error!("Failed to refresh attendance context: {}", err);
                 }
             });
@@ -104,9 +107,9 @@ pub fn AttendanceCard(
 
 #[component]
 pub fn SummaryCard() -> impl IntoView {
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
     let (summary, set_summary) = create_signal::<Option<AttendanceSummary>>(None);
     spawn_local(async move {
-        let api = ApiClient::new();
         let now = now_in_app_tz();
         let y = now.year();
         let m = now.month() as u32;
@@ -148,9 +151,9 @@ pub fn SummaryCard() -> impl IntoView {
 
 #[component]
 pub fn RequestCard() -> impl IntoView {
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
     let (reqs, set_reqs) = create_signal::<Option<serde_json::Value>>(None);
     spawn_local(async move {
-        let api = ApiClient::new();
         if let Ok(v) = api.get_my_requests().await {
             set_reqs.set(Some(v));
         }

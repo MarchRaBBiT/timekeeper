@@ -40,9 +40,10 @@ pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, String>>) -
 #[component]
 fn Metric(label: String, value: String) -> impl IntoView {
     view! {
-        <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
-            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-            <p class="mt-2 text-2xl font-semibold text-gray-900">{value}</p>
+        <div class="relative overflow-hidden p-6 rounded-2xl bg-white border border-gray-100 shadow-premium hover:shadow-premium-hover transition-all duration-300 group">
+            <div class="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-brand-50 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
+            <p class="relative z-10 text-xs font-display font-bold text-brand-600 uppercase tracking-widest">{label}</p>
+            <p class="relative z-10 mt-3 text-3xl font-display font-extrabold text-slate-900">{value}</p>
         </div>
     }
 }

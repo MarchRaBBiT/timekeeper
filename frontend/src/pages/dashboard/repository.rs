@@ -1,13 +1,7 @@
-use crate::{
-    api::{ApiClient, AttendanceSummary},
-    pages::{
-        dashboard::utils::{current_year_month, ActivityStatusFilter},
-        requests::{
-            repository::RequestsRepository,
-            types::{flatten_requests, RequestKind, RequestSummary},
-        },
-    },
-};
+use crate::api::{ApiClient, AttendanceSummary};
+use crate::pages::dashboard::utils::{current_year_month, ActivityStatusFilter};
+use crate::pages::requests::repository::RequestsRepository;
+use crate::pages::requests::types::{flatten_requests, RequestKind, RequestSummary};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -36,8 +30,7 @@ pub struct DashboardActivity {
     pub detail: Option<String>,
 }
 
-pub async fn fetch_summary() -> Result<DashboardSummary, String> {
-    let api = ApiClient::new();
+pub async fn fetch_summary(api: &ApiClient) -> Result<DashboardSummary, String> {
     let (y, m) = current_year_month();
     let summary: AttendanceSummary = api.get_my_summary(Some(y), Some(m)).await?;
     Ok(DashboardSummary {
@@ -68,9 +61,10 @@ pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
 }
 
 pub async fn fetch_recent_activities(
+    api: &ApiClient,
     filter: ActivityStatusFilter,
 ) -> Result<Vec<DashboardActivity>, String> {
-    let repo = RequestsRepository::new();
+    let repo = RequestsRepository::new(api.clone());
     let response = repo.list_my_requests().await?;
     let summaries = flatten_requests(&response);
 

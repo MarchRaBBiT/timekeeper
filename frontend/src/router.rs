@@ -39,6 +39,7 @@ pub fn mount_app() {
 }
 
 pub fn app_root() -> impl IntoView {
+    provide_context(crate::api::ApiClient::new());
     view! {
         <AuthProvider>
             <Router>

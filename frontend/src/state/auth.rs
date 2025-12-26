@@ -17,9 +17,9 @@ fn create_auth_context() -> AuthContext {
     let (auth_state, set_auth_state) = create_signal(AuthState::default());
     set_auth_state.update(|state| state.loading = true);
 
+    let api_client = use_context::<ApiClient>().expect("ApiClient should be provided");
     let set_auth_for_check = set_auth_state;
     spawn_local(async move {
-        let api_client = ApiClient::new();
         match check_auth_status(&api_client).await {
             Ok(user) => set_auth_for_check.update(|state| {
                 state.user = Some(user);
@@ -95,18 +95,21 @@ pub async fn logout(
 }
 
 pub async fn fetch_mfa_status() -> Result<MfaStatusResponse, String> {
-    ApiClient::new().get_mfa_status().await
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    api.get_mfa_status().await
 }
 
 pub async fn register_mfa() -> Result<MfaSetupResponse, String> {
-    ApiClient::new().register_mfa().await
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    api.register_mfa().await
 }
 
 pub async fn activate_mfa(
     code: String,
     set_auth_state: Option<WriteSignal<AuthState>>,
 ) -> Result<(), String> {
-    ApiClient::new().activate_mfa(&code).await?;
+    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    api.activate_mfa(&code).await?;
 
     if let Some(setter) = set_auth_state {
         setter.update(|state| {

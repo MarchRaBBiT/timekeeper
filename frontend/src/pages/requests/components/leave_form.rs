@@ -1,8 +1,10 @@
 use crate::api::CreateLeaveRequest;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
-use crate::pages::requests::panel::EditPayload;
 use crate::pages::requests::types::RequestKind;
-use crate::pages::requests::utils::{EditTarget, LeaveFormState, MessageState};
+use crate::pages::requests::{
+    utils::{EditTarget, LeaveFormState, MessageState},
+    view_model::EditPayload,
+};
 use leptos::*;
 use serde_json::to_value;
 

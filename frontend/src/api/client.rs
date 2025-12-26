@@ -7,6 +7,7 @@ use web_sys::Storage;
 
 use crate::{api::types::*, config, utils::storage as storage_utils};
 
+#[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: Option<String>,
