@@ -45,7 +45,7 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
 }
 
 pub fn use_auth() -> AuthContext {
-    use_context::<AuthContext>().expect("AuthProvider がマウントされていません")
+    use_context::<AuthContext>().unwrap_or_else(|| create_signal(AuthState::default()))
 }
 
 async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, String> {
@@ -98,7 +98,7 @@ pub async fn logout(
 
 pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
 
     create_action(move |request: &LoginRequest| {
@@ -110,7 +110,7 @@ pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
 
 pub fn use_logout_action() -> Action<bool, Result<(), String>> {
     let (_auth, set_auth) = use_auth();
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
 
     create_action(move |all: &bool| {

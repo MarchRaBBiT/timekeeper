@@ -90,7 +90,7 @@ pub fn AttendanceActionButtons(
     attendance_state: ReadSignal<AttendanceState>,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> impl IntoView {
-    let api = use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<crate::api::ApiClient>().unwrap_or_else(crate::api::ApiClient::new);
     let (message, set_message) = create_signal(None::<String>);
     let last_event = create_rw_signal(None::<ClockEventKind>);
 
