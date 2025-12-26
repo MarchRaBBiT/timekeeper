@@ -1,9 +1,27 @@
 use crate::api::{ApiClient, LoginRequest, LoginResponse};
+use std::rc::Rc;
 
-pub async fn login(request: LoginRequest) -> Result<LoginResponse, String> {
-    ApiClient::new().login(request).await
+#[derive(Clone)]
+pub struct LoginRepository {
+    client: Rc<ApiClient>,
 }
 
-pub async fn logout(all: bool) -> Result<(), String> {
-    ApiClient::new().logout(all).await
+impl LoginRepository {
+    pub fn new() -> Self {
+        Self {
+            client: Rc::new(ApiClient::new()),
+        }
+    }
+
+    pub fn new_with_client(client: Rc<ApiClient>) -> Self {
+        Self { client }
+    }
+
+    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, String> {
+        self.client.login(request).await
+    }
+
+    pub async fn logout(&self, all: bool) -> Result<(), String> {
+        self.client.logout(all).await
+    }
 }
