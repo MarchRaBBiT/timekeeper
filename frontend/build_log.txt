@@ -1,0 +1,160 @@
+    Checking timekeeper-frontend v0.1.0 (I:\marra\Documents\projects\timekeeper\frontend)
+error[E0433]: failed to resolve: could not find `LoginRepository` in `login_repository`
+   --> frontend\src\state\auth.rs:102:34
+    |
+102 |     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
+    |                                  ^^^^^^^^^^^^^^^ could not find `LoginRepository` in `login_repository`
+
+error[E0433]: failed to resolve: could not find `LoginRepository` in `login_repository`
+   --> frontend\src\state\auth.rs:114:34
+    |
+114 |     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
+    |                                  ^^^^^^^^^^^^^^^ could not find `LoginRepository` in `login_repository`
+
+error[E0412]: cannot find type `LoginRepository` in module `login_repository`
+  --> frontend\src\state\auth.rs:62:30
+   |
+62 |     repo: &login_repository::LoginRepository,
+   |                              ^^^^^^^^^^^^^^^ not found in `login_repository`
+
+error[E0412]: cannot find type `LoginRepository` in module `login_repository`
+  --> frontend\src\state\auth.rs:85:30
+   |
+85 |     repo: &login_repository::LoginRepository,
+   |                              ^^^^^^^^^^^^^^^ not found in `login_repository`
+
+warning: unused imports: `Engine as _` and `engine::general_purpose::URL_SAFE_NO_PAD`
+ --> frontend\src\api\client.rs:1:14
+  |
+1 | use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `utils::storage as storage_utils`
+ --> frontend\src\api\client.rs:8:36
+  |
+8 | use crate::{api::types::*, config, utils::storage as storage_utils};
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `state::auth::use_auth`
+ --> frontend\src\pages\mfa\panel.rs:7:5
+  |
+7 |     state::auth::use_auth,
+  |     ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\panel.rs:54:28
+   |
+54 |                     status=vm.status
+   |                            ^^^^^^^^^ expected `ReadSignal<Option<MfaStatusResponse>>`, found `RwSignal<Option<MfaStatusResponse>>`
+   |
+   = note: expected struct `leptos::ReadSignal<std::option::Option<api::types::MfaStatusResponse>>`
+              found struct `leptos::RwSignal<std::option::Option<api::types::MfaStatusResponse>>`
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\panel.rs:55:36
+   |
+55 |                     status_loading=vm.status_loading
+   |                                    ^^^^^^^^^^^^^^^^^ expected `ReadSignal<bool>`, found `RwSignal<bool>`
+   |
+   = note: expected struct `leptos::ReadSignal<bool>`
+              found struct `leptos::RwSignal<bool>`
+
+error[E0599]: no method named `is_some` found for struct `leptos::RwSignal<T>` in the current scope
+  --> frontend\src\pages\mfa\panel.rs:60:62
+   |
+60 |                 <Show when=move || vm.messages.get().success.is_some() fallback=|| ()>
+   |                                                              ^^^^^^^ method not found in `leptos::RwSignal<std::option::Option<std::string::String>>`
+
+error[E0599]: no method named `unwrap_or_default` found for struct `leptos::RwSignal<T>` in the current scope
+  --> frontend\src\pages\mfa\panel.rs:61:72
+   |
+61 |                     <SuccessMessage message={vm.messages.get().success.unwrap_or_default()} />
+   |                                                                        ^^^^^^^^^^^^^^^^^ method not found in `leptos::RwSignal<std::option::Option<std::string::String>>`
+
+error[E0599]: no method named `is_some` found for struct `leptos::RwSignal<T>` in the current scope
+  --> frontend\src\pages\mfa\panel.rs:63:60
+   |
+63 |                 <Show when=move || vm.messages.get().error.is_some() fallback=|| ()>
+   |                                                            ^^^^^^^ method not found in `leptos::RwSignal<std::option::Option<std::string::String>>`
+
+error[E0599]: no method named `unwrap_or_default` found for struct `leptos::RwSignal<T>` in the current scope
+  --> frontend\src\pages\mfa\panel.rs:64:68
+   |
+64 |                     <ErrorMessage message={vm.messages.get().error.unwrap_or_default()} />
+   |                                                                    ^^^^^^^^^^^^^^^^^ method not found in `leptos::RwSignal<std::option::Option<std::string::String>>`
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\panel.rs:67:32
+   |
+67 |                     setup_info=vm.setup_info
+   |                                ^^^^^^^^^^^^^ expected `ReadSignal<Option<MfaSetupResponse>>`, found `RwSignal<Option<MfaSetupResponse>>`
+   |
+   = note: expected struct `leptos::ReadSignal<std::option::Option<api::types::MfaSetupResponse>>`
+              found struct `leptos::RwSignal<std::option::Option<api::types::MfaSetupResponse>>`
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\panel.rs:70:30
+   |
+70 |                     on_input=vm.totp_code
+   |                              ^^^^^^^^^^^^ expected `WriteSignal<String>`, found `RwSignal<String>`
+   |
+   = note: expected struct `leptos::WriteSignal<std::string::String>`
+              found struct `leptos::RwSignal<std::string::String>`
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\view_model.rs:35:43
+   |
+35 |             messages.update(|m| m.error = None);
+   |                                 -------   ^^^^ expected `RwSignal<Option<String>>`, found `Option<_>`
+   |                                 |
+   |                                 expected due to the type of this binding
+   |
+   = note: expected struct `leptos::RwSignal<std::option::Option<std::string::String>>`
+                found enum `std::option::Option<_>`
+help: call `Into::into` on this expression to convert `std::option::Option<_>` into `leptos::RwSignal<std::option::Option<std::string::String>>`
+   |
+35 |             messages.update(|m| m.error = None.into());
+   |                                               +++++++
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\view_model.rs:66:29
+   |
+65 |                         m.set_success(
+   |                           ----------- arguments to this method are incorrect
+66 |                             "隱崎ｨｼ繧｢繝励Μ縺ｫ繧ｷ繝ｼ繧ｯ繝ｬ繝・ヨ繧堤匳骭ｲ縺励∫｢ｺ隱阪さ繝ｼ繝峨ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・,
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `String`, found `&str`
+   |
+note: method defined here
+  --> frontend\src\pages\mfa\utils.rs:15:12
+   |
+15 |     pub fn set_success(&self, msg: String) {
+   |            ^^^^^^^^^^^        -----------
+help: try using a conversion method
+   |
+66 |                             "隱崎ｨｼ繧｢繝励Μ縺ｫ繧ｷ繝ｼ繧ｯ繝ｬ繝・ヨ繧堤匳骭ｲ縺励∫｢ｺ隱阪さ繝ｼ繝峨ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・.to_string(),
+   |                                                                                               ++++++++++++
+
+error[E0308]: mismatched types
+  --> frontend\src\pages\mfa\view_model.rs:83:29
+   |
+82 |                         m.set_success(
+   |                           ----------- arguments to this method are incorrect
+83 |                             "MFA 繧呈怏蜉ｹ蛹悶＠縺ｾ縺励◆縲よｬ｡蝗樔ｻ･髯阪・繝ｭ繧ｰ繧､繝ｳ縺ｧ隱崎ｨｼ繧ｳ繝ｼ繝峨′豎ゅａ繧峨ｌ縺ｾ縺吶・,
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `String`, found `&str`
+   |
+note: method defined here
+  --> frontend\src\pages\mfa\utils.rs:15:12
+   |
+15 |     pub fn set_success(&self, msg: String) {
+   |            ^^^^^^^^^^^        -----------
+help: try using a conversion method
+   |
+83 |                             "MFA 繧呈怏蜉ｹ蛹悶＠縺ｾ縺励◆縲よｬ｡蝗樔ｻ･髯阪・繝ｭ繧ｰ繧､繝ｳ縺ｧ隱崎ｨｼ繧ｳ繝ｼ繝峨′豎ゅａ繧峨ｌ縺ｾ縺吶・.to_string(),
+   |                                                                                                   ++++++++++++
+
+Some errors have detailed explanations: E0308, E0412, E0433, E0599.
+For more information about an error, try `rustc --explain E0308`.
+warning: `timekeeper-frontend` (lib) generated 3 warnings
+error: could not compile `timekeeper-frontend` (lib) due to 15 previous errors; 3 warnings emitted
