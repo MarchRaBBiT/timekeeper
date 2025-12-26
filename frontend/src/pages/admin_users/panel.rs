@@ -17,7 +17,7 @@ pub fn AdminUsersPage() -> impl IntoView {
         let selected = vm.selected_user;
         let messages = vm.drawer_messages;
         move |user: UserResponse| {
-            messages.update(|m| m.clear());
+            messages.clear();
             selected.set(Some(user));
         }
     });
