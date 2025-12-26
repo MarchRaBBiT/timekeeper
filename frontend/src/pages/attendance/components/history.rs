@@ -76,8 +76,8 @@ fn HistoryRow(
             let now_expanded = !expanded.get();
             expanded.set(now_expanded);
             if now_expanded && breaks.get().is_empty() {
-                let api =
-                    use_context::<crate::api::ApiClient>().expect("ApiClient should be provided");
+                let api = use_context::<crate::api::ApiClient>()
+                    .unwrap_or_else(crate::api::ApiClient::new);
                 let attendance_id = attendance_id.clone();
                 set_loading_breaks.set(true);
                 spawn_local(async move {

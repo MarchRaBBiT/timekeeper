@@ -10,7 +10,7 @@ pub fn AttendanceCard(
     attendance_state: ReadSignal<AttendanceState>,
     set_attendance_state: WriteSignal<AttendanceState>,
 ) -> impl IntoView {
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     {
         let api = api.clone();
         let set_state = set_attendance_state;
@@ -107,7 +107,7 @@ pub fn AttendanceCard(
 
 #[component]
 pub fn SummaryCard() -> impl IntoView {
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let (summary, set_summary) = create_signal::<Option<AttendanceSummary>>(None);
     spawn_local(async move {
         let now = now_in_app_tz();
@@ -151,7 +151,7 @@ pub fn SummaryCard() -> impl IntoView {
 
 #[component]
 pub fn RequestCard() -> impl IntoView {
-    let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let (reqs, set_reqs) = create_signal::<Option<serde_json::Value>>(None);
     spawn_local(async move {
         if let Ok(v) = api.get_my_requests().await {

@@ -3,6 +3,7 @@ use leptos::*;
 pub mod components;
 pub mod repository;
 pub mod utils;
+pub mod view_model;
 
 mod panel;
 

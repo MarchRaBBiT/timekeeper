@@ -1,107 +1,77 @@
 use crate::{
+    api::{CreateWeeklyHolidayRequest, WeeklyHolidayResponse},
     components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
-    pages::admin::{
-        repository::AdminRepository,
-        utils::{next_allowed_weekly_start, weekday_label, WeeklyHolidayFormState},
-    },
+    pages::admin::utils::WeeklyHolidayFormState,
     utils::time::today_in_app_tz,
 };
 use leptos::{ev, *};
 
 #[component]
 pub fn WeeklyHolidaySection(
-    repository: AdminRepository,
+    state: WeeklyHolidayFormState,
+    resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, String>>,
+    action: Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, String>>,
+    reload: RwSignal<u32>,
+    message: RwSignal<Option<String>>,
+    error: RwSignal<Option<String>>,
     admin_allowed: Memo<bool>,
     system_admin_allowed: Memo<bool>,
 ) -> impl IntoView {
-    let default_start = next_allowed_weekly_start(
-        today_in_app_tz(),
-        system_admin_allowed.try_with(|flag| *flag).unwrap_or(false),
-    )
-    .format("%Y-%m-%d")
-    .to_string();
-    let form_state = WeeklyHolidayFormState::new("0", default_start);
-    let weekday_signal = form_state.weekday_signal();
-    let starts_on_signal = form_state.starts_on_signal();
-    let ends_on_signal = form_state.ends_on_signal();
-    let message = create_rw_signal(None::<String>);
-    let form_error = create_rw_signal(None::<String>);
-    let reload = create_rw_signal(0u32);
+    let weekday_signal = state.weekday_signal();
+    let starts_on_signal = state.starts_on_signal();
+    let ends_on_signal = state.ends_on_signal();
 
-    let repo_for_resource = repository.clone();
-    let holidays_resource = create_resource(
-        move || (admin_allowed.get(), reload.get()),
-        move |(allowed, _)| {
-            let repo = repo_for_resource.clone();
-            async move {
-                if !allowed {
-                    Ok(Vec::new())
-                } else {
-                    repo.list_weekly_holidays().await
-                }
-            }
-        },
-    );
-    let holidays_loading = holidays_resource.loading();
+    let holidays_loading = resource.loading();
     let holidays_data = Signal::derive(move || {
-        holidays_resource
+        resource
             .get()
             .and_then(|result| result.ok())
             .unwrap_or_default()
     });
-    let holidays_error =
-        Signal::derive(move || holidays_resource.get().and_then(|result| result.err()));
+    let holidays_error = Signal::derive(move || resource.get().and_then(|result| result.err()));
 
-    let repo_for_create = repository.clone();
-    let create_action = create_action(move |payload: &crate::api::CreateWeeklyHolidayRequest| {
-        let repo = repo_for_create.clone();
-        let payload = payload.clone();
-        async move { repo.create_weekly_holiday(payload).await }
+    let create_pending = action.pending();
+
+    // Effects and submission logic
+    create_effect(move |_| {
+        if let Some(result) = action.value().get() {
+            match result {
+                Ok(created) => {
+                    message.set(Some(format!(
+                        "{} ({}) を登録しました。",
+                        crate::pages::admin::utils::weekday_label(created.weekday),
+                        created.starts_on.format("%Y-%m-%d")
+                    )));
+                    error.set(None);
+                    state.reset_starts_on(created.starts_on);
+                    state.reset_ends_on();
+                    reload.update(|value| *value = value.wrapping_add(1));
+                }
+                Err(err) => error.set(Some(err)),
+            }
+        }
     });
-    let create_pending = create_action.pending();
-    {
-        let form_state = form_state.clone();
-        create_effect(move |_| {
-            if let Some(result) = create_action.value().get() {
-                match result {
-                    Ok(created) => {
-                        message.set(Some(format!(
-                            "{} ({}) を登録しました。",
-                            weekday_label(created.weekday),
-                            created.starts_on.format("%Y-%m-%d")
-                        )));
-                        form_error.set(None);
-                        form_state.reset_starts_on(created.starts_on);
-                        form_state.reset_ends_on();
-                        reload.update(|value| *value = value.wrapping_add(1));
-                    }
-                    Err(err) => form_error.set(Some(err)),
-                }
-            }
-        });
-    }
 
-    let on_submit = {
-        let form_state = form_state.clone();
-        move |ev: ev::SubmitEvent| {
-            ev.prevent_default();
-            if !admin_allowed.get_untracked() {
-                return;
+    let on_submit = move |ev: ev::SubmitEvent| {
+        ev.prevent_default();
+        if !admin_allowed.get_untracked() {
+            return;
+        }
+        let min_start = crate::pages::admin::utils::next_allowed_weekly_start(
+            today_in_app_tz(),
+            system_admin_allowed.get_untracked(),
+        );
+        message.set(None);
+        match state.to_payload(min_start) {
+            Ok(payload) => {
+                error.set(None);
+                action.dispatch(payload);
             }
-            let min_start =
-                next_allowed_weekly_start(today_in_app_tz(), system_admin_allowed.get_untracked());
-            message.set(None);
-            match form_state.to_payload(min_start) {
-                Ok(payload) => {
-                    form_error.set(None);
-                    create_action.dispatch(payload);
-                }
-                Err(err) => form_error.set(Some(err)),
-            }
+            Err(err) => error.set(Some(err)),
         }
     };
 
-    let on_refresh = { move |_| reload.update(|value| *value = value.wrapping_add(1)) };
+    let on_refresh = move |_| reload.update(|value| *value = value.wrapping_add(1));
 
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
@@ -174,8 +144,8 @@ pub fn WeeklyHolidaySection(
                     </button>
                 </div>
             </form>
-            <Show when=move || form_error.get().is_some()>
-                <ErrorMessage message={form_error.get().unwrap_or_default()} />
+            <Show when=move || error.get().is_some()>
+                <ErrorMessage message={error.get().unwrap_or_default()} />
             </Show>
             <Show when=move || message.get().is_some()>
                 <SuccessMessage message={message.get().unwrap_or_default()} />
@@ -209,7 +179,7 @@ pub fn WeeklyHolidaySection(
                                 children=move |item| {
                                     view! {
                                         <tr>
-                                            <td class="px-4 py-2">{weekday_label(item.weekday)}</td>
+                                            <td class="px-4 py-2">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
                                             <td class="px-4 py-2 text-gray-600">
                                                 {format!(
                                                     "{} 〜 {}",

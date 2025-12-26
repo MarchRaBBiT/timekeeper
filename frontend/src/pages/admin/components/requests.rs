@@ -2,137 +2,86 @@ use crate::{
     components::layout::{ErrorMessage, LoadingSpinner},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
-        repository::AdminRepository,
         utils::RequestFilterState,
+        view_model::RequestActionPayload,
     },
 };
 use leptos::*;
 use serde_json::{json, Value};
 
-#[derive(Clone)]
-struct RequestActionPayload {
-    id: String,
-    comment: String,
-    approve: bool,
-}
-
 #[component]
 pub fn AdminRequestsSection(
-    repository: AdminRepository,
-    admin_allowed: Memo<bool>,
     users: UsersResource,
+    filter: RequestFilterState,
+    resource: Resource<
+        (bool, crate::pages::admin::utils::RequestFilterSnapshot, u32),
+        Result<serde_json::Value, String>,
+    >,
+    action: Action<RequestActionPayload, Result<(), String>>,
+    action_error: RwSignal<Option<String>>,
+    reload: RwSignal<u32>,
 ) -> impl IntoView {
-    let filter_state = RequestFilterState::new();
-    let reload = create_rw_signal(0u32);
     let modal_open = create_rw_signal(false);
     let modal_data = create_rw_signal(Value::Null);
     let modal_comment = create_rw_signal(String::new());
-    let action_error = create_rw_signal(None::<String>);
 
-    let filter_state_for_snapshot = filter_state.clone();
-    let snapshot = Signal::derive(move || filter_state_for_snapshot.snapshot());
-    let repo_for_requests = repository.clone();
-    let requests_resource = create_resource(
-        move || (admin_allowed.get(), snapshot.get(), reload.get()),
-        move |(allowed, snapshot, _)| {
-            let repo = repo_for_requests.clone();
-            async move {
-                if !allowed {
-                    Ok(Value::Null)
-                } else {
-                    repo.list_requests(
-                        snapshot.status.clone(),
-                        snapshot.user_id.clone(),
-                        snapshot.page,
-                        snapshot.per_page,
-                    )
-                    .await
-                }
-            }
-        },
-    );
-    let requests_loading = requests_resource.loading();
+    let requests_loading = resource.loading();
     let requests_data = Signal::derive(move || {
-        requests_resource
+        resource
             .get()
             .and_then(|result| result.ok())
             .unwrap_or(Value::Null)
     });
-    let requests_error =
-        Signal::derive(move || requests_resource.get().and_then(|result| result.err()));
+    let requests_error = Signal::derive(move || resource.get().and_then(|result| result.err()));
 
-    let repo_for_action = repository.clone();
-    let request_action = create_action(move |payload: &RequestActionPayload| {
-        let repo = repo_for_action.clone();
-        let payload = payload.clone();
-        async move {
-            if payload.id.trim().is_empty() {
-                Err("リクエストIDを取得できませんでした。".into())
-            } else if payload.approve {
-                repo.approve_request(&payload.id, &payload.comment).await
-            } else {
-                repo.reject_request(&payload.id, &payload.comment).await
+    let action_pending = action.pending();
+
+    // Effects
+    create_effect(move |_| {
+        if let Some(result) = action.value().get() {
+            match result {
+                Ok(_) => {
+                    modal_open.set(false);
+                    action_error.set(None);
+                    reload.update(|value| *value = value.wrapping_add(1));
+                }
+                Err(err) => action_error.set(Some(err)),
             }
         }
     });
-    let action_pending = request_action.pending();
-    {
-        create_effect(move |_| {
-            if let Some(result) = request_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        modal_open.set(false);
-                        action_error.set(None);
-                        reload.update(|value| *value = value.wrapping_add(1));
-                    }
-                    Err(err) => action_error.set(Some(err)),
-                }
-            }
+
+    let trigger_reload = move || reload.update(|value| *value = value.wrapping_add(1));
+
+    let on_status_change = move |value: String| {
+        filter.status_signal().set(value);
+        filter.reset_page();
+        trigger_reload();
+    };
+
+    let on_search = move |_| {
+        filter.reset_page();
+        trigger_reload();
+    };
+
+    let open_modal = move |data: Value| {
+        modal_data.set(data);
+        modal_comment.set(String::new());
+        modal_open.set(true);
+    };
+
+    let on_action = move |approve: bool| {
+        let id = modal_data
+            .get()
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let comment = modal_comment.get();
+        action.dispatch(RequestActionPayload {
+            id,
+            comment,
+            approve,
         });
-    }
-
-    let trigger_reload = { move || reload.update(|value| *value = value.wrapping_add(1)) };
-
-    let on_status_change = {
-        let filter_state = filter_state.clone();
-        move |value: String| {
-            filter_state.status_signal().set(value);
-            filter_state.reset_page();
-            trigger_reload();
-        }
-    };
-
-    let on_search = {
-        let filter_state = filter_state.clone();
-        move |_| {
-            filter_state.reset_page();
-            trigger_reload();
-        }
-    };
-
-    let open_modal = {
-        move |data: Value| {
-            modal_data.set(data);
-            modal_comment.set(String::new());
-            modal_open.set(true);
-        }
-    };
-
-    let on_action = {
-        move |approve: bool| {
-            let id = modal_data
-                .get()
-                .get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let comment = modal_comment.get();
-            request_action.dispatch(RequestActionPayload {
-                id,
-                comment,
-                approve,
-            });
-        }
     };
 
     view! {
@@ -152,7 +101,7 @@ pub fn AdminRequestsSection(
                 <div class="w-full lg:min-w-[220px] lg:flex-1">
                     <AdminUserSelect
                         users=users
-                        selected=filter_state.user_id_signal()
+                        selected=filter.user_id_signal()
                         label=Some("ユーザー".into())
                         placeholder="全ユーザー".into()
                     />

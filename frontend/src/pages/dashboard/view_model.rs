@@ -18,7 +18,7 @@ pub struct DashboardViewModel {
 
 impl DashboardViewModel {
     pub fn new() -> Self {
-        let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+        let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
         let (attendance_read, attendance_write) = use_attendance();
 
         let api_clone = api.clone();

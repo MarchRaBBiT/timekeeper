@@ -50,7 +50,7 @@ impl From<(String, serde_json::Value)> for EditPayload {
 
 impl RequestsViewModel {
     pub fn new() -> Self {
-        let api = use_context::<ApiClient>().expect("ApiClient should be provided");
+        let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
         let repository = store_value(RequestsRepository::new(api));
 
         let leave_state = LeaveFormState::default();
