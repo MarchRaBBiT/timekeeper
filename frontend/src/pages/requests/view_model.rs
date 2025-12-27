@@ -248,7 +248,7 @@ pub fn use_requests_view_model() -> RequestsViewModel {
         Some(vm) => vm,
         None => {
             let vm = RequestsViewModel::new();
-            provide_context(vm);
+            provide_context(vm.clone());
             vm
         }
     }
