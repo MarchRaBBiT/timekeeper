@@ -1,10 +1,9 @@
+use super::repository;
+use super::utils::{month_bounds, AttendanceFormState};
 use crate::api::ApiClient;
-use crate::pages::attendance::{
-    repository,
-    utils::{month_bounds, AttendanceFormState},
-};
 use crate::state::attendance::{
-    load_attendance_range, refresh_today_context, use_attendance, AttendanceState,
+    self as attendance_state, load_attendance_range, refresh_today_context, use_attendance,
+    AttendanceState, ClockEventKind, ClockEventPayload,
 };
 use crate::utils::time::today_in_app_tz;
 use chrono::{Datelike, NaiveDate};
@@ -92,6 +91,9 @@ pub struct AttendanceViewModel {
         Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, String>>,
     pub context_resource: Resource<(), Result<(), String>>,
     pub export_action: Action<ExportPayload, Result<Value, String>>,
+    pub clock_action: Action<ClockEventPayload, Result<(), String>>,
+    pub clock_message: RwSignal<Option<String>>,
+    pub last_clock_event: RwSignal<Option<ClockEventKind>>,
     pub range_error: RwSignal<Option<String>>,
     pub export_error: RwSignal<Option<String>>,
     pub export_success: RwSignal<Option<String>>,
@@ -105,6 +107,16 @@ impl AttendanceViewModel {
 
         let form_state = AttendanceFormState::new();
         form_state.set_range(initial_today, initial_today);
+
+        let api_clone = api.clone();
+        let export_action = create_action(move |payload: &ExportPayload| {
+            let api = api_clone.clone();
+            let payload = payload.clone();
+            async move {
+                api.export_my_attendance_filtered(payload.from.as_deref(), payload.to.as_deref())
+                    .await
+            }
+        });
 
         let history_query =
             create_rw_signal(HistoryQuery::new(Some(initial_today), Some(initial_today)));
@@ -139,23 +151,65 @@ impl AttendanceViewModel {
             },
         );
 
-        let api_for_export = api.clone();
-        let export_action = create_action(move |payload: &ExportPayload| {
-            let api = api_for_export.clone();
-            let request = payload.clone();
+        let api_for_clock = api.clone();
+        let clock_action = create_action(move |payload: &ClockEventPayload| {
+            let api = api_for_clock.clone();
+            let set_attendance_state = set_state;
+            let payload = payload.clone();
             async move {
-                repository::export_attendance_csv(
-                    &api,
-                    request.from.as_deref(),
-                    request.to.as_deref(),
-                )
-                .await
+                match payload.kind {
+                    ClockEventKind::ClockIn => {
+                        attendance_state::clock_in(&api, set_attendance_state).await?
+                    }
+                    ClockEventKind::ClockOut => {
+                        attendance_state::clock_out(&api, set_attendance_state).await?
+                    }
+                    ClockEventKind::BreakStart => {
+                        let attendance_id = payload
+                            .attendance_id
+                            .as_deref()
+                            .ok_or_else(|| "出勤レコードが見つかりません。".to_string())?;
+                        attendance_state::start_break(&api, attendance_id).await?
+                    }
+                    ClockEventKind::BreakEnd => {
+                        let break_id = payload
+                            .break_id
+                            .as_deref()
+                            .ok_or_else(|| "休憩レコードが見つかりません。".to_string())?;
+                        attendance_state::end_break(&api, break_id).await?
+                    }
+                };
+                refresh_today_context(&api, set_attendance_state).await
             }
         });
 
+        let clock_message = create_rw_signal(None);
+        let last_clock_event = create_rw_signal(None);
         let range_error = create_rw_signal(None);
         let export_error = create_rw_signal(None);
         let export_success = create_rw_signal(None);
+
+        {
+            let last_clock_event = last_clock_event;
+            let clock_message = clock_message;
+            create_effect(move |_| {
+                if let Some(result) = clock_action.value().get() {
+                    match result {
+                        Ok(_) => {
+                            let success = match last_clock_event.get_untracked() {
+                                Some(ClockEventKind::ClockIn) => "出勤しました。",
+                                Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
+                                Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
+                                Some(ClockEventKind::ClockOut) => "退勤しました。",
+                                None => "操作が完了しました。",
+                            };
+                            clock_message.set(Some(success.into()));
+                        }
+                        Err(err) => clock_message.set(Some(err)),
+                    }
+                }
+            });
+        }
 
         {
             let export_error = export_error;
@@ -200,6 +254,9 @@ impl AttendanceViewModel {
             holiday_resource,
             context_resource,
             export_action,
+            clock_action,
+            clock_message,
+            last_clock_event,
             range_error,
             export_error,
             export_success,
@@ -282,6 +339,88 @@ impl AttendanceViewModel {
             holiday_query.update(|query| {
                 *query = query.refresh();
             })
+        }
+    }
+
+    pub fn handle_clock_in(&self) -> impl Fn(MouseEvent) {
+        let clock_action = self.clock_action;
+        let clock_message = self.clock_message;
+        let last_event = self.last_clock_event;
+        move |_| {
+            if clock_action.pending().get_untracked() {
+                return;
+            }
+            clock_message.set(None);
+            last_event.set(Some(ClockEventKind::ClockIn));
+            clock_action.dispatch(ClockEventPayload::clock_in());
+        }
+    }
+
+    pub fn handle_clock_out(&self) -> impl Fn(MouseEvent) {
+        let clock_action = self.clock_action;
+        let clock_message = self.clock_message;
+        let last_event = self.last_clock_event;
+        move |_| {
+            if clock_action.pending().get_untracked() {
+                return;
+            }
+            clock_message.set(None);
+            last_event.set(Some(ClockEventKind::ClockOut));
+            clock_action.dispatch(ClockEventPayload::clock_out());
+        }
+    }
+
+    pub fn handle_break_start(&self) -> impl Fn(MouseEvent) {
+        let clock_action = self.clock_action;
+        let clock_message = self.clock_message;
+        let last_event = self.last_clock_event;
+        let (state, _) = self.state;
+        move |_| {
+            if clock_action.pending().get_untracked() {
+                return;
+            }
+            let Some(status) = state.get().today_status.clone() else {
+                clock_message.set(Some("ステータスを取得できません。".into()));
+                return;
+            };
+            if status.status != "clocked_in" {
+                clock_message.set(Some("出勤中のみ休憩を開始できます。".into()));
+                return;
+            }
+            let Some(att_id) = status.attendance_id.clone() else {
+                clock_message.set(Some("出勤レコードが見つかりません。".into()));
+                return;
+            };
+            clock_message.set(None);
+            last_event.set(Some(ClockEventKind::BreakStart));
+            clock_action.dispatch(ClockEventPayload::break_start(att_id));
+        }
+    }
+
+    pub fn handle_break_end(&self) -> impl Fn(MouseEvent) {
+        let clock_action = self.clock_action;
+        let clock_message = self.clock_message;
+        let last_event = self.last_clock_event;
+        let (state, _) = self.state;
+        move |_| {
+            if clock_action.pending().get_untracked() {
+                return;
+            }
+            let Some(status) = state.get().today_status.clone() else {
+                clock_message.set(Some("ステータスを取得できません。".into()));
+                return;
+            };
+            if status.status != "on_break" {
+                clock_message.set(Some("休憩中のみ休憩を終了できます。".into()));
+                return;
+            }
+            let Some(break_id) = status.active_break_id.clone() else {
+                clock_message.set(Some("休憩レコードが見つかりません。".into()));
+                return;
+            };
+            clock_message.set(None);
+            last_event.set(Some(ClockEventKind::BreakEnd));
+            clock_action.dispatch(ClockEventPayload::break_end(break_id));
         }
     }
 }

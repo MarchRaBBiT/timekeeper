@@ -44,7 +44,15 @@ pub fn AttendancePanel() -> impl IntoView {
     view! {
         <AttendanceFrame>
             <div class="space-y-6">
-                <SummarySection state=state set_state=set_state />
+                <SummarySection
+                    state=state
+                    action_pending={vm.clock_action.pending()}
+                    message={vm.clock_message.read_only()}
+                    on_clock_in={Callback::new(vm.handle_clock_in())}
+                    on_clock_out={Callback::new(vm.handle_clock_out())}
+                    on_break_start={Callback::new(vm.handle_break_start())}
+                    on_break_end={Callback::new(vm.handle_break_end())}
+                />
                 <RangeFormSection
                     from_input=from_input
                     to_input=to_input

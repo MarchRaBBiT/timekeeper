@@ -4,7 +4,7 @@ use crate::pages::dashboard::{
     layout::DashboardFrame,
     view_model::use_dashboard_view_model,
 };
-use leptos::*;
+use leptos::{ev::MouseEvent, *};
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
@@ -25,7 +25,12 @@ pub fn DashboardPage() -> impl IntoView {
                 <div class="space-y-6">
                     <AttendanceActionButtons
                         attendance_state=attendance_state
-                        set_attendance_state=set_attendance_state
+                        action_pending={vm.clock_action.pending()}
+                        message={vm.clock_message.read_only()}
+                        on_clock_in={Callback::new(vm.handle_clock_in())}
+                        on_clock_out={Callback::new(vm.handle_clock_out())}
+                        on_break_start={Callback::new(vm.handle_break_start())}
+                        on_break_end={Callback::new(vm.handle_break_end())}
                     />
                 </div>
             </div>

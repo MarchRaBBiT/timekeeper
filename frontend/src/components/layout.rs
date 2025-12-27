@@ -1,9 +1,5 @@
-use crate::{
-    config,
-    state::auth::{self, use_auth},
-};
+use crate::state::auth::{self, use_auth};
 use leptos::*;
-use log::error;
 
 #[component]
 pub fn Header() -> impl IntoView {
@@ -215,29 +211,15 @@ pub fn Layout(children: Children) -> impl IntoView {
 
 #[component]
 pub fn TimeZoneWarningBanner() -> impl IntoView {
-    let (status, set_status) = create_signal(config::time_zone_status());
-    let (refreshing, set_refreshing) = create_signal(false);
-
-    {
-        spawn_local(async move {
-            config::await_time_zone().await;
-            set_status.set(config::time_zone_status());
-        });
-    }
+    let (config_read, config_write) = crate::state::config::use_config();
+    let status = Signal::derive(move || config_read.get().time_zone_status);
 
     let on_retry = move |_| {
-        if refreshing.get() {
+        if status.get_untracked().loading {
             return;
         }
-        set_refreshing.set(true);
-        set_status.update(|state| state.loading = true);
         spawn_local(async move {
-            let new_status = config::refresh_time_zone().await;
-            if new_status.last_error.is_some() {
-                error!("Failed to refresh timezone: {:?}", new_status.last_error);
-            }
-            set_status.set(new_status);
-            set_refreshing.set(false);
+            crate::state::config::refresh_time_zone(config_write).await;
         });
     };
 
@@ -263,6 +245,8 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
             )
         }
     };
+
+    let refreshing = Signal::derive(move || status.get().loading);
 
     view! {
         <Show when=should_show>
