@@ -16,7 +16,7 @@ pub fn AttendancePage() -> impl IntoView {
 #[component]
 pub fn AttendancePanel() -> impl IntoView {
     let vm = use_attendance_view_model();
-    let (state, set_state) = vm.state;
+    let (state, _) = vm.state;
     let form_state = vm.form_state.clone();
     let from_input = form_state.start_date_signal();
     let to_input = form_state.end_date_signal();

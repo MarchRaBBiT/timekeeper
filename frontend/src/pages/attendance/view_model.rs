@@ -190,8 +190,6 @@ impl AttendanceViewModel {
         let export_success = create_rw_signal(None);
 
         {
-            let last_clock_event = last_clock_event;
-            let clock_message = clock_message;
             create_effect(move |_| {
                 if let Some(result) = clock_action.value().get() {
                     match result {
@@ -212,8 +210,6 @@ impl AttendanceViewModel {
         }
 
         {
-            let export_error = export_error;
-            let export_success = export_success;
             create_effect(move |_| {
                 if let Some(result) = export_action.value().get() {
                     match result {

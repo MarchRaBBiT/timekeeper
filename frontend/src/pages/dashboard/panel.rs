@@ -4,12 +4,12 @@ use crate::pages::dashboard::{
     layout::DashboardFrame,
     view_model::use_dashboard_view_model,
 };
-use leptos::{ev::MouseEvent, *};
+use leptos::*;
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
     let vm = use_dashboard_view_model();
-    let (attendance_state, set_attendance_state) = vm.attendance_state;
+    let (attendance_state, _) = vm.attendance_state;
 
     view! {
         <DashboardFrame>

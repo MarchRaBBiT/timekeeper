@@ -1,6 +1,4 @@
-use crate::state::attendance::{
-    self as attendance_state, describe_holiday_reason, AttendanceState,
-};
+use crate::state::attendance::{describe_holiday_reason, AttendanceState};
 use leptos::{ev::MouseEvent, *};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -33,55 +31,6 @@ fn button_flags_for(status: Option<&str>, loading: bool) -> AttendanceButtonFlag
         },
         "clocked_out" => AttendanceButtonFlags::default(),
         _ => AttendanceButtonFlags::default(),
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ClockEventKind {
-    ClockIn,
-    BreakStart,
-    BreakEnd,
-    ClockOut,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ClockEventPayload {
-    kind: ClockEventKind,
-    attendance_id: Option<String>,
-    break_id: Option<String>,
-}
-
-impl ClockEventPayload {
-    fn clock_in() -> Self {
-        Self {
-            kind: ClockEventKind::ClockIn,
-            attendance_id: None,
-            break_id: None,
-        }
-    }
-
-    fn clock_out() -> Self {
-        Self {
-            kind: ClockEventKind::ClockOut,
-            attendance_id: None,
-            break_id: None,
-        }
-    }
-
-    fn break_start(attendance_id: String) -> Self {
-        Self {
-            kind: ClockEventKind::BreakStart,
-            attendance_id: Some(attendance_id),
-            break_id: None,
-        }
-    }
-
-    fn break_end(break_id: String) -> Self {
-        Self {
-            kind: ClockEventKind::BreakEnd,
-            attendance_id: None,
-            break_id: Some(break_id),
-        }
     }
 }
 

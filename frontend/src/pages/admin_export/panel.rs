@@ -50,7 +50,6 @@ fn AdminExportPanel() -> impl IntoView {
     });
 
     let on_export = {
-        let vm = vm;
         move |_| {
             let filters = ExportFilters {
                 username: if vm.use_specific_user.get_untracked() {

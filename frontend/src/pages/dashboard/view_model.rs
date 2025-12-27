@@ -93,8 +93,6 @@ impl DashboardViewModel {
         let last_clock_event = create_rw_signal(None);
 
         {
-            let last_clock_event = last_clock_event;
-            let clock_message = clock_message;
             create_effect(move |_| {
                 if let Some(result) = clock_action.value().get() {
                     match result {

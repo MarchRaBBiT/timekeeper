@@ -214,6 +214,14 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
     let (config_read, config_write) = crate::state::config::use_config();
     let status = Signal::derive(move || config_read.get().time_zone_status);
 
+    create_effect(move |_| {
+        spawn_local(async move {
+            let _ = crate::config::await_time_zone().await;
+            let current = crate::config::time_zone_status();
+            config_write.update(|s| s.time_zone_status = current);
+        });
+    });
+
     let on_retry = move |_| {
         if status.get_untracked().loading {
             return;
