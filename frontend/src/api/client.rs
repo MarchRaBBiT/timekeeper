@@ -6,6 +6,9 @@ use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
+#[cfg(test)]
+use crate::utils::storage as storage_utils;
+
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,

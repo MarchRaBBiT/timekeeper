@@ -74,7 +74,6 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
                     invite_messages
                         .set_success(format!("ユーザー '{}' を作成しました。", user.username));
                     invite_form.reset();
-                    invite_form.reset();
                     users_resource.refetch();
                 }
                 Err(err) => {

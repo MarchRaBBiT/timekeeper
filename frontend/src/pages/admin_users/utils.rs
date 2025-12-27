@@ -84,40 +84,52 @@ impl MessageState {
 mod tests {
     use super::*;
     use wasm_bindgen_test::*;
+    use leptos::create_runtime;
 
     wasm_bindgen_test_configure!(run_in_browser);
 
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
     #[wasm_bindgen_test]
     fn invite_form_state_validation() {
-        let state = InviteFormState::default();
-        assert!(!state.is_valid());
+        with_runtime(|| {
+            let state = InviteFormState::default();
+            assert!(!state.is_valid());
 
-        state.username.set("admin".into());
-        state.full_name.set("System 管理者".into());
-        state.password.set("Password123!".into());
+            state.username.set("admin".into());
+            state.full_name.set("System 管理者".into());
+            state.password.set("Password123!".into());
 
-        assert!(state.is_valid());
+            assert!(state.is_valid());
 
-        let request = state.to_request();
-        assert_eq!(request.username, "admin");
-        assert_eq!(request.full_name, "System 管理者");
-        assert_eq!(request.role, "employee");
-        assert!(!request.is_system_admin);
+            let request = state.to_request();
+            assert_eq!(request.username, "admin");
+            assert_eq!(request.full_name, "System 管理者");
+            assert_eq!(request.role, "employee");
+            assert!(!request.is_system_admin);
+        });
     }
 
     #[wasm_bindgen_test]
     fn message_state_resets_flags() {
-        let state = MessageState::default();
-        state.set_error("NG");
-        assert!(state.error.get().is_some());
-        assert!(state.success.get().is_none());
+        with_runtime(|| {
+            let state = MessageState::default();
+            state.set_error("NG");
+            assert!(state.error.get().is_some());
+            assert!(state.success.get().is_none());
 
-        state.set_success("OK");
-        assert!(state.success.get().is_some());
-        assert!(state.error.get().is_none());
+            state.set_success("OK");
+            assert!(state.success.get().is_some());
+            assert!(state.error.get().is_none());
 
-        state.clear();
-        assert!(state.success.get().is_none());
-        assert!(state.error.get().is_none());
+            state.clear();
+            assert!(state.success.get().is_none());
+            assert!(state.error.get().is_none());
+        });
     }
 }
