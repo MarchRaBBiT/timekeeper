@@ -56,7 +56,7 @@ pub fn UserDetailDrawer(
                                 <div class="relative w-full max-w-md bg-white shadow-xl h-full overflow-y-auto">
                                     <div class="flex items-center justify-between border-b px-6 py-4">
                                         <div>
-                                            <h3 class="text-lg font-semibold text-gray-900">{user.full_name.clone()}</h3>
+                                            <h3 class="text-lg font-semibold text-gray-900">{user.full_name}</h3>
                                             <p class="text-sm text-gray-500">{format!("@{}", user.username)}</p>
                                         </div>
                                         <button class="text-gray-500 hover:text-gray-700" on:click=button_close>
@@ -66,7 +66,7 @@ pub fn UserDetailDrawer(
                                     <div class="p-6 space-y-4">
                                         <div>
                                             <p class="text-sm text-gray-600">{"権限"}</p>
-                                            <p class="text-base text-gray-900 font-medium">{user.role.clone()}</p>
+                                            <p class="text-base text-gray-900 font-medium">{user.role}</p>
                                         </div>
                                         <div>
                                             <p class="text-sm text-gray-600">{"システム管理者"}</p>

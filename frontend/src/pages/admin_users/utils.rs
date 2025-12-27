@@ -37,7 +37,7 @@ impl InviteFormState {
         self.is_system_admin.set(false);
     }
 
-    pub fn to_request(&self) -> CreateUser {
+    pub fn to_request(self) -> CreateUser {
         CreateUser {
             username: self.username.get(),
             password: self.password.get(),

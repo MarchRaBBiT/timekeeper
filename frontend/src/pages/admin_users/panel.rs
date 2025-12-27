@@ -1,7 +1,4 @@
-use crate::{
-    api::{CreateUser, UserResponse},
-    components::layout::Layout,
-};
+use crate::{api::UserResponse, components::layout::Layout};
 use leptos::*;
 
 use super::{

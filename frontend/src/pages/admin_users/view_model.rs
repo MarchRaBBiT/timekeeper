@@ -16,7 +16,6 @@ pub struct AdminUsersViewModel {
     pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, String>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, String>>,
     pub reset_mfa_action: Action<String, Result<(), String>>,
-    pub users_reload: RwSignal<u32>,
     pub is_system_admin: Memo<bool>,
 }
 
@@ -37,11 +36,10 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     let invite_messages = MessageState::default();
     let drawer_messages = MessageState::default();
     let selected_user = create_rw_signal(None::<UserResponse>);
-    let users_reload = create_rw_signal(0u32);
 
     let repo_resource = repo.clone();
     let users_resource = create_resource(
-        move || (is_system_admin.get(), users_reload.get()),
+        move || (is_system_admin.get(), 0u32),
         move |(allowed, _reload)| {
             let repo = repo_resource.clone();
             async move {
@@ -76,7 +74,8 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
                     invite_messages
                         .set_success(format!("ユーザー '{}' を作成しました。", user.username));
                     invite_form.reset();
-                    users_reload.update(|value| *value = value.wrapping_add(1));
+                    invite_form.reset();
+                    users_resource.refetch();
                 }
                 Err(err) => {
                     invite_messages.set_error(err);
@@ -106,7 +105,6 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         users_resource,
         invite_action,
         reset_mfa_action,
-        users_reload,
         is_system_admin,
     }
 }
