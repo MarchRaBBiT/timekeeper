@@ -81,7 +81,7 @@ impl LeaveFormState {
         }
     }
 
-    pub fn to_payload(&self) -> Result<CreateLeaveRequest, String> {
+    pub fn to_payload(self) -> Result<CreateLeaveRequest, String> {
         let start = parse_date(
             &self.start_date.get(),
             "開始日を YYYY-MM-DD 形式で入力してください。",
@@ -143,7 +143,7 @@ impl OvertimeFormState {
         }
     }
 
-    pub fn to_payload(&self) -> Result<CreateOvertimeRequest, String> {
+    pub fn to_payload(self) -> Result<CreateOvertimeRequest, String> {
         let date = parse_date(
             &self.date.get(),
             "残業日を YYYY-MM-DD 形式で入力してください。",

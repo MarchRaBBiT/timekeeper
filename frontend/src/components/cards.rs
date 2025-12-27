@@ -1,29 +1,11 @@
 use chrono::{Datelike, Timelike};
 use leptos::*;
 
-use crate::api::{ApiClient, AttendanceSummary};
-use crate::state::attendance::{refresh_today_context, AttendanceState};
-use crate::utils::time::{now_in_app_tz, today_in_app_tz};
+use crate::state::attendance::AttendanceState;
+use crate::utils::time::today_in_app_tz;
 
 #[component]
-pub fn AttendanceCard(
-    attendance_state: ReadSignal<AttendanceState>,
-    set_attendance_state: WriteSignal<AttendanceState>,
-) -> impl IntoView {
-    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
-    {
-        let api = api.clone();
-        let set_state = set_attendance_state;
-        create_effect(move |_| {
-            let api = api.clone();
-            spawn_local(async move {
-                if let Err(err) = refresh_today_context(&api, set_state).await {
-                    log::error!("Failed to refresh attendance context: {}", err);
-                }
-            });
-        });
-    }
-
+pub fn AttendanceCard(attendance_state: ReadSignal<AttendanceState>) -> impl IntoView {
     let today = today_in_app_tz();
 
     let clock_in = move || {
@@ -106,17 +88,10 @@ pub fn AttendanceCard(
 }
 
 #[component]
-pub fn SummaryCard() -> impl IntoView {
-    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
-    let (summary, set_summary) = create_signal::<Option<AttendanceSummary>>(None);
-    spawn_local(async move {
-        let now = now_in_app_tz();
-        let y = now.year();
-        let m = now.month() as u32;
-        if let Ok(s) = api.get_my_summary(Some(y), Some(m)).await {
-            set_summary.set(Some(s));
-        }
-    });
+pub fn SummaryCard(
+    summary: Resource<(), Result<crate::pages::dashboard::repository::DashboardSummary, String>>,
+) -> impl IntoView {
+    let summary_val = move || summary.get().and_then(|res| res.ok());
 
     view! {
         <div class="bg-white overflow-hidden shadow rounded-lg">
@@ -127,19 +102,19 @@ pub fn SummaryCard() -> impl IntoView {
                         <div>
                             <dt class="text-sm font-medium text-gray-500">{"総稼働時間"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
-                                {move || summary.get().as_ref().map(|s| format!("{:.2}時間", s.total_work_hours)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.total_work_hours).map(|h| format!("{:.2}時間", h)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">{"稼働日数"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
-                                {move || summary.get().as_ref().map(|s| format!("{} 日", s.total_work_days)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.total_work_days).map(|d| format!("{} 日", d)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
                             <dt class="text-sm font-medium text-gray-500">{"平均稼働時間"}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-gray-900">
-                                {move || summary.get().as_ref().map(|s| format!("{:.2}時間", s.average_daily_hours)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.average_daily_hours).map(|h| format!("{:.2}時間", h)).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                     </div>
@@ -150,37 +125,30 @@ pub fn SummaryCard() -> impl IntoView {
 }
 
 #[component]
-pub fn RequestCard() -> impl IntoView {
-    let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
-    let (reqs, set_reqs) = create_signal::<Option<serde_json::Value>>(None);
-    spawn_local(async move {
-        if let Ok(v) = api.get_my_requests().await {
-            set_reqs.set(Some(v));
-        }
-    });
-
-    let count = move |kind: &str, status: &str| -> i32 {
-        let v = match reqs.get() {
-            Some(v) => v,
-            None => return 0,
-        };
-        v.get(kind)
-            .and_then(|a| a.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter(|item| item.get("status").and_then(|s| s.as_str()) == Some(status))
-                    .count() as i32
-            })
-            .unwrap_or(0)
-    };
+pub fn RequestCard(
+    requests: Resource<
+        crate::pages::dashboard::utils::ActivityStatusFilter,
+        Result<Vec<crate::pages::dashboard::repository::DashboardActivity>, String>,
+    >,
+) -> impl IntoView {
+    let activities = move || requests.get().and_then(|res| res.ok()).unwrap_or_default();
 
     view! {
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg leading-6 font-medium text-gray-900">{"申請状況"}</h3>
                 <div class="mt-5 space-y-2">
-                    <div class="text-sm text-gray-700">{"休暇申請: 保留="}{move || count("leave_requests","pending")} {" 件 / 承認="}{move || count("leave_requests","approved")} {" 件 / 却下="}{move || count("leave_requests","rejected")} {" 件"}</div>
-                    <div class="text-sm text-gray-700">{"残業申請: 保留="}{move || count("overtime_requests","pending")} {" 件 / 承認="}{move || count("overtime_requests","approved")} {" 件 / 却下="}{move || count("overtime_requests","rejected")} {" 件"}</div>
+                    <For
+                        each=activities
+                        key=|a| a.title.clone()
+                        children=|a| {
+                            view! {
+                                <div class="text-sm text-gray-700">
+                                    {a.title} {": "} {a.detail.unwrap_or_else(|| "-".into())}
+                                </div>
+                            }
+                        }
+                    />
                 </div>
             </div>
         </div>

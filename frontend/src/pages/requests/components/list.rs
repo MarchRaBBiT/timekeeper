@@ -28,20 +28,20 @@ pub fn RequestsList(
                     </div>
                 </Show>
             </div>
-            
+
             <Show when=move || error.get().is_some()>
                 <div class="p-8">
                     <ErrorMessage message={error.get().unwrap_or_default()} />
                 </div>
             </Show>
-            
+
             <Show when=move || loading.get()>
                 <div class="p-12 flex flex-col items-center justify-center gap-4 text-slate-400">
                     <LoadingSpinner />
                     <span class="text-sm font-medium tracking-widest uppercase">{"データを取得中..."}</span>
                 </div>
             </Show>
-            
+
             <Show when=move || !loading.get() && summaries.get().is_empty() && error.get().is_none()>
                 <div class="p-16 text-center">
                     <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
@@ -51,7 +51,7 @@ pub fn RequestsList(
                     <p class="text-xs text-slate-400 mt-1">{"左または上のフォームから新しい申請を送信できます"}</p>
                 </div>
             </Show>
-            
+
             <Show when=move || !summaries.get().is_empty()>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-100">
@@ -81,7 +81,7 @@ pub fn RequestsList(
                                         summary_value.secondary_label.clone().unwrap_or_else(|| "-".into());
                                     let submitted_at =
                                         summary_value.submitted_at.clone().unwrap_or_else(|| "-".into());
-                                    
+
                                     let status_style = match status.as_str() {
                                         "approved" => "bg-green-100 text-green-700",
                                         "rejected" => "bg-red-100 text-red-700",

@@ -1,7 +1,5 @@
-use crate::state::attendance::{
-    self as attendance_state, describe_holiday_reason, AttendanceState,
-};
-use leptos::*;
+use crate::state::attendance::{describe_holiday_reason, AttendanceState};
+use leptos::{ev::MouseEvent, *};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct AttendanceButtonFlags {
@@ -36,187 +34,19 @@ fn button_flags_for(status: Option<&str>, loading: bool) -> AttendanceButtonFlag
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ClockEventKind {
-    ClockIn,
-    BreakStart,
-    BreakEnd,
-    ClockOut,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ClockEventPayload {
-    kind: ClockEventKind,
-    attendance_id: Option<String>,
-    break_id: Option<String>,
-}
-
-impl ClockEventPayload {
-    fn clock_in() -> Self {
-        Self {
-            kind: ClockEventKind::ClockIn,
-            attendance_id: None,
-            break_id: None,
-        }
-    }
-
-    fn clock_out() -> Self {
-        Self {
-            kind: ClockEventKind::ClockOut,
-            attendance_id: None,
-            break_id: None,
-        }
-    }
-
-    fn break_start(attendance_id: String) -> Self {
-        Self {
-            kind: ClockEventKind::BreakStart,
-            attendance_id: Some(attendance_id),
-            break_id: None,
-        }
-    }
-
-    fn break_end(break_id: String) -> Self {
-        Self {
-            kind: ClockEventKind::BreakEnd,
-            attendance_id: None,
-            break_id: Some(break_id),
-        }
-    }
-}
-
 #[component]
 pub fn AttendanceActionButtons(
     attendance_state: ReadSignal<AttendanceState>,
-    set_attendance_state: WriteSignal<AttendanceState>,
+    action_pending: ReadSignal<bool>,
+    message: ReadSignal<Option<String>>,
+    on_clock_in: Callback<MouseEvent>,
+    on_clock_out: Callback<MouseEvent>,
+    on_break_start: Callback<MouseEvent>,
+    on_break_end: Callback<MouseEvent>,
 ) -> impl IntoView {
-    let api = use_context::<crate::api::ApiClient>().unwrap_or_else(crate::api::ApiClient::new);
-    let (message, set_message) = create_signal(None::<String>);
-    let last_event = create_rw_signal(None::<ClockEventKind>);
-
-    let clock_action = {
-        create_action(move |payload: &ClockEventPayload| {
-            let api = api.clone();
-            let set_attendance_state = set_attendance_state;
-            let payload = payload.clone();
-            async move {
-                match payload.kind {
-                    ClockEventKind::ClockIn => {
-                        attendance_state::clock_in(&api, set_attendance_state).await?
-                    }
-                    ClockEventKind::ClockOut => {
-                        attendance_state::clock_out(&api, set_attendance_state).await?
-                    }
-                    ClockEventKind::BreakStart => {
-                        let attendance_id = payload
-                            .attendance_id
-                            .as_deref()
-                            .ok_or_else(|| "出勤レコードが見つかりません。".to_string())?;
-                        attendance_state::start_break(&api, attendance_id).await?
-                    }
-                    ClockEventKind::BreakEnd => {
-                        let break_id = payload
-                            .break_id
-                            .as_deref()
-                            .ok_or_else(|| "休憩レコードが見つかりません。".to_string())?;
-                        attendance_state::end_break(&api, break_id).await?
-                    }
-                };
-                attendance_state::refresh_today_context(&api, set_attendance_state).await
-            }
-        })
-    };
-    let action_pending = clock_action.pending();
-    {
-        create_effect(move |_| {
-            if let Some(result) = clock_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        let success = match last_event.get_untracked() {
-                            Some(ClockEventKind::ClockIn) => "出勤しました。",
-                            Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
-                            Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
-                            Some(ClockEventKind::ClockOut) => "退勤しました。",
-                            None => "操作が完了しました。",
-                        };
-                        set_message.set(Some(success.into()));
-                    }
-                    Err(err) => set_message.set(Some(err)),
-                }
-            }
-        });
-    }
-
-    let handle_clock_in = {
-        move |_| {
-            if action_pending.get() {
-                return;
-            }
-            set_message.set(None);
-            last_event.set(Some(ClockEventKind::ClockIn));
-            clock_action.dispatch(ClockEventPayload::clock_in());
-        }
-    };
-
-    let handle_clock_out = {
-        move |_| {
-            if action_pending.get() {
-                return;
-            }
-            set_message.set(None);
-            last_event.set(Some(ClockEventKind::ClockOut));
-            clock_action.dispatch(ClockEventPayload::clock_out());
-        }
-    };
-
-    let handle_break_start = {
-        move |_| {
-            if action_pending.get() {
-                return;
-            }
-            let Some(status) = attendance_state.get().today_status.clone() else {
-                set_message.set(Some("ステータスを取得できません。".into()));
-                return;
-            };
-            if status.status != "clocked_in" {
-                set_message.set(Some("出勤中のみ休憩を開始できます。".into()));
-                return;
-            }
-            let Some(att_id) = status.attendance_id.clone() else {
-                set_message.set(Some("出勤レコードが見つかりません。".into()));
-                return;
-            };
-            set_message.set(None);
-            last_event.set(Some(ClockEventKind::BreakStart));
-            clock_action.dispatch(ClockEventPayload::break_start(att_id));
-        }
-    };
-
-    let handle_break_end = {
-        move |_| {
-            if action_pending.get() {
-                return;
-            }
-            let Some(status) = attendance_state.get().today_status.clone() else {
-                set_message.set(Some("ステータスを取得できません。".into()));
-                return;
-            };
-            if status.status != "on_break" {
-                set_message.set(Some("休憩中のみ休憩を終了できます。".into()));
-                return;
-            }
-            let Some(break_id) = status.active_break_id.clone() else {
-                set_message.set(Some("休憩レコードが見つかりません。".into()));
-                return;
-            };
-            set_message.set(None);
-            last_event.set(Some(ClockEventKind::BreakEnd));
-            clock_action.dispatch(ClockEventPayload::break_end(break_id));
-        }
-    };
-
     let status_snapshot = move || attendance_state.get().today_status.clone();
     let holiday_reason = create_memo(move |_| attendance_state.get().today_holiday_reason.clone());
+
     let button_state = move || {
         let flags = button_flags_for(
             status_snapshot().as_ref().map(|s| s.status.as_str()),
@@ -262,7 +92,7 @@ pub fn AttendanceActionButtons(
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
                            border-brand-600 bg-brand-600 text-white shadow-lg shadow-brand-200 hover:bg-brand-700 hover:border-brand-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none"
                     disabled={move || !button_state().clock_in}
-                    on:click=handle_clock_in
+                    on:click=move |ev| on_clock_in.call(ev)
                 >
                     <i class="fas fa-sign-in-alt text-xl mb-2 group-disabled:text-gray-300"></i>
                     <span class="font-bold">{"出勤"}</span>
@@ -272,7 +102,7 @@ pub fn AttendanceActionButtons(
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
                            border-amber-500 bg-white text-amber-600 hover:bg-amber-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
                     disabled={move || !button_state().break_start}
-                    on:click=handle_break_start
+                    on:click=move |ev| on_break_start.call(ev)
                 >
                     <i class="fas fa-coffee text-xl mb-2 group-disabled:text-gray-300"></i>
                     <span class="font-bold">{"休憩開始"}</span>
@@ -282,7 +112,7 @@ pub fn AttendanceActionButtons(
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
                            border-amber-600 bg-amber-600 text-white shadow-lg shadow-amber-200 hover:bg-amber-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none"
                     disabled={move || !button_state().break_end}
-                    on:click=handle_break_end
+                    on:click=move |ev| on_break_end.call(ev)
                 >
                     <i class="fas fa-mug-hot text-xl mb-2 group-disabled:text-gray-300"></i>
                     <span class="font-bold">{"休憩終了"}</span>
@@ -292,7 +122,7 @@ pub fn AttendanceActionButtons(
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
                            border-red-500 bg-white text-red-600 hover:bg-red-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
                     disabled={move || !button_state().clock_out}
-                    on:click=handle_clock_out
+                    on:click=move |ev| on_clock_out.call(ev)
                 >
                     <i class="fas fa-sign-out-alt text-xl mb-2 group-disabled:text-gray-300"></i>
                     <span class="font-bold">{"退勤"}</span>

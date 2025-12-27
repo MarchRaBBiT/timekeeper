@@ -98,7 +98,6 @@ impl RequestsViewModel {
 
         // Setup effects for actions
         {
-            let leave_state = leave_state.clone();
             create_effect(move |_| {
                 if let Some(result) = update_action.value().get() {
                     match result {
@@ -188,7 +187,7 @@ impl RequestsViewModel {
                 .map(|data| flatten_requests(&data))
                 .unwrap_or_default()
         });
-        let filter_state = self.filter_state.clone();
+        let filter_state = self.filter_state;
         Signal::derive(move || {
             let status = filter_state.status_filter();
             if status.is_empty() {
@@ -203,8 +202,8 @@ impl RequestsViewModel {
     }
 
     pub fn on_edit(&self) -> Callback<RequestSummary> {
-        let leave_state = self.leave_state.clone();
-        let overtime_state = self.overtime_state.clone();
+        let leave_state = self.leave_state;
+        let overtime_state = self.overtime_state;
         let list_message = self.list_message;
         let editing_request = self.editing_request;
         let set_active_form = self.set_active_form;
@@ -230,8 +229,8 @@ impl RequestsViewModel {
     }
 
     pub fn on_cancel_request(&self) -> Callback<RequestSummary> {
-        let leave_state = self.leave_state.clone();
-        let overtime_state = self.overtime_state.clone();
+        let leave_state = self.leave_state;
+        let overtime_state = self.overtime_state;
         let editing_request = self.editing_request;
         let cancel_action = self.cancel_action;
 

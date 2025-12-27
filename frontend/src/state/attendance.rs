@@ -3,6 +3,55 @@ use crate::utils::time::today_in_app_tz;
 use chrono::NaiveDate;
 use leptos::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClockEventKind {
+    ClockIn,
+    BreakStart,
+    BreakEnd,
+    ClockOut,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClockEventPayload {
+    pub kind: ClockEventKind,
+    pub attendance_id: Option<String>,
+    pub break_id: Option<String>,
+}
+
+impl ClockEventPayload {
+    pub fn clock_in() -> Self {
+        Self {
+            kind: ClockEventKind::ClockIn,
+            attendance_id: None,
+            break_id: None,
+        }
+    }
+
+    pub fn clock_out() -> Self {
+        Self {
+            kind: ClockEventKind::ClockOut,
+            attendance_id: None,
+            break_id: None,
+        }
+    }
+
+    pub fn break_start(attendance_id: String) -> Self {
+        Self {
+            kind: ClockEventKind::BreakStart,
+            attendance_id: Some(attendance_id),
+            break_id: None,
+        }
+    }
+
+    pub fn break_end(break_id: String) -> Self {
+        Self {
+            kind: ClockEventKind::BreakEnd,
+            attendance_id: None,
+            break_id: Some(break_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct AttendanceState {
     pub current_attendance: Option<AttendanceResponse>,

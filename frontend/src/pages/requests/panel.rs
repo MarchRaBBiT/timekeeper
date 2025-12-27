@@ -11,8 +11,8 @@ use leptos::*;
 #[component]
 pub fn RequestsPage() -> impl IntoView {
     let vm = use_requests_view_model();
-    let leave_state = vm.leave_state.clone();
-    let overtime_state = vm.overtime_state.clone();
+    let leave_state = vm.leave_state;
+    let overtime_state = vm.overtime_state;
     let active_form = vm.active_form;
     let set_active_form = vm.set_active_form;
     let leave_message = vm.leave_message;
@@ -22,7 +22,7 @@ pub fn RequestsPage() -> impl IntoView {
     let overtime_action = vm.overtime_action;
     let update_action = vm.update_action;
     let editing_request = vm.editing_request;
-    let filter_state = vm.filter_state.clone();
+    let filter_state = vm.filter_state;
     let filtered_summaries = vm.filtered_summaries();
     let requests_resource = vm.requests_resource;
     let selected_request = vm.selected_request;
@@ -30,7 +30,6 @@ pub fn RequestsPage() -> impl IntoView {
     let on_cancel_request = vm.on_cancel_request();
 
     let on_cancel_leave = Callback::new({
-        let leave_state = leave_state.clone();
         move |_| {
             editing_request.set(None);
             list_message.update(|msg| msg.clear());
@@ -39,7 +38,6 @@ pub fn RequestsPage() -> impl IntoView {
     });
 
     let on_cancel_overtime = Callback::new({
-        let overtime_state = overtime_state.clone();
         move |_| {
             editing_request.set(None);
             list_message.update(|msg| msg.clear());
@@ -81,7 +79,7 @@ pub fn RequestsPage() -> impl IntoView {
                     </div>
                     <Show when=move || matches!(active_form.get(), RequestFormKind::Leave)>
                         <LeaveRequestForm
-                            state=leave_state.clone()
+                            state=leave_state
                             message=leave_message
                             action=leave_action
                             update_action=update_action
@@ -91,7 +89,7 @@ pub fn RequestsPage() -> impl IntoView {
                     </Show>
                     <Show when=move || matches!(active_form.get(), RequestFormKind::Overtime)>
                         <OvertimeRequestForm
-                            state=overtime_state.clone()
+                            state=overtime_state
                             message=overtime_message
                             action=overtime_action
                             update_action=update_action
@@ -102,7 +100,7 @@ pub fn RequestsPage() -> impl IntoView {
                 </div>
                 <div class="hidden lg:grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <LeaveRequestForm
-                        state=leave_state.clone()
+                        state=leave_state
                         message=leave_message
                         action=leave_action
                         update_action=update_action
@@ -110,7 +108,7 @@ pub fn RequestsPage() -> impl IntoView {
                         on_cancel_edit=on_cancel_leave
                     />
                     <OvertimeRequestForm
-                        state=overtime_state.clone()
+                        state=overtime_state
                         message=overtime_message
                         action=overtime_action
                         update_action=update_action
@@ -118,7 +116,7 @@ pub fn RequestsPage() -> impl IntoView {
                         on_cancel_edit=on_cancel_overtime
                     />
                 </div>
-                <RequestsFilter filter_state=filter_state.clone() />
+                <RequestsFilter filter_state=filter_state />
                 <RequestsList
                     summaries=filtered_summaries
                     loading=requests_resource.loading()
