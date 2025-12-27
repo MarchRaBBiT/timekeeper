@@ -8,8 +8,8 @@ use wasm_bindgen::JsCast;
 
 #[component]
 pub fn InviteForm(
-    form_state: RwSignal<InviteFormState>,
-    messages: RwSignal<MessageState>,
+    form_state: InviteFormState,
+    messages: MessageState,
     invite_action: Action<CreateUser, Result<UserResponse, String>>,
     is_system_admin: Memo<bool>,
 ) -> impl IntoView {
@@ -17,21 +17,16 @@ pub fn InviteForm(
     let on_submit = {
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
-            messages.update(MessageState::clear);
+            messages.clear();
             if !is_system_admin.get_untracked() {
-                messages.update(|state| {
-                    state.set_error("システム管理者のみ操作できます。");
-                });
+                messages.set_error("システム管理者のみ操作できます。");
                 return;
             }
-            let current = form_state.get_untracked();
-            if !current.is_valid() {
-                messages.update(|state| {
-                    state.set_error("すべての必須項目を入力してください。");
-                });
+            if !form_state.is_valid() {
+                messages.set_error("すべての必須項目を入力してください。");
                 return;
             }
-            invite_action.dispatch(current.to_request());
+            invite_action.dispatch(form_state.to_request());
         }
     };
 
@@ -42,11 +37,11 @@ pub fn InviteForm(
                 <p class="text-sm text-gray-600">{"ユーザー名・氏名・権限を入力し、必要に応じてシステム管理者権限を付与します。"}</p>
             </div>
 
-            <Show when=move || messages.get().error.is_some()>
-                <ErrorMessage message={messages.get().error.unwrap_or_default()} />
+            <Show when=move || messages.error.get().is_some()>
+                <ErrorMessage message={messages.error.get().unwrap_or_default()} />
             </Show>
-            <Show when=move || messages.get().success.is_some()>
-                <SuccessMessage message={messages.get().success.unwrap_or_default()} />
+            <Show when=move || messages.success.get().is_some()>
+                <SuccessMessage message={messages.success.get().unwrap_or_default()} />
             </Show>
 
             <form class="grid grid-cols-1 lg:grid-cols-2 gap-4" on:submit=on_submit>
@@ -55,11 +50,8 @@ pub fn InviteForm(
                     <input
                         class="mt-1 w-full border rounded px-2 py-1"
                         placeholder="username"
-                        prop:value=move || form_state.get().username
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            form_state.update(|state| state.username = value);
-                        }
+                        prop:value=form_state.username
+                        on:input=move |ev| form_state.username.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
@@ -67,11 +59,8 @@ pub fn InviteForm(
                     <input
                         class="mt-1 w-full border rounded px-2 py-1"
                         placeholder="山田太郎"
-                        prop:value=move || form_state.get().full_name
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            form_state.update(|state| state.full_name = value);
-                        }
+                        prop:value=form_state.full_name
+                        on:input=move |ev| form_state.full_name.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
@@ -79,22 +68,16 @@ pub fn InviteForm(
                     <input
                         type="password"
                         class="mt-1 w-full border rounded px-2 py-1"
-                        prop:value=move || form_state.get().password
-                        on:input=move |ev| {
-                            let value = event_target_value(&ev);
-                            form_state.update(|state| state.password = value);
-                        }
+                        prop:value=form_state.password
+                        on:input=move |ev| form_state.password.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"権限"}</label>
                     <select
                         class="mt-1 w-full border rounded px-2 py-1"
-                        prop:value=move || form_state.get().role
-                        on:change=move |ev| {
-                            let value = event_target_value(&ev);
-                            form_state.update(|state| state.role = value);
-                        }
+                        prop:value=form_state.role
+                        on:change=move |ev| form_state.role.set(event_target_value(&ev))
                     >
                         <option value="employee">{"employee"}</option>
                         <option value="admin">{"admin"}</option>
@@ -104,12 +87,12 @@ pub fn InviteForm(
                     <input
                         type="checkbox"
                         class="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                        prop:checked=move || form_state.get().is_system_admin
+                        prop:checked=form_state.is_system_admin
                         on:change=move |ev| {
                             if let Some(target) =
                                 ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
                             {
-                                form_state.update(|state| state.is_system_admin = target.checked());
+                                form_state.is_system_admin.set(target.checked());
                             }
                         }
                     />

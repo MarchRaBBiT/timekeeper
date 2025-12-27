@@ -60,20 +60,20 @@ pub fn UserList(
                                             <div>
                                                 <p class="text-sm text-gray-500">{"ユーザー名"}</p>
                                                 <p class="text-base font-semibold text-gray-900">
-                                                    {row_user.username.clone()}
+                                                    {row_user.username}
                                                 </p>
                                             </div>
                                             <div class="text-right">
                                                 <p class="text-sm text-gray-500">{"権限"}</p>
                                                 <p class="text-sm font-medium text-gray-900">
-                                                    {row_user.role.clone()}
+                                                    {row_user.role}
                                                 </p>
                                             </div>
                                         </div>
                                         <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
                                             <div>
                                                 <p class="text-gray-500">{"氏名"}</p>
-                                                <p class="text-gray-900">{row_user.full_name.clone()}</p>
+                                                <p class="text-gray-900">{row_user.full_name}</p>
                                             </div>
                                             <div>
                                                 <p class="text-gray-500">{"システム管理者"}</p>
@@ -130,13 +130,13 @@ pub fn UserList(
                                                 on:click=click_handler
                                             >
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {row_user.username.clone()}
+                                                    {row_user.username}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {row_user.full_name.clone()}
+                                                    {row_user.full_name}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {row_user.role.clone()}
+                                                    {row_user.role}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                     {if row_user.is_system_admin { "Yes" } else { "No" }}

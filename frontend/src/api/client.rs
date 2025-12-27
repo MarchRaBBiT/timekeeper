@@ -1,11 +1,13 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use crate::api::types::*;
+use crate::config;
 use chrono::NaiveDate;
 use reqwest_wasm::{Client, StatusCode};
 use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
-use crate::{api::types::*, config, utils::storage as storage_utils};
+#[cfg(test)]
+use crate::utils::storage as storage_utils;
 
 #[derive(Clone)]
 pub struct ApiClient {

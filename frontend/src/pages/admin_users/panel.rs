@@ -4,7 +4,6 @@ use leptos::*;
 use super::{
     components::{detail::UserDetailDrawer, invite_form::InviteForm, list::UserList},
     layout::{AdminUsersFrame, UnauthorizedAdminUsersMessage},
-    utils::MessageState,
 };
 
 #[component]
@@ -12,11 +11,11 @@ pub fn AdminUsersPage() -> impl IntoView {
     let vm = super::view_model::use_admin_users_view_model();
 
     let select_user = Callback::new({
-        let drawer_messages = vm.drawer_messages;
-        let selected_user = vm.selected_user;
+        let selected = vm.selected_user;
+        let messages = vm.drawer_messages;
         move |user: UserResponse| {
-            drawer_messages.set(MessageState::default());
-            selected_user.set(Some(user));
+            messages.clear();
+            selected.set(Some(user));
         }
     });
 
