@@ -1,10 +1,12 @@
 use axum::{
+    body::{to_bytes, Body, Bytes},
     extract::{Request, State},
     http::{header::USER_AGENT, HeaderMap, Method},
     middleware::Next,
     response::Response,
 };
 use chrono::Utc;
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -13,6 +15,10 @@ use crate::{
     models::user::User,
     services::audit_log::{AuditLogEntry, AuditLogService},
 };
+
+const DEFAULT_CLOCK_SOURCE: &str = "api";
+const MAX_BUFFERED_BODY_BYTES: usize = 64 * 1024;
+const REQUEST_TYPE_UNKNOWN: &str = "unknown";
 
 struct AuditEventDescriptor {
     event_type: &'static str,
@@ -25,6 +31,7 @@ pub async fn audit_log(
     request: Request,
     next: Next,
 ) -> Response {
+    let mut request = request;
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let descriptor = classify_event(&method, &path);
@@ -33,9 +40,21 @@ pub async fn audit_log(
         return next.run(request).await;
     }
 
+    let headers = request.headers().clone();
+    let body_bytes = if let Some(descriptor_ref) = descriptor.as_ref() {
+        if needs_body_for_metadata(descriptor_ref.event_type) {
+            let (buffered_request, bytes) = buffer_request_body(request).await;
+            request = buffered_request;
+            Some(bytes)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let audit_service = request.extensions().get::<Arc<AuditLogService>>().cloned();
     let actor_before = request.extensions().get::<User>().cloned();
-    let headers = request.headers().clone();
     let request_id = extract_request_id(&headers);
 
     let response = next.run(request).await;
@@ -56,7 +75,7 @@ pub async fn audit_log(
         .extensions()
         .get::<User>()
         .cloned()
-        .or(actor_before);
+        .or_else(|| actor_before.clone());
     let result = if status.is_client_error() || status.is_server_error() {
         "failure"
     } else {
@@ -80,7 +99,13 @@ pub async fn audit_log(
         target_id: descriptor.target_id,
         result: result.to_string(),
         error_code,
-        metadata: None,
+        metadata: build_metadata(
+            descriptor.event_type,
+            &headers,
+            &config,
+            actor.as_ref(),
+            body_bytes.as_ref(),
+        ),
         ip: extract_ip(&headers),
         user_agent: extract_user_agent(&headers),
         request_id: Some(request_id),
@@ -99,6 +124,176 @@ pub async fn audit_log(
     });
 
     response
+}
+
+async fn buffer_request_body(request: Request) -> (Request, Bytes) {
+    let (parts, body) = request.into_parts();
+    match to_bytes(body, MAX_BUFFERED_BODY_BYTES).await {
+        Ok(bytes) => {
+            let request = Request::from_parts(parts, Body::from(bytes.clone()));
+            (request, bytes)
+        }
+        Err(err) => {
+            tracing::warn!(error = ?err, "Failed to read request body for audit log metadata");
+            let request = Request::from_parts(parts, Body::empty());
+            (request, Bytes::new())
+        }
+    }
+}
+
+fn needs_body_for_metadata(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "request_leave_create" | "request_overtime_create" | "request_update" | "request_cancel"
+    )
+}
+
+fn build_metadata(
+    event_type: &str,
+    headers: &HeaderMap,
+    config: &Config,
+    actor: Option<&User>,
+    body_bytes: Option<&Bytes>,
+) -> Option<Value> {
+    match event_type {
+        "attendance_clock_in"
+        | "attendance_clock_out"
+        | "attendance_break_start"
+        | "attendance_break_end" => Some(build_attendance_metadata(event_type, headers, config)),
+        "request_leave_create"
+        | "request_overtime_create"
+        | "request_update"
+        | "request_cancel" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_request_metadata(event_type, payload.as_ref()))
+        }
+        "admin_request_approve" | "admin_request_reject" => {
+            Some(build_approval_metadata(event_type))
+        }
+        "password_change" => Some(build_password_change_metadata(actor)),
+        _ => None,
+    }
+}
+
+fn build_attendance_metadata(event_type: &str, headers: &HeaderMap, config: &Config) -> Value {
+    let clock_type = match event_type {
+        "attendance_clock_in" => "clock_in",
+        "attendance_clock_out" => "clock_out",
+        "attendance_break_start" => "break_start",
+        "attendance_break_end" => "break_end",
+        _ => "unknown",
+    };
+    let source = extract_source(headers);
+    json!({
+        "clock_type": clock_type,
+        "timezone": config.time_zone.to_string(),
+        "source": source,
+    })
+}
+
+fn build_request_metadata(event_type: &str, payload: Option<&Value>) -> Value {
+    let request_type = match event_type {
+        "request_leave_create" => "leave",
+        "request_overtime_create" => "overtime",
+        _ => infer_request_type(payload).unwrap_or(REQUEST_TYPE_UNKNOWN),
+    };
+    let payload_summary = build_request_payload_summary(request_type, payload);
+    json!({
+        "request_type": request_type,
+        "payload_summary": payload_summary,
+    })
+}
+
+fn build_request_payload_summary(request_type: &str, payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    if let Some(payload) = payload {
+        match request_type {
+            "leave" => {
+                insert_string_if_present(&mut summary, payload, "leave_type");
+                insert_string_if_present(&mut summary, payload, "start_date");
+                insert_string_if_present(&mut summary, payload, "end_date");
+            }
+            "overtime" => {
+                insert_string_if_present(&mut summary, payload, "date");
+                insert_number_if_present(&mut summary, payload, "planned_hours");
+            }
+            _ => {
+                insert_string_if_present(&mut summary, payload, "leave_type");
+                insert_string_if_present(&mut summary, payload, "start_date");
+                insert_string_if_present(&mut summary, payload, "end_date");
+                insert_string_if_present(&mut summary, payload, "date");
+                insert_number_if_present(&mut summary, payload, "planned_hours");
+            }
+        }
+    }
+    Value::Object(summary)
+}
+
+fn insert_string_if_present(summary: &mut Map<String, Value>, payload: &Value, key: &str) {
+    if let Some(value) = payload.get(key).and_then(Value::as_str) {
+        summary.insert(key.to_string(), Value::String(value.to_string()));
+    }
+}
+
+fn insert_number_if_present(summary: &mut Map<String, Value>, payload: &Value, key: &str) {
+    if let Some(value) = payload.get(key).and_then(Value::as_f64) {
+        summary.insert(key.to_string(), json!(value));
+    }
+}
+
+fn infer_request_type(payload: Option<&Value>) -> Option<&'static str> {
+    let payload = payload?;
+    if payload.get("leave_type").is_some()
+        || payload.get("start_date").is_some()
+        || payload.get("end_date").is_some()
+    {
+        return Some("leave");
+    }
+    if payload.get("planned_hours").is_some() || payload.get("date").is_some() {
+        return Some("overtime");
+    }
+    None
+}
+
+fn build_approval_metadata(event_type: &str) -> Value {
+    let decision = if event_type == "admin_request_approve" {
+        "approve"
+    } else {
+        "reject"
+    };
+    json!({
+        "approval_step": "single",
+        "decision": decision,
+    })
+}
+
+fn build_password_change_metadata(actor: Option<&User>) -> Value {
+    let mfa_value = actor
+        .map(|user| Value::Bool(user.is_mfa_enabled()))
+        .unwrap_or(Value::Null);
+    json!({
+        "method": "password",
+        "mfa_enabled": mfa_value,
+    })
+}
+
+fn parse_json_body(body_bytes: Option<&Bytes>) -> Option<Value> {
+    let bytes = body_bytes?;
+    if bytes.is_empty() {
+        return None;
+    }
+    serde_json::from_slice(bytes).ok()
+}
+
+fn extract_source(headers: &HeaderMap) -> String {
+    headers
+        .get("x-client-source")
+        .or_else(|| headers.get("x-source"))
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| DEFAULT_CLOCK_SOURCE.to_string())
 }
 
 fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {

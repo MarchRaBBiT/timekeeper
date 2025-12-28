@@ -7,6 +7,7 @@ use axum::{
     Extension, Router,
 };
 use chrono::Utc;
+use serde_json::Value;
 use sqlx::PgPool;
 use std::sync::Arc;
 use timekeeper_backend::{
@@ -41,6 +42,13 @@ async fn reset_audit_logs(pool: &PgPool) {
         .execute(pool)
         .await
         .expect("truncate audit_logs");
+}
+
+fn metadata_value(log: &AuditLog) -> &Value {
+    log.metadata
+        .as_ref()
+        .map(|value| &value.0)
+        .expect("metadata")
 }
 
 async fn wait_for_audit_log_by_request_id(pool: &PgPool, request_id: &str) -> Option<AuditLog> {
@@ -85,6 +93,7 @@ async fn audit_log_middleware_records_event() {
             Request::builder()
                 .method("POST")
                 .uri("/api/attendance/clock-in")
+                .header("x-client-source", "web")
                 .header("x-request-id", &request_id)
                 .body(Body::empty())
                 .expect("build request"),
@@ -100,6 +109,17 @@ async fn audit_log_middleware_records_event() {
     assert_eq!(logged.result, "success");
     assert_eq!(logged.actor_type, "user");
     assert!(logged.actor_id.is_some());
+
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("clock_type").and_then(Value::as_str),
+        Some("clock_in")
+    );
+    assert_eq!(metadata.get("source").and_then(Value::as_str), Some("web"));
+    assert_eq!(
+        metadata.get("timezone").and_then(Value::as_str),
+        Some("Asia/Tokyo")
+    );
 }
 
 #[tokio::test]
@@ -198,6 +218,12 @@ async fn audit_log_middleware_records_failure_with_error_code() {
     assert_eq!(logged.result, "failure");
     assert_eq!(logged.error_code.as_deref(), Some("http_400"));
     assert!(logged.occurred_at <= Utc::now());
+
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("clock_type").and_then(Value::as_str),
+        Some("clock_in")
+    );
 }
 
 #[tokio::test]
@@ -250,4 +276,179 @@ async fn audit_log_middleware_records_auth_failure() {
     assert_eq!(logged.error_code.as_deref(), Some("http_401"));
     assert_eq!(logged.actor_type, "anonymous");
     assert!(logged.actor_id.is_none());
+}
+
+#[tokio::test]
+async fn audit_log_middleware_records_request_metadata() {
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config.clone());
+
+    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+
+    let app = Router::new()
+        .route("/api/requests/leave", post(ok_handler))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            timekeeper_backend::middleware::audit_log,
+        ))
+        .layer(Extension(user))
+        .layer(Extension(audit_service))
+        .with_state(state);
+
+    let request_id = Uuid::new_v4().to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/requests/leave")
+                .header("content-type", "application/json")
+                .header("x-request-id", &request_id)
+                .body(Body::from(
+                    r#"{"leave_type":"annual","start_date":"2025-01-10","end_date":"2025-01-12","reason":"test"}"#,
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
+        .await
+        .expect("audit log");
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("request_type").and_then(Value::as_str),
+        Some("leave")
+    );
+    let payload = metadata
+        .get("payload_summary")
+        .and_then(Value::as_object)
+        .expect("payload_summary");
+    assert_eq!(
+        payload.get("leave_type").and_then(Value::as_str),
+        Some("annual")
+    );
+    assert_eq!(
+        payload.get("start_date").and_then(Value::as_str),
+        Some("2025-01-10")
+    );
+    assert!(payload.get("reason").is_none());
+}
+
+#[tokio::test]
+async fn audit_log_middleware_records_approval_metadata() {
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config.clone());
+
+    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+
+    let app = Router::new()
+        .route(
+            "/api/admin/requests/:id/approve",
+            axum::routing::put(ok_handler),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            timekeeper_backend::middleware::audit_log,
+        ))
+        .layer(Extension(user))
+        .layer(Extension(audit_service))
+        .with_state(state);
+
+    let request_id = Uuid::new_v4().to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/admin/requests/req-123/approve")
+                .header("content-type", "application/json")
+                .header("x-request-id", &request_id)
+                .body(Body::from(r#"{"comment":"ok"}"#))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
+        .await
+        .expect("audit log");
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("approval_step").and_then(Value::as_str),
+        Some("single")
+    );
+    assert_eq!(
+        metadata.get("decision").and_then(Value::as_str),
+        Some("approve")
+    );
+}
+
+#[tokio::test]
+async fn audit_log_middleware_records_password_change_metadata() {
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config.clone());
+
+    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+
+    let app = Router::new()
+        .route("/api/auth/change-password", axum::routing::put(ok_handler))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            timekeeper_backend::middleware::audit_log,
+        ))
+        .layer(Extension(user))
+        .layer(Extension(audit_service))
+        .with_state(state);
+
+    let request_id = Uuid::new_v4().to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/auth/change-password")
+                .header("content-type", "application/json")
+                .header("x-request-id", &request_id)
+                .body(Body::from(
+                    r#"{"current_password":"old","new_password":"newpass123"}"#,
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
+        .await
+        .expect("audit log");
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("method").and_then(Value::as_str),
+        Some("password")
+    );
+    assert_eq!(
+        metadata.get("mfa_enabled").and_then(Value::as_bool),
+        Some(false)
+    );
 }
