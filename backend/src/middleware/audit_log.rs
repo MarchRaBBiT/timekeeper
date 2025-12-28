@@ -64,7 +64,7 @@ pub async fn audit_log(
 
     let response = next.run(request).await;
 
-    if config.audit_log_retention_days == 0 {
+    if !config.audit_log_retention_policy().is_recording_enabled() {
         return response;
     }
 

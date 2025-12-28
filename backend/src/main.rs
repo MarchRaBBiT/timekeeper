@@ -7,6 +7,7 @@ use axum::{
     routing::{delete, get, post, put},
     Extension, Router,
 };
+use chrono::Utc;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
@@ -26,7 +27,7 @@ mod models;
 mod services;
 mod utils;
 
-use config::Config;
+use config::{AuditLogRetentionPolicy, Config};
 use db::connection::{create_pool, DbPool};
 use services::{
     audit_log::AuditLogService, holiday::HolidayService, holiday_exception::HolidayExceptionService,
@@ -55,6 +56,11 @@ async fn main() -> anyhow::Result<()> {
     let holiday_service = Arc::new(HolidayService::new(pool.clone()));
     let holiday_exception_service = Arc::new(HolidayExceptionService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
+
+    spawn_audit_log_cleanup(
+        audit_log_service.clone(),
+        config.audit_log_retention_policy(),
+    );
 
     let openapi = docs::ApiDoc::openapi();
 
@@ -320,6 +326,39 @@ fn cors_layer(config: &Config) -> CorsLayer {
         ])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE, ACCEPT])
         .max_age(Duration::from_secs(24 * 60 * 60))
+}
+
+fn spawn_audit_log_cleanup(
+    audit_log_service: Arc<AuditLogService>,
+    retention_policy: AuditLogRetentionPolicy,
+) {
+    let Some(retention_days) = retention_policy.retention_days() else {
+        tracing::info!(
+            retention_policy = ?retention_policy,
+            "Audit log cleanup disabled"
+        );
+        return;
+    };
+
+    tracing::info!(retention_days, "Starting daily audit log cleanup task");
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        loop {
+            interval.tick().await;
+            let Some(cutoff) = retention_policy.cleanup_cutoff(Utc::now()) else {
+                continue;
+            };
+            match audit_log_service.delete_logs_before(cutoff).await {
+                Ok(deleted) => {
+                    tracing::info!(deleted, "Audit log cleanup completed");
+                }
+                Err(err) => {
+                    tracing::warn!(error = ?err, "Audit log cleanup failed");
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]
