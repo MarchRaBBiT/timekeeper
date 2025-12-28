@@ -91,7 +91,7 @@ pub fn SettingsPage() -> impl IntoView {
             if register_loading.get() {
                 return;
             }
-            mfa_vm.messages.update(|m| m.clear());
+            mfa_vm.messages.clear();
             mfa_vm.setup_info.set(None);
             mfa_vm.register_action.dispatch(());
         }
@@ -107,11 +107,11 @@ pub fn SettingsPage() -> impl IntoView {
             let trimmed = match utils::validate_totp_code(&code_value) {
                 Ok(code) => code,
                 Err(msg) => {
-                    mfa_vm.messages.update(|m| m.set_error(msg));
+                    mfa_vm.messages.set_error(msg);
                     return;
                 }
             };
-            mfa_vm.messages.update(|m| m.clear());
+            mfa_vm.messages.clear();
             mfa_vm.activate_action.dispatch(trimmed);
         }
     };
@@ -178,11 +178,11 @@ pub fn SettingsPage() -> impl IntoView {
                         on_register=start_registration
                         on_refresh=move || mfa_vm.fetch_status_action.dispatch(())
                     />
-                    <Show when=move || mfa_vm.messages.get().success.get().is_some() fallback=|| ()>
-                        <SuccessMessage message={mfa_vm.messages.get().success.get().unwrap_or_default()} />
+                    <Show when=move || mfa_vm.messages.success.get().is_some() fallback=|| ()>
+                        <SuccessMessage message={mfa_vm.messages.success.get().unwrap_or_default()} />
                     </Show>
-                    <Show when=move || mfa_vm.messages.get().error.get().is_some() fallback=|| ()>
-                        <ErrorMessage message={mfa_vm.messages.get().error.get().unwrap_or_default()} />
+                    <Show when=move || mfa_vm.messages.error.get().is_some() fallback=|| ()>
+                        <ErrorMessage message={mfa_vm.messages.error.get().unwrap_or_default()} />
                     </Show>
                     <VerificationSection
                         setup_info=mfa_vm.setup_info.read_only()

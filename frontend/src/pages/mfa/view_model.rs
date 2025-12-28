@@ -11,7 +11,7 @@ pub struct MfaViewModel {
     pub status_loading: RwSignal<bool>,
     pub setup_info: RwSignal<Option<MfaSetupResponse>>,
     pub totp_code: RwSignal<String>,
-    pub messages: RwSignal<MessageState>,
+    pub messages: MessageState,
     pub fetch_status_action: Action<(), ()>,
     pub register_action: Action<(), Result<MfaSetupResponse, String>>,
     pub activate_action: Action<String, Result<(), String>>,
@@ -26,17 +26,17 @@ pub fn use_mfa_view_model() -> MfaViewModel {
     let status_loading = create_rw_signal(true);
     let setup_info = create_rw_signal(None);
     let totp_code = create_rw_signal(String::new());
-    let messages = create_rw_signal(MessageState::default());
+    let messages = MessageState::default();
 
     let repo_for_fetch = repository.clone();
     let fetch_status_action = create_action(move |_| {
         let repo = repo_for_fetch.clone();
         async move {
-            messages.update(|m| m.clear());
+            messages.clear();
             status_loading.set(true);
             match repo.fetch_status().await {
                 Ok(resp) => status.set(Some(resp)),
-                Err(err) => messages.update(|m| m.set_error(err)),
+                Err(err) => messages.set_error(err),
             }
             status_loading.set(false);
         }
@@ -61,14 +61,12 @@ pub fn use_mfa_view_model() -> MfaViewModel {
             match result {
                 Ok(info) => {
                     setup_info.set(Some(info));
-                    messages.update(|m| {
-                        m.set_success(
-                            "認証アプリにシークレットを登録し、確認コードを入力してください。"
-                                .to_string(),
-                        )
-                    });
+                    messages.set_success(
+                        "認証アプリにシークレットを登録し、確認コードを入力してください。"
+                            .to_string(),
+                    );
                 }
-                Err(err) => messages.update(|m| m.set_error(err)),
+                Err(err) => messages.set_error(err),
             }
         }
     });
@@ -79,12 +77,10 @@ pub fn use_mfa_view_model() -> MfaViewModel {
                 Ok(_) => {
                     setup_info.set(None);
                     totp_code.set(String::new());
-                    messages.update(|m| {
-                        m.set_success(
-                            "MFA を有効化しました。次回以降のログインで認証コードが求められます。"
-                                .to_string(),
-                        )
-                    });
+                    messages.set_success(
+                        "MFA を有効化しました。次回以降のログインで認証コードが求められます。"
+                            .to_string(),
+                    );
 
                     // Update global auth state
                     set_auth.update(|state| {
@@ -95,7 +91,7 @@ pub fn use_mfa_view_model() -> MfaViewModel {
 
                     fetch_status_action.dispatch(());
                 }
-                Err(err) => messages.update(|m| m.set_error(err)),
+                Err(err) => messages.set_error(err),
             }
         }
     });
