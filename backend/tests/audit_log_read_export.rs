@@ -10,6 +10,7 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 use serde_json::json;
 use sqlx::{types::Json, PgPool};
+use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::{
         admin::{export_audit_logs, get_audit_log_detail, list_audit_logs, AuditLogListResponse},
@@ -17,11 +18,17 @@ use timekeeper_backend::{
     },
     models::{audit_log::AuditLog, user::UserRole},
 };
+use tokio::sync::Mutex;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 #[path = "support/mod.rs"]
 mod support;
+
+async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(())).lock().await
+}
 
 async fn reset_audit_logs(pool: &PgPool) {
     sqlx::query("TRUNCATE audit_logs")
@@ -63,6 +70,7 @@ fn build_log(
 
 #[tokio::test]
 async fn audit_log_list_requires_system_admin() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -93,6 +101,7 @@ async fn audit_log_list_requires_system_admin() {
 
 #[tokio::test]
 async fn audit_log_list_filters_and_paginates() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -187,6 +196,7 @@ async fn audit_log_list_filters_and_paginates() {
 
 #[tokio::test]
 async fn audit_log_detail_returns_log() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -237,6 +247,7 @@ async fn audit_log_detail_returns_log() {
 
 #[tokio::test]
 async fn audit_log_export_returns_json_file() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)

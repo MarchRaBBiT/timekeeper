@@ -33,10 +33,13 @@ cd timekeeper
    JWT_SECRET=change-me-for-local
    JWT_EXPIRATION_HOURS=1
    REFRESH_TOKEN_EXPIRATION_DAYS=7
+   AUDIT_LOG_RETENTION_DAYS=365
+   AUDIT_LOG_RETENTION_FOREVER=false
    ```
 3. ローカル PostgreSQL / ステージングで利用する場合は `DATABASE_URL` を DSN に置き換え、`JWT_SECRET` を十分ランダムな値に更新してください（Podman Compose でも `.env` を直接読むため）。
 
 > SQLite を利用する場合は `DATABASE_URL=sqlite:./timekeeper.db` のように書き換えてください。既定値と `env.example` は PostgreSQL を前提としています。
+> 監査ログの保持期間は `AUDIT_LOG_RETENTION_DAYS=0` で記録無効化、`AUDIT_LOG_RETENTION_FOREVER=true` で削除無効化します。両方指定した場合は FOREVER を優先します。
 
 ## 4. バックエンドのセットアップ
 

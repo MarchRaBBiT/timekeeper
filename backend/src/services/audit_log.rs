@@ -50,4 +50,8 @@ impl AuditLogService {
 
         audit_log_repo::insert_audit_log(&self.pool, &log).await
     }
+
+    pub async fn delete_logs_before(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+        audit_log_repo::delete_audit_logs_before(&self.pool, cutoff).await
+    }
 }

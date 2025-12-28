@@ -78,6 +78,17 @@ pub async fn export_audit_logs(
     query_audit_logs(pool, filters, None).await
 }
 
+pub async fn delete_audit_logs_before(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM audit_logs WHERE occurred_at < $1")
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
 async fn query_audit_logs(
     pool: &PgPool,
     filters: &AuditLogFilters,
