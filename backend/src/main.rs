@@ -197,11 +197,11 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
             "/api/holidays/month",
             get(handlers::holidays::list_month_holidays),
         )
+        .route_layer(axum_middleware::from_fn_with_state(state, middleware::auth))
         .route_layer(axum_middleware::from_fn_with_state(
             audit_state,
             middleware::audit_log,
         ))
-        .route_layer(axum_middleware::from_fn_with_state(state, middleware::auth))
 }
 
 fn admin_routes(state: AuthState) -> Router<AuthState> {
@@ -247,12 +247,12 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
-            audit_state,
-            middleware::audit_log,
-        ))
-        .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_admin,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            audit_state,
+            middleware::audit_log,
         ))
 }
 
@@ -276,12 +276,12 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             post(handlers::admin::reset_user_mfa),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            audit_state,
-            middleware::audit_log,
-        ))
-        .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_system_admin,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            audit_state,
+            middleware::audit_log,
         ))
 }
 
