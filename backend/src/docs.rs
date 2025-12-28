@@ -5,7 +5,8 @@ use crate::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
             AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
-            AdminRequestListResponse, ExportQuery, RequestListQuery, ResetMfaPayload,
+            AdminRequestListResponse, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
+            AuditLogResponse, ExportQuery, RequestListQuery, ResetMfaPayload,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     },
@@ -68,6 +69,9 @@ use utoipa::{
         admin_list_weekly_holidays_doc,
         admin_create_weekly_holiday_doc,
         admin_export_doc,
+        admin_list_audit_logs_doc,
+        admin_get_audit_log_doc,
+        admin_export_audit_logs_doc,
         system_admin_reset_mfa_doc
     ),
     components(
@@ -117,7 +121,11 @@ use utoipa::{
             AdminHolidayListResponse,
             AdminHolidayKind,
             AdminHolidayListItem,
-            ExportQuery
+            ExportQuery,
+            AuditLogListQuery,
+            AuditLogListResponse,
+            AuditLogResponse,
+            AuditLogExportQuery
         )
     ),
     modifiers(&SecuritySchemes),
@@ -434,6 +442,33 @@ fn admin_create_weekly_holiday_doc() {}
     tag = "Admin"
 )]
 fn admin_export_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/audit-logs",
+    params(AuditLogListQuery),
+    responses((status = 200, body = AuditLogListResponse)),
+    tag = "Admin"
+)]
+fn admin_list_audit_logs_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/audit-logs/{id}",
+    params(("id" = String, Path, description = "監査ログID")),
+    responses((status = 200, body = AuditLogResponse)),
+    tag = "Admin"
+)]
+fn admin_get_audit_log_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/audit-logs/export",
+    params(AuditLogExportQuery),
+    responses((status = 200, body = [AuditLogResponse])),
+    tag = "Admin"
+)]
+fn admin_export_audit_logs_doc() {}
 
 #[utoipa::path(
     post,
