@@ -914,7 +914,14 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 | key | 用途 | 例 |
 | --- | --- | --- |
 | `request_type` | 申請の種別 | `leave` / `overtime` |
+| `payload_summary` | 申請内容の概要（機微情報を除外） | `{ "leave_type": "annual", "start_date": "2025-01-10" }` |
+| `approval_step` | 承認フェーズ | `single` |
 | `decision` | 承認/却下の判定 | `approve` / `reject` |
+| `clock_type` | 打刻の種別 | `clock_in` / `clock_out` / `break_start` / `break_end` |
+| `timezone` | 打刻のタイムゾーン | `Asia/Tokyo` |
+| `source` | 打刻の起点 | `web` / `api` |
+| `method` | パスワード変更の方式 | `password` |
+| `mfa_enabled` | パスワード変更時の MFA 有効状態 | `true` / `false` |
 | `export_from` | エクスポート開始日 | `2025-01-01` |
 | `export_to` | エクスポート終了日 | `2025-01-31` |
 | `filters` | 一覧取得の検索条件 | `{ "status": "pending", "user_id": "..." }` |
