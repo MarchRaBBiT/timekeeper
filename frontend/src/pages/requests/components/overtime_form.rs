@@ -68,7 +68,7 @@ pub fn OvertimeRequestForm(
             </Show>
             <form class="space-y-4" on:submit=on_submit>
                 <DatePicker
-                    label="残業日"
+                    label=Some("残業日")
                     value=date_signal
                 />
                 <div>

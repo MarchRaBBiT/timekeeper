@@ -180,7 +180,7 @@ pub fn AttendanceActionButtons(
 #[component]
 pub fn DatePicker(
     #[prop(into)] value: RwSignal<String>,
-    #[prop(optional)] label: Option<&'static str>,
+    label: Option<&'static str>,
     #[prop(optional)] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
     let input_ref = create_node_ref::<html::Input>();

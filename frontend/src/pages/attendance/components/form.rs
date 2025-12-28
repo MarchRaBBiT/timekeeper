@@ -21,13 +21,13 @@ pub fn RangeFormSection(
         <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
             <div class="w-full lg:w-48">
                 <DatePicker
-                    label="開始日"
+                    label=Some("開始日")
                     value=from_input
                 />
             </div>
             <div class="w-full lg:w-48">
                 <DatePicker
-                    label="終了日"
+                    label=Some("終了日")
                     value=to_input
                 />
             </div>

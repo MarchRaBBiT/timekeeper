@@ -89,11 +89,11 @@ pub fn LeaveRequestForm(
                 </div>
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <DatePicker
-                        label="開始日"
+                        label=Some("開始日")
                         value=start_signal
                     />
                     <DatePicker
-                        label="終了日"
+                        label=Some("終了日")
                         value=end_signal
                     />
                 </div>

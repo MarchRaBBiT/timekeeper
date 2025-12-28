@@ -112,7 +112,7 @@ pub fn WeeklyHolidaySection(
                 </div>
                 <div class="lg:col-span-1">
                     <DatePicker
-                        label="稼働開始日"
+                        label=Some("稼働開始日")
                         value=starts_on_signal
                     />
                     <p class="text-xs text-gray-500 mt-1">
@@ -127,7 +127,7 @@ pub fn WeeklyHolidaySection(
                 </div>
                 <div class="lg:col-span-1">
                     <DatePicker
-                        label="稼働終了日（任意）"
+                        label=Some("稼働終了日（任意）")
                         value=ends_on_signal
                     />
                 </div>

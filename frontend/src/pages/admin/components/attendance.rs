@@ -181,7 +181,7 @@ pub fn AdminAttendanceToolsSection(
                         placeholder="ユーザーを選択してください".into()
                     />
                     <DatePicker
-                        label="対象日"
+                        label=Some("対象日")
                         value=att_date
                     />
                     <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />

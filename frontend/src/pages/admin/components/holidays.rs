@@ -427,7 +427,7 @@ pub fn HolidayManagementSection(
             <h3 class="text-lg font-medium text-gray-900">{"祝日管理"}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <DatePicker
-                    label="日付"
+                    label=Some("日付")
                     value=holiday_date_input
                 />
                 <div>
@@ -479,11 +479,11 @@ pub fn HolidayManagementSection(
                 </div>
                 <div class="grid gap-3 lg:grid-cols-4">
                     <DatePicker
-                        label="開始日"
+                        label=Some("開始日")
                         value=filter_from_input
                     />
                     <DatePicker
-                        label="終了日"
+                        label=Some("終了日")
                         value=filter_to_input
                     />
                     <div class="lg:col-span-2 flex items-end gap-2">

@@ -152,11 +152,11 @@ fn AdminExportPanel() -> impl IntoView {
                         </div>
                     </div>
                     <DatePicker
-                        label="From"
+                        label=Some("From")
                         value=vm.from_date
                     />
                     <DatePicker
-                        label="To"
+                        label=Some("To")
                         value=vm.to_date
                     />
                 </div>
