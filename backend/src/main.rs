@@ -260,6 +260,18 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
     let audit_state = state.clone();
     Router::new()
         .route(
+            "/api/admin/audit-logs",
+            get(handlers::admin::list_audit_logs),
+        )
+        .route(
+            "/api/admin/audit-logs/export",
+            get(handlers::admin::export_audit_logs),
+        )
+        .route(
+            "/api/admin/audit-logs/:id",
+            get(handlers::admin::get_audit_log_detail),
+        )
+        .route(
             "/api/admin/users",
             get(handlers::admin::get_users).post(handlers::admin::create_user),
         )

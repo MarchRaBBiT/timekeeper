@@ -28,6 +28,9 @@ use crate::{
 mod requests;
 pub use requests::*;
 
+mod audit_logs;
+pub use audit_logs::*;
+
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
 const MAX_PER_PAGE: i64 = 100;

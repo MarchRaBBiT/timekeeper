@@ -632,6 +632,93 @@ GET /api/admin/export?username=alice&from=2025-10-01&to=2025-10-31
 }
 ```
 
+#### 監査ログ一覧取得
+```http
+GET /api/admin/audit-logs
+Authorization: Bearer <token>
+```
+
+**クエリパラメータ（任意）**
+- `from`: 期間開始（RFC3339 または `YYYY-MM-DD`）
+- `to`: 期間終了（RFC3339 または `YYYY-MM-DD`）
+- `actor_id`: 行為者ユーザーID
+- `actor_type`: 行為者タイプ（例: `user`, `anonymous`）
+- `event_type`: イベント種別
+- `target_type`: 対象種別
+- `target_id`: 対象ID
+- `result`: `success` | `failure`
+- `page`: ページ番号（既定=1）
+- `per_page`: 1..100（既定=25）
+
+**レスポンス**
+```json
+{
+  "page": 1,
+  "per_page": 25,
+  "total": 120,
+  "items": [
+    {
+      "id": "string",
+      "occurred_at": "2025-01-01T09:00:00Z",
+      "actor_id": "string",
+      "actor_type": "user",
+      "event_type": "attendance_clock_in",
+      "target_type": "attendance",
+      "target_id": "string",
+      "result": "success",
+      "error_code": null,
+      "metadata": { "source": "web" },
+      "ip": "127.0.0.1",
+      "user_agent": "string",
+      "request_id": "string"
+    }
+  ]
+}
+```
+
+**備考**
+- システム管理者のみアクセス可能
+- `from` と `to` を同時に指定する場合は `from <= to` が必須
+
+#### 監査ログ詳細取得
+```http
+GET /api/admin/audit-logs/{id}
+Authorization: Bearer <token>
+```
+
+**レスポンス**
+```json
+{
+  "id": "string",
+  "occurred_at": "2025-01-01T09:00:00Z",
+  "actor_id": "string",
+  "actor_type": "user",
+  "event_type": "attendance_clock_in",
+  "target_type": "attendance",
+  "target_id": "string",
+  "result": "success",
+  "error_code": null,
+  "metadata": { "source": "web" },
+  "ip": "127.0.0.1",
+  "user_agent": "string",
+  "request_id": "string"
+}
+```
+
+#### 監査ログJSONエクスポート
+```http
+GET /api/admin/audit-logs/export
+Authorization: Bearer <token>
+```
+
+**クエリパラメータ（任意）**
+- `from` / `to` / `actor_id` / `actor_type` / `event_type` / `target_type` / `target_id` / `result`
+
+**レスポンス**
+- `Content-Disposition: attachment; filename="audit_logs_YYYYMMDD_HHMMSS.json"`
+- `Content-Type: application/json`
+- ボディは監査ログ配列（一覧と同じ形式）
+
 ## エラーレスポンス
 
 すべてのエンドポイントは以下の形式でエラーを返します：
@@ -892,6 +979,9 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 | 管理・休日（週次） | POST | `/api/admin/holidays/weekly` | 週次休日登録 | BODY: `weekday`, `reason` など |
 | 管理・休日（インポート） | GET | `/api/admin/holidays/google` | Google 祝日一覧取得 | `year` (optional) |
 | 管理・エクスポート | GET | `/api/admin/export` | 管理用エクスポート（CSV/JSON） | クエリ: `username`, `from`, `to` など |
+| 管理・監査 | GET | `/api/admin/audit-logs` | 監査ログ一覧取得 | クエリ: `from`, `to`, `actor_id`, `event_type`, `result` など |
+| 管理・監査 | GET | `/api/admin/audit-logs/{id}` | 監査ログ詳細取得 | `id` (path) |
+| 管理・監査 | GET | `/api/admin/audit-logs/export` | 監査ログJSONエクスポート | クエリ: `from`, `to`, `actor_id`, `event_type`, `result` など |
 
 ## 監査ログ（イベントカタログ）
 
