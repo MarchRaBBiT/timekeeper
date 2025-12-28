@@ -6,7 +6,7 @@ use crate::{
     pages::{
         admin::AdminPage, admin_export::AdminExportPage, admin_users::AdminUsersPage,
         attendance::AttendancePage, dashboard::DashboardPage, home::HomePage, login::LoginPage,
-        mfa::MfaRegisterPage, requests::RequestsPage,
+        mfa::MfaRegisterPage, requests::RequestsPage, settings::SettingsPage,
     },
     state::auth::AuthProvider,
 };
@@ -18,6 +18,7 @@ pub const ROUTE_PATHS: &[&str] = &[
     "/attendance",
     "/requests",
     "/mfa/register",
+    "/settings",
     "/admin",
     "/admin/users",
     "/admin/export",
@@ -27,6 +28,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/dashboard",
     "/attendance",
     "/requests",
+    "/settings",
     "/admin",
     "/admin/users",
     "/admin/export",
@@ -49,7 +51,8 @@ pub fn app_root() -> impl IntoView {
                     <Route path="/dashboard" view=ProtectedDashboard/>
                     <Route path="/attendance" view=ProtectedAttendance/>
                     <Route path="/requests" view=ProtectedRequests/>
-                    <Route path="/mfa/register" view=MfaRegisterPage/>
+                    <Route path="/mfa/register" view=MfaRegisterPage/> // Keeping for direct access if needed, or redirect?
+                    <Route path="/settings" view=ProtectedSettings/>
                     <Route path="/admin" view=ProtectedAdmin/>
                     <Route path="/admin/users" view=ProtectedAdminUsers/>
                     <Route path="/admin/export" view=ProtectedAdminExport/>
@@ -72,6 +75,11 @@ fn ProtectedAttendance() -> impl IntoView {
 #[component]
 fn ProtectedRequests() -> impl IntoView {
     view! { <RequireAuth><RequestsPage/></RequireAuth> }
+}
+
+#[component]
+fn ProtectedSettings() -> impl IntoView {
+    view! { <RequireAuth><SettingsPage/></RequireAuth> }
 }
 
 #[component]

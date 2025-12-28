@@ -203,25 +203,31 @@ async fn begin_mfa_enrollment(
 
 pub async fn mfa_setup(
     State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Extension(user): Extension<User>,
 ) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+    crate::utils::security::verify_request_origin(&headers, &config)?;
     let response = begin_mfa_enrollment(&pool, &config, &user).await?;
     Ok(Json(response))
 }
 
 pub async fn mfa_register(
     State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Extension(user): Extension<User>,
 ) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+    crate::utils::security::verify_request_origin(&headers, &config)?;
     let response = begin_mfa_enrollment(&pool, &config, &user).await?;
     Ok(Json(response))
 }
 
 pub async fn mfa_activate(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    crate::utils::security::verify_request_origin(&headers, &config)?;
     let secret = user
         .mfa_secret
         .as_ref()
@@ -253,10 +259,12 @@ pub async fn mfa_activate(
 }
 
 pub async fn mfa_disable(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    crate::utils::security::verify_request_origin(&headers, &config)?;
     if !user.is_mfa_enabled() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -317,10 +325,13 @@ pub async fn mfa_disable(
 }
 
 pub async fn change_password(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State((pool, config)): State<(PgPool, Config)>,
+    headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    crate::utils::security::verify_request_origin(&headers, &config)?;
+
     // Basic guardrails for the new password to reduce trivial mistakes.
     if payload.new_password.len() < 8 {
         return Err((

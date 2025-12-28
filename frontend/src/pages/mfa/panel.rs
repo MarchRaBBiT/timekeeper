@@ -19,7 +19,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
             if register_loading.get() {
                 return;
             }
-            vm.messages.update(|m| m.clear());
+            vm.messages.clear();
             vm.setup_info.set(None);
             vm.register_action.dispatch(());
         }
@@ -35,12 +35,12 @@ pub fn MfaRegisterPanel() -> impl IntoView {
             let trimmed = match utils::validate_totp_code(&code_value) {
                 Ok(code) => code,
                 Err(msg) => {
-                    vm.messages.update(|m| m.set_error(msg));
+                    vm.messages.set_error(msg);
                     return;
                 }
             };
 
-            vm.messages.update(|m| m.clear());
+            vm.messages.clear();
             vm.activate_action.dispatch(trimmed);
         }
     };
@@ -56,11 +56,11 @@ pub fn MfaRegisterPanel() -> impl IntoView {
                     on_register=start_registration
                     on_refresh=move || vm.fetch_status_action.dispatch(())
                 />
-                <Show when=move || vm.messages.get().success.get().is_some() fallback=|| ()>
-                    <SuccessMessage message={vm.messages.get().success.get().unwrap_or_default()} />
+                <Show when=move || vm.messages.success.get().is_some() fallback=|| ()>
+                    <SuccessMessage message={vm.messages.success.get().unwrap_or_default()} />
                 </Show>
-                <Show when=move || vm.messages.get().error.get().is_some() fallback=|| ()>
-                    <ErrorMessage message={vm.messages.get().error.get().unwrap_or_default()} />
+                <Show when=move || vm.messages.error.get().is_some() fallback=|| ()>
+                    <ErrorMessage message={vm.messages.error.get().unwrap_or_default()} />
                 </Show>
                 <VerificationSection
                     setup_info=vm.setup_info.read_only()

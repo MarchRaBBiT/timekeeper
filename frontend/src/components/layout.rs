@@ -60,8 +60,8 @@ pub fn Header() -> impl IntoView {
                             <a href="/requests" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                 "申請"
                             </a>
-                            <a href="/mfa/register" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                                "MFA設定"
+                            <a href="/settings" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                "設定"
                             </a>
                             <Show when=move || can_access_admin()>
                                 <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
@@ -150,11 +150,11 @@ pub fn Header() -> impl IntoView {
                                 "申請"
                             </a>
                             <a
-                                href="/mfa/register"
+                                href="/settings"
                                 class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                                 on:click=move |_| set_menu_open.set(false)
                             >
-                                "MFA設定"
+                                "設定"
                             </a>
                             <Show when=move || can_access_admin()>
                                 <a
