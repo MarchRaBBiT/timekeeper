@@ -1,6 +1,7 @@
 //! Data models shared across database access and API handlers.
 
 pub mod attendance;
+pub mod audit_log;
 pub mod break_record;
 pub mod holiday;
 pub mod holiday_exception;
