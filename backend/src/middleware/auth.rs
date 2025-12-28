@@ -31,9 +31,11 @@ pub async fn auth(
     )
     .await?;
     request.extensions_mut().insert(claims.clone());
-    request.extensions_mut().insert(user);
+    request.extensions_mut().insert(user.clone());
 
-    Ok(next.run(request).await)
+    let mut response = next.run(request).await;
+    response.extensions_mut().insert(user);
+    Ok(response)
 }
 
 fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
@@ -66,8 +68,10 @@ pub async fn auth_admin(
     }
 
     request.extensions_mut().insert(claims.clone());
-    request.extensions_mut().insert(user);
-    Ok(next.run(request).await)
+    request.extensions_mut().insert(user.clone());
+    let mut response = next.run(request).await;
+    response.extensions_mut().insert(user);
+    Ok(response)
 }
 
 // Auth + require system admin flag for system-level routes
@@ -89,8 +93,10 @@ pub async fn auth_system_admin(
     }
 
     request.extensions_mut().insert(claims.clone());
-    request.extensions_mut().insert(user);
-    Ok(next.run(request).await)
+    request.extensions_mut().insert(user.clone());
+    let mut response = next.run(request).await;
+    response.extensions_mut().insert(user);
+    Ok(response)
 }
 
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {

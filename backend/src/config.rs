@@ -11,6 +11,8 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiration_hours: u64,
     pub refresh_token_expiration_days: u64,
+    pub audit_log_retention_days: i64,
+    pub audit_log_retention_forever: bool,
     pub cookie_secure: bool,
     pub cookie_same_site: SameSite,
     pub cors_allow_origins: Vec<String>,
@@ -45,6 +47,17 @@ impl Config {
             .parse()
             .unwrap_or(7);
 
+        let audit_log_retention_days = env::var("AUDIT_LOG_RETENTION_DAYS")
+            .unwrap_or_else(|_| "365".to_string())
+            .parse::<i64>()
+            .unwrap_or(365)
+            .max(0);
+
+        let audit_log_retention_forever = env::var("AUDIT_LOG_RETENTION_FOREVER")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false);
+
         let cookie_secure = env::var("COOKIE_SECURE")
             .unwrap_or_else(|_| "false".to_string())
             .parse()
@@ -72,6 +85,8 @@ impl Config {
             jwt_secret,
             jwt_expiration_hours,
             refresh_token_expiration_days,
+            audit_log_retention_days,
+            audit_log_retention_forever,
             cookie_secure,
             cookie_same_site,
             cors_allow_origins,

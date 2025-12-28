@@ -28,7 +28,9 @@ mod utils;
 
 use config::Config;
 use db::connection::{create_pool, DbPool};
-use services::{holiday::HolidayService, holiday_exception::HolidayExceptionService};
+use services::{
+    audit_log::AuditLogService, holiday::HolidayService, holiday_exception::HolidayExceptionService,
+};
 
 type AuthState = (DbPool, Config);
 
@@ -49,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
+    let audit_log_service = Arc::new(AuditLogService::new(pool.clone()));
     let holiday_service = Arc::new(HolidayService::new(pool.clone()));
     let holiday_exception_service = Arc::new(HolidayExceptionService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
@@ -56,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     let openapi = docs::ApiDoc::openapi();
 
     let app = Router::new()
-        .merge(public_routes())
+        .merge(public_routes(shared_state.clone()))
         .merge(user_routes(shared_state.clone()))
         .merge(admin_routes(shared_state.clone()))
         .merge(system_admin_routes(shared_state.clone()))
@@ -67,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
                 .layer(TraceLayer::new_for_http())
                 .layer(cors_layer(&config)),
         )
+        .layer(Extension(audit_log_service))
         .layer(Extension(holiday_service))
         .layer(Extension(holiday_exception_service))
         .with_state(shared_state);
@@ -96,6 +100,8 @@ fn log_config(config: &Config) {
         jwt_secret = %mask_secret(&config.jwt_secret),
         jwt_expiration_hours = config.jwt_expiration_hours,
         refresh_token_expiration_days = config.refresh_token_expiration_days,
+        audit_log_retention_days = config.audit_log_retention_days,
+        audit_log_retention_forever = config.audit_log_retention_forever,
         cookie_secure = config.cookie_secure,
         cookie_same_site = ?config.cookie_same_site,
         cors_allow_origins = ?config.cors_allow_origins,
@@ -105,14 +111,19 @@ fn log_config(config: &Config) {
     );
 }
 
-fn public_routes() -> Router<AuthState> {
+fn public_routes(state: AuthState) -> Router<AuthState> {
     Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
         .route("/api/config/timezone", get(handlers::config::get_time_zone))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state,
+            middleware::audit_log,
+        ))
 }
 
 fn user_routes(state: AuthState) -> Router<AuthState> {
+    let audit_state = state.clone();
     Router::new()
         .route(
             "/api/attendance/clock-in",
@@ -187,9 +198,14 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::holidays::list_month_holidays),
         )
         .route_layer(axum_middleware::from_fn_with_state(state, middleware::auth))
+        .route_layer(axum_middleware::from_fn_with_state(
+            audit_state,
+            middleware::audit_log,
+        ))
 }
 
 fn admin_routes(state: AuthState) -> Router<AuthState> {
+    let audit_state = state.clone();
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
@@ -234,9 +250,14 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             state,
             middleware::auth_admin,
         ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            audit_state,
+            middleware::audit_log,
+        ))
 }
 
 fn system_admin_routes(state: AuthState) -> Router<AuthState> {
+    let audit_state = state.clone();
     Router::new()
         .route(
             "/api/admin/users",
@@ -257,6 +278,10 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
         .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_system_admin,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            audit_state,
+            middleware::audit_log,
         ))
 }
 
@@ -298,6 +323,8 @@ mod tests {
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
+            audit_log_retention_days: 365,
+            audit_log_retention_forever: false,
             cookie_secure: false,
             cookie_same_site: crate::utils::cookies::SameSite::Lax,
             cors_allow_origins,
