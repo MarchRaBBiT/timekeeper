@@ -1043,7 +1043,7 @@ pub async fn create_weekly_holiday(
     if payload.weekday > 6 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Weekday must be between 0 (Mon) and 6 (Sun)"})),
+            Json(json!({"error":"Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)"})),
         ));
     }
 
@@ -1096,6 +1096,36 @@ pub async fn create_weekly_holiday(
     })?;
 
     Ok(Json(WeeklyHolidayResponse::from(weekly)))
+}
+
+pub async fn delete_weekly_holiday(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !user.is_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+    }
+
+    let result = sqlx::query("DELETE FROM weekly_holidays WHERE id = $1")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"Failed to delete weekly holiday"})),
+            )
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":"Weekly holiday not found"})),
+        ));
+    }
+
+    Ok(Json(json!({"message":"Weekly holiday deleted","id": id})))
 }
 
 async fn get_break_records(

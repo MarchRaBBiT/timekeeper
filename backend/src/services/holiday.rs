@@ -363,7 +363,7 @@ fn expand_weekly_dates(
 }
 
 fn align_weekday_on_or_after(date: NaiveDate, weekday: u32) -> NaiveDate {
-    let current = date.weekday().num_days_from_monday();
+    let current = date.weekday().num_days_from_sunday();
     let diff = (weekday + 7 - current) % 7;
     date + Duration::days(diff as i64)
 }

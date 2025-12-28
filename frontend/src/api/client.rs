@@ -412,6 +412,29 @@ impl ApiClient {
         }
     }
 
+    pub async fn admin_delete_weekly_holiday(&self, id: &str) -> Result<(), String> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .delete(format!("{}/admin/holidays/weekly/{}", base_url, id)))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn admin_fetch_google_holidays(
         &self,
         year: Option<i32>,

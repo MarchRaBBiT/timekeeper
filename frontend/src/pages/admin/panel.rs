@@ -36,6 +36,7 @@ pub fn AdminPanel() -> impl IntoView {
                 state=vm.weekly_holiday_state
                 resource=vm.weekly_holidays_resource
                 action=vm.create_weekly_action
+                delete_action=vm.delete_weekly_action
                 reload=vm.reload_weekly
                 message=vm.weekly_action_message
                 error=vm.weekly_action_error
