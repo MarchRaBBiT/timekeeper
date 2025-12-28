@@ -70,6 +70,9 @@ pub fn Header() -> impl IntoView {
                                 <a href="/admin/export" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
                                     "データエクスポート"
                                 </a>
+                                <a href="/admin/audit-logs" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                    "監査ログ"
+                                </a>
                             </Show>
                             <Show when=move || can_manage_users()>
                                 <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
@@ -170,6 +173,13 @@ pub fn Header() -> impl IntoView {
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "データエクスポート"
+                                </a>
+                                <a
+                                    href="/admin/audit-logs"
+                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                                    on:click=move |_| set_menu_open.set(false)
+                                >
+                                    "監査ログ"
                                 </a>
                             </Show>
                             <Show when=move || can_manage_users()>

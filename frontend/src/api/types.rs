@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -245,6 +246,31 @@ pub struct CreateUser {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiError {
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLog {
+    pub id: String,
+    pub occurred_at: DateTime<Utc>,
+    pub actor_id: Option<String>,
+    pub actor_type: String,
+    pub event_type: String,
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    pub result: String,
+    pub error_code: Option<String>,
+    pub metadata: Option<Value>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<AuditLog>,
 }
 
 #[cfg(test)]
