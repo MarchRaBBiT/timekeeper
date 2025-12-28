@@ -1,4 +1,5 @@
 use crate::api::CreateOvertimeRequest;
+use crate::components::forms::DatePicker;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
 use crate::pages::requests::types::RequestKind;
 use crate::pages::requests::{
@@ -66,15 +67,10 @@ pub fn OvertimeRequestForm(
                 <SuccessMessage message={message.get().success.clone().unwrap_or_default()} />
             </Show>
             <form class="space-y-4" on:submit=on_submit>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">{"残業日"}</label>
-                    <input
-                        type="date"
-                        class="mt-1 block w-full border rounded px-2 py-1"
-                        prop:value=move || date_signal.get()
-                        on:input=move |ev| date_signal.set(event_target_value(&ev))
-                    />
-                </div>
+                <DatePicker
+                    label="残業日"
+                    value=date_signal
+                />
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"予定時間（時間）"}</label>
                     <input

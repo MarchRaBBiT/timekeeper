@@ -1,6 +1,9 @@
 use crate::{
     api::CreateHolidayRequest,
-    components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+    components::{
+        forms::DatePicker,
+        layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+    },
     pages::admin::repository::{AdminRepository, HolidayListQuery, HolidayListResult},
     utils::time::now_in_app_tz,
 };
@@ -423,10 +426,10 @@ pub fn HolidayManagementSection(
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <h3 class="text-lg font-medium text-gray-900">{"祝日管理"}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">{"日付"}</label>
-                    <input type="date" class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_date_input.set(event_target_value(&ev)) />
-                </div>
+                <DatePicker
+                    label="日付"
+                    value=holiday_date_input
+                />
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"名称"}</label>
                     <input class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
@@ -475,24 +478,14 @@ pub fn HolidayManagementSection(
                     <p class="text-xs text-gray-500">{"期間を指定すると一致する祝日だけを表示します。"}</p>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-4">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600">{"開始日"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 w-full border rounded px-2 py-1"
-                            prop:value={move || filter_from_input.get()}
-                            on:input=move |ev| filter_from_input.set(event_target_value(&ev))
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-600">{"終了日"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 w-full border rounded px-2 py-1"
-                            prop:value={move || filter_to_input.get()}
-                            on:input=move |ev| filter_to_input.set(event_target_value(&ev))
-                        />
-                    </div>
+                    <DatePicker
+                        label="開始日"
+                        value=filter_from_input
+                    />
+                    <DatePicker
+                        label="終了日"
+                        value=filter_to_input
+                    />
                     <div class="lg:col-span-2 flex items-end gap-2">
                         <button class="px-3 py-1 rounded bg-gray-800 text-white" on:click=on_apply_filters>
                             {"日付で絞り込み"}

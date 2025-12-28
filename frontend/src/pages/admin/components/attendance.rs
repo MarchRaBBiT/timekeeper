@@ -1,6 +1,9 @@
 use crate::{
     api::{AdminAttendanceUpsert, AdminBreakItem},
-    components::layout::{ErrorMessage, SuccessMessage},
+    components::{
+        forms::DatePicker,
+        layout::{ErrorMessage, SuccessMessage},
+    },
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         repository::AdminRepository,
@@ -177,7 +180,10 @@ pub fn AdminAttendanceToolsSection(
                         label=Some("対象ユーザー".into())
                         placeholder="ユーザーを選択してください".into()
                     />
-                    <input type="date" class="w-full border rounded px-2 py-1" on:input=move |ev| att_date.set(event_target_value(&ev)) />
+                    <DatePicker
+                        label="対象日"
+                        value=att_date
+                    />
                     <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />
                     <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_out.set(event_target_value(&ev)) />
                     <div>

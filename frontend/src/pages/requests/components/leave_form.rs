@@ -1,4 +1,5 @@
 use crate::api::CreateLeaveRequest;
+use crate::components::forms::DatePicker;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
 use crate::pages::requests::types::RequestKind;
 use crate::pages::requests::{
@@ -87,24 +88,14 @@ pub fn LeaveRequestForm(
                     </select>
                 </div>
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">{"開始日"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 block w-full border rounded px-2 py-1"
-                            prop:value=move || start_signal.get()
-                            on:input=move |ev| start_signal.set(event_target_value(&ev))
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">{"終了日"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 block w-full border rounded px-2 py-1"
-                            prop:value=move || end_signal.get()
-                            on:input=move |ev| end_signal.set(event_target_value(&ev))
-                        />
-                    </div>
+                    <DatePicker
+                        label="開始日"
+                        value=start_signal
+                    />
+                    <DatePicker
+                        label="終了日"
+                        value=end_signal
+                    />
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">{"理由（任意）"}</label>
