@@ -1,4 +1,5 @@
 use crate::api::MfaSetupResponse;
+use crate::pages::mfa::utils::svg_to_data_url;
 use leptos::{ev::SubmitEvent, Callback, *};
 use qrcode::{render::svg, QrCode};
 use web_sys::HtmlInputElement;
@@ -19,6 +20,7 @@ pub fn VerificationSection(
                         let qr_svg = QrCode::new(info.otpauth_url.as_bytes())
                             .map(|code| code.render::<svg::Color>().build())
                             .unwrap_or_default();
+                        let qr_svg_data_url = svg_to_data_url(&qr_svg);
 
                         view! {
                             <div class="bg-white shadow rounded-lg p-6 space-y-4">
@@ -26,7 +28,7 @@ pub fn VerificationSection(
                                     {"認証アプリで QR をスキャン"}
                                 </h2>
                                 <div class="border rounded p-4 bg-gray-50">
-                                    <div inner_html=qr_svg />
+                                    <img src=qr_svg_data_url alt="認証アプリのQRコード" />
                                 </div>
                                 <p class="text-sm text-gray-600 break-all">
                                     {info.otpauth_url.clone()}
