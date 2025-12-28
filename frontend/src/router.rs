@@ -4,9 +4,10 @@ use leptos_router::*;
 use crate::{
     components::guard::RequireAuth,
     pages::{
-        admin::AdminPage, admin_export::AdminExportPage, admin_users::AdminUsersPage,
-        attendance::AttendancePage, dashboard::DashboardPage, home::HomePage, login::LoginPage,
-        mfa::MfaRegisterPage, requests::RequestsPage, settings::SettingsPage,
+        admin::AdminPage, admin_audit_logs::AdminAuditLogsPage, admin_export::AdminExportPage,
+        admin_users::AdminUsersPage, attendance::AttendancePage, dashboard::DashboardPage,
+        home::HomePage, login::LoginPage, mfa::MfaRegisterPage, requests::RequestsPage,
+        settings::SettingsPage,
     },
     state::auth::AuthProvider,
 };
@@ -22,6 +23,7 @@ pub const ROUTE_PATHS: &[&str] = &[
     "/admin",
     "/admin/users",
     "/admin/export",
+    "/admin/audit-logs",
 ];
 
 pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
@@ -32,6 +34,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/admin",
     "/admin/users",
     "/admin/export",
+    "/admin/audit-logs",
 ];
 
 pub const PUBLIC_ROUTE_PATHS: &[&str] = &["/", "/login", "/mfa/register"];
@@ -56,6 +59,7 @@ pub fn app_root() -> impl IntoView {
                     <Route path="/admin" view=ProtectedAdmin/>
                     <Route path="/admin/users" view=ProtectedAdminUsers/>
                     <Route path="/admin/export" view=ProtectedAdminExport/>
+                    <Route path="/admin/audit-logs" view=ProtectedAdminAuditLogs/>
                 </Routes>
             </Router>
         </AuthProvider>
@@ -95,6 +99,11 @@ fn ProtectedAdminUsers() -> impl IntoView {
 #[component]
 fn ProtectedAdminExport() -> impl IntoView {
     view! { <RequireAuth><AdminExportPage/></RequireAuth> }
+}
+
+#[component]
+fn ProtectedAdminAuditLogs() -> impl IntoView {
+    view! { <RequireAuth><AdminAuditLogsPage/></RequireAuth> }
 }
 
 #[cfg(test)]
