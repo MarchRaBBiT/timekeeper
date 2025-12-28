@@ -343,6 +343,64 @@ async fn audit_log_middleware_records_request_metadata() {
 }
 
 #[tokio::test]
+async fn audit_log_middleware_records_request_metadata_on_failure_with_large_body() {
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config.clone());
+
+    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+
+    let app = Router::new()
+        .route(
+            "/api/requests/leave",
+            post(|| async { (StatusCode::BAD_REQUEST, "bad") }),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            timekeeper_backend::middleware::audit_log,
+        ))
+        .layer(Extension(user))
+        .layer(Extension(audit_service))
+        .with_state(state);
+
+    let request_id = Uuid::new_v4().to_string();
+    let body = vec![b'a'; 64 * 1024 + 1];
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/requests/leave")
+                .header("content-type", "application/json")
+                .header("x-request-id", &request_id)
+                .body(Body::from(body))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
+        .await
+        .expect("audit log");
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("request_type").and_then(Value::as_str),
+        Some("leave")
+    );
+    let payload = metadata
+        .get("payload_summary")
+        .and_then(Value::as_object)
+        .expect("payload_summary");
+    assert!(payload.is_empty());
+}
+
+#[tokio::test]
 async fn audit_log_middleware_records_approval_metadata() {
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
