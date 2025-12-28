@@ -173,4 +173,33 @@ impl ApiClient {
             Err(error.error)
         }
     }
+
+    pub async fn change_password(&self, current: String, new: String) -> Result<(), String> {
+        let base_url = self.resolved_base_url().await;
+        let payload = crate::api::types::ChangePasswordRequest {
+            current_password: current,
+            new_password: new,
+        };
+
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .put(format!("{}/auth/change-password", base_url))
+                    .json(&payload))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
 }

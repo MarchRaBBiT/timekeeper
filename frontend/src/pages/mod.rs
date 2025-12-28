@@ -7,3 +7,4 @@ pub mod home;
 pub mod login;
 pub mod mfa;
 pub mod requests;
+pub mod settings;
