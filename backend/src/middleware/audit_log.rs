@@ -260,8 +260,7 @@ fn build_metadata(
         | "request_overtime_create"
         | "request_update"
         | "request_cancel" => {
-            let body_bytes = body_bytes?;
-            let payload = parse_json_body(Some(body_bytes));
+            let payload = parse_json_body(body_bytes);
             Some(build_request_metadata(event_type, payload.as_ref()))
         }
         "admin_request_approve" | "admin_request_reject" => {
