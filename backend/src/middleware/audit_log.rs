@@ -86,9 +86,17 @@ pub async fn audit_log(
         request_id: Some(request_id),
     };
 
-    if let Err(err) = audit_service.record_event(entry).await {
-        tracing::warn!(error = ?err, method = %method, path = %path, "Failed to record audit log");
-    }
+    let method = method.to_string();
+    tokio::spawn(async move {
+        if let Err(err) = audit_service.record_event(entry).await {
+            tracing::warn!(
+                error = ?err,
+                method = %method,
+                path = %path,
+                "Failed to record audit log"
+            );
+        }
+    });
 
     response
 }

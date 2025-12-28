@@ -13,6 +13,7 @@ use timekeeper_backend::{
     models::{audit_log::AuditLog, user::UserRole},
     services::audit_log::AuditLogService,
 };
+use tokio::time::{sleep, Duration};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -40,6 +41,16 @@ async fn reset_audit_logs(pool: &PgPool) {
         .execute(pool)
         .await
         .expect("truncate audit_logs");
+}
+
+async fn wait_for_audit_log_by_request_id(pool: &PgPool, request_id: &str) -> Option<AuditLog> {
+    for _ in 0..100 {
+        if let Some(log) = fetch_audit_log_by_request_id(pool, request_id).await {
+            return Some(log);
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    None
 }
 
 #[tokio::test]
@@ -82,7 +93,7 @@ async fn audit_log_middleware_records_event() {
         .expect("call app");
     assert_eq!(response.status(), StatusCode::OK);
 
-    let logged = fetch_audit_log_by_request_id(&pool, &request_id)
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
         .await
         .expect("audit log");
     assert_eq!(logged.event_type, "attendance_clock_in");
@@ -180,7 +191,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
         .expect("call app");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let logged = fetch_audit_log_by_request_id(&pool, &request_id)
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
         .await
         .expect("audit log");
     assert_eq!(logged.event_type, "attendance_clock_in");
@@ -231,7 +242,7 @@ async fn audit_log_middleware_records_auth_failure() {
         .expect("call app");
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
-    let logged = fetch_audit_log_by_request_id(&pool, &request_id)
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
         .await
         .expect("audit log");
     assert_eq!(logged.event_type, "attendance_clock_in");
