@@ -18,7 +18,7 @@ use timekeeper_backend::{
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
-    utils::password::hash_password,
+    utils::{cookies::SameSite, password::hash_password},
 };
 use uuid::Uuid;
 
@@ -114,6 +114,9 @@ pub fn test_config() -> Config {
         jwt_secret: "a_secure_token_that_is_long_enough_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        cookie_secure: false,
+        cookie_same_site: SameSite::Lax,
+        cors_allow_origins: vec!["http://localhost:8000".into()],
         time_zone: Tokyo,
         mfa_issuer: "Timekeeper".into(),
     }

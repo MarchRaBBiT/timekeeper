@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod attendance;
 pub mod attendance_utils;
+pub mod audit_log_repo;
 pub mod auth;
 pub mod auth_repo;
 pub mod config;
