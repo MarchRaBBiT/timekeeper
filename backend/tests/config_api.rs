@@ -8,6 +8,8 @@ fn loads_time_zone_string_without_db() {
         jwt_secret: "secret".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 1,
+        audit_log_retention_days: 365,
+        audit_log_retention_forever: false,
         cookie_secure: false,
         cookie_same_site: SameSite::Lax,
         cors_allow_origins: vec!["http://localhost:8000".into()],

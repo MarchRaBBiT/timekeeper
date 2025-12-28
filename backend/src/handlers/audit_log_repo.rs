@@ -2,7 +2,6 @@ use sqlx::PgPool;
 
 use crate::models::audit_log::AuditLog;
 
-#[allow(dead_code)]
 pub async fn insert_audit_log(pool: &PgPool, log: &AuditLog) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO audit_logs \

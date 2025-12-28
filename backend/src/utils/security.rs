@@ -51,6 +51,8 @@ mod tests {
             jwt_secret: "".into(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 1,
+            audit_log_retention_days: 365,
+            audit_log_retention_forever: false,
             cookie_secure: false,
             cookie_same_site: crate::utils::cookies::SameSite::Lax,
             cors_allow_origins: allowed,

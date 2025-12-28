@@ -21,6 +21,8 @@ fn test_config() -> Config {
         jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        audit_log_retention_days: 365,
+        audit_log_retention_forever: false,
         cookie_secure: false,
         cookie_same_site: SameSite::Lax,
         cors_allow_origins: vec!["http://localhost:8000".into()],
