@@ -892,3 +892,112 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 | 管理・休日（週次） | POST | `/api/admin/holidays/weekly` | 週次休日登録 | BODY: `weekday`, `reason` など |
 | 管理・休日（インポート） | GET | `/api/admin/holidays/google` | Google 祝日一覧取得 | `year` (optional) |
 | 管理・エクスポート | GET | `/api/admin/export` | 管理用エクスポート（CSV/JSON） | クエリ: `username`, `from`, `to` など |
+
+## 監査ログ（イベントカタログ）
+
+監査ログは API 呼出を起点とし、成功/失敗を含むイベントを記録します。記録は Create/Read のみで、更新・削除は行いません。
+
+### event_type 命名規約
+- `snake_case` を使用します（本 API の列挙値ルールに合わせる）。
+- 例: `attendance_clock_in`, `admin_request_approve`, `password_change`
+
+### result/error_code ルール
+- `result` は `success` / `failure`。
+- `error_code` は固定文字列のエラー識別子を優先し、未定義の場合は `http_<status>` で記録します。
+
+### target_type/target_id ルール
+- `target_type` は `snake_case`（例: `user`, `attendance`, `break_record`, `request`, `holiday`, `weekly_holiday`, `holiday_exception`, `export`, `system`）。
+- `target_id` は対象 ID を設定し、一覧/検索系で対象が特定できない場合は `null`。
+
+### metadata 共通キー
+
+| key | 用途 | 例 |
+| --- | --- | --- |
+| `request_type` | 申請の種別 | `leave` / `overtime` |
+| `decision` | 承認/却下の判定 | `approve` / `reject` |
+| `export_from` | エクスポート開始日 | `2025-01-01` |
+| `export_to` | エクスポート終了日 | `2025-01-31` |
+| `filters` | 一覧取得の検索条件 | `{ "status": "pending", "user_id": "..." }` |
+| `year` | 祝日取得の対象年 | `2025` |
+
+※ metadata には機微情報（パスワードやトークンなど）を保存しないこと。
+
+### 監査対象イベント
+
+#### 認証/セキュリティ
+
+| メソッド | パス | event_type | target_type | target_id | 備考 |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/api/auth/login` | `auth_login` | `user` | `user_id/null` | 失敗時は user_id 不明 |
+| POST | `/api/auth/refresh` | `auth_refresh` | `user` | `user_id` |  |
+| POST | `/api/auth/logout` | `auth_logout` | `user` | `user_id` |  |
+| POST | `/api/auth/mfa/register` | `mfa_register` | `user` | `user_id` |  |
+| POST | `/api/auth/mfa/setup` | `mfa_setup` | `user` | `user_id` |  |
+| POST | `/api/auth/mfa/activate` | `mfa_activate` | `user` | `user_id` |  |
+| DELETE | `/api/auth/mfa` | `mfa_disable` | `user` | `user_id` |  |
+| PUT | `/api/auth/change-password` | `password_change` | `user` | `user_id` |  |
+
+#### 勤怠
+
+| メソッド | パス | event_type | target_type | target_id | 備考 |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/api/attendance/clock-in` | `attendance_clock_in` | `attendance` | `attendance_id` |  |
+| POST | `/api/attendance/clock-out` | `attendance_clock_out` | `attendance` | `attendance_id` |  |
+| POST | `/api/attendance/break-start` | `attendance_break_start` | `break_record` | `break_record_id` |  |
+| POST | `/api/attendance/break-end` | `attendance_break_end` | `break_record` | `break_record_id` |  |
+| GET | `/api/attendance/export` | `attendance_export` | `export` | `null` | 期間は metadata に格納 |
+
+#### 申請
+
+| メソッド | パス | event_type | target_type | target_id | 備考 |
+| --- | --- | --- | --- | --- | --- |
+| POST | `/api/requests/leave` | `request_leave_create` | `request` | `request_id` |  |
+| POST | `/api/requests/overtime` | `request_overtime_create` | `request` | `request_id` |  |
+| PUT | `/api/requests/{id}` | `request_update` | `request` | `{id}` |  |
+| DELETE | `/api/requests/{id}` | `request_cancel` | `request` | `{id}` |  |
+
+#### 管理者
+
+| メソッド | パス | event_type | target_type | target_id | 備考 |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/api/admin/requests` | `admin_request_list` | `system` | `null` | フィルタ条件は metadata に格納 |
+| GET | `/api/admin/requests/{id}` | `admin_request_detail` | `request` | `{id}` |  |
+| PUT | `/api/admin/requests/{id}/approve` | `admin_request_approve` | `request` | `{id}` |  |
+| PUT | `/api/admin/requests/{id}/reject` | `admin_request_reject` | `request` | `{id}` |  |
+| GET | `/api/admin/holidays` | `admin_holiday_list` | `system` | `null` |  |
+| POST | `/api/admin/holidays` | `admin_holiday_create` | `holiday` | `holiday_id` |  |
+| DELETE | `/api/admin/holidays/{id}` | `admin_holiday_delete` | `holiday` | `{id}` |  |
+| GET | `/api/admin/holidays/weekly` | `admin_weekly_holiday_list` | `system` | `null` |  |
+| POST | `/api/admin/holidays/weekly` | `admin_weekly_holiday_create` | `weekly_holiday` | `weekly_holiday_id` |  |
+| GET | `/api/admin/holidays/google` | `admin_holiday_google_fetch` | `system` | `null` | `year` は metadata に格納 |
+| GET | `/api/admin/users/{user_id}/holiday-exceptions` | `admin_holiday_exception_list` | `user` | `{user_id}` |  |
+| POST | `/api/admin/users/{user_id}/holiday-exceptions` | `admin_holiday_exception_create` | `holiday_exception` | `holiday_exception_id` |  |
+| DELETE | `/api/admin/users/{user_id}/holiday-exceptions/{id}` | `admin_holiday_exception_delete` | `holiday_exception` | `{id}` |  |
+| GET | `/api/admin/export` | `admin_export` | `export` | `null` | フィルタ条件は metadata に格納 |
+
+#### システム管理者
+
+| メソッド | パス | event_type | target_type | target_id | 備考 |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/api/admin/users` | `admin_user_list` | `system` | `null` |  |
+| POST | `/api/admin/users` | `admin_user_create` | `user` | `user_id` |  |
+| GET | `/api/admin/attendance` | `admin_attendance_list` | `system` | `null` |  |
+| PUT | `/api/admin/attendance` | `admin_attendance_upsert` | `attendance` | `attendance_id` |  |
+| PUT | `/api/admin/breaks/{id}/force-end` | `admin_break_force_end` | `break_record` | `{id}` |  |
+| POST | `/api/admin/mfa/reset` | `admin_mfa_reset` | `user` | `user_id` |  |
+
+### 除外対象（監査ログを記録しない）
+
+| メソッド | パス | 理由 |
+| --- | --- | --- |
+| GET | `/api/config/timezone` | 公開設定の参照 |
+| GET | `/api/auth/me` | 認証状態の参照 |
+| GET | `/api/auth/mfa` | MFA 状態の参照 |
+| GET | `/api/holidays` | 祝日カレンダー参照 |
+| GET | `/api/holidays/check` | 祝日判定の参照 |
+| GET | `/api/holidays/month` | 月次祝日一覧の参照 |
+| GET | `/api/attendance/status` | 自分の勤怠状態の参照 |
+| GET | `/api/attendance/me` | 自分の勤怠一覧参照 |
+| GET | `/api/attendance/me/summary` | 自分の勤怠集計参照 |
+| GET | `/api/attendance/{id}/breaks` | 休憩一覧参照 |
+| GET | `/api/requests/me` | 自分の申請一覧参照 |
