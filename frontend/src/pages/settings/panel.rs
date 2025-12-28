@@ -10,6 +10,19 @@ use crate::{
 };
 use leptos::{ev::SubmitEvent, Callback, *};
 
+fn map_change_password_error(error: &str) -> String {
+    match error {
+        "Current password is incorrect" => "現在のパスワードが正しくありません。".to_string(),
+        "New password must be at least 8 characters" => {
+            "新しいパスワードは8文字以上である必要があります。".to_string()
+        }
+        "New password must differ from current password" => {
+            "新しいパスワードは現在のパスワードと異なる必要があります。".to_string()
+        }
+        _ => "パスワード変更に失敗しました。時間をおいて再度お試しください。".to_string(),
+    }
+}
+
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let vm = use_settings_view_model();
@@ -35,7 +48,7 @@ pub fn SettingsPage() -> impl IntoView {
                     set_confirm_password.set(String::new());
                 }
                 Err(e) => {
-                    set_password_error_msg.set(Some(e));
+                    set_password_error_msg.set(Some(map_change_password_error(&e)));
                     set_password_success_msg.set(None);
                 }
             }
@@ -180,5 +193,35 @@ pub fn SettingsPage() -> impl IntoView {
                 </div>
             </div>
         </Layout>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_change_password_error;
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn map_change_password_error_handles_known_messages() {
+        assert_eq!(
+            map_change_password_error("Current password is incorrect"),
+            "現在のパスワードが正しくありません。"
+        );
+        assert_eq!(
+            map_change_password_error("New password must be at least 8 characters"),
+            "新しいパスワードは8文字以上である必要があります。"
+        );
+        assert_eq!(
+            map_change_password_error("New password must differ from current password"),
+            "新しいパスワードは現在のパスワードと異なる必要があります。"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn map_change_password_error_masks_unknown_messages() {
+        assert_eq!(
+            map_change_password_error("Failed to update password"),
+            "パスワード変更に失敗しました。時間をおいて再度お試しください。"
+        );
     }
 }
