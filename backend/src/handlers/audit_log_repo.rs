@@ -57,22 +57,7 @@ pub async fn list_audit_logs(
     per_page: i64,
     offset: i64,
 ) -> Result<(Vec<AuditLog>, i64), sqlx::Error> {
-    let mut data_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, \
-         error_code, metadata, ip, user_agent, request_id FROM audit_logs",
-    );
-    let mut has_clause = false;
-    apply_audit_log_filters(&mut data_builder, &mut has_clause, filters);
-    data_builder
-        .push(" ORDER BY occurred_at DESC, id DESC LIMIT ")
-        .push_bind(per_page)
-        .push(" OFFSET ")
-        .push_bind(offset);
-
-    let items = data_builder
-        .build_query_as::<AuditLog>()
-        .fetch_all(pool)
-        .await?;
+    let items = query_audit_logs(pool, filters, Some((per_page, offset))).await?;
 
     let mut count_builder: QueryBuilder<Postgres> =
         QueryBuilder::new("SELECT COUNT(*) FROM audit_logs");
@@ -90,6 +75,14 @@ pub async fn export_audit_logs(
     pool: &PgPool,
     filters: &AuditLogFilters,
 ) -> Result<Vec<AuditLog>, sqlx::Error> {
+    query_audit_logs(pool, filters, None).await
+}
+
+async fn query_audit_logs(
+    pool: &PgPool,
+    filters: &AuditLogFilters,
+    pagination: Option<(i64, i64)>,
+) -> Result<Vec<AuditLog>, sqlx::Error> {
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, \
          error_code, metadata, ip, user_agent, request_id FROM audit_logs",
@@ -97,6 +90,14 @@ pub async fn export_audit_logs(
     let mut has_clause = false;
     apply_audit_log_filters(&mut builder, &mut has_clause, filters);
     builder.push(" ORDER BY occurred_at DESC, id DESC");
+
+    if let Some((per_page, offset)) = pagination {
+        builder
+            .push(" LIMIT ")
+            .push_bind(per_page)
+            .push(" OFFSET ")
+            .push_bind(offset);
+    }
 
     builder.build_query_as::<AuditLog>().fetch_all(pool).await
 }
