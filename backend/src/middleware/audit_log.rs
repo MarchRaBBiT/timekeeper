@@ -1,13 +1,18 @@
 use axum::{
-    body::{to_bytes, Body, Bytes},
+    body::{Body, Bytes},
     extract::{Request, State},
     http::{header::USER_AGENT, HeaderMap, Method},
     middleware::Next,
     response::Response,
 };
 use chrono::Utc;
+use http_body::{Body as HttpBody, Frame};
+use http_body_util::BodyExt;
 use serde_json::{json, Map, Value};
+use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use uuid::Uuid;
 
 use crate::{
@@ -45,7 +50,7 @@ pub async fn audit_log(
         if needs_body_for_metadata(descriptor_ref.event_type) {
             let (buffered_request, bytes) = buffer_request_body(request).await;
             request = buffered_request;
-            Some(bytes)
+            bytes
         } else {
             None
         }
@@ -126,19 +131,110 @@ pub async fn audit_log(
     response
 }
 
-async fn buffer_request_body(request: Request) -> (Request, Bytes) {
-    let (parts, body) = request.into_parts();
-    match to_bytes(body, MAX_BUFFERED_BODY_BYTES).await {
-        Ok(bytes) => {
-            let request = Request::from_parts(parts, Body::from(bytes.clone()));
-            (request, bytes)
-        }
-        Err(err) => {
-            tracing::warn!(error = ?err, "Failed to read request body for audit log metadata");
-            let request = Request::from_parts(parts, Body::empty());
-            (request, Bytes::new())
+struct BufferedBody {
+    buffered: VecDeque<Frame<Bytes>>,
+    inner: Body,
+    pending_error: Option<axum::Error>,
+}
+
+impl BufferedBody {
+    fn new(
+        buffered: VecDeque<Frame<Bytes>>,
+        inner: Body,
+        pending_error: Option<axum::Error>,
+    ) -> Self {
+        Self {
+            buffered,
+            inner,
+            pending_error,
         }
     }
+
+    fn buffered_len(&self) -> u64 {
+        self.buffered
+            .iter()
+            .filter_map(|frame| frame.data_ref().map(|data| data.len() as u64))
+            .sum()
+    }
+}
+
+impl HttpBody for BufferedBody {
+    type Data = Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let this = self.get_mut();
+        if let Some(frame) = this.buffered.pop_front() {
+            return Poll::Ready(Some(Ok(frame)));
+        }
+        if let Some(err) = this.pending_error.take() {
+            this.inner = Body::empty();
+            return Poll::Ready(Some(Err(err)));
+        }
+        Pin::new(&mut this.inner).poll_frame(cx)
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        let buffered_len = self.buffered_len();
+        let mut hint = self.inner.size_hint();
+        hint.set_lower(hint.lower().saturating_add(buffered_len));
+        if let Some(upper) = hint.upper() {
+            hint.set_upper(upper.saturating_add(buffered_len));
+        }
+        hint
+    }
+
+    fn is_end_stream(&self) -> bool {
+        if !self.buffered.is_empty() || self.pending_error.is_some() {
+            return false;
+        }
+        self.inner.is_end_stream()
+    }
+}
+
+async fn buffer_request_body(request: Request) -> (Request, Option<Bytes>) {
+    let (parts, mut body) = request.into_parts();
+    let mut buffered_frames = VecDeque::new();
+    let mut buffered_bytes = Vec::new();
+    let mut overflowed = false;
+    let mut pending_error = None;
+
+    while let Some(frame_result) = body.frame().await {
+        match frame_result {
+            Ok(frame) => {
+                if let Some(data) = frame.data_ref() {
+                    if !overflowed {
+                        let new_len = buffered_bytes.len() + data.len();
+                        if new_len > MAX_BUFFERED_BODY_BYTES {
+                            overflowed = true;
+                        } else {
+                            buffered_bytes.extend_from_slice(data);
+                        }
+                    }
+                }
+                buffered_frames.push_back(frame);
+                if overflowed {
+                    break;
+                }
+            }
+            Err(err) => {
+                pending_error = Some(err);
+                break;
+            }
+        }
+    }
+
+    let body_bytes = if overflowed || pending_error.is_some() {
+        None
+    } else {
+        Some(Bytes::from(buffered_bytes))
+    };
+    let replay_body = BufferedBody::new(buffered_frames, body, pending_error);
+    let request = Request::from_parts(parts, Body::new(replay_body));
+    (request, body_bytes)
 }
 
 fn needs_body_for_metadata(event_type: &str) -> bool {
@@ -164,7 +260,8 @@ fn build_metadata(
         | "request_overtime_create"
         | "request_update"
         | "request_cancel" => {
-            let payload = parse_json_body(body_bytes);
+            let body_bytes = body_bytes?;
+            let payload = parse_json_body(Some(body_bytes));
             Some(build_request_metadata(event_type, payload.as_ref()))
         }
         "admin_request_approve" | "admin_request_reject" => {
@@ -488,6 +585,7 @@ fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
     use axum::http::StatusCode;
 
     #[test]
@@ -538,6 +636,24 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, "test-agent".parse().unwrap());
         assert_eq!(extract_user_agent(&headers).as_deref(), Some("test-agent"));
+    }
+
+    #[tokio::test]
+    async fn buffer_request_body_preserves_large_body() {
+        let body = vec![b'a'; MAX_BUFFERED_BODY_BYTES + 1];
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/requests/leave")
+            .body(Body::from(body.clone()))
+            .unwrap();
+
+        let (buffered_request, body_bytes) = buffer_request_body(request).await;
+        let bytes = to_bytes(buffered_request.into_body(), body.len() + 1)
+            .await
+            .expect("body should remain readable");
+
+        assert_eq!(bytes.as_ref(), body.as_slice());
+        assert!(body_bytes.is_none());
     }
 
     #[test]
