@@ -235,6 +235,10 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::admin::list_weekly_holidays).post(handlers::admin::create_weekly_holiday),
         )
         .route(
+            "/api/admin/holidays/weekly/:id",
+            delete(handlers::admin::delete_weekly_holiday),
+        )
+        .route(
             "/api/admin/holidays/:id",
             delete(handlers::admin::delete_holiday),
         )

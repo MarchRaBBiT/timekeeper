@@ -17,6 +17,7 @@ pub struct AdminViewModel {
     pub weekly_action_error: RwSignal<Option<String>>,
     pub create_weekly_action:
         Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, String>>,
+    pub delete_weekly_action: Action<String, Result<(), String>>,
     pub requests_filter: RequestFilterState,
     pub requests_resource: Resource<
         (bool, super::utils::RequestFilterSnapshot, u32),
@@ -102,6 +103,13 @@ pub fn use_admin_view_model() -> AdminViewModel {
         async move { repo.create_weekly_holiday(payload).await }
     });
 
+    let repo_delete = repo.clone();
+    let delete_weekly_action = create_action(move |id: &String| {
+        let repo = repo_delete.clone();
+        let id = id.clone();
+        async move { repo.delete_weekly_holiday(&id).await }
+    });
+
     // Requests Section State
     let requests_filter = RequestFilterState::new();
     let filter_state_for_snapshot = requests_filter.clone();
@@ -153,6 +161,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
         weekly_action_message,
         weekly_action_error,
         create_weekly_action,
+        delete_weekly_action,
         requests_filter,
         requests_resource,
         request_action,

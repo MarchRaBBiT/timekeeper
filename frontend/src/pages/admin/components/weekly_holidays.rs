@@ -14,6 +14,7 @@ pub fn WeeklyHolidaySection(
     state: WeeklyHolidayFormState,
     resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, String>>,
     action: Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, String>>,
+    delete_action: Action<String, Result<(), String>>,
     reload: RwSignal<u32>,
     message: RwSignal<Option<String>>,
     error: RwSignal<Option<String>>,
@@ -48,6 +49,19 @@ pub fn WeeklyHolidaySection(
                     error.set(None);
                     state.reset_starts_on(created.starts_on);
                     state.reset_ends_on();
+                    reload.update(|value| *value = value.wrapping_add(1));
+                }
+                Err(err) => error.set(Some(err)),
+            }
+        }
+    });
+
+    create_effect(move |_| {
+        if let Some(result) = delete_action.value().get() {
+            match result {
+                Ok(_) => {
+                    message.set(Some("週次休日を削除しました。".into()));
+                    error.set(None);
                     reload.update(|value| *value = value.wrapping_add(1));
                 }
                 Err(err) => error.set(Some(err)),
@@ -167,6 +181,7 @@ pub fn WeeklyHolidaySection(
                                 <th class="px-4 py-2 text-left text-gray-600">{"曜日"}</th>
                                 <th class="px-4 py-2 text-left text-gray-600">{"指定期間"}</th>
                                 <th class="px-4 py-2 text-left text-gray-600">{"適用期間"}</th>
+                                <th class="px-4 py-2 text-right text-gray-600">{"操作"}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
@@ -196,6 +211,26 @@ pub fn WeeklyHolidaySection(
                                                         .map(|d| d.format("%Y-%m-%d").to_string())
                                                         .unwrap_or_else(|| "適用中".into())
                                                 )}
+                                            </td>
+                                            <td class="px-4 py-2 text-right">
+                                                <button
+                                                    class="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                                    disabled={move || delete_action.pending().get()}
+                                                    on:click={
+                                                        let id = item.id.clone();
+                                                        move |_| {
+                                                            if let Some(window) = web_sys::window() {
+                                                                if let Ok(Some(confirm)) = window.confirm_with_message("この週次休日を削除してもよろしいですか？") {
+                                                                    if confirm {
+                                                                        delete_action.dispatch(id.clone());
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                >
+                                                    {"削除"}
+                                                </button>
                                             </td>
                                         </tr>
                                     }

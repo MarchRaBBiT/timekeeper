@@ -78,6 +78,10 @@ impl AdminRepository {
         self.client.admin_create_weekly_holiday(&payload).await
     }
 
+    pub async fn delete_weekly_holiday(&self, id: &str) -> Result<(), String> {
+        self.client.admin_delete_weekly_holiday(id).await
+    }
+
     pub async fn list_requests(
         &self,
         status: Option<String>,

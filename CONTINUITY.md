@@ -1,22 +1,16 @@
 # Continuity Ledger
 
-- Goal: Address all review comments for PR #94 (Admin Users) to move it towards merging.
-- Constraints/Assumptions: Maintain MVVM, LF endings, and DI consistency.
-- Key decisions: Fix all Clippy warnings to ensure `-D warnings` passes.
-- State: FIXING_WARNINGS
+- Goal: Review uncommitted changes in the workspace and report findings.
+- Constraints/Assumptions: Follow project coding standards, LF endings, UTF-8 for non-ASCII, stay within writable roots.
+- Key decisions: Existing data compatibility concerns are not an issue because service not live yet.
+- State: REVIEW_FEEDBACK_ACKED
 - Done:
-    - [x] Initial robustness audit (ApiClient).
-    - [x] Analysis of PR #94 review comments:
-        - [ ] Unused import `CreateUser` in `panel.rs:2`
-        - [ ] Build failing with `-D warnings` (likely due to unused imports/variables)
+    - Loaded workspace instructions and continuity ledger.
 - Now:
-    - Fixed unused import in `panel.rs`.
-    - Performing definitive project-wide audit for remaining `.expect(` calls.
+    - Inspecting uncommitted changes to prepare review findings.
 - Next:
-    - List specific items to fix.
-    - Implement fixes in `admin_users` module.
+    - Summarize any issues found in JSON schema per review request.
 - Open questions:
     - None.
 - Working set:
-    - `frontend/src/pages/admin_users/view_model.rs`
-    - `frontend/src/state/auth.rs`
+    - Pending: determine touched files from VCS status.
