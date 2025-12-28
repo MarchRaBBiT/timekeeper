@@ -34,7 +34,7 @@ pub async fn audit_log(
     }
 
     let audit_service = request.extensions().get::<Arc<AuditLogService>>().cloned();
-    let actor = request.extensions().get::<User>().cloned();
+    let actor_before = request.extensions().get::<User>().cloned();
     let headers = request.headers().clone();
     let request_id = extract_request_id(&headers);
 
@@ -52,6 +52,11 @@ pub async fn audit_log(
     };
 
     let status = response.status();
+    let actor = response
+        .extensions()
+        .get::<User>()
+        .cloned()
+        .or(actor_before);
     let result = if status.is_client_error() || status.is_server_error() {
         "failure"
     } else {
