@@ -1,5 +1,7 @@
 use crate::state::attendance::{describe_holiday_reason, AttendanceState};
+use chrono::{Datelike, NaiveDate};
 use leptos::{ev::MouseEvent, *};
+use wasm_bindgen::JsCast;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct AttendanceButtonFlags {
@@ -171,6 +173,97 @@ pub fn AttendanceActionButtons(
                     })
                     .unwrap_or_else(|| view! {}.into_view())
             }}
+        </div>
+    }
+}
+
+#[component]
+pub fn DatePicker(
+    #[prop(into)] value: RwSignal<String>,
+    label: Option<&'static str>,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+) -> impl IntoView {
+    let input_ref = create_node_ref::<html::Input>();
+
+    let display_value = move || {
+        let val = value.get();
+        if val.is_empty() {
+            return "日付を選択".to_string();
+        }
+        if let Ok(date) = NaiveDate::parse_from_str(&val, "%Y-%m-%d") {
+            let day_of_week = match date.weekday() {
+                chrono::Weekday::Mon => "月",
+                chrono::Weekday::Tue => "火",
+                chrono::Weekday::Wed => "水",
+                chrono::Weekday::Thu => "木",
+                chrono::Weekday::Fri => "金",
+                chrono::Weekday::Sat => "土",
+                chrono::Weekday::Sun => "日",
+            };
+            format!("{} ({})", date.format("%Y/%m/%d"), day_of_week)
+        } else {
+            val
+        }
+    };
+
+    let on_click = move |_| {
+        if disabled.get() {
+            return;
+        }
+        if let Some(input) = input_ref.get() {
+            // Try showPicker()
+            let _ = js_sys::Reflect::get(&input, &"showPicker".into()).map(|f| {
+                if f.is_function() {
+                    let _ = js_sys::Reflect::apply(
+                        &f.unchecked_into::<js_sys::Function>(),
+                        &input,
+                        &js_sys::Array::new(),
+                    );
+                }
+            });
+            // Always focus as fallback/additional trigger
+            let _ = input.focus();
+        }
+    };
+
+    view! {
+        <div class="flex flex-col gap-1.5 w-full">
+            {label.map(|l| view! { <label class="text-sm font-bold text-slate-700 ml-1">{l}</label> })}
+            <div
+                class=move || format!(
+                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-white py-2.5 px-4 flex items-center justify-between shadow-sm border-slate-200 hover:border-brand-300 hover:shadow-md active:scale-[0.98] {}",
+                    if disabled.get() { "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 shadow-none touch-none" } else { "hover:ring-4 hover:ring-brand-50" }
+                )
+                on:click=on_click
+            >
+                <div class="flex items-center gap-3">
+                    <div class=move || format!(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors {}",
+                        if value.get().is_empty() { "bg-slate-100 text-slate-400" } else { "bg-brand-50 text-brand-600" }
+                    )>
+                        <i class="far fa-calendar-alt text-base"></i>
+                    </div>
+                    <span class=move || format!(
+                        "text-sm font-semibold tracking-wide {}",
+                        if value.get().is_empty() { "text-slate-400" } else { "text-slate-900" }
+                    )>
+                        {display_value}
+                    </span>
+                </div>
+                <div class="text-slate-300 group-hover:text-brand-400 transition-colors">
+                    <i class="fas fa-chevron-down text-xs"></i>
+                </div>
+
+                // Hidden native input
+                <input
+                    type="date"
+                    node_ref=input_ref
+                    class="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+                    disabled=disabled
+                    prop:value={move || value.get()}
+                    on:input=move |ev| value.set(event_target_value(&ev))
+                />
+            </div>
         </div>
     }
 }

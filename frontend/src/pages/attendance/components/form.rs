@@ -1,3 +1,4 @@
+use crate::components::forms::DatePicker;
 use crate::components::layout::{ErrorMessage, SuccessMessage};
 use leptos::{ev::MouseEvent, Callback, *};
 
@@ -18,22 +19,16 @@ pub fn RangeFormSection(
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
-            <div class="w-full lg:w-auto">
-                <label class="block text-sm font-medium text-gray-700">{"開始日"}</label>
-                <input
-                    type="date"
-                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                    prop:value={move || from_input.get()}
-                    on:input=move |ev| from_input.set(event_target_value(&ev))
+            <div class="w-full lg:w-48">
+                <DatePicker
+                    label=Some("開始日")
+                    value=from_input
                 />
             </div>
-            <div class="w-full lg:w-auto">
-                <label class="block text-sm font-medium text-gray-700">{"終了日"}</label>
-                <input
-                    type="date"
-                    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                    prop:value={move || to_input.get()}
-                    on:input=move |ev| to_input.set(event_target_value(&ev))
+            <div class="w-full lg:w-48">
+                <DatePicker
+                    label=Some("終了日")
+                    value=to_input
                 />
             </div>
             <button

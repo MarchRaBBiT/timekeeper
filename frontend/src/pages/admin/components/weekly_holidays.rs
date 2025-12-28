@@ -1,6 +1,9 @@
 use crate::{
     api::{CreateWeeklyHolidayRequest, WeeklyHolidayResponse},
-    components::layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+    components::{
+        forms::DatePicker,
+        layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+    },
     pages::admin::utils::WeeklyHolidayFormState,
     utils::time::today_in_app_tz,
 };
@@ -108,12 +111,9 @@ pub fn WeeklyHolidaySection(
                     </select>
                 </div>
                 <div class="lg:col-span-1">
-                    <label class="block text-sm font-medium text-gray-700">{"稼働開始日"}</label>
-                    <input
-                        type="date"
-                        class="mt-1 w-full border rounded px-2 py-1"
-                        prop:value={move || starts_on_signal.get()}
-                        on:input=move |ev| starts_on_signal.set(event_target_value(&ev))
+                    <DatePicker
+                        label=Some("稼働開始日")
+                        value=starts_on_signal
                     />
                     <p class="text-xs text-gray-500 mt-1">
                         {move || {
@@ -126,12 +126,9 @@ pub fn WeeklyHolidaySection(
                     </p>
                 </div>
                 <div class="lg:col-span-1">
-                    <label class="block text-sm font-medium text-gray-700">{"稼働終了日（任意）"}</label>
-                    <input
-                        type="date"
-                        class="mt-1 w-full border rounded px-2 py-1"
-                        prop:value={move || ends_on_signal.get()}
-                        on:input=move |ev| ends_on_signal.set(event_target_value(&ev))
+                    <DatePicker
+                        label=Some("稼働終了日（任意）")
+                        value=ends_on_signal
                     />
                 </div>
                 <div class="lg:col-span-3">

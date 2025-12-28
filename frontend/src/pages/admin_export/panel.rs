@@ -1,6 +1,7 @@
 use super::view_model::{
     needs_specific_user_selection, use_admin_export_view_model, ExportFilters,
 };
+use crate::components::forms::DatePicker;
 use crate::components::layout::*;
 use crate::pages::admin::components::user_select::{AdminUserSelect, UserSelectValue};
 use crate::state::auth::use_auth;
@@ -150,24 +151,14 @@ fn AdminExportPanel() -> impl IntoView {
                             </Show>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-sm text-gray-700">{"From (YYYY-MM-DD)"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 w-full border rounded px-2 py-1"
-                            prop:value={move || vm.from_date.get()}
-                            on:input=move |ev| vm.from_date.set(event_target_value(&ev))
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-700">{"To (YYYY-MM-DD)"}</label>
-                        <input
-                            type="date"
-                            class="mt-1 w-full border rounded px-2 py-1"
-                            prop:value={move || vm.to_date.get()}
-                            on:input=move |ev| vm.to_date.set(event_target_value(&ev))
-                        />
-                    </div>
+                    <DatePicker
+                        label=Some("From")
+                        value=vm.from_date
+                    />
+                    <DatePicker
+                        label=Some("To")
+                        value=vm.to_date
+                    />
                 </div>
                 <Show when=move || vm.error.get().is_some()>
                     <ErrorMessage message={vm.error.get().unwrap_or_default()} />
