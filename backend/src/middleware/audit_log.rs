@@ -19,6 +19,7 @@ use crate::{
     config::Config,
     models::user::User,
     services::audit_log::{AuditLogEntry, AuditLogService},
+    middleware::request_id::RequestId,
 };
 
 const DEFAULT_CLOCK_SOURCE: &str = "api";
@@ -60,7 +61,11 @@ pub async fn audit_log(
 
     let audit_service = request.extensions().get::<Arc<AuditLogService>>().cloned();
     let actor_before = request.extensions().get::<User>().cloned();
-    let request_id = extract_request_id(&headers);
+    let request_id = request
+        .extensions()
+        .get::<RequestId>()
+        .map(|id| id.0.clone())
+        .unwrap_or_else(|| extract_request_id(&headers));
 
     let response = next.run(request).await;
 
