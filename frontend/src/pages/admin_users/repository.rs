@@ -34,4 +34,9 @@ impl AdminUsersRepository {
     pub async fn reset_user_mfa(&self, user_id: String) -> Result<(), String> {
         self.client.admin_reset_mfa(&user_id).await
     }
+
+    /// Delete a user (soft delete by default, hard delete if `hard` is true).
+    pub async fn delete_user(&self, user_id: String, hard: bool) -> Result<(), String> {
+        self.client.admin_delete_user(&user_id, hard).await
+    }
 }

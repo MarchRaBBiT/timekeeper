@@ -184,6 +184,30 @@ impl ApiClient {
         }
     }
 
+    /// Delete a user (soft delete by default, hard delete if `hard` is true).
+    pub async fn admin_delete_user(&self, user_id: &str, hard: bool) -> Result<(), String> {
+        let base_url = self.resolved_base_url().await;
+        let url = if hard {
+            format!("{}/admin/users/{}?hard=true", base_url, user_id)
+        } else {
+            format!("{}/admin/users/{}", base_url, user_id)
+        };
+        let resp = self
+            .send_with_refresh(|| Ok(self.client.delete(&url)))
+            .await?;
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
         let base_url = self.resolved_base_url().await;
         let response = self

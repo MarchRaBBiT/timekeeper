@@ -301,6 +301,10 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             "/api/admin/mfa/reset",
             post(handlers::admin::reset_user_mfa),
         )
+        .route(
+            "/api/admin/users/:id",
+            delete(handlers::admin::delete_user),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_system_admin,
