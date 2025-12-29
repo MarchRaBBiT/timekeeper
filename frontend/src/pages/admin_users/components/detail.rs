@@ -56,7 +56,7 @@ pub fn UserDetailDrawer(
                             }
                         };
 
-                        let user_id_for_soft = user.id.clone();
+
                         let soft_delete_click = move |_| {
                             hard_delete_mode.set(false);
                             show_delete_confirm.set(true);
