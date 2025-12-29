@@ -72,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(SwaggerUi::new("/api/docs").url("/api-doc/openapi.json", openapi.clone()))
         .layer(
             ServiceBuilder::new()
+                .layer(axum_middleware::from_fn(middleware::request_id))
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
                 .layer(TraceLayer::new_for_http())
                 .layer(cors_layer(&config)),
