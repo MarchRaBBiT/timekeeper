@@ -239,6 +239,8 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             "/api/admin/holidays/weekly/:id",
             delete(handlers::admin::delete_weekly_holiday),
         )
+        .route("/api/admin/users", get(handlers::admin::get_users))
+        .route("/api/admin/attendance", get(handlers::admin::get_all_attendance))
         .route(
             "/api/admin/holidays/:id",
             delete(handlers::admin::delete_holiday),
@@ -284,11 +286,11 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
         )
         .route(
             "/api/admin/users",
-            get(handlers::admin::get_users).post(handlers::admin::create_user),
+            post(handlers::admin::create_user),
         )
         .route(
             "/api/admin/attendance",
-            get(handlers::admin::get_all_attendance).put(handlers::admin::upsert_attendance),
+            put(handlers::admin::upsert_attendance),
         )
         .route(
             "/api/admin/breaks/:id/force-end",

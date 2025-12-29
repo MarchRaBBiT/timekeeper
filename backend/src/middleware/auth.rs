@@ -2,7 +2,7 @@ use axum::{
     extract::{Request, State},
     http::{header, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sqlx::PgPool;
@@ -64,7 +64,9 @@ pub async fn auth_admin(
     )
     .await?;
     if !(user.is_admin() || user.is_system_admin()) {
-        return Err(StatusCode::FORBIDDEN);
+        let mut response = StatusCode::FORBIDDEN.into_response();
+        response.extensions_mut().insert(user);
+        return Ok(response);
     }
 
     request.extensions_mut().insert(claims.clone());
@@ -89,7 +91,9 @@ pub async fn auth_system_admin(
     )
     .await?;
     if !user.is_system_admin() {
-        return Err(StatusCode::FORBIDDEN);
+        let mut response = StatusCode::FORBIDDEN.into_response();
+        response.extensions_mut().insert(user);
+        return Ok(response);
     }
 
     request.extensions_mut().insert(claims.clone());

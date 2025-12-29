@@ -90,7 +90,7 @@ pub async fn get_users(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<UserResponse>>, (StatusCode, Json<Value>)> {
-    if !user.is_system_admin() {
+    if !(user.is_admin() || user.is_system_admin()) {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
