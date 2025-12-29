@@ -13,14 +13,14 @@ impl ApiClient {
             request.device_label = Some(ensure_device_label(&storage)?);
         }
         let base_url = self.resolved_base_url().await;
-        let response = self
-            .http_client()
-            .post(format!("{}/auth/login", base_url))
-            .json(&request)
-            // .fetch_credentials_include()
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+        let response = ApiClient::with_credentials(
+            self.http_client()
+                .post(format!("{}/auth/login", base_url))
+                .json(&request),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
 
         if response.status().is_success() {
             let login_response: LoginResponse = response
@@ -46,14 +46,14 @@ impl ApiClient {
             "device_label": device_label
         });
 
-        let response = self
-            .http_client()
-            .post(format!("{}/auth/refresh", base_url))
-            .json(&payload)
-            // .fetch_credentials_include()
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+        let response = ApiClient::with_credentials(
+            self.http_client()
+                .post(format!("{}/auth/refresh", base_url))
+                .json(&payload),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
