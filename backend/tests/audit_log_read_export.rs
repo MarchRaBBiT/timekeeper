@@ -12,11 +12,11 @@ use serde_json::json;
 use sqlx::{types::Json, PgPool};
 use std::sync::OnceLock;
 use timekeeper_backend::{
-    handlers::{
-        admin::{export_audit_logs, get_audit_log_detail, list_audit_logs, AuditLogListResponse},
-        audit_log_repo,
+    handlers::admin::{
+        export_audit_logs, get_audit_log_detail, list_audit_logs, AuditLogListResponse,
     },
     models::{audit_log::AuditLog, user::UserRole},
+    repositories::audit_log,
 };
 use tokio::sync::Mutex;
 use tower::ServiceExt;
@@ -142,7 +142,7 @@ async fn audit_log_list_filters_and_paginates() {
     );
 
     for log in [&log_one, &log_two, &log_three] {
-        audit_log_repo::insert_audit_log(&pool, log)
+        audit_log::insert_audit_log(&pool, log)
             .await
             .expect("insert audit log");
     }
@@ -215,7 +215,7 @@ async fn audit_log_detail_returns_log() {
         "success",
         Utc::now(),
     );
-    audit_log_repo::insert_audit_log(&pool, &log)
+    audit_log::insert_audit_log(&pool, &log)
         .await
         .expect("insert audit log");
 
@@ -266,7 +266,7 @@ async fn audit_log_export_returns_json_file() {
         "success",
         Utc::now(),
     );
-    audit_log_repo::insert_audit_log(&pool, &log)
+    audit_log::insert_audit_log(&pool, &log)
         .await
         .expect("insert audit log");
 

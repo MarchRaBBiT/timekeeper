@@ -3,8 +3,8 @@ use serde_json::json;
 use sqlx::types::Json;
 use std::sync::OnceLock;
 use timekeeper_backend::{
-    handlers::audit_log_repo,
     models::{audit_log::AuditLog, user::UserRole},
+    repositories::audit_log,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -48,11 +48,11 @@ async fn audit_log_repo_inserts_and_fetches() {
         request_id: Some("req-123".into()),
     };
 
-    audit_log_repo::insert_audit_log(&pool, &log)
+    audit_log::insert_audit_log(&pool, &log)
         .await
         .expect("insert audit log");
 
-    let fetched = audit_log_repo::fetch_audit_log(&pool, &log.id)
+    let fetched = audit_log::fetch_audit_log(&pool, &log.id)
         .await
         .expect("fetch audit log")
         .expect("audit log exists");
@@ -129,15 +129,15 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
         request_id: Some("req-recent".into()),
     };
 
-    audit_log_repo::insert_audit_log(&pool, &old_log)
+    audit_log::insert_audit_log(&pool, &old_log)
         .await
         .expect("insert old log");
-    audit_log_repo::insert_audit_log(&pool, &recent_log)
+    audit_log::insert_audit_log(&pool, &recent_log)
         .await
         .expect("insert recent log");
 
     let cutoff = now - ChronoDuration::days(30);
-    let deleted = audit_log_repo::delete_audit_logs_before(&pool, cutoff)
+    let deleted = audit_log::delete_audit_logs_before(&pool, cutoff)
         .await
         .expect("delete audit logs");
 
