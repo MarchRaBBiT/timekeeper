@@ -220,10 +220,8 @@ pub fn WeeklyHolidaySection(
                                                         let id = item.id.clone();
                                                         move |_| {
                                                             if let Some(window) = web_sys::window() {
-                                                                if let Ok(Some(confirm)) = window.confirm_with_message("この週次休日を削除してもよろしいですか？") {
-                                                                    if confirm {
-                                                                        delete_action.dispatch(id.clone());
-                                                                    }
+                                                                if let Ok(true) = window.confirm_with_message("この週次休日を削除してもよろしいですか？") {
+                                                                    delete_action.dispatch(id.clone());
                                                                 }
                                                             }
                                                         }

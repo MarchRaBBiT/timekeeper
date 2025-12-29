@@ -146,7 +146,7 @@ fn trigger_download(filename: &str, content: &str) {
     if let Some(window) = web_sys::window() {
         if let Some(document) = window.document() {
             let mut props = BlobPropertyBag::new();
-            props.type_("application/json");
+            props.set_type("application/json");
             let blob_parts = js_sys::Array::of1(&content.into());
             if let Ok(blob) = Blob::new_with_str_sequence_and_options(&blob_parts, &props) {
                 if let Ok(url) = Url::create_object_url_with_blob(&blob) {
