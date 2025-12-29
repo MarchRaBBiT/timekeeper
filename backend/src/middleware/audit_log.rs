@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 use crate::{
     config::Config,
+    middleware::request_id::RequestId,
     models::user::User,
     services::audit_log::{AuditLogEntry, AuditLogService},
-    middleware::request_id::RequestId,
 };
 
 const DEFAULT_CLOCK_SOURCE: &str = "api";
@@ -462,6 +462,17 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
             "request",
             Some((*request_id).to_string()),
         )),
+        (&Method::GET, ["api", "admin", "audit-logs"]) => {
+            Some(event("admin_audit_log_list", "audit_log", None))
+        }
+        (&Method::GET, ["api", "admin", "audit-logs", "export"]) => {
+            Some(event("admin_audit_log_export", "audit_log", None))
+        }
+        (&Method::GET, ["api", "admin", "audit-logs", audit_log_id]) => Some(event(
+            "admin_audit_log_detail",
+            "audit_log",
+            Some((*audit_log_id).to_string()),
+        )),
         (&Method::PUT, ["api", "admin", "requests", request_id, "approve"]) => Some(event(
             "admin_request_approve",
             "request",
@@ -599,6 +610,27 @@ mod tests {
         assert_eq!(event.event_type, "admin_request_approve");
         assert_eq!(event.target_type, Some("request"));
         assert_eq!(event.target_id.as_deref(), Some("req-123"));
+    }
+
+    #[test]
+    fn classify_event_matches_audit_log_paths() {
+        let list_event = classify_event(&Method::GET, "/api/admin/audit-logs")
+            .expect("audit log list should map");
+        assert_eq!(list_event.event_type, "admin_audit_log_list");
+        assert_eq!(list_event.target_type, Some("audit_log"));
+        assert!(list_event.target_id.is_none());
+
+        let detail_event = classify_event(&Method::GET, "/api/admin/audit-logs/log-123")
+            .expect("audit log detail should map");
+        assert_eq!(detail_event.event_type, "admin_audit_log_detail");
+        assert_eq!(detail_event.target_type, Some("audit_log"));
+        assert_eq!(detail_event.target_id.as_deref(), Some("log-123"));
+
+        let export_event = classify_event(&Method::GET, "/api/admin/audit-logs/export")
+            .expect("audit log export should map");
+        assert_eq!(export_event.event_type, "admin_audit_log_export");
+        assert_eq!(export_event.target_type, Some("audit_log"));
+        assert!(export_event.target_id.is_none());
     }
 
     #[test]

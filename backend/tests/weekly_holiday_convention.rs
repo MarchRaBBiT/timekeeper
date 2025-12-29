@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use timekeeper_backend::services::holiday::{HolidayReason, HolidayServiceStub};
 
 #[tokio::test]

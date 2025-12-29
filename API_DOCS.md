@@ -996,7 +996,7 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 - `error_code` は固定文字列のエラー識別子を優先し、未定義の場合は `http_<status>` で記録します。
 
 ### target_type/target_id ルール
-- `target_type` は `snake_case`（例: `user`, `attendance`, `break_record`, `request`, `holiday`, `weekly_holiday`, `holiday_exception`, `export`, `system`）。
+- `target_type` は `snake_case`（例: `user`, `attendance`, `break_record`, `request`, `holiday`, `weekly_holiday`, `holiday_exception`, `export`, `audit_log`, `system`）。
 - `target_id` は対象 ID を設定し、一覧/検索系で対象が特定できない場合は `null`。
 
 ### metadata 共通キー
@@ -1070,6 +1070,9 @@ LeaveRequestResponse / OvertimeRequestResponse に以下が追加されました
 | GET | `/api/admin/users/{user_id}/holiday-exceptions` | `admin_holiday_exception_list` | `user` | `{user_id}` |  |
 | POST | `/api/admin/users/{user_id}/holiday-exceptions` | `admin_holiday_exception_create` | `holiday_exception` | `holiday_exception_id` |  |
 | DELETE | `/api/admin/users/{user_id}/holiday-exceptions/{id}` | `admin_holiday_exception_delete` | `holiday_exception` | `{id}` |  |
+| GET | `/api/admin/audit-logs` | `admin_audit_log_list` | `audit_log` | `null` |  |
+| GET | `/api/admin/audit-logs/{id}` | `admin_audit_log_detail` | `audit_log` | `{id}` |  |
+| GET | `/api/admin/audit-logs/export` | `admin_audit_log_export` | `audit_log` | `null` |  |
 | GET | `/api/admin/export` | `admin_export` | `export` | `null` | フィルタ条件は metadata に格納 |
 
 #### システム管理者
