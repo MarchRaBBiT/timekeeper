@@ -20,7 +20,7 @@ leptos_meta = { version = "0.6", default-features = false }
 leptos_router = { version = "0.6", default-features = false, features = ["csr"] }
 
 # HTTP client (WASM)
-reqwest-wasm = { version = "0.11", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 wasm-bindgen-futures = "0.4"
 
 # Serialization
@@ -30,7 +30,7 @@ serde_json.workspace = true
 # Async runtime
 wasm-bindgen = "0.2"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["console", "Window", "Storage", "Document", "Element", "HtmlElement", "HtmlInputElement", "Event", "MouseEvent", "KeyboardEvent", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement"] }
+web-sys = { version = "0.3", features = ["console", "Window", "Storage", "Document", "Element", "HtmlElement", "HtmlInputElement", "Event", "MouseEvent", "KeyboardEvent", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "RequestCredentials"] }
 gloo-timers = { version = "0.2", features = ["futures"] }
 base64 = { version = "0.21", default-features = false, features = ["alloc"] }
 

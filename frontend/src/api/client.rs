@@ -1,7 +1,7 @@
 use crate::api::types::*;
 use crate::config;
 use chrono::NaiveDate;
-use reqwest_wasm::{Client, StatusCode};
+use reqwest::{Client, StatusCode};
 use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
@@ -35,6 +35,17 @@ impl ApiClient {
         &self.client
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn with_credentials(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        use reqwest::wasm::RequestBuilderExt;
+        builder.credentials(web_sys::RequestCredentials::Include)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn with_credentials(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+    }
+
     pub(super) fn handle_unauthorized_status(status: StatusCode) {
         if status == StatusCode::UNAUTHORIZED {
             Self::redirect_to_login_if_needed();
@@ -44,12 +55,11 @@ impl ApiClient {
     pub(super) async fn send_with_refresh<F>(
         &self,
         build_request: F,
-    ) -> Result<reqwest_wasm::Response, String>
+    ) -> Result<reqwest::Response, String>
     where
-        F: Fn() -> Result<reqwest_wasm::RequestBuilder, String>,
+        F: Fn() -> Result<reqwest::RequestBuilder, String>,
     {
-        let response = build_request()?
-            // .fetch_credentials_include()
+        let response = Self::with_credentials(build_request()?)
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -59,8 +69,7 @@ impl ApiClient {
         }
 
         if self.refresh_token().await.is_ok() {
-            let retry_response = build_request()?
-                // .fetch_credentials_include()
+            let retry_response = Self::with_credentials(build_request()?)
                 .send()
                 .await
                 .map_err(|e| format!("Request failed: {}", e))?;

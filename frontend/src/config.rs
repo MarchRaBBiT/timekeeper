@@ -1,3 +1,4 @@
+use crate::api::client::ApiClient;
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -172,7 +173,7 @@ fn write_window_config(cfg: &RuntimeConfig) {
 }
 
 async fn fetch_runtime_config() -> Option<RuntimeConfig> {
-    let resp = reqwest_wasm::get("./config.json").await.ok()?;
+    let resp = reqwest::get("./config.json").await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
@@ -210,11 +211,10 @@ async fn fetch_time_zone_from_api(base_url: &str) -> Result<String, String> {
         return result;
     }
 
-    let client = reqwest_wasm::Client::new();
+    let client = reqwest::Client::new();
     let trimmed = base_url.trim_end_matches('/');
     let url = format!("{}/config/timezone", trimmed);
-    let resp = client
-        .get(&url)
+    let resp = ApiClient::with_credentials(client.get(&url))
         .send()
         .await
         .map_err(|e| format!("Failed to request {}: {}", url, e))?;

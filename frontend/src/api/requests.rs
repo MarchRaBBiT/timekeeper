@@ -157,7 +157,7 @@ impl ApiClient {
         self.map_json_response(response).await
     }
 
-    async fn map_json_response(&self, response: reqwest_wasm::Response) -> Result<Value, String> {
+    async fn map_json_response(&self, response: reqwest::Response) -> Result<Value, String> {
         let status = response.status();
         Self::handle_unauthorized_status(status);
         if status.is_success() {
