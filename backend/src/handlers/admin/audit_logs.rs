@@ -16,8 +16,8 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
-    handlers::audit_log_repo::{self, AuditLogFilters},
     models::{audit_log::AuditLog, user::User},
+    repositories::audit_log::{self, AuditLogFilters},
     utils::time,
 };
 
@@ -106,7 +106,7 @@ pub async fn list_audit_logs(
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
-    let (items, total) = audit_log_repo::list_audit_logs(&pool, &filters, per_page, offset)
+    let (items, total) = audit_log::list_audit_logs(&pool, &filters, per_page, offset)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list audit logs");
@@ -131,7 +131,7 @@ pub async fn get_audit_log_detail(
 ) -> Result<Json<AuditLogResponse>, (StatusCode, Json<Value>)> {
     ensure_system_admin(&user)?;
 
-    let log = audit_log_repo::fetch_audit_log(&pool, &id)
+    let log = audit_log::fetch_audit_log(&pool, &id)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to fetch audit log");
@@ -153,7 +153,7 @@ pub async fn export_audit_logs(
     ensure_system_admin(&user)?;
 
     let filters = validate_export_query(q)?;
-    let logs = audit_log_repo::export_audit_logs(&pool, &filters)
+    let logs = audit_log::export_audit_logs(&pool, &filters)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to export audit logs");

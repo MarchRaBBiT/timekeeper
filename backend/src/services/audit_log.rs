@@ -3,7 +3,7 @@ use serde_json::Value;
 use sqlx::{types::Json, PgPool};
 use uuid::Uuid;
 
-use crate::{handlers::audit_log_repo, models::audit_log::AuditLog};
+use crate::{models::audit_log::AuditLog, repositories::audit_log};
 
 #[derive(Debug, Clone)]
 pub struct AuditLogEntry {
@@ -48,10 +48,10 @@ impl AuditLogService {
             request_id: entry.request_id,
         };
 
-        audit_log_repo::insert_audit_log(&self.pool, &log).await
+        audit_log::insert_audit_log(&self.pool, &log).await
     }
 
     pub async fn delete_logs_before(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
-        audit_log_repo::delete_audit_logs_before(&self.pool, cutoff).await
+        audit_log::delete_audit_logs_before(&self.pool, cutoff).await
     }
 }
