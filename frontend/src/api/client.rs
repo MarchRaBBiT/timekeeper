@@ -37,8 +37,7 @@ impl ApiClient {
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn with_credentials(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        use reqwest::wasm::RequestBuilderExt;
-        builder.credentials(web_sys::RequestCredentials::Include)
+        builder.fetch_credentials_include()
     }
 
     #[cfg(not(target_arch = "wasm32"))]
