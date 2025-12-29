@@ -1,8 +1,7 @@
 //! Repository functions for user management operations.
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 /// Archives a user and all related data (soft delete).
 /// - Moves user to archived_users
@@ -123,6 +122,7 @@ pub async fn hard_delete_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::
 }
 
 /// Restores a user from the archive.
+#[allow(dead_code)]
 pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
@@ -242,12 +242,13 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Erro
 
 /// Checks if a user exists by ID.
 pub async fn user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-    Ok(result.is_some())
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
 }
 
 /// Fetches username by user ID.
