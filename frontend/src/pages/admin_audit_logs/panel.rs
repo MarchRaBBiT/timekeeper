@@ -1,4 +1,5 @@
 use super::view_model::use_audit_log_view_model;
+use crate::components::common::{Button, ButtonVariant};
 use crate::components::layout::Layout;
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -83,15 +84,14 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                             </div>
                         </div>
                         <div class="flex justify-end">
-                            <button class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                            <Button
+                                variant=ButtonVariant::Primary
                                 on:click=move |_| vm.export_action.dispatch(())
-                                prop:disabled=move || vm.export_action.pending().get()
+                                disabled=Signal::derive(move || vm.export_action.pending().get())
+                                loading=Signal::derive(move || vm.export_action.pending().get())
                             >
-                                <Show when=move || vm.export_action.pending().get()>
-                                    <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
-                                </Show>
                                 {move || if vm.export_action.pending().get() { "エクスポート中..." } else { "JSONエクスポート" }}
-                            </button>
+                            </Button>
                         </div>
                     </div>
 

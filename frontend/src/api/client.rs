@@ -49,7 +49,7 @@ impl ApiClient {
         F: Fn() -> Result<reqwest_wasm::RequestBuilder, String>,
     {
         let response = build_request()?
-            .fetch_credentials_include()
+            // .fetch_credentials_include()
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -60,7 +60,7 @@ impl ApiClient {
 
         if self.refresh_token().await.is_ok() {
             let retry_response = build_request()?
-                .fetch_credentials_include()
+                // .fetch_credentials_include()
                 .send()
                 .await
                 .map_err(|e| format!("Request failed: {}", e))?;

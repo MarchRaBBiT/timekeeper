@@ -17,7 +17,7 @@ impl ApiClient {
             .http_client()
             .post(format!("{}/auth/login", base_url))
             .json(&request)
-            .fetch_credentials_include()
+            // .fetch_credentials_include()
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
@@ -50,7 +50,7 @@ impl ApiClient {
             .http_client()
             .post(format!("{}/auth/refresh", base_url))
             .json(&payload)
-            .fetch_credentials_include()
+            // .fetch_credentials_include()
             .send()
             .await
             .map_err(|e| format!("Request failed: {}", e))?;
