@@ -1260,3 +1260,117 @@ impl TryFrom<AdminHolidayRow> for AdminHolidayListItem {
         })
     }
 }
+
+// ============================================================================
+// User deletion
+// ============================================================================
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct DeleteUserParams {
+    /// If true, permanently delete user and all data. If false, archive (soft delete).
+    #[serde(default)]
+    pub hard: bool,
+}
+
+/// Delete a user (soft or hard delete).
+/// Soft delete: Archives user and related data (except session tokens).
+/// Hard delete: Permanently removes user and all related data.
+pub async fn delete_user(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(requester): Extension<User>,
+    Path(user_id): Path<String>,
+    Query(params): Query<DeleteUserParams>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use crate::repositories::user as user_repo;
+
+    // Only system admins can delete users
+    if !requester.is_system_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+    }
+
+    // Cannot delete self
+    if requester.id == user_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot delete yourself"})),
+        ));
+    }
+
+    // Check if user exists
+    let exists = user_repo::user_exists(&pool, &user_id).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to check user existence");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+    })?;
+
+    if !exists {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        ));
+    }
+
+    // Get username for audit log
+    let username = user_repo::fetch_username(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to fetch username");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .unwrap_or_default();
+
+    if params.hard {
+        // Hard delete - CASCADE will remove all related data
+        user_repo::hard_delete_user(&pool, &user_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to hard delete user");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to delete user"})),
+                )
+            })?;
+
+        tracing::info!(
+            user_id = %user_id,
+            username = %username,
+            requester_id = %requester.id,
+            "user hard deleted"
+        );
+
+        Ok(Json(json!({
+            "message": "User permanently deleted",
+            "user_id": user_id,
+            "deletion_type": "hard"
+        })))
+    } else {
+        // Soft delete - move to archive tables
+        user_repo::soft_delete_user(&pool, &user_id, &requester.id)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to soft delete user");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Failed to archive user"})),
+                )
+            })?;
+
+        tracing::info!(
+            user_id = %user_id,
+            username = %username,
+            requester_id = %requester.id,
+            "user soft deleted (archived)"
+        );
+
+        Ok(Json(json!({
+            "message": "User archived",
+            "user_id": user_id,
+            "deletion_type": "soft"
+        })))
+    }
+}

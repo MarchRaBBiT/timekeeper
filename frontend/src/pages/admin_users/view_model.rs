@@ -16,6 +16,8 @@ pub struct AdminUsersViewModel {
     pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, String>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, String>>,
     pub reset_mfa_action: Action<String, Result<(), String>>,
+    /// Delete a user: (user_id, hard_delete)
+    pub delete_user_action: Action<(String, bool), Result<(), String>>,
     pub is_system_admin: Memo<bool>,
 }
 
@@ -66,6 +68,13 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         async move { repo.reset_user_mfa(user_id).await }
     });
 
+    let repo_delete = repo.clone();
+    let delete_user_action = create_action(move |args: &(String, bool)| {
+        let repo = repo_delete.clone();
+        let (user_id, hard) = args.clone();
+        async move { repo.delete_user(user_id, hard).await }
+    });
+
     // Effects for action success
     create_effect(move |_| {
         if let Some(result) = invite_action.value().get() {
@@ -96,6 +105,21 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         }
     });
 
+    create_effect(move |_| {
+        if let Some(result) = delete_user_action.value().get() {
+            match result {
+                Ok(_) => {
+                    drawer_messages.set_success("ユーザーを削除しました。");
+                    selected_user.set(None);
+                    users_resource.refetch();
+                }
+                Err(err) => {
+                    drawer_messages.set_error(err);
+                }
+            }
+        }
+    });
+
     AdminUsersViewModel {
         invite_form,
         invite_messages,
@@ -104,6 +128,8 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         users_resource,
         invite_action,
         reset_mfa_action,
+        delete_user_action,
         is_system_admin,
     }
 }
+
