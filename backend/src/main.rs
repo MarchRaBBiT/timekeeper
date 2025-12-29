@@ -305,6 +305,18 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             "/api/admin/users/:id",
             delete(handlers::admin::delete_user),
         )
+        .route(
+            "/api/admin/archived-users",
+            get(handlers::admin::get_archived_users),
+        )
+        .route(
+            "/api/admin/archived-users/:id",
+            delete(handlers::admin::delete_archived_user),
+        )
+        .route(
+            "/api/admin/archived-users/:id/restore",
+            post(handlers::admin::restore_archived_user),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_system_admin,

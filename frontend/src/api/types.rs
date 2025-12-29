@@ -273,6 +273,18 @@ pub struct AuditLogListResponse {
     pub items: Vec<AuditLog>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedUserResponse {
+    pub id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String,
+    #[serde(default)]
+    pub is_system_admin: bool,
+    pub archived_at: String,
+    pub archived_by: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

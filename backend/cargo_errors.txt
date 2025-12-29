@@ -1,0 +1,74 @@
+    Checking timekeeper-backend v0.1.0 (I:\marra\Documents\projects\timekeeper\backend)
+warning: unused import: `DateTime`
+ --> backend\src\repositories\user.rs:3:14
+  |
+3 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `uuid::Uuid`
+ --> backend\src\repositories\user.rs:5:5
+  |
+5 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1404:16
+     |
+1404 |     let rows = user_repo::get_archived_users(&pool).await.map_err(|e| {
+     |                ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1440:18
+     |
+1440 |     let exists = user_repo::archived_user_exists(&pool, &user_id)
+     |                  ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1458:20
+     |
+1458 |     let username = user_repo::fetch_archived_username(&pool, &user_id)
+     |                    ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1490:5
+     |
+1490 |     user_repo::restore_user(&pool, &user_id).await.map_err(|e| {
+     |     ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1523:18
+     |
+1523 |     let exists = user_repo::archived_user_exists(&pool, &user_id)
+     |                  ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1541:20
+     |
+1541 |     let username = user_repo::fetch_archived_username(&pool, &user_id)
+     |                    ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+error[E0433]: failed to resolve: use of unresolved module or unlinked crate `user_repo`
+    --> backend\src\handlers\admin\mod.rs:1553:5
+     |
+1553 |     user_repo::hard_delete_archived_user(&pool, &user_id)
+     |     ^^^^^^^^^ use of unresolved module or unlinked crate `user_repo`
+     |
+     = help: if you wanted to use a crate named `user_repo`, use `cargo add user_repo` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `timekeeper-backend` (lib) generated 2 warnings
+error: could not compile `timekeeper-backend` (lib) due to 7 previous errors; 2 warnings emitted

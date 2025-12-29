@@ -1,17 +1,29 @@
 # Continuity Ledger
 
-- Goal: Fix env.js loading error causing HTML to be executed as JS.
-- Constraints/Assumptions: Follow project coding standards, LF endings, UTF-8 for non-ASCII, stay within writable roots.
-- Key decisions: Existing data compatibility concerns are not an issue because service not live yet.
-- State: FIXING_ENV_JS
+- Goal (incl. success criteria):
+  - Review current uncommitted changes and report prioritized findings (bugs/risk).
+- Constraints/Assumptions:
+  - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
+  - Create a topic branch before implementation.
+  - Use TDD: add/adjust test before implementation.
+  - Run relevant backend tests/builds before responding (document failures if any).
+  - Do not revert unrelated local changes; stop and ask if unexpected changes appear.
+- Key decisions:
+  - User asserts `reqwest 0.12.24` includes wasm support equivalent to `reqwest-wasm`.
+- State:
+  - REPORTED
 - Done:
-    - Verified current frontend assets; browser cache likely cause of prior WASM error.
-    - CSP updated for Google Fonts.
+  - Reviewed uncommitted diffs across backend/frontend for archived user feature additions.
 - Now:
-    - Added default `frontend/env.js` and Dockerfile copy step so env.js is real JS, not index.html fallback.
+  - Assessing user feedback about reqwest wasm support.
 - Next:
-    - Rebuild frontend image or static assets; confirm env.js loads without syntax error.
-- Open questions:
-    - None.
-- Working set:
-    - `frontend` build artifacts/load path
+  - Inspect diffs and prepare review findings per guidelines.
+- Open questions (UNCONFIRMED if needed):
+  - None.
+- Working set (files/ids/commands):
+  - `backend/src/handlers/admin/mod.rs`
+  - `backend/src/main.rs`
+  - `backend/src/repositories/user.rs`
+  - `frontend/src/api/client.rs`
+  - `frontend/src/api/types.rs`
+  - `frontend/src/pages/admin_users/*`

@@ -259,3 +259,98 @@ pub async fn fetch_username(pool: &PgPool, user_id: &str) -> Result<Option<Strin
             .await?;
     Ok(result.map(|(u,)| u))
 }
+
+// ============================================================================
+// Archived user functions
+// ============================================================================
+
+/// Permanently deletes an archived user and all related archived data.
+pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    // Delete in reverse order of dependencies
+    sqlx::query(
+        r#"
+        DELETE FROM archived_break_records
+        WHERE attendance_id IN (SELECT id FROM archived_attendance WHERE user_id = $1)
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM archived_attendance WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM archived_leave_requests WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM archived_overtime_requests WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM archived_holiday_exceptions WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM archived_users WHERE id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Checks if an archived user exists by ID.
+pub async fn archived_user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
+    let result: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM archived_users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(result.is_some())
+}
+
+/// Fetches archived username by user ID.
+pub async fn fetch_archived_username(pool: &PgPool, user_id: &str) -> Result<Option<String>, sqlx::Error> {
+    let result: Option<(String,)> =
+        sqlx::query_as("SELECT username FROM archived_users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(result.map(|(u,)| u))
+}
+
+/// Archived user data for API response.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ArchivedUserRow {
+    pub id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String,
+    pub is_system_admin: bool,
+    pub archived_at: chrono::DateTime<chrono::Utc>,
+    pub archived_by: Option<String>,
+}
+
+/// Fetches all archived users.
+pub async fn get_archived_users(pool: &PgPool) -> Result<Vec<ArchivedUserRow>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, ArchivedUserRow>(
+        r#"
+        SELECT id, username, full_name, role, is_system_admin, archived_at, archived_by
+        FROM archived_users
+        ORDER BY archived_at DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+

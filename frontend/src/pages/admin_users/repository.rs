@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, CreateUser, UserResponse};
+use crate::api::{ApiClient, ArchivedUserResponse, CreateUser, UserResponse};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -39,4 +39,21 @@ impl AdminUsersRepository {
     pub async fn delete_user(&self, user_id: String, hard: bool) -> Result<(), String> {
         self.client.admin_delete_user(&user_id, hard).await
     }
+
+    // ========================================================================
+    // Archived user functions
+    // ========================================================================
+
+    pub async fn fetch_archived_users(&self) -> Result<Vec<ArchivedUserResponse>, String> {
+        self.client.admin_get_archived_users().await
+    }
+
+    pub async fn restore_archived_user(&self, user_id: String) -> Result<(), String> {
+        self.client.admin_restore_archived_user(&user_id).await
+    }
+
+    pub async fn delete_archived_user(&self, user_id: String) -> Result<(), String> {
+        self.client.admin_delete_archived_user(&user_id).await
+    }
 }
+
