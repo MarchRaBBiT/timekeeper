@@ -1,9 +1,16 @@
-use crate::{api::UserResponse, components::layout::Layout, state::auth::use_auth};
+use crate::{api::{ArchivedUserResponse, UserResponse}, components::layout::Layout, state::auth::use_auth};
 use leptos::*;
 
 use super::{
-    components::{detail::UserDetailDrawer, invite_form::InviteForm, list::UserList},
+    components::{
+        archived_detail::ArchivedUserDetailDrawer,
+        archived_list::ArchivedUserList,
+        detail::UserDetailDrawer,
+        invite_form::InviteForm,
+        list::UserList,
+    },
     layout::{AdminUsersFrame, UnauthorizedAdminUsersMessage},
+    view_model::UserTab,
 };
 
 #[component]
@@ -24,6 +31,25 @@ pub fn AdminUsersPage() -> impl IntoView {
         }
     });
 
+    let select_archived_user = Callback::new({
+        let selected = vm.selected_archived_user;
+        let messages = vm.drawer_messages;
+        move |user: ArchivedUserResponse| {
+            messages.clear();
+            selected.set(Some(user));
+        }
+    });
+
+    let set_tab_active = {
+        let tab = vm.active_tab;
+        move |_| tab.set(UserTab::Active)
+    };
+
+    let set_tab_archived = {
+        let tab = vm.active_tab;
+        move |_| tab.set(UserTab::Archived)
+    };
+
     view! {
         <Layout>
             <Show
@@ -31,18 +57,62 @@ pub fn AdminUsersPage() -> impl IntoView {
                 fallback=move || view! { <UnauthorizedAdminUsersMessage /> }.into_view()
             >
                 <AdminUsersFrame>
-                    <InviteForm
-                        form_state=vm.invite_form
-                        messages=vm.invite_messages
-                        invite_action=vm.invite_action
-                        is_system_admin=vm.is_system_admin
-                    />
-                    <UserList
-                        users_resource=vm.users_resource
-                        loading=vm.users_resource.loading()
-                        on_select=select_user
-                    />
+                    // Tab header
+                    <div class="flex border-b mb-4">
+                        <button
+                            class=move || {
+                                if vm.active_tab.get() == UserTab::Active {
+                                    "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+                                } else {
+                                    "px-4 py-2 font-medium text-gray-500 hover:text-gray-700"
+                                }
+                            }
+                            on:click=set_tab_active
+                        >
+                            {"アクティブユーザー"}
+                        </button>
+                        <button
+                            class=move || {
+                                if vm.active_tab.get() == UserTab::Archived {
+                                    "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+                                } else {
+                                    "px-4 py-2 font-medium text-gray-500 hover:text-gray-700"
+                                }
+                            }
+                            on:click=set_tab_archived
+                        >
+                            {"退職ユーザー"}
+                        </button>
+                    </div>
+
+                    // Tab content
+                    <Show
+                        when=move || vm.active_tab.get() == UserTab::Active
+                        fallback=move || {
+                            view! {
+                                <ArchivedUserList
+                                    archived_users_resource=vm.archived_users_resource
+                                    loading=vm.archived_users_resource.loading()
+                                    on_select=select_archived_user
+                                />
+                            }
+                        }
+                    >
+                        <InviteForm
+                            form_state=vm.invite_form
+                            messages=vm.invite_messages
+                            invite_action=vm.invite_action
+                            is_system_admin=vm.is_system_admin
+                        />
+                        <UserList
+                            users_resource=vm.users_resource
+                            loading=vm.users_resource.loading()
+                            on_select=select_user
+                        />
+                    </Show>
                 </AdminUsersFrame>
+
+                // Active user detail drawer
                 <UserDetailDrawer
                     selected_user=vm.selected_user
                     messages=vm.drawer_messages
@@ -50,8 +120,17 @@ pub fn AdminUsersPage() -> impl IntoView {
                     delete_user_action=vm.delete_user_action
                     current_user_id=current_user_id
                 />
+
+                // Archived user detail drawer
+                <ArchivedUserDetailDrawer
+                    selected_archived_user=vm.selected_archived_user
+                    messages=vm.drawer_messages
+                    restore_action=vm.restore_archived_action
+                    delete_action=vm.delete_archived_action
+                />
             </Show>
         </Layout>
     }
 }
+
 

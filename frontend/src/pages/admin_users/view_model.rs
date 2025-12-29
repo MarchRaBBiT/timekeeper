@@ -2,10 +2,18 @@ use super::{
     repository::AdminUsersRepository,
     utils::{InviteFormState, MessageState},
 };
-use crate::api::{ApiClient, CreateUser, UserResponse};
+use crate::api::{ApiClient, ArchivedUserResponse, CreateUser, UserResponse};
 use crate::state::auth::use_auth;
 use leptos::*;
 use std::rc::Rc;
+
+/// Tab selection for user management page
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum UserTab {
+    #[default]
+    Active,
+    Archived,
+}
 
 #[derive(Clone, Copy)]
 pub struct AdminUsersViewModel {
@@ -13,11 +21,18 @@ pub struct AdminUsersViewModel {
     pub invite_messages: MessageState,
     pub drawer_messages: MessageState,
     pub selected_user: RwSignal<Option<UserResponse>>,
+    pub selected_archived_user: RwSignal<Option<ArchivedUserResponse>>,
+    pub active_tab: RwSignal<UserTab>,
     pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, String>>,
+    pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, String>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, String>>,
     pub reset_mfa_action: Action<String, Result<(), String>>,
     /// Delete a user: (user_id, hard_delete)
     pub delete_user_action: Action<(String, bool), Result<(), String>>,
+    /// Restore an archived user
+    pub restore_archived_action: Action<String, Result<(), String>>,
+    /// Delete an archived user permanently
+    pub delete_archived_action: Action<String, Result<(), String>>,
     pub is_system_admin: Memo<bool>,
 }
 
@@ -38,7 +53,10 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     let invite_messages = MessageState::default();
     let drawer_messages = MessageState::default();
     let selected_user = create_rw_signal(None::<UserResponse>);
+    let selected_archived_user = create_rw_signal(None::<ArchivedUserResponse>);
+    let active_tab = create_rw_signal(UserTab::Active);
 
+    // Active users resource
     let repo_resource = repo.clone();
     let users_resource = create_resource(
         move || (is_system_admin.get(), 0u32),
@@ -49,6 +67,22 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
                     Err("システム管理者のみ利用できます。".to_string())
                 } else {
                     repo.fetch_users().await
+                }
+            }
+        },
+    );
+
+    // Archived users resource
+    let repo_archived = repo.clone();
+    let archived_users_resource = create_resource(
+        move || (is_system_admin.get(), 0u32),
+        move |(allowed, _reload)| {
+            let repo = repo_archived.clone();
+            async move {
+                if !allowed {
+                    Err("システム管理者のみ利用できます。".to_string())
+                } else {
+                    repo.fetch_archived_users().await
                 }
             }
         },
@@ -73,6 +107,20 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         let repo = repo_delete.clone();
         let (user_id, hard) = args.clone();
         async move { repo.delete_user(user_id, hard).await }
+    });
+
+    let repo_restore = repo.clone();
+    let restore_archived_action = create_action(move |user_id: &String| {
+        let repo = repo_restore.clone();
+        let user_id = user_id.clone();
+        async move { repo.restore_archived_user(user_id).await }
+    });
+
+    let repo_delete_archived = repo.clone();
+    let delete_archived_action = create_action(move |user_id: &String| {
+        let repo = repo_delete_archived.clone();
+        let user_id = user_id.clone();
+        async move { repo.delete_archived_user(user_id).await }
     });
 
     // Effects for action success
@@ -112,6 +160,38 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
                     drawer_messages.set_success("ユーザーを削除しました。");
                     selected_user.set(None);
                     users_resource.refetch();
+                    archived_users_resource.refetch();
+                }
+                Err(err) => {
+                    drawer_messages.set_error(err);
+                }
+            }
+        }
+    });
+
+    create_effect(move |_| {
+        if let Some(result) = restore_archived_action.value().get() {
+            match result {
+                Ok(_) => {
+                    drawer_messages.set_success("ユーザーを復職させました。");
+                    selected_archived_user.set(None);
+                    users_resource.refetch();
+                    archived_users_resource.refetch();
+                }
+                Err(err) => {
+                    drawer_messages.set_error(err);
+                }
+            }
+        }
+    });
+
+    create_effect(move |_| {
+        if let Some(result) = delete_archived_action.value().get() {
+            match result {
+                Ok(_) => {
+                    drawer_messages.set_success("退職ユーザーを完全削除しました。");
+                    selected_archived_user.set(None);
+                    archived_users_resource.refetch();
                 }
                 Err(err) => {
                     drawer_messages.set_error(err);
@@ -125,11 +205,17 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         invite_messages,
         drawer_messages,
         selected_user,
+        selected_archived_user,
+        active_tab,
         users_resource,
+        archived_users_resource,
         invite_action,
         reset_mfa_action,
         delete_user_action,
+        restore_archived_action,
+        delete_archived_action,
         is_system_admin,
     }
 }
+
 

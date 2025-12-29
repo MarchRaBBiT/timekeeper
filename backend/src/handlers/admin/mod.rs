@@ -22,6 +22,7 @@ use crate::{
         },
         user::{CreateUser, User, UserResponse},
     },
+    repositories::user as user_repo,
     utils::{csv::append_csv_row, password::hash_password, time},
 };
 
@@ -1374,3 +1375,202 @@ pub async fn delete_user(
         })))
     }
 }
+
+// ============================================================================
+// Archived user management
+// ============================================================================
+
+/// Response type for archived user list.
+#[derive(Debug, Serialize)]
+pub struct ArchivedUserResponse {
+    pub id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String,
+    pub is_system_admin: bool,
+    pub archived_at: String,
+    pub archived_by: Option<String>,
+}
+
+/// Get all archived users.
+pub async fn get_archived_users(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(requester): Extension<User>,
+) -> Result<Json<Vec<ArchivedUserResponse>>, (StatusCode, Json<Value>)> {
+    // Only system admins can view archived users
+    if !requester.is_system_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+    }
+
+    let rows = user_repo::get_archived_users(&pool).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to fetch archived users");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Database error"})),
+        )
+    })?;
+
+    let response: Vec<ArchivedUserResponse> = rows
+        .into_iter()
+        .map(|row| ArchivedUserResponse {
+            id: row.id,
+            username: row.username,
+            full_name: row.full_name,
+            role: row.role,
+            is_system_admin: row.is_system_admin,
+            archived_at: row.archived_at.to_rfc3339(),
+            archived_by: row.archived_by,
+        })
+        .collect();
+
+    Ok(Json(response))
+}
+
+/// Restore an archived user.
+pub async fn restore_archived_user(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(requester): Extension<User>,
+    Path(user_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Only system admins can restore users
+    if !requester.is_system_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+    }
+
+    // Check if archived user exists
+    let exists = user_repo::archived_user_exists(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to check archived user existence");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    if !exists {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Archived user not found"})),
+        ));
+    }
+
+    // Check if username already exists in active users
+    let username = user_repo::fetch_archived_username(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to fetch archived username");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .unwrap_or_default();
+
+    // Check for username conflict
+    let conflict_check: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = $1")
+        .bind(&username)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to check username conflict");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    if conflict_check.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"error": "Username already in use by another user"})),
+        ));
+    }
+
+    // Restore user
+    user_repo::restore_user(&pool, &user_id).await.map_err(|e| {
+        tracing::error!(error = %e, "failed to restore user");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to restore user"})),
+        )
+    })?;
+
+    tracing::info!(
+        user_id = %user_id,
+        username = %username,
+        requester_id = %requester.id,
+        "user restored from archive"
+    );
+
+    Ok(Json(json!({
+        "message": "User restored",
+        "user_id": user_id
+    })))
+}
+
+/// Permanently delete an archived user.
+pub async fn delete_archived_user(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(requester): Extension<User>,
+    Path(user_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // Only system admins can delete archived users
+    if !requester.is_system_admin() {
+        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+    }
+
+    // Check if archived user exists
+    let exists = user_repo::archived_user_exists(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to check archived user existence");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?;
+
+    if !exists {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Archived user not found"})),
+        ));
+    }
+
+    // Get username for logging
+    let username = user_repo::fetch_archived_username(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to fetch archived username");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        })?
+        .unwrap_or_default();
+
+    // Delete archived user
+    user_repo::hard_delete_archived_user(&pool, &user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to delete archived user");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to delete archived user"})),
+            )
+        })?;
+
+    tracing::info!(
+        user_id = %user_id,
+        username = %username,
+        requester_id = %requester.id,
+        "archived user permanently deleted"
+    );
+
+    Ok(Json(json!({
+        "message": "Archived user permanently deleted",
+        "user_id": user_id
+    })))
+}
+

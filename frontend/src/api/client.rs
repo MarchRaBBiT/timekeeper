@@ -208,6 +208,73 @@ impl ApiClient {
         }
     }
 
+    /// Get all archived users.
+    pub async fn admin_get_archived_users(&self) -> Result<Vec<ArchivedUserResponse>, String> {
+        let base_url = self.resolved_base_url().await;
+        let resp = self
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/archived-users", base_url))))
+            .await?;
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            resp.json()
+                .await
+                .map_err(|e| format!("Failed to parse response: {}", e))
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    /// Restore an archived user.
+    pub async fn admin_restore_archived_user(&self, user_id: &str) -> Result<(), String> {
+        let base_url = self.resolved_base_url().await;
+        let resp = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!("{}/admin/archived-users/{}/restore", base_url, user_id)))
+            })
+            .await?;
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
+    /// Permanently delete an archived user.
+    pub async fn admin_delete_archived_user(&self, user_id: &str) -> Result<(), String> {
+        let base_url = self.resolved_base_url().await;
+        let resp = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .delete(format!("{}/admin/archived-users/{}", base_url, user_id)))
+            })
+            .await?;
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| format!("Failed to parse error: {}", e))?;
+            Err(error.error)
+        }
+    }
+
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, String> {
         let base_url = self.resolved_base_url().await;
         let response = self
