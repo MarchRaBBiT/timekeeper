@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('build','start','stop','status','logs')]
+  [ValidateSet('build', 'start', 'stop', 'status', 'logs')]
   [string]$cmd = 'start',
   [int]$port = 8000,
   [switch]$release
@@ -50,7 +50,7 @@ function Start-Frontend {
   }
   Build-Frontend
   $script = "Set-Location frontend; python -m http.server $port *>&1 | Tee-Object -FilePath frontend-dev.log"
-  $p = Start-Process -FilePath 'pwsh' -ArgumentList @('-NoLogo','-NoProfile','-Command', $script) -PassThru -WindowStyle Minimized
+  $p = Start-Process -FilePath 'pwsh' -ArgumentList @('-NoLogo', '-NoProfile', '-Command', $script) -PassThru -WindowStyle Minimized
   $p.Id | Out-File -FilePath $pidFile -Encoding ascii -Force
   Write-Host "Frontend started. PID=$($p.Id). http://localhost:$port Logs: $logFile" -ForegroundColor Green
 }
@@ -60,7 +60,7 @@ function Stop-Frontend {
   $pid = Get-Content $pidFile | Select-Object -First 1
   if ($pid) {
     try { Stop-Process -Id [int]$pid -Force; Write-Host "Stopped frontend (PID=$pid)" -ForegroundColor Green }
-    catch { Write-Host "Failed to stop PID $pid: $_" -ForegroundColor Red }
+    catch { Write-Host "Failed to stop PID ${pid}: $_" -ForegroundColor Red }
   }
   Remove-Item $pidFile -ErrorAction SilentlyContinue
 }
@@ -74,9 +74,9 @@ function Status-Frontend {
 }
 
 switch ($cmd) {
-  'build'  { Build-Frontend }
-  'start'  { Start-Frontend }
-  'stop'   { Stop-Frontend }
+  'build' { Build-Frontend }
+  'start' { Start-Frontend }
+  'stop' { Stop-Frontend }
   'status' { Status-Frontend }
-  'logs'   { if (Test-Path $logFile) { Get-Content $logFile -Tail 200 -Wait } else { Write-Host "No log file yet: $logFile" -ForegroundColor Yellow } }
+  'logs' { if (Test-Path $logFile) { Get-Content $logFile -Tail 200 -Wait } else { Write-Host "No log file yet: $logFile" -ForegroundColor Yellow } }
 }

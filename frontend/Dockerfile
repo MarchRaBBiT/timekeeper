@@ -43,6 +43,7 @@ COPY --from=tailwind /app/frontend/assets/ ./assets/
 
 # Static entry
 COPY frontend/index.html ./index.html
+COPY frontend/env.js ./env.js
 COPY frontend/config.json ./config.json
 
 # Nginx config with SPA fallback
