@@ -1,6 +1,6 @@
 use crate::components::forms::AttendanceActionButtons;
 use crate::pages::dashboard::{
-    components::{ActivitiesSection, AlertsSection, GlobalFilters, SummarySection},
+    components::{ActivitiesSection, AlertsSection, Clock, GlobalFilters, SummarySection},
     layout::DashboardFrame,
     view_model::use_dashboard_view_model,
 };
@@ -23,6 +23,7 @@ pub fn DashboardPage() -> impl IntoView {
                     </div>
                 </div>
                 <div class="space-y-6">
+                    <Clock />
                     <AttendanceActionButtons
                         attendance_state=attendance_state
                         action_pending={vm.clock_action.pending()}
