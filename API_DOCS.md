@@ -798,6 +798,125 @@ GET /api/attendance/status
 {
   "status": "not_started" | "clocked_in" | "on_break" | "clocked_out",
   "attendance_id": "string|null",
+  "started_at": "2024-01-01T09:00:00"
+}
+```
+
+### 休憩一覧取得
+
+GET /api/attendance/{id}/breaks
+
+レスポンス:
+```json
+[
+  {
+    "id": "string",
+    "attendance_id": "string",
+    "break_start_time": "2024-01-01T12:00:00",
+    "break_end_time": "2024-01-01T13:00:00",
+    "duration_minutes": 60
+  }
+]
+```
+
+## 管理者機能 (追加)
+
+### 勤怠データの登録・更新 (Upsert)
+
+PUT /api/admin/attendance
+
+ペイロード:
+```json
+{
+  "user_id": "string",
+  "date": "2024-01-01",
+  "clock_in_time": "2024-01-01T09:00:00",
+  "clock_out_time": "2024-01-01T18:00:00",
+  "status": "present",
+  "break_records": [
+    {
+      "break_start_time": "2024-01-01T12:00:00",
+      "break_end_time": "2024-01-01T13:00:00"
+    }
+  ]
+}
+```
+
+### 休憩の強制終了
+
+PUT /api/admin/breaks/{id}/force-end
+
+### ユーザーの削除
+
+DELETE /api/admin/users/{id}
+
+### アーカイブ済みユーザー一覧
+
+GET /api/admin/archived-users
+
+### アーカイブ済みユーザーの完全削除
+
+DELETE /api/admin/archived-users/{id}
+
+### アーカイブ済みユーザーの復元
+
+POST /api/admin/archived-users/{id}/restore
+
+### MFAリセット (管理者による強制解除)
+
+POST /api/admin/mfa/reset
+
+ペイロード:
+```json
+{
+  "user_id": "string"
+}
+```
+
+## その他 (MFA/パスワード変更)
+
+### MFA状況取得
+
+GET /api/auth/mfa
+
+### MFA無効化 (自己)
+
+DELETE /api/auth/mfa
+
+### MFAセットアップ (検証)
+
+POST /api/auth/mfa/setup
+
+ペイロード:
+```json
+{
+  "secret": "string",
+  "code": "string"
+}
+```
+
+### MFAアクティベーション (有効化)
+
+POST /api/auth/mfa/activate
+
+ペイロード:
+```json
+{
+  "code": "string"
+}
+```
+
+### パスワード変更
+
+PUT /api/auth/change-password
+
+ペイロード:
+```json
+{
+  "current_password": "string",
+  "new_password": "string"
+}
+```
   "active_break_id": "string|null",
   "clock_in_time": "2024-01-15T09:00:00|null",
   "clock_out_time": "2024-01-15T18:00:00|null"
