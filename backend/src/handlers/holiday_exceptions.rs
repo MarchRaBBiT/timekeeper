@@ -16,7 +16,7 @@ use crate::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         user::User,
     },
-    services::holiday_exception::{HolidayExceptionError, HolidayExceptionService},
+    services::holiday_exception::{HolidayExceptionError, HolidayExceptionServiceTrait},
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -28,7 +28,7 @@ pub struct HolidayExceptionQuery {
 pub async fn create_holiday_exception(
     State((_pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-    Extension(service): Extension<Arc<HolidayExceptionService>>,
+    Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
     Json(payload): Json<CreateHolidayExceptionPayload>,
 ) -> Result<(StatusCode, Json<HolidayExceptionResponse>), (StatusCode, Json<Value>)> {
@@ -48,7 +48,7 @@ pub async fn create_holiday_exception(
 pub async fn list_holiday_exceptions(
     State((_pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-    Extension(service): Extension<Arc<HolidayExceptionService>>,
+    Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
     Query(query): Query<HolidayExceptionQuery>,
 ) -> Result<Json<Vec<HolidayExceptionResponse>>, (StatusCode, Json<Value>)> {
@@ -70,7 +70,7 @@ pub async fn list_holiday_exceptions(
 pub async fn delete_holiday_exception(
     State((_pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-    Extension(service): Extension<Arc<HolidayExceptionService>>,
+    Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path((target_user_id, id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<Value>)> {
     ensure_admin_or_system(&user)?;

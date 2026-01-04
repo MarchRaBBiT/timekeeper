@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use timekeeper_backend::services::holiday::{HolidayReason, HolidayServiceStub};
+use timekeeper_backend::services::holiday::{HolidayReason, HolidayServiceStub, HolidayServiceTrait};
 
 #[tokio::test]
 async fn exception_override_beats_public_and_weekly_flags() {

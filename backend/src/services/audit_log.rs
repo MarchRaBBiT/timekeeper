@@ -30,8 +30,17 @@ impl AuditLogService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+}
 
-    pub async fn record_event(&self, entry: AuditLogEntry) -> Result<(), sqlx::Error> {
+#[async_trait::async_trait]
+pub trait AuditLogServiceTrait: Send + Sync {
+    async fn record_event(&self, entry: AuditLogEntry) -> Result<(), sqlx::Error>;
+    async fn delete_logs_before(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error>;
+}
+
+#[async_trait::async_trait]
+impl AuditLogServiceTrait for AuditLogService {
+    async fn record_event(&self, entry: AuditLogEntry) -> Result<(), sqlx::Error> {
         let log = AuditLog {
             id: Uuid::new_v4().to_string(),
             occurred_at: entry.occurred_at,
@@ -51,7 +60,7 @@ impl AuditLogService {
         audit_log::insert_audit_log(&self.pool, &log).await
     }
 
-    pub async fn delete_logs_before(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+    async fn delete_logs_before(&self, cutoff: DateTime<Utc>) -> Result<u64, sqlx::Error> {
         audit_log::delete_audit_logs_before(&self.pool, cutoff).await
     }
 }

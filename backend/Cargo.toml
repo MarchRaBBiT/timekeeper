@@ -70,8 +70,12 @@ base32 = "0.4"
 utoipa = { version = "4", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 
+# Async traits
+async-trait = "0.1"
+
 [dev-dependencies]
 ctor = "0.6.1"
+mockall = "0.12"
 pg-embed = "0.7.1"
 tempfile = "3"
 

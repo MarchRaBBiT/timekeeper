@@ -16,7 +16,7 @@ use crate::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
-    services::holiday::HolidayService,
+    services::holiday::HolidayServiceTrait,
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -120,7 +120,7 @@ pub async fn fetch_google_holidays(
 
 pub async fn check_holiday(
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Query(query): Query<HolidayCheckQuery>,
 ) -> Result<Json<HolidayCheckResponse>, (StatusCode, Json<serde_json::Value>)> {
     let decision = holiday_service
@@ -147,7 +147,7 @@ pub async fn check_holiday(
 
 pub async fn list_month_holidays(
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Query(query): Query<HolidayMonthQuery>,
 ) -> Result<Json<Vec<HolidayMonthEntry>>, (StatusCode, Json<serde_json::Value>)> {
     if !(1..=12).contains(&query.month) {
