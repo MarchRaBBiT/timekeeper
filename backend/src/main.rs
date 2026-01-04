@@ -215,52 +215,44 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
 fn admin_routes(state: AuthState) -> Router<AuthState> {
     let audit_state = state.clone();
     Router::new()
-        // Request routes (from requests.rs module)
-        .route("/api/admin/requests", get(handlers::admin::requests::list_requests))
+        .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
             "/api/admin/requests/:id",
-            get(handlers::admin::requests::get_request_detail),
+            get(handlers::admin::get_request_detail),
         )
         .route(
             "/api/admin/requests/:id/approve",
-            put(handlers::admin::requests::approve_request),
+            put(handlers::admin::approve_request),
         )
         .route(
             "/api/admin/requests/:id/reject",
-            put(handlers::admin::requests::reject_request),
+            put(handlers::admin::reject_request),
         )
-        // Holiday routes (from holidays.rs module)
         .route(
             "/api/admin/holidays",
-            get(handlers::admin::holidays::list_holidays).post(handlers::admin::holidays::create_holiday),
+            get(handlers::admin::list_holidays).post(handlers::admin::create_holiday),
         )
         .route(
             "/api/admin/holidays/weekly",
-            get(handlers::admin::holidays::list_weekly_holidays).post(handlers::admin::holidays::create_weekly_holiday),
+            get(handlers::admin::list_weekly_holidays).post(handlers::admin::create_weekly_holiday),
         )
         .route(
             "/api/admin/holidays/weekly/:id",
-            delete(handlers::admin::holidays::delete_weekly_holiday),
+            delete(handlers::admin::delete_weekly_holiday),
+        )
+        .route("/api/admin/users", get(handlers::admin::get_users))
+        .route(
+            "/api/admin/attendance",
+            get(handlers::admin::get_all_attendance),
         )
         .route(
             "/api/admin/holidays/:id",
-            delete(handlers::admin::holidays::delete_holiday),
+            delete(handlers::admin::delete_holiday),
         )
-        // User routes (from users.rs module)
-        .route("/api/admin/users", get(handlers::admin::users::get_users))
-        // Attendance routes (from attendance.rs module)
-        .route(
-            "/api/admin/attendance",
-            get(handlers::admin::attendance::get_all_attendance),
-        )
-        // Export routes (from export.rs module)
-        .route("/api/admin/export", get(handlers::admin::export::export_data))
-        // Google holidays (from holidays module)
         .route(
             "/api/admin/holidays/google",
             get(handlers::holidays::fetch_google_holidays),
         )
-        // Holiday exceptions (from holiday_exceptions module)
         .route(
             "/api/admin/users/:user_id/holiday-exceptions",
             post(handlers::holiday_exceptions::create_holiday_exception)
@@ -270,6 +262,7 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             "/api/admin/users/:user_id/holiday-exceptions/:id",
             delete(handlers::holiday_exceptions::delete_holiday_exception),
         )
+        .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::auth_admin,
@@ -283,50 +276,46 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
 fn system_admin_routes(state: AuthState) -> Router<AuthState> {
     let audit_state = state.clone();
     Router::new()
-        // Audit log routes (from audit_logs.rs module)
         .route(
             "/api/admin/audit-logs",
-            get(handlers::admin::audit_logs::list_audit_logs),
+            get(handlers::admin::list_audit_logs),
         )
         .route(
             "/api/admin/audit-logs/export",
-            get(handlers::admin::audit_logs::export_audit_logs),
+            get(handlers::admin::export_audit_logs),
         )
         .route(
             "/api/admin/audit-logs/:id",
-            get(handlers::admin::audit_logs::get_audit_log_detail),
+            get(handlers::admin::get_audit_log_detail),
         )
-        // User routes (from users.rs module)
-        .route("/api/admin/users", post(handlers::admin::users::create_user))
-        .route(
-            "/api/admin/users/:id",
-            delete(handlers::admin::users::delete_user),
-        )
-        .route(
-            "/api/admin/archived-users",
-            get(handlers::admin::users::get_archived_users),
-        )
-        .route(
-            "/api/admin/archived-users/:id",
-            delete(handlers::admin::users::delete_archived_user),
-        )
-        .route(
-            "/api/admin/archived-users/:id/restore",
-            post(handlers::admin::users::restore_archived_user),
-        )
-        // Attendance routes (from attendance.rs module)
+        .route("/api/admin/users", post(handlers::admin::create_user))
         .route(
             "/api/admin/attendance",
-            put(handlers::admin::attendance::upsert_attendance),
+            put(handlers::admin::upsert_attendance),
         )
         .route(
             "/api/admin/breaks/:id/force-end",
-            put(handlers::admin::attendance::force_end_break),
+            put(handlers::admin::force_end_break),
         )
-        // MFA routes (from users.rs module)
         .route(
             "/api/admin/mfa/reset",
-            post(handlers::admin::users::reset_user_mfa),
+            post(handlers::admin::reset_user_mfa),
+        )
+        .route(
+            "/api/admin/users/:id",
+            delete(handlers::admin::delete_user),
+        )
+        .route(
+            "/api/admin/archived-users",
+            get(handlers::admin::get_archived_users),
+        )
+        .route(
+            "/api/admin/archived-users/:id",
+            delete(handlers::admin::delete_archived_user),
+        )
+        .route(
+            "/api/admin/archived-users/:id/restore",
+            post(handlers::admin::restore_archived_user),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             state,
