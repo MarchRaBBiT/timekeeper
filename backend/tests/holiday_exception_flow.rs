@@ -11,7 +11,7 @@ use timekeeper_backend::{
     },
     services::{
         holiday::{HolidayReason, HolidayService},
-        holiday_exception::HolidayExceptionService,
+        holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
     },
 };
 
@@ -119,7 +119,7 @@ async fn handler_creates_and_lists_personal_workday_override() {
     let admin = support::seed_user(&pool, UserRole::Admin, false).await;
     let target = support::seed_user(&pool, UserRole::Employee, false).await;
 
-    let exception_service = Arc::new(HolidayExceptionService::new(pool.clone()));
+    let exception_service: Arc<dyn HolidayExceptionServiceTrait> = Arc::new(HolidayExceptionService::new(pool.clone()));
 
     let app = Router::new()
         .route(

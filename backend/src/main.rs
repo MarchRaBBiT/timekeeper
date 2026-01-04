@@ -31,7 +31,9 @@ mod utils;
 use config::{AuditLogRetentionPolicy, Config};
 use db::connection::{create_pool, DbPool};
 use services::{
-    audit_log::AuditLogService, holiday::HolidayService, holiday_exception::HolidayExceptionService,
+    audit_log::{AuditLogService, AuditLogServiceTrait},
+    holiday::{HolidayService, HolidayServiceTrait},
+    holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
 };
 
 type AuthState = (DbPool, Config);
@@ -53,9 +55,9 @@ async fn main() -> anyhow::Result<()> {
 
     let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
-    let audit_log_service = Arc::new(AuditLogService::new(pool.clone()));
-    let holiday_service = Arc::new(HolidayService::new(pool.clone()));
-    let holiday_exception_service = Arc::new(HolidayExceptionService::new(pool.clone()));
+    let audit_log_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
+    let holiday_service: Arc<dyn HolidayServiceTrait> = Arc::new(HolidayService::new(pool.clone()));
+    let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> = Arc::new(HolidayExceptionService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
 
     spawn_audit_log_cleanup(
@@ -353,7 +355,7 @@ fn cors_layer(config: &Config) -> CorsLayer {
 }
 
 fn spawn_audit_log_cleanup(
-    audit_log_service: Arc<AuditLogService>,
+    audit_log_service: Arc<dyn AuditLogServiceTrait>,
     retention_policy: AuditLogRetentionPolicy,
 ) {
     let Some(retention_days) = retention_policy.retention_days() else {

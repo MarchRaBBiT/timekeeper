@@ -24,7 +24,7 @@ use crate::{
         break_record::{BreakRecord, BreakRecordResponse},
         user::User,
     },
-    services::holiday::HolidayService,
+    services::holiday::HolidayServiceTrait,
     utils::{csv::append_csv_row, time},
 };
 
@@ -54,7 +54,7 @@ pub struct AttendanceStatusResponse {
 pub async fn clock_in(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockInRequest>,
 ) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id.as_str();
@@ -65,7 +65,7 @@ pub async fn clock_in(
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_in_time = now_local.naive_local();
 
-    reject_if_holiday(&holiday_service, date, user_id).await?;
+    reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
     let attendance = match fetch_attendance_by_user_date(&pool, user_id, date).await? {
         Some(mut attendance) => {
@@ -92,7 +92,7 @@ pub async fn clock_in(
 pub async fn clock_out(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<HolidayService>>,
+    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockOutRequest>,
 ) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
     let user_id = user.id.as_str();
@@ -103,7 +103,7 @@ pub async fn clock_out(
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_out_time = now_local.naive_local();
 
-    reject_if_holiday(&holiday_service, date, user_id).await?;
+    reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
     let mut attendance = fetch_attendance_by_user_date(&pool, user_id, date)
         .await?
@@ -691,7 +691,7 @@ pub(crate) async fn recalculate_total_hours(
 }
 
 async fn reject_if_holiday(
-    holiday_service: &HolidayService,
+    holiday_service: &dyn HolidayServiceTrait,
     date: NaiveDate,
     user_id: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {

@@ -23,8 +23,34 @@ impl HolidayExceptionService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+}
 
-    pub async fn list_for_user(
+#[async_trait::async_trait]
+pub trait HolidayExceptionServiceTrait: Send + Sync {
+    async fn list_for_user(
+        &self,
+        user_id: &str,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<Vec<HolidayException>, HolidayExceptionError>;
+
+    async fn create_workday_override(
+        &self,
+        user_id: &str,
+        payload: CreateHolidayExceptionPayload,
+        created_by: &str,
+    ) -> Result<HolidayException, HolidayExceptionError>;
+
+    async fn delete_for_user(
+        &self,
+        id: &str,
+        user_id: &str,
+    ) -> Result<(), HolidayExceptionError>;
+}
+
+#[async_trait::async_trait]
+impl HolidayExceptionServiceTrait for HolidayExceptionService {
+    async fn list_for_user(
         &self,
         user_id: &str,
         from: Option<NaiveDate>,
@@ -39,7 +65,7 @@ impl HolidayExceptionService {
         Ok(result)
     }
 
-    pub async fn create_workday_override(
+    async fn create_workday_override(
         &self,
         user_id: &str,
         payload: CreateHolidayExceptionPayload,
@@ -63,7 +89,7 @@ impl HolidayExceptionService {
         Ok(exception)
     }
 
-    pub async fn delete_for_user(
+    async fn delete_for_user(
         &self,
         id: &str,
         user_id: &str,

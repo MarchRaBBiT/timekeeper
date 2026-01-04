@@ -53,8 +53,27 @@ impl HolidayService {
             }),
         }
     }
+}
 
-    pub async fn is_holiday(
+#[async_trait::async_trait]
+pub trait HolidayServiceTrait: Send + Sync {
+    async fn is_holiday(
+        &self,
+        date: NaiveDate,
+        user_id: Option<&str>,
+    ) -> sqlx::Result<HolidayDecision>;
+
+    async fn list_month(
+        &self,
+        year: i32,
+        month: u32,
+        user_id: Option<&str>,
+    ) -> sqlx::Result<Vec<HolidayCalendarEntry>>;
+}
+
+#[async_trait::async_trait]
+impl HolidayServiceTrait for HolidayService {
+    async fn is_holiday(
         &self,
         date: NaiveDate,
         user_id: Option<&str>,
@@ -66,7 +85,7 @@ impl HolidayService {
         Ok(sources.decision_for(date))
     }
 
-    pub async fn list_month(
+    async fn list_month(
         &self,
         year: i32,
         month: u32,

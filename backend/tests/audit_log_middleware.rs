@@ -12,7 +12,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use timekeeper_backend::{
     models::{audit_log::AuditLog, user::UserRole},
-    services::audit_log::AuditLogService,
+    services::audit_log::{AuditLogService, AuditLogServiceTrait},
 };
 use tokio::time::{sleep, Duration};
 use tower::ServiceExt;
@@ -75,7 +75,7 @@ async fn audit_log_middleware_records_event() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
@@ -136,7 +136,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
@@ -182,7 +182,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route(
@@ -239,7 +239,7 @@ async fn audit_log_middleware_records_auth_failure() {
     config.audit_log_retention_forever = false;
     let state = (pool.clone(), config.clone());
 
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
@@ -290,7 +290,7 @@ async fn audit_log_middleware_records_request_metadata() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route("/api/requests/leave", post(ok_handler))
@@ -354,7 +354,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route(
@@ -412,7 +412,7 @@ async fn audit_log_middleware_records_approval_metadata() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route(
@@ -468,7 +468,7 @@ async fn audit_log_middleware_records_password_change_metadata() {
     let state = (pool.clone(), config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let audit_service = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
         .route("/api/auth/change-password", axum::routing::put(ok_handler))
