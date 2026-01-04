@@ -1,7 +1,7 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Review current uncommitted changes and report prioritized findings (bugs/risk).
+  - Report current codebase size/scale per user request.
 - Constraints/Assumptions:
   - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
   - Create a topic branch before implementation.
@@ -15,9 +15,9 @@
 - Done:
   - Reviewed uncommitted diffs across backend/frontend for archived user feature additions.
 - Now:
-  - Assessing user feedback about reqwest wasm support.
+  - Gathering repository size metrics (files/lines) for backend/frontend.
 - Next:
-  - Inspect diffs and prepare review findings per guidelines.
+  - Summarize codebase size once metrics collected.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
