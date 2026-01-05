@@ -28,6 +28,7 @@ use crate::{
         password::{hash_password, verify_password},
     },
     error::AppError,
+    validation::Validate,
 };
 
 pub type HandlerResult<T> = Result<T, AppError>;
@@ -43,6 +44,8 @@ pub async fn login(
     State((pool, config)): State<(PgPool, Config)>,
     Json(payload): Json<LoginRequest>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
+    payload.validate()?;
+
     let user = auth_repo::find_user_by_username(&pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
@@ -301,11 +304,7 @@ pub async fn change_password(
     Json(payload): Json<ChangePasswordRequest>,
 ) -> HandlerResult<Json<Value>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
-
-    // Basic guardrails for the new password to reduce trivial mistakes.
-    if payload.new_password.len() < 8 {
-        return Err(bad_request("New password must be at least 8 characters"));
-    }
+    payload.validate()?;
     if payload.new_password == payload.current_password {
         return Err(bad_request("New password must differ from current password"));
     }

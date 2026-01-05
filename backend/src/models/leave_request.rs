@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
 
@@ -69,13 +70,22 @@ impl LeaveType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload used to create a new leave request.
+#[validate(schema(function = "validate_leave_date_range"))]
 pub struct CreateLeaveRequest {
     pub leave_type: LeaveType,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
+    #[validate(length(max = 500))]
     pub reason: Option<String>,
+}
+
+fn validate_leave_date_range(req: &CreateLeaveRequest) -> Result<(), validator::ValidationError> {
+    if req.start_date > req.end_date {
+        return Err(validator::ValidationError::new("start_date_after_end_date"));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

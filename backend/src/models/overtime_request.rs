@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
 
@@ -41,11 +42,13 @@ pub struct OvertimeRequest {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload used to create a new overtime request.
 pub struct CreateOvertimeRequest {
     pub date: NaiveDate,
+    #[validate(range(min = 0.5, max = 24.0))]
     pub planned_hours: f64,
+    #[validate(length(max = 500))]
     pub reason: Option<String>,
 }
 

@@ -4,6 +4,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use validator::Validate;
 
 use crate::{
     config::Config,
@@ -15,7 +16,7 @@ use crate::{
     error::AppError,
 };
 
-use chrono::{NaiveDate, Utc};
+use chrono::Utc;
 use serde::Deserialize;
 
 pub async fn create_leave_request(
@@ -25,9 +26,7 @@ pub async fn create_leave_request(
 ) -> Result<Json<LeaveRequestResponse>, AppError> {
     let user_id = user.id;
 
-    if !is_valid_leave_window(payload.start_date, payload.end_date) {
-        return Err(AppError::BadRequest("start_date must be <= end_date".into()));
-    }
+    payload.validate()?;
 
     let leave_request = LeaveRequest::new(
         user_id.to_string(),
@@ -52,9 +51,7 @@ pub async fn create_overtime_request(
 ) -> Result<Json<OvertimeRequestResponse>, AppError> {
     let user_id = user.id;
 
-    if !is_valid_planned_hours(payload.planned_hours) {
-        return Err(AppError::BadRequest("planned_hours must be > 0".into()));
-    }
+    payload.validate()?;
 
     let overtime_request = OvertimeRequest::new(
         user_id.to_string(),
@@ -190,18 +187,17 @@ pub async fn cancel_request(
     Err(AppError::NotFound("Request not found or not cancellable".into()))
 }
 
-fn is_valid_leave_window(start: NaiveDate, end: NaiveDate) -> bool {
-    start <= end
-}
-
-fn is_valid_planned_hours(hours: f64) -> bool {
-    hours > 0.0
-}
-
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use chrono::NaiveDate;
+
+    fn is_valid_leave_window(start: NaiveDate, end: NaiveDate) -> bool {
+        start <= end
+    }
+
+    fn is_valid_planned_hours(hours: f64) -> bool {
+        hours > 0.0
+    }
 
     #[test]
     fn leave_window_validation_requires_start_before_end() {
