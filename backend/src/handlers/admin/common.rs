@@ -1,6 +1,4 @@
-use axum::{http::StatusCode, Json};
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
-use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder};
 
 pub fn parse_date_value(value: &str) -> Option<NaiveDate> {
@@ -31,6 +29,3 @@ pub fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bo
     }
 }
 
-pub fn bad_request(message: &str) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
-}

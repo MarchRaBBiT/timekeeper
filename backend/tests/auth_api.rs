@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::http::StatusCode;
 use chrono::Utc;
 use chrono_tz::UTC;
 use timekeeper_backend::{
@@ -11,6 +10,7 @@ use timekeeper_backend::{
     handlers::auth::process_login_for_user,
     models::user::{LoginRequest, User, UserRole},
     utils::{cookies::SameSite, mfa::generate_totp_secret, password::hash_password},
+    error::AppError,
 };
 
 const TEST_PASSWORD: &str = "correct-horse-battery-staple";
@@ -132,11 +132,10 @@ fn login_rejects_invalid_password_without_db() {
         |_, _| async { Ok(()) },
     ))
     .expect_err("mismatched password should fail");
-    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        err.1 .0.get("error").and_then(|v| v.as_str()),
-        Some("Invalid username or password")
-    );
+    match err {
+        AppError::Unauthorized(msg) => assert_eq!(msg, "Invalid username or password"),
+        e => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[test]
@@ -159,11 +158,10 @@ fn login_rejects_invalid_totp_code_when_mfa_is_enabled() {
         |_, _| async { Ok(()) },
     ))
     .expect_err("invalid code should be rejected");
-    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        err.1 .0.get("error").and_then(|v| v.as_str()),
-        Some("Invalid MFA code")
-    );
+    match err {
+        AppError::Unauthorized(msg) => assert_eq!(msg, "Invalid MFA code"),
+        e => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[test]
@@ -186,11 +184,10 @@ fn login_requires_totp_code_when_mfa_is_enabled() {
         |_, _| async { Ok(()) },
     ))
     .expect_err("missing code should be rejected");
-    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        err.1 .0.get("error").and_then(|v| v.as_str()),
-        Some("MFA code required")
-    );
+    match err {
+        AppError::Unauthorized(msg) => assert_eq!(msg, "MFA code required"),
+        e => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[test]

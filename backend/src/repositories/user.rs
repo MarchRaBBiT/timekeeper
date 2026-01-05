@@ -1,8 +1,7 @@
 //! Repository functions for user management operations.
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 /// Archives a user and all related data (soft delete).
 /// - Moves user to archived_users

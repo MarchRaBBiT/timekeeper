@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -20,9 +19,10 @@ use crate::{
         user::User,
     },
     utils::time,
+    error::AppError,
 };
 
-use super::common::{bad_request, parse_optional_date, push_clause};
+use super::common::{parse_optional_date, push_clause};
 
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
@@ -33,9 +33,9 @@ pub async fn list_holidays(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<AdminHolidayListQuery>,
-) -> Result<Json<AdminHolidayListResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AdminHolidayListResponse>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let AdminHolidayQueryParams {
@@ -49,13 +49,7 @@ pub async fn list_holidays(
 
     let (items, total) = fetch_admin_holidays(&pool, kind, from, to, per_page, offset)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to list admin holidays");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(AdminHolidayListResponse {
         page,
@@ -69,9 +63,9 @@ pub async fn create_holiday(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateHolidayPayload>,
-) -> Result<Json<HolidayResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<HolidayResponse>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let CreateHolidayPayload {
@@ -82,10 +76,7 @@ pub async fn create_holiday(
 
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Holiday name is required"})),
-        ));
+        return Err(AppError::BadRequest("Holiday name is required".into()));
     }
 
     let normalized_description = description.as_deref().map(str::trim).and_then(|d| {
@@ -120,15 +111,9 @@ pub async fn create_holiday(
         Err(SqlxError::Database(db_err))
             if db_err.constraint() == Some("holidays_holiday_date_key") =>
         {
-            Err((
-                StatusCode::CONFLICT,
-                Json(json!({"error":"Holiday already exists for that date"})),
-            ))
+            Err(AppError::BadRequest("Holiday already exists for that date".into()))
         }
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Failed to create holiday"})),
-        )),
+        Err(e) => Err(AppError::InternalServerError(e.into())),
     }
 }
 
@@ -136,27 +121,19 @@ pub async fn delete_holiday(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Path(holiday_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let result = sqlx::query("DELETE FROM holidays WHERE id = $1")
         .bind(&holiday_id)
         .execute(&pool)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to delete holiday"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"Holiday not found"})),
-        ));
+        return Err(AppError::NotFound("Holiday not found".into()));
     }
 
     Ok(Json(json!({"message":"Holiday deleted","id": holiday_id})))
@@ -165,9 +142,9 @@ pub async fn delete_holiday(
 pub async fn list_weekly_holidays(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<WeeklyHolidayResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<WeeklyHolidayResponse>>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let holidays = sqlx::query_as::<_, WeeklyHoliday>(
@@ -176,12 +153,7 @@ pub async fn list_weekly_holidays(
     )
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(
         holidays
@@ -195,34 +167,25 @@ pub async fn create_weekly_holiday(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateWeeklyHolidayPayload>,
-) -> Result<Json<WeeklyHolidayResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<WeeklyHolidayResponse>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     if payload.weekday > 6 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)"})),
-        ));
+        return Err(AppError::BadRequest("Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)".into()));
     }
 
     if let Some(ends_on) = payload.ends_on {
         if ends_on < payload.starts_on {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error":"End date must be on or after the start date"})),
-            ));
+            return Err(AppError::BadRequest("End date must be on or after the start date".into()));
         }
     }
 
     let today = time::today_local(&config.time_zone);
     let tomorrow = today + Duration::days(1);
     if !user.is_system_admin() && payload.starts_on < tomorrow {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Start date must be at least tomorrow"})),
-        ));
+        return Err(AppError::BadRequest("Start date must be at least tomorrow".into()));
     }
 
     let weekly = WeeklyHoliday::new(
@@ -247,13 +210,7 @@ pub async fn create_weekly_holiday(
     .bind(weekly.created_at)
     .bind(weekly.updated_at)
     .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Failed to create weekly holiday"})),
-        )
-    })?;
+    .await?;
 
     Ok(Json(WeeklyHolidayResponse::from(weekly)))
 }
@@ -262,27 +219,19 @@ pub async fn delete_weekly_holiday(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let result = sqlx::query("DELETE FROM weekly_holidays WHERE id = $1")
         .bind(&id)
         .execute(&pool)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to delete weekly holiday"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"Weekly holiday not found"})),
-        ));
+        return Err(AppError::NotFound("Weekly holiday not found".into()));
     }
 
     Ok(Json(json!({"message":"Weekly holiday deleted","id": id})))
@@ -303,20 +252,20 @@ pub struct AdminHolidayQueryParams {
 
 pub fn validate_admin_holiday_query(
     q: AdminHolidayListQuery,
-) -> Result<AdminHolidayQueryParams, (StatusCode, Json<Value>)> {
+) -> Result<AdminHolidayQueryParams, AppError> {
     let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
     let per_page = q
         .per_page
         .unwrap_or(DEFAULT_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
 
-    let kind = parse_type_filter(q.r#type.as_deref()).map_err(bad_request)?;
-    let from = parse_optional_date(q.from.as_deref()).map_err(bad_request)?;
-    let to = parse_optional_date(q.to.as_deref()).map_err(bad_request)?;
+    let kind = parse_type_filter(q.r#type.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let from = parse_optional_date(q.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let to = parse_optional_date(q.to.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(bad_request("`from` must be before or equal to `to`"));
+            return Err(AppError::BadRequest("`from` must be before or equal to `to`".into()));
         }
     }
 

@@ -1,13 +1,12 @@
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode,
     Json,
 };
 use chrono::Utc;
 use serde::Deserialize;
-use serde_json::{json, Value};
 use sqlx::{PgPool, Transaction, Postgres};
 use utoipa::ToSchema;
+use crate::error::AppError;
 
 use crate::{
     config::Config,
@@ -23,21 +22,16 @@ use crate::{
 pub async fn get_all_attendance(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<AttendanceResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
     if !user.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     let attendances = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance ORDER BY date DESC, user_id"
     )
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let mut responses = Vec::new();
     for attendance in attendances {
@@ -78,9 +72,9 @@ pub async fn upsert_attendance(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(body): Json<AdminAttendanceUpsert>,
-) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AttendanceResponse>, AppError> {
     if !user.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     use crate::models::attendance::AttendanceResponse;
     use chrono::{NaiveDate, NaiveDateTime};
@@ -94,52 +88,33 @@ pub async fn upsert_attendance(
     } = body;
 
     let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Invalid date"})),
-        )
+        AppError::BadRequest("Invalid date".into())
     })?;
     let cin = NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%d %H:%M:%S"))
         .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error":"Invalid clock_in_time"})),
-            )
+            AppError::BadRequest("Invalid clock_in_time".into())
         })?;
     let cout = match &clock_out_time {
         Some(s) => Some(
             NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                 .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
                 .map_err(|_| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error":"Invalid clock_out_time"})),
-                    )
+                    AppError::BadRequest("Invalid clock_out_time".into())
                 })?,
         ),
         None => None,
     };
 
-    let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Database error"})),
-        )
-    })?;
+    let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(|e| AppError::InternalServerError(e.into()))?;
 
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
-    sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
+    sqlx::query::<sqlx::Postgres>("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
         .bind(&user_id)
         .bind(date)
         .execute(&mut *tx)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to upsert attendance"})),
-            )
-        })?;
+        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
     let mut att = crate::models::attendance::Attendance::new(
         user_id.clone(),
@@ -163,10 +138,7 @@ pub async fn upsert_attendance(
                         )
                     })
                     .map_err(|_| {
-                        (
-                            StatusCode::BAD_REQUEST,
-                            Json(json!({"error":"Invalid break_start_time"})),
-                        )
+                        AppError::BadRequest("Invalid break_start_time".into())
                     })?;
             let be: Option<chrono::NaiveDateTime> = b.break_end_time.as_ref().and_then(|s| {
                 chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
@@ -177,7 +149,8 @@ pub async fn upsert_attendance(
             let mut br = crate::models::break_record::BreakRecord::new(att.id.clone(), bs, now_utc);
             if let Some(bev) = be {
                 br.break_end_time = Some(bev);
-                let d = (bev - bs).num_minutes().max(0);
+                let duration = bev.signed_duration_since(bs);
+                let d = duration.num_minutes().max(0);
                 br.duration_minutes = Some(d as i32);
                 br.updated_at = now_utc;
                 total_break_minutes += d;
@@ -188,7 +161,7 @@ pub async fn upsert_attendance(
 
     att.calculate_work_hours(total_break_minutes);
 
-    sqlx::query("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
+    sqlx::query::<sqlx::Postgres>("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
         .bind(&att.id)
         .bind(&att.user_id)
         .bind(att.date)
@@ -201,16 +174,11 @@ pub async fn upsert_attendance(
         .bind(att.updated_at)
         .execute(&mut *tx)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to upsert attendance"})),
-            )
-        })?;
+        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
     // insert breaks
     for br in pending_breaks {
-        sqlx::query("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
+        sqlx::query::<sqlx::Postgres>("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
             .bind(&br.id)
             .bind(&br.attendance_id)
             .bind(br.break_start_time)
@@ -220,20 +188,10 @@ pub async fn upsert_attendance(
             .bind(br.updated_at)
             .execute(&mut *tx)
             .await
-            .map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error":"Failed to insert break"})),
-                )
-            })?;
+            .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
     }
 
-    tx.commit().await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Failed to upsert attendance"})),
-        )
-    })?;
+    tx.commit().await.map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
     let breaks = get_break_records(&pool, &att.id).await?;
     Ok(Json(AttendanceResponse {
@@ -249,13 +207,14 @@ pub async fn upsert_attendance(
 }
 
 // Admin: force end a break
+// Admin: force end a break
 pub async fn force_end_break(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Path(break_id): Path<String>,
-) -> Result<Json<crate::models::break_record::BreakRecordResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<crate::models::break_record::BreakRecordResponse>, AppError> {
     if !user.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     let now_local = time::now_in_timezone(&config.time_zone);
     let now_utc = now_local.with_timezone(&Utc);
@@ -266,18 +225,15 @@ pub async fn force_end_break(
     .bind(&break_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error":"Break not found"}))))?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?
+    .ok_or_else(|| AppError::NotFound("Break not found".into()))?;
 
     if rec.break_end_time.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({"error":"Break already ended"})),
-        ));
+        return Err(AppError::BadRequest("Break already ended".into()));
     }
     rec.break_end_time = Some(now);
-    let d = now - rec.break_start_time;
-    rec.duration_minutes = Some(d.num_minutes() as i32);
+    let duration = now.signed_duration_since(rec.break_start_time);
+    rec.duration_minutes = Some(duration.num_minutes() as i32);
     rec.updated_at = now_utc;
 
     sqlx::query("UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4")
@@ -287,7 +243,7 @@ pub async fn force_end_break(
         .bind(&rec.id)
         .execute(&pool)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Failed to update break"}))))?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if let Some(attendance) = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
@@ -295,7 +251,7 @@ pub async fn force_end_break(
     .bind(&rec.attendance_id)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))? {
+    .map_err(|e| AppError::InternalServerError(e.into()))? {
         if attendance.clock_out_time.is_some() {
             recalculate_total_hours(&pool, attendance, now_utc).await?;
         }
@@ -306,22 +262,16 @@ pub async fn force_end_break(
     ))
 }
 
-async fn get_break_records(
+pub async fn get_break_records(
     pool: &PgPool,
     attendance_id: &str,
-) -> Result<Vec<BreakRecordResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Vec<BreakRecordResponse>, AppError> {
     let break_records = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
     .bind(attendance_id)
     .fetch_all(pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     Ok(break_records
         .into_iter()

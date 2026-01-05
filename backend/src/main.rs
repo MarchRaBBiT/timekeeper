@@ -21,6 +21,7 @@ use utoipa_swagger_ui::SwaggerUi;
 mod config;
 mod db;
 mod docs;
+pub mod error;
 mod handlers;
 mod middleware;
 mod models;

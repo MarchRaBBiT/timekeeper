@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use chrono::Utc;
@@ -14,14 +13,15 @@ use crate::{
     models::user::{CreateUser, User, UserResponse, UserRole},
     repositories::user as user_repo,
     utils::password::hash_password,
+    error::AppError,
 };
 
 pub async fn get_users(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<UserResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<UserResponse>>, AppError> {
     if !(user.is_admin() || user.is_system_admin()) {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
     let users = sqlx::query_as::<_, User>(
@@ -30,12 +30,7 @@ pub async fn get_users(
     )
     .fetch_all(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let responses = users.into_iter().map(UserResponse::from).collect();
     Ok(Json(responses))
@@ -45,9 +40,9 @@ pub async fn create_user(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateUser>,
-) -> Result<Json<UserResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<UserResponse>, AppError> {
     if !user.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Check if username already exists
     let existing_user = sqlx::query_as::<_, User>(
@@ -57,25 +52,14 @@ pub async fn create_user(
     .bind(&payload.username)
     .fetch_optional(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if existing_user.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Username already exists"})),
-        ));
+        return Err(AppError::BadRequest("Username already exists".into()));
     }
 
-    let password_hash = hash_password(&payload.password).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to hash password"})),
-        )
+    let password_hash = hash_password(&payload.password).map_err(|e| {
+        AppError::InternalServerError(anyhow::anyhow!("Failed to hash password: {}", e))
     })?;
 
     let user = User::new(
@@ -107,12 +91,7 @@ pub async fn create_user(
     .bind(user.updated_at)
     .execute(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create user"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response = UserResponse::from(user);
     Ok(Json(response))
@@ -127,12 +106,9 @@ pub async fn reset_user_mfa(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(requester): Extension<User>,
     Json(payload): Json<ResetMfaPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !requester.is_system_admin() {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error":"Only system administrators can reset MFA"})),
-        ));
+        return Err(AppError::Forbidden("Only system administrators can reset MFA".into()));
     }
     let now = Utc::now();
     let result = sqlx::query(
@@ -142,28 +118,17 @@ pub async fn reset_user_mfa(
     .bind(&payload.user_id)
     .execute(&pool)
     .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"Failed to reset MFA"})),
-        )
-    })?;
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
+
     if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"User not found"})),
-        ));
+        return Err(AppError::NotFound("User not found".into()));
     }
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(&payload.user_id)
         .execute(&pool)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to revoke refresh tokens"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?; // Keeping map_err here or using ? if simplified globally, but let's stick to simple ? if possible. Wait, map_err fixes type inference? No, removing it does.
+
     Ok(Json(json!({
         "message": "MFA reset and refresh tokens revoked",
         "user_id": payload.user_id
@@ -189,45 +154,31 @@ pub async fn delete_user(
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
     Query(params): Query<DeleteUserParams>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     // Only system admins can delete users
     if !requester.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     // Cannot delete self
     if requester.id == user_id {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Cannot delete yourself"})),
-        ));
+        return Err(AppError::BadRequest("Cannot delete yourself".into()));
     }
 
     // Check if user exists
     let exists = user_repo::user_exists(&pool, &user_id).await.map_err(|e| {
-        tracing::error!(error = %e, "failed to check user existence");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
+        AppError::InternalServerError(e.into())
     })?;
 
     if !exists {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found"})),
-        ));
+        return Err(AppError::NotFound("User not found".into()));
     }
 
     // Get username for audit log
     let username = user_repo::fetch_username(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to fetch username");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?
         .unwrap_or_default();
 
@@ -236,11 +187,7 @@ pub async fn delete_user(
         user_repo::hard_delete_user(&pool, &user_id)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "failed to hard delete user");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to delete user"})),
-                )
+                AppError::InternalServerError(e.into())
             })?;
 
         tracing::info!(
@@ -260,11 +207,7 @@ pub async fn delete_user(
         user_repo::soft_delete_user(&pool, &user_id, &requester.id)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "failed to soft delete user");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to archive user"})),
-                )
+                AppError::InternalServerError(e.into())
             })?;
 
         tracing::info!(
@@ -302,18 +245,14 @@ pub struct ArchivedUserResponse {
 pub async fn get_archived_users(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(requester): Extension<User>,
-) -> Result<Json<Vec<ArchivedUserResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<ArchivedUserResponse>>, AppError> {
     // Only system admins can view archived users
     if !requester.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let rows = user_repo::get_archived_users(&pool).await.map_err(|e| {
-        tracing::error!(error = %e, "failed to fetch archived users");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
+        AppError::InternalServerError(e.into())
     })?;
 
     let response: Vec<ArchivedUserResponse> = rows
@@ -337,39 +276,28 @@ pub async fn restore_archived_user(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     // Only system admins can restore users
     if !requester.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     // Check if archived user exists
     let exists = user_repo::archived_user_exists(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to check archived user existence");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?;
 
     if !exists {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Archived user not found"})),
-        ));
+        return Err(AppError::NotFound("Archived user not found".into()));
     }
 
     // Check if username already exists in active users
     let username = user_repo::fetch_archived_username(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to fetch archived username");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?
         .unwrap_or_default();
 
@@ -379,27 +307,16 @@ pub async fn restore_archived_user(
         .fetch_optional(&pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to check username conflict");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?;
 
     if conflict_check.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Username already in use by another user"})),
-        ));
+        return Err(AppError::BadRequest("Username already in use by another user".into()));
     }
 
     // Restore user
     user_repo::restore_user(&pool, &user_id).await.map_err(|e| {
-        tracing::error!(error = %e, "failed to restore user");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to restore user"})),
-        )
+        AppError::InternalServerError(e.into())
     })?;
 
     tracing::info!(
@@ -420,39 +337,28 @@ pub async fn delete_archived_user(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     // Only system admins can delete archived users
     if !requester.is_system_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": "Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     // Check if archived user exists
     let exists = user_repo::archived_user_exists(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to check archived user existence");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?;
 
     if !exists {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Archived user not found"})),
-        ));
+        return Err(AppError::NotFound("Archived user not found".into()));
     }
 
     // Get username for logging
     let username = user_repo::fetch_archived_username(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to fetch archived username");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            AppError::InternalServerError(e.into())
         })?
         .unwrap_or_default();
 
@@ -460,11 +366,7 @@ pub async fn delete_archived_user(
     user_repo::hard_delete_archived_user(&pool, &user_id)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "failed to delete archived user");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to delete archived user"})),
-            )
+            AppError::InternalServerError(e.into())
         })?;
 
     tracing::info!(

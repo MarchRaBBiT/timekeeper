@@ -3,14 +3,15 @@ use axum::{
     extract::{Extension, Path, Query, State},
     http::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
-        HeaderValue, StatusCode,
+        HeaderValue,
     },
     response::Response,
     Json,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use crate::error::AppError;
+use serde_json::Value;
 use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
 
@@ -101,26 +102,20 @@ pub async fn list_audit_logs(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogListQuery>,
-) -> Result<Json<AuditLogListResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AuditLogListResponse>, AppError> {
     ensure_system_admin(&user)?;
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
-    let (items, total) = audit_log::list_audit_logs(&pool, &filters, per_page, offset)
+    let (items, total): (Vec<crate::models::audit_log::AuditLog>, i64) = audit_log::list_audit_logs(&pool, &filters, per_page, offset)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to list audit logs");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(AuditLogListResponse {
         page,
         per_page,
         total,
-        items: items.into_iter().map(AuditLogResponse::from).collect(),
+        items: items.into_iter().map(AuditLogResponse::from).collect::<Vec<_>>(),
     }))
 }
 
@@ -128,19 +123,13 @@ pub async fn get_audit_log_detail(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
-) -> Result<Json<AuditLogResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AuditLogResponse>, AppError> {
     ensure_system_admin(&user)?;
 
     let log = audit_log::fetch_audit_log(&pool, &id)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to fetch audit log");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Not found"}))))?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?
+        .ok_or_else(|| AppError::NotFound("Not found".into()))?;
 
     Ok(Json(AuditLogResponse::from(log)))
 }
@@ -149,26 +138,17 @@ pub async fn export_audit_logs(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogExportQuery>,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, AppError> {
     ensure_system_admin(&user)?;
 
     let filters = validate_export_query(q)?;
     let logs = audit_log::export_audit_logs(&pool, &filters)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to export audit logs");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let payload: Vec<AuditLogResponse> = logs.into_iter().map(AuditLogResponse::from).collect();
-    let body = serde_json::to_vec(&payload).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to serialize audit logs"})),
-        )
+    let body = serde_json::to_vec(&payload).map_err(|e| {
+        AppError::InternalServerError(e.into())
     })?;
 
     let filename = format!(
@@ -187,17 +167,17 @@ pub async fn export_audit_logs(
     Ok(response)
 }
 
-fn ensure_system_admin(user: &User) -> Result<(), (StatusCode, Json<Value>)> {
+fn ensure_system_admin(user: &User) -> Result<(), AppError> {
     if user.is_system_admin() {
         Ok(())
     } else {
-        Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))))
+        Err(AppError::Forbidden("Forbidden".into()))
     }
 }
 
 fn validate_list_query(
     q: AuditLogListQuery,
-) -> Result<(i64, i64, AuditLogFilters), (StatusCode, Json<Value>)> {
+) -> Result<(i64, i64, AuditLogFilters), AppError> {
     let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
     let per_page = q
         .per_page
@@ -218,7 +198,7 @@ fn validate_list_query(
 
 fn validate_export_query(
     q: AuditLogExportQuery,
-) -> Result<AuditLogFilters, (StatusCode, Json<Value>)> {
+) -> Result<AuditLogFilters, AppError> {
     build_filters(AuditLogFilterInput {
         from: q.from,
         to: q.to,
@@ -242,20 +222,20 @@ struct AuditLogFilterInput {
     result: Option<String>,
 }
 
-fn build_filters(input: AuditLogFilterInput) -> Result<AuditLogFilters, (StatusCode, Json<Value>)> {
-    let from = parse_from_datetime(input.from.as_deref()).map_err(bad_request)?;
-    let to = parse_to_datetime(input.to.as_deref()).map_err(bad_request)?;
+fn build_filters(input: AuditLogFilterInput) -> Result<AuditLogFilters, AppError> {
+    let from = parse_from_datetime(input.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let to = parse_to_datetime(input.to.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(bad_request("`from` must be before or equal to `to`"));
+            return Err(AppError::BadRequest("`from` must be before or equal to `to`".into()));
         }
     }
 
     let result = normalize_filter(input.result).map(|value| value.to_ascii_lowercase());
     if let Some(ref value) = result {
         if value != "success" && value != "failure" {
-            return Err(bad_request("`result` must be success or failure"));
+            return Err(AppError::BadRequest("`result` must be success or failure".into()));
         }
     }
 
@@ -319,6 +299,3 @@ fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
     None
 }
 
-fn bad_request(message: &str) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
-}
