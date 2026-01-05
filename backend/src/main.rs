@@ -28,6 +28,7 @@ mod models;
 mod repositories;
 mod services;
 mod utils;
+mod validation;
 
 use config::{AuditLogRetentionPolicy, Config};
 use db::connection::{create_pool, DbPool};

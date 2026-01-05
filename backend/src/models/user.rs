@@ -5,6 +5,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
+
+use crate::validation::rules;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of an authenticated user account.
@@ -82,15 +85,26 @@ impl<'de> Deserialize<'de> for UserRole {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload for creating a new user account.
 pub struct CreateUser {
+    #[validate(length(min = 1, max = 50), custom(function = "validate_username_format"))]
     pub username: String,
+    #[validate(length(min = 8), custom(function = "validate_password_format"))]
     pub password: String,
+    #[validate(length(min = 1, max = 100))]
     pub full_name: String,
     pub role: UserRole,
     #[serde(default)]
     pub is_system_admin: bool,
+}
+
+fn validate_username_format(username: &str) -> Result<(), validator::ValidationError> {
+    rules::validate_username(username)
+}
+
+fn validate_password_format(password: &str) -> Result<(), validator::ValidationError> {
+    rules::validate_password_strength(password)
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -101,10 +115,12 @@ pub struct UpdateUser {
     pub is_system_admin: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Credentials submitted by a user attempting to authenticate.
 pub struct LoginRequest {
+    #[validate(length(min = 1))]
     pub username: String,
+    #[validate(length(min = 1))]
     pub password: String,
     /// Optional TOTP code required when MFA is enabled.
     #[serde(default)]
@@ -114,13 +130,19 @@ pub struct LoginRequest {
     pub device_label: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload submitted when a user requests to change their password.
 pub struct ChangePasswordRequest {
     /// Existing password that will be verified before applying the change.
+    #[validate(length(min = 1))]
     pub current_password: String,
     /// Replacement password that will be stored if verification succeeds.
+    #[validate(length(min = 8), custom(function = "validate_new_password"))]
     pub new_password: String,
+}
+
+fn validate_new_password(password: &str) -> Result<(), validator::ValidationError> {
+    rules::validate_password_strength(password)
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

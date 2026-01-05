@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
 
 use crate::{
     config::Config,
@@ -44,6 +45,7 @@ pub async fn create_user(
     if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    payload.validate()?;
     // Check if username already exists
     let existing_user = sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, \

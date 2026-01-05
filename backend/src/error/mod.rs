@@ -84,3 +84,20 @@ impl From<sqlx::Error> for AppError {
         }
     }
 }
+
+impl From<validator::ValidationErrors> for AppError {
+    fn from(errors: validator::ValidationErrors) -> Self {
+        let messages: Vec<String> = errors
+            .field_errors()
+            .into_iter()
+            .flat_map(|(field, errs)| {
+                errs.iter().map(move |e| {
+                    let code = e.code.as_ref();
+                    format!("{}: {}", field, code)
+                })
+            })
+            .collect();
+        AppError::Validation(messages)
+    }
+}
+
