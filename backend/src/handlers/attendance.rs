@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
@@ -12,9 +11,10 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::attendance_utils::{
     ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in, ensure_not_clocked_out,
-    ensure_owned, error_response, fetch_attendance_by_id, fetch_attendance_by_user_date,
+    fetch_attendance_by_id, fetch_attendance_by_user_date, ensure_authorized_access,
     insert_attendance_record, update_clock_in, update_clock_out,
 };
+use crate::error::AppError;
 use crate::{
     config::Config,
     models::{
@@ -56,7 +56,7 @@ pub async fn clock_in(
     Extension(user): Extension<User>,
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockInRequest>,
-) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id.as_str();
 
     let tz = &config.time_zone;
@@ -67,7 +67,7 @@ pub async fn clock_in(
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
-    let attendance = match fetch_attendance_by_user_date(&pool, user_id, date).await? {
+    let attendance: Attendance = match fetch_attendance_by_user_date(&pool, user_id, date).await? {
         Some(mut attendance) => {
             ensure_not_clocked_in(&attendance)?;
             attendance.clock_in_time = Some(clock_in_time);
@@ -94,7 +94,7 @@ pub async fn clock_out(
     Extension(user): Extension<User>,
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockOutRequest>,
-) -> Result<Json<AttendanceResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id.as_str();
 
     let tz = &config.time_zone;
@@ -105,13 +105,10 @@ pub async fn clock_out(
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
-    let mut attendance = fetch_attendance_by_user_date(&pool, user_id, date)
-        .await?
-        .ok_or_else(|| {
-            error_response(
-                StatusCode::NOT_FOUND,
-                "No attendance record found for today",
-            )
+    let attendance_opt: Option<Attendance> = fetch_attendance_by_user_date(&pool, user_id, date)
+        .await?;
+    let mut attendance: Attendance = attendance_opt.ok_or_else(|| {
+            AppError::NotFound("No attendance record found for today".into())
         })?;
 
     ensure_not_clocked_out(&attendance)?;
@@ -122,19 +119,10 @@ pub async fn clock_out(
     )
     .bind(&attendance.id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     if active_break.is_some() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Break in progress. End break before clocking out"})),
-        ));
+        return Err(AppError::BadRequest("Break in progress. End break before clocking out".into()));
     }
 
     attendance.clock_out_time = Some(clock_out_time);
@@ -154,7 +142,7 @@ pub async fn break_start(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakStartRequest>,
-) -> Result<Json<BreakRecordResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<BreakRecordResponse>, AppError> {
     let tz = &config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
@@ -162,7 +150,7 @@ pub async fn break_start(
 
     // Check if attendance record exists and user is clocked in
     let attendance = fetch_attendance_by_id(&pool, &payload.attendance_id).await?;
-    ensure_owned(&attendance, &user.id)?;
+    ensure_authorized_access(&attendance, &user.id)?;
     ensure_clocked_in(&attendance)?;
 
     // Check if there's already an active break
@@ -171,19 +159,10 @@ pub async fn break_start(
     )
     .bind(&payload.attendance_id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     if active_break.is_some() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Break already in progress"})),
-        ));
+        return Err(AppError::BadRequest("Break already in progress".into()));
     }
 
     let break_record = BreakRecord::new(payload.attendance_id, break_start_time, now_utc);
@@ -199,13 +178,7 @@ pub async fn break_start(
     .bind(break_record.created_at)
     .bind(break_record.updated_at)
     .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create break record"})),
-        )
-    })?;
+    .await?;
 
     let response = BreakRecordResponse::from(break_record);
     Ok(Json(response))
@@ -215,7 +188,7 @@ pub async fn break_end(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakEndRequest>,
-) -> Result<Json<BreakRecordResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<BreakRecordResponse>, AppError> {
     let tz = &config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
@@ -227,28 +200,16 @@ pub async fn break_end(
     )
     .bind(&payload.break_record_id)
     .fetch_optional(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?
+    .await?
     .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Break record not found"})),
-        )
+        AppError::NotFound("Break record not found".into())
     })?;
 
     if !break_record.is_active() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Break already ended"})),
-        ));
+        return Err(AppError::BadRequest("Break already ended".into()));
     }
     let att = fetch_attendance_by_id(&pool, &break_record.attendance_id).await?;
-    ensure_owned(&att, &user.id)?;
+    ensure_authorized_access(&att, &user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
 
@@ -260,13 +221,7 @@ pub async fn break_end(
     .bind(break_record.updated_at)
     .bind(&break_record.id)
     .execute(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to update break record"})),
-        )
-    })?;
+    .await?;
 
     if att.clock_out_time.is_some() {
         recalculate_total_hours(&pool, att, now_utc).await?;
@@ -280,7 +235,7 @@ pub async fn get_my_attendance(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
-) -> Result<Json<Vec<AttendanceResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
     let user_id = user.id.as_str();
 
     // from/to range takes precedence over year/month
@@ -289,10 +244,7 @@ pub async fn get_my_attendance(
         let from = params.from.unwrap_or_else(|| time::today_local(tz));
         let to = params.to.unwrap_or_else(|| time::today_local(tz));
         if from > to {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "from must be <= to"})),
-            ));
+            return Err(AppError::BadRequest("from must be <= to".into()));
         }
         sqlx::query_as::<_, Attendance>(
             "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
@@ -301,32 +253,20 @@ pub async fn get_my_attendance(
         .bind(from)
         .bind(to)
         .fetch_all(&pool)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .await?
     } else {
         let tz = &config.time_zone;
         let now_local = time::now_in_timezone(tz);
         let year = params.year.unwrap_or_else(|| now_local.year());
         let month = params.month.unwrap_or_else(|| now_local.month());
         let Some(first_day) = NaiveDate::from_ymd_opt(year, month, 1) else {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid year/month provided"})),
-            ));
+            return Err(AppError::BadRequest("Invalid year/month provided".into()));
         };
         let Some(last_day) = first_day
             .checked_add_months(Months::new(1))
             .and_then(|d| d.checked_sub_signed(Duration::days(1)))
         else {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid year/month provided"})),
-            ));
+            return Err(AppError::BadRequest("Invalid year/month provided".into()));
         };
         sqlx::query_as::<_, Attendance>(
             "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
@@ -335,13 +275,7 @@ pub async fn get_my_attendance(
         .bind(first_day)
         .bind(last_day)
         .fetch_all(&pool)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .await?
     };
 
     let mut responses = Vec::new();
@@ -357,21 +291,20 @@ pub async fn get_attendance_status(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<AttendanceStatusResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AttendanceStatusResponse>, AppError> {
     let user_id = user.id.as_str();
     let date = params
         .get("date")
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
         .unwrap_or_else(|| time::today_local(&config.time_zone));
 
-    let attendance = sqlx::query_as::<_, Attendance>(
+    let attendance: Option<Attendance> = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
     .bind(user_id)
     .bind(date)
     .fetch_optional(&pool)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
+    .await?;
 
     if let Some(att) = attendance {
         // Check active break
@@ -380,8 +313,7 @@ pub async fn get_attendance_status(
         )
         .bind(&att.id)
         .fetch_optional(&pool)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"Database error"}))))?;
+        .await?;
 
         let resp = if att.clock_in_time.is_none() {
             AttendanceStatusResponse {
@@ -432,7 +364,7 @@ pub async fn get_attendance_status(
 pub async fn get_breaks_by_attendance(
     State((pool, _config)): State<(PgPool, Config)>,
     Path(attendance_id): Path<String>,
-) -> Result<Json<Vec<BreakRecordResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
     let records = get_break_records(&pool, &attendance_id).await?;
     Ok(Json(records))
 }
@@ -441,7 +373,7 @@ pub async fn get_my_summary(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
-) -> Result<Json<AttendanceSummary>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AttendanceSummary>, AppError> {
     let user_id = user.id.as_str();
 
     let now_local = time::now_in_timezone(&config.time_zone);
@@ -451,19 +383,13 @@ pub async fn get_my_summary(
     use sqlx::Row;
 
     let Some(first_day) = NaiveDate::from_ymd_opt(year, month, 1) else {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid year/month provided"})),
-        ));
+        return Err(AppError::BadRequest("Invalid year/month provided".into()));
     };
     let Some(last_day) = first_day
         .checked_add_months(Months::new(1))
         .and_then(|d| d.checked_sub_signed(Duration::days(1)))
     else {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid year/month provided"})),
-        ));
+        return Err(AppError::BadRequest("Invalid year/month provided".into()));
     };
 
     let row = sqlx::query(
@@ -473,13 +399,7 @@ pub async fn get_my_summary(
     .bind(first_day)
     .bind(last_day)
     .fetch_one(&pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     let total_work_hours: f64 = row.try_get::<f64, _>("total_hours").unwrap_or(0.0);
     let total_work_days: i32 = row.try_get::<i64, _>("total_days").unwrap_or(0) as i32;
@@ -504,16 +424,13 @@ pub async fn export_my_attendance(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceExportQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     let from = params.from;
     let to = params.to;
 
     if let (Some(f), Some(t)) = (from, to) {
         if f > t {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "from must be <= to"})),
-            ));
+            return Err(AppError::BadRequest("from must be <= to".into()));
         }
     }
 
@@ -533,12 +450,7 @@ pub async fn export_my_attendance(
     }
     builder.push(" ORDER BY a.date DESC");
 
-    let rows = builder.build().fetch_all(&pool).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    let rows = builder.build().fetch_all(&pool).await?;
 
     let mut csv_data = String::new();
     append_csv_row(
@@ -620,19 +532,13 @@ fn build_attendance_response(
 async fn get_break_records(
     pool: &PgPool,
     attendance_id: &str,
-) -> Result<Vec<BreakRecordResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Vec<BreakRecordResponse>, AppError> {
     let break_records = sqlx::query_as::<_, BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
     .bind(attendance_id)
     .fetch_all(pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     Ok(break_records
         .into_iter()
@@ -643,19 +549,13 @@ async fn get_break_records(
 pub(crate) async fn total_break_minutes(
     pool: &PgPool,
     attendance_id: &str,
-) -> Result<i64, (StatusCode, Json<Value>)> {
+) -> Result<i64, AppError> {
     let row = sqlx::query(
         "SELECT COALESCE(SUM(duration_minutes), 0) AS minutes FROM break_records WHERE attendance_id = $1 AND duration_minutes IS NOT NULL",
     )
     .bind(attendance_id)
     .fetch_one(pool)
-    .await
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .await?;
 
     let minutes = row.try_get::<i64, _>("minutes").unwrap_or(0);
     Ok(minutes.max(0))
@@ -665,7 +565,7 @@ pub(crate) async fn recalculate_total_hours(
     pool: &PgPool,
     mut attendance: Attendance,
     updated_at: DateTime<Utc>,
-) -> Result<(), (StatusCode, Json<Value>)> {
+) -> Result<(), AppError> {
     if attendance.clock_in_time.is_none() || attendance.clock_out_time.is_none() {
         return Ok(());
     }
@@ -679,13 +579,7 @@ pub(crate) async fn recalculate_total_hours(
         .bind(attendance.updated_at)
         .bind(&attendance.id)
         .execute(pool)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update attendance"})),
-            )
-        })?;
+        .await?;
 
     Ok(())
 }
@@ -694,26 +588,17 @@ async fn reject_if_holiday(
     holiday_service: &dyn HolidayServiceTrait,
     date: NaiveDate,
     user_id: &str,
-) -> Result<(), (StatusCode, Json<Value>)> {
+) -> Result<(), AppError> {
     let decision = holiday_service
         .is_holiday(date, Some(user_id))
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Failed to evaluate holiday calendar"})),
-            )
-        })?;
+        .await?;
 
     if decision.is_holiday {
         let reason = decision.reason.label();
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": format!(
-                "{} is a {}. Submit an overtime request before clocking in/out.",
-                date, reason
-            )})),
-        ));
+        return Err(AppError::Forbidden(format!(
+            "{} is a {}. Submit an overtime request before clocking in/out.",
+            date, reason
+        )));
     }
 
     Ok(())

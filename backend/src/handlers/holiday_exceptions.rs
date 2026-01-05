@@ -6,12 +6,11 @@ use axum::{
     Json,
 };
 use chrono::NaiveDate;
-use serde_json::{json, Value};
 use sqlx::PgPool;
-use tracing::error;
 
 use crate::{
     config::Config,
+    error::AppError,
     models::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         user::User,
@@ -31,13 +30,13 @@ pub async fn create_holiday_exception(
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
     Json(payload): Json<CreateHolidayExceptionPayload>,
-) -> Result<(StatusCode, Json<HolidayExceptionResponse>), (StatusCode, Json<Value>)> {
+) -> Result<(StatusCode, Json<HolidayExceptionResponse>), AppError> {
     ensure_admin_or_system(&user)?;
 
     let created = service
         .create_workday_override(&target_user_id, payload, &user.id)
         .await
-        .map_err(map_exception_error)?;
+        .map_err(holiday_exception_error_to_app_error)?;
 
     Ok((
         StatusCode::CREATED,
@@ -51,13 +50,13 @@ pub async fn list_holiday_exceptions(
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
     Query(query): Query<HolidayExceptionQuery>,
-) -> Result<Json<Vec<HolidayExceptionResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<HolidayExceptionResponse>>, AppError> {
     ensure_admin_or_system(&user)?;
 
     let exceptions = service
         .list_for_user(&target_user_id, query.from, query.to)
         .await
-        .map_err(map_exception_error)?;
+        .map_err(holiday_exception_error_to_app_error)?;
 
     let response = exceptions
         .into_iter()
@@ -72,46 +71,33 @@ pub async fn delete_holiday_exception(
     Extension(user): Extension<User>,
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path((target_user_id, id)): Path<(String, String)>,
-) -> Result<StatusCode, (StatusCode, Json<Value>)> {
+) -> Result<StatusCode, AppError> {
     ensure_admin_or_system(&user)?;
 
     service
         .delete_for_user(&id, &target_user_id)
         .await
-        .map_err(map_exception_error)?;
+        .map_err(holiday_exception_error_to_app_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub fn map_exception_error(error: HolidayExceptionError) -> (StatusCode, Json<Value>) {
+fn holiday_exception_error_to_app_error(error: HolidayExceptionError) -> AppError {
     match error {
-        HolidayExceptionError::Conflict => (
-            StatusCode::CONFLICT,
-            Json(json!({"error":"Holiday exception already exists for this date"})),
-        ),
-        HolidayExceptionError::NotFound => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"Holiday exception not found"})),
-        ),
-        HolidayExceptionError::UserNotFound => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error":"User not found"})),
-        ),
-        HolidayExceptionError::Database(err) => {
-            error!(error = ?err, "Holiday exception database error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
+        HolidayExceptionError::Conflict => {
+            AppError::Conflict("Holiday exception already exists for this date".into())
         }
+        HolidayExceptionError::NotFound => AppError::NotFound("Holiday exception not found".into()),
+        HolidayExceptionError::UserNotFound => AppError::NotFound("User not found".into()),
+        HolidayExceptionError::Database(err) => AppError::InternalServerError(err.into()),
     }
 }
 
-fn ensure_admin_or_system(user: &User) -> Result<(), (StatusCode, Json<Value>)> {
+fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
     if user.is_admin() || user.is_system_admin() {
         Ok(())
     } else {
-        Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))))
+        Err(AppError::Forbidden("Forbidden".into()))
     }
 }
 
@@ -121,8 +107,10 @@ mod tests {
 
     #[test]
     fn map_exception_error_handles_user_not_found() {
-        let (status, Json(body)) = map_exception_error(HolidayExceptionError::UserNotFound);
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body.get("error"), Some(&json!("User not found")));
+        let err = holiday_exception_error_to_app_error(HolidayExceptionError::UserNotFound);
+        match err {
+            AppError::NotFound(msg) => assert_eq!(msg, "User not found"),
+            _ => panic!("Expected NotFound"),
+        }
     }
 }

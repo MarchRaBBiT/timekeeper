@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Query, State},
-    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
@@ -12,6 +11,7 @@ use crate::{
     config::Config,
     models::user::User,
     utils::{csv::append_csv_row, time},
+    error::AppError,
 };
 
 use super::common::{parse_date_value, push_clause};
@@ -27,35 +27,26 @@ pub async fn export_data(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<ExportQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Build filtered SQL
     let parsed_from = match q.from.as_deref() {
         Some(raw) => parse_date_value(raw)
-            .ok_or((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error":"`from` must be a valid date"})),
-            ))
+            .ok_or(AppError::BadRequest("`from` must be a valid date".into()))
             .map(Some)?,
         None => None,
     };
     let parsed_to = match q.to.as_deref() {
         Some(raw) => parse_date_value(raw)
-            .ok_or((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error":"`to` must be a valid date"})),
-            ))
+            .ok_or(AppError::BadRequest("`to` must be a valid date".into()))
             .map(Some)?,
         None => None,
     };
     if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
         if from > to {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error":"`from` must be on or before `to`"})),
-            ));
+            return Err(AppError::BadRequest("`from` must be on or before `to`".into()));
         }
     }
 
@@ -77,11 +68,8 @@ pub async fn export_data(
         builder.push("a.date <= ").push_bind(to);
     }
     builder.push(" ORDER BY a.date DESC, u.username");
-    let data = builder.build().fetch_all(&pool).await.map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
+    let data: Vec<sqlx::postgres::PgRow> = builder.build().fetch_all(&pool).await.map_err(|e| {
+        AppError::InternalServerError(e.into())
     })?;
 
     // Convert to CSV format
@@ -100,7 +88,7 @@ pub async fn export_data(
     );
 
     for record in data {
-        let username = record.try_get::<String, _>("username").unwrap_or_default();
+        let username = record.try_get::<String, &str>("username").unwrap_or_default();
         let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
         let date = record.try_get::<String, _>("date").unwrap_or_default();
         let clock_in = record

@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
@@ -18,6 +17,7 @@ use crate::{
         user::User,
     },
     utils::time,
+    error::AppError,
 };
 
 const MAX_DECISION_COMMENT_LENGTH: usize = 500;
@@ -32,9 +32,9 @@ pub async fn approve_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<ApprovePayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
@@ -43,12 +43,7 @@ pub async fn approve_request(
 
     if requests_repo::approve_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         > 0
     {
         return Ok(Json(json!({"message": "Leave request approved"})));
@@ -56,21 +51,13 @@ pub async fn approve_request(
 
     if requests_repo::approve_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         > 0
     {
         return Ok(Json(json!({"message": "Overtime request approved"})));
     }
 
-    Err((
-        StatusCode::NOT_FOUND,
-        Json(json!({"error": "Request not found or already processed"})),
-    ))
+    Err(AppError::NotFound("Request not found or already processed".into()))
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -83,9 +70,9 @@ pub async fn reject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<RejectPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
@@ -94,12 +81,7 @@ pub async fn reject_request(
 
     if requests_repo::reject_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         > 0
     {
         return Ok(Json(json!({"message": "Leave request rejected"})));
@@ -107,21 +89,13 @@ pub async fn reject_request(
 
     if requests_repo::reject_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         > 0
     {
         return Ok(Json(json!({"message": "Overtime request rejected"})));
     }
 
-    Err((
-        StatusCode::NOT_FOUND,
-        Json(json!({"error": "Request not found or already processed"})),
-    ))
+    Err(AppError::NotFound("Request not found or already processed".into()))
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -154,9 +128,9 @@ pub async fn list_requests(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Query(q): Query<RequestListQuery>,
-) -> Result<Json<AdminRequestListResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<AdminRequestListResponse>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     let (page, per_page, offset) = paginate_requests(&q)?;
 
@@ -182,13 +156,7 @@ pub async fn list_requests(
             .build_query_as::<LeaveRequest>()
             .fetch_all(&pool)
             .await
-            .map_err(|err| {
-                tracing::error!(error = %err, "failed to list leave requests");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error":"Database error"})),
-                )
-            })?
+            .map_err(|e| AppError::InternalServerError(e.into()))?
     } else {
         Vec::new()
     };
@@ -207,13 +175,7 @@ pub async fn list_requests(
             .build_query_as::<OvertimeRequest>()
             .fetch_all(&pool)
             .await
-            .map_err(|err| {
-                tracing::error!(error = %err, "failed to list overtime requests");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error":"Database error"})),
-                )
-            })?
+            .map_err(|e| AppError::InternalServerError(e.into()))?
     } else {
         Vec::new()
     };
@@ -233,37 +195,26 @@ pub async fn list_requests(
 
 pub fn paginate_requests(
     q: &RequestListQuery,
-) -> Result<(i64, i64, i64), (StatusCode, Json<Value>)> {
+) -> Result<(i64, i64, i64), AppError> {
     let page = q.page.unwrap_or(1).max(1);
     let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
     let offset = page
         .checked_sub(1)
         .and_then(|p| p.checked_mul(per_page))
-        .ok_or((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"page is too large"})),
-        ))?;
+        .ok_or(AppError::BadRequest("page is too large".into()))?;
     Ok((page, per_page, offset))
 }
 
-pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), (StatusCode, Json<Value>)> {
+pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
     if comment.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error":"comment is required"})),
-        ));
+        return Err(AppError::BadRequest("comment is required".into()));
     }
 
     if comment.chars().count() > MAX_DECISION_COMMENT_LENGTH {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": format!(
-                    "comment must be between 1 and {} characters",
-                    MAX_DECISION_COMMENT_LENGTH
-                )
-            })),
-        ));
+        return Err(AppError::BadRequest(format!(
+            "comment must be between 1 and {} characters",
+            MAX_DECISION_COMMENT_LENGTH
+        )));
     }
 
     Ok(())
@@ -273,18 +224,13 @@ pub async fn get_request_detail(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
     if let Some(item) = requests_repo::fetch_leave_request(&pool, &request_id)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
     {
         return Ok(Json(
             json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
@@ -292,21 +238,13 @@ pub async fn get_request_detail(
     }
     if let Some(item) = requests_repo::fetch_overtime_request(&pool, &request_id)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error":"Database error"})),
-            )
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
     {
         return Ok(Json(
             json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
         ));
     }
-    Err((
-        StatusCode::NOT_FOUND,
-        Json(json!({"error":"Request not found"})),
-    ))
+    Err(AppError::NotFound("Request not found".into()))
 }
 
 fn apply_request_filters<'a>(

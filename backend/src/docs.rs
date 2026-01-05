@@ -20,6 +20,7 @@ use crate::{
             CreateHolidayPayload, CreateWeeklyHolidayPayload, HolidayResponse,
             WeeklyHolidayResponse,
         },
+        holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         leave_request::{CreateLeaveRequest, LeaveRequestResponse, LeaveType},
         overtime_request::{CreateOvertimeRequest, OvertimeRequestResponse},
         request::RequestStatus,
@@ -72,7 +73,11 @@ use utoipa::{
         admin_list_audit_logs_doc,
         admin_get_audit_log_doc,
         admin_export_audit_logs_doc,
-        system_admin_reset_mfa_doc
+        admin_export_audit_logs_doc,
+        system_admin_reset_mfa_doc,
+        admin_create_holiday_exception_doc,
+        admin_list_holiday_exceptions_doc,
+        admin_delete_holiday_exception_doc
     ),
     components(
         schemas(
@@ -113,6 +118,8 @@ use utoipa::{
             HolidayResponse,
             CreateWeeklyHolidayPayload,
             WeeklyHolidayResponse,
+            CreateHolidayExceptionPayload,
+            HolidayExceptionResponse,
             // admin-specific payloads
             AdminAttendanceUpsert,
             AdminBreakItem,
@@ -478,3 +485,41 @@ fn admin_export_audit_logs_doc() {}
     tag = "Admin"
 )]
 fn system_admin_reset_mfa_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{user_id}/holiday-exceptions",
+    params(("user_id" = String, Path, description = "対象ユーザーID")),
+    request_body = CreateHolidayExceptionPayload,
+    responses(
+        (status = 201, body = HolidayExceptionResponse),
+        (status = 400, description = "不正なリクエスト")
+    ),
+    tag = "Admin"
+)]
+fn admin_create_holiday_exception_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/holiday-exceptions",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        ("from" = Option<String>, Query, description = "開始日"),
+        ("to" = Option<String>, Query, description = "終了日")
+    ),
+    responses((status = 200, body = [HolidayExceptionResponse])),
+    tag = "Admin"
+)]
+fn admin_list_holiday_exceptions_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/users/{user_id}/holiday-exceptions/{id}",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        ("id" = String, Path, description = "例外ID")
+    ),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_delete_holiday_exception_doc() {}

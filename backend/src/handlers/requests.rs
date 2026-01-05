@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode,
     Json,
 };
 use serde_json::{json, Value};
@@ -13,6 +12,7 @@ use crate::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
+    error::AppError,
 };
 
 use chrono::{NaiveDate, Utc};
@@ -22,14 +22,11 @@ pub async fn create_leave_request(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateLeaveRequest>,
-) -> Result<Json<LeaveRequestResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<LeaveRequestResponse>, AppError> {
     let user_id = user.id;
 
     if !is_valid_leave_window(payload.start_date, payload.end_date) {
-        return Err(error_response(
-            StatusCode::BAD_REQUEST,
-            "start_date must be <= end_date",
-        ));
+        return Err(AppError::BadRequest("start_date must be <= end_date".into()));
     }
 
     let leave_request = LeaveRequest::new(
@@ -42,12 +39,7 @@ pub async fn create_leave_request(
 
     requests_repo::insert_leave_request(&pool, &leave_request)
         .await
-        .map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to create leave request",
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response = LeaveRequestResponse::from(leave_request);
     Ok(Json(response))
@@ -57,14 +49,11 @@ pub async fn create_overtime_request(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateOvertimeRequest>,
-) -> Result<Json<OvertimeRequestResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<OvertimeRequestResponse>, AppError> {
     let user_id = user.id;
 
     if !is_valid_planned_hours(payload.planned_hours) {
-        return Err(error_response(
-            StatusCode::BAD_REQUEST,
-            "planned_hours must be > 0",
-        ));
+        return Err(AppError::BadRequest("planned_hours must be > 0".into()));
     }
 
     let overtime_request = OvertimeRequest::new(
@@ -76,12 +65,7 @@ pub async fn create_overtime_request(
 
     requests_repo::insert_overtime_request(&pool, &overtime_request)
         .await
-        .map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to create overtime request",
-            )
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response = OvertimeRequestResponse::from(overtime_request);
     Ok(Json(response))
@@ -90,30 +74,16 @@ pub async fn create_overtime_request(
 pub async fn get_my_requests(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = user.id;
 
     let leave_requests = requests_repo::list_leave_requests_by_user(&pool, &user_id)
         .await
-        .map_err(|err| {
-            tracing::error!(
-                error = %err,
-                user_id = %user_id,
-                "failed to fetch leave_requests in get_my_requests"
-            );
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let overtime_requests = requests_repo::list_overtime_requests_by_user(&pool, &user_id)
         .await
-        .map_err(|err| {
-            tracing::error!(
-                error = %err,
-                user_id = %user_id,
-                "failed to fetch overtime_requests in get_my_requests"
-            );
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response = json!({
         "leave_requests": leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
@@ -143,112 +113,81 @@ pub async fn update_request(
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
 
     // Try leave update
     if let Some(req) = requests_repo::fetch_leave_request_by_id(&pool, &request_id, &user_id)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .await?
     {
         if !req.is_pending() {
-            return Err(error_response(
-                StatusCode::CONFLICT,
-                "Only pending requests can be updated",
-            ));
+            return Err(AppError::BadRequest("Only pending requests can be updated".into()));
         }
         let upd: UpdateLeavePayload = serde_json::from_value(payload.clone())
-            .map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid payload"))?;
+            .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
         let new_type = upd.leave_type.unwrap_or(req.leave_type);
         let new_start = upd.start_date.unwrap_or(req.start_date);
         let new_end = upd.end_date.unwrap_or(req.end_date);
         if new_start > new_end {
-            return Err(error_response(
-                StatusCode::BAD_REQUEST,
-                "start_date must be <= end_date",
-            ));
+            return Err(AppError::BadRequest("start_date must be <= end_date".into()));
         }
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
         requests_repo::update_leave_request(
             &pool, &req.id, new_type, new_start, new_end, new_reason, now,
         )
-        .await
-        .map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update request",
-            )
-        })?;
+        .await?;
         return Ok(Json(json!({"message":"Leave request updated"})));
     }
 
     // Try overtime update
     if let Some(req) = requests_repo::fetch_overtime_request_by_id(&pool, &request_id, &user_id)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .await?
     {
         if !req.is_pending() {
-            return Err(error_response(
-                StatusCode::CONFLICT,
-                "Only pending requests can be updated",
-            ));
+            return Err(AppError::BadRequest("Only pending requests can be updated".into()));
         }
         let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone())
-            .map_err(|_| error_response(StatusCode::BAD_REQUEST, "Invalid payload"))?;
+            .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
         let new_date = upd.date.unwrap_or(req.date);
         let new_hours = upd.planned_hours.unwrap_or(req.planned_hours);
         if new_hours <= 0.0 {
-            return Err(error_response(
-                StatusCode::BAD_REQUEST,
-                "planned_hours must be > 0",
-            ));
+            return Err(AppError::BadRequest("planned_hours must be > 0".into()));
         }
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
         requests_repo::update_overtime_request(
             &pool, &req.id, new_date, new_hours, new_reason, now,
         )
-        .await
-        .map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update request",
-            )
-        })?;
+        .await?;
         return Ok(Json(json!({"message":"Overtime request updated"})));
     }
 
-    Err(error_response(StatusCode::NOT_FOUND, "Request not found"))
+    Err(AppError::NotFound("Request not found".into()))
 }
 
 pub async fn cancel_request(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
     // Leave
     let now = Utc::now();
     let result = requests_repo::cancel_leave_request(&pool, &request_id, &user_id, now)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
     // Overtime
     let result = requests_repo::cancel_overtime_request(&pool, &request_id, &user_id, Utc::now())
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+        .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
-    Err(error_response(
-        StatusCode::NOT_FOUND,
-        "Request not found or not cancellable",
-    ))
+    Err(AppError::NotFound("Request not found or not cancellable".into()))
 }
 
 fn is_valid_leave_window(start: NaiveDate, end: NaiveDate) -> bool {
@@ -259,9 +198,6 @@ fn is_valid_planned_hours(hours: f64) -> bool {
     hours > 0.0
 }
 
-fn error_response(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (status, Json(json!({ "error": message.into() })))
-}
 
 #[cfg(test)]
 mod tests {

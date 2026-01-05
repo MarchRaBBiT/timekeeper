@@ -1,6 +1,6 @@
 use axum::{
     extract::{Extension, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -27,10 +27,10 @@ use crate::{
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
         password::{hash_password, verify_password},
     },
+    error::AppError,
 };
 
-pub type HandlerError = (StatusCode, Json<Value>);
-pub type HandlerResult<T> = Result<T, HandlerError>;
+pub type HandlerResult<T> = Result<T, AppError>;
 
 #[derive(Debug)]
 pub struct AuthSession {
@@ -42,7 +42,7 @@ pub struct AuthSession {
 pub async fn login(
     State((pool, config)): State<(PgPool, Config)>,
     Json(payload): Json<LoginRequest>,
-) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
+) -> HandlerResult<impl axum::response::IntoResponse> {
     let user = auth_repo::find_user_by_username(&pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
@@ -61,7 +61,7 @@ pub async fn login(
         {
             let pool = pool.clone();
             move |claims, context| async move {
-                persist_active_access_token(&pool, &claims, context.as_deref()).await
+                persist_active_access_token(&pool, &claims, context).await
             }
         },
     )
@@ -76,7 +76,7 @@ pub async fn refresh(
     State((pool, config)): State<(PgPool, Config)>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
+) -> HandlerResult<impl axum::response::IntoResponse> {
     let cookie_header = cookie_header_value(&headers);
     let refresh_token =
         extract_cookie_value(cookie_header.unwrap_or_default(), REFRESH_COOKIE_NAME)
@@ -127,7 +127,7 @@ pub async fn refresh(
         .get("device_label")
         .and_then(|v| v.as_str())
         .or(Some("refresh"));
-    persist_active_access_token(&pool, &claims, device_context).await?;
+    persist_active_access_token(&pool, &claims, device_context.map(|s| s.to_string())).await?;
     if let Some(old_jti) = payload.get("previous_jti").and_then(|v| v.as_str()) {
         let _ = revoke_active_access_token(&pool, old_jti).await;
     }
@@ -145,7 +145,7 @@ pub async fn refresh(
 
 pub async fn mfa_status(
     Extension(user): Extension<User>,
-) -> Result<Json<MfaStatusResponse>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<MfaStatusResponse>> {
     Ok(Json(MfaStatusResponse {
         enabled: user.is_mfa_enabled(),
         pending: user.has_pending_mfa(),
@@ -154,7 +154,7 @@ pub async fn mfa_status(
 
 pub async fn me(
     Extension(user): Extension<User>,
-) -> Result<Json<UserResponse>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<UserResponse>> {
     Ok(Json(UserResponse::from(user)))
 }
 
@@ -162,21 +162,15 @@ async fn begin_mfa_enrollment(
     pool: &PgPool,
     config: &Config,
     user: &User,
-) -> Result<MfaSetupResponse, (StatusCode, Json<Value>)> {
+) -> HandlerResult<MfaSetupResponse> {
     if user.is_mfa_enabled() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "MFA already enabled"})),
-        ));
+        return Err(bad_request("MFA already enabled"));
     }
 
     let secret = generate_totp_secret();
     let otpauth_url =
         generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret).map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to issue MFA secret"})),
-            )
+            internal_error("Failed to issue MFA secret")
         })?;
 
     if sqlx::query(
@@ -189,10 +183,7 @@ async fn begin_mfa_enrollment(
     .await
     .is_err()
     {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to persist MFA secret"})),
-        ));
+        return Err(internal_error("Failed to persist MFA secret"));
     }
 
     Ok(MfaSetupResponse {
@@ -205,7 +196,7 @@ pub async fn mfa_setup(
     State((pool, config)): State<(PgPool, Config)>,
     headers: HeaderMap,
     Extension(user): Extension<User>,
-) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<MfaSetupResponse>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
     let response = begin_mfa_enrollment(&pool, &config, &user).await?;
     Ok(Json(response))
@@ -215,7 +206,7 @@ pub async fn mfa_register(
     State((pool, config)): State<(PgPool, Config)>,
     headers: HeaderMap,
     Extension(user): Extension<User>,
-) -> Result<Json<MfaSetupResponse>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<MfaSetupResponse>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
     let response = begin_mfa_enrollment(&pool, &config, &user).await?;
     Ok(Json(response))
@@ -226,7 +217,7 @@ pub async fn mfa_activate(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<Value>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
     let secret = user
         .mfa_secret
@@ -246,10 +237,7 @@ pub async fn mfa_activate(
         .await
         .is_err()
     {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to enable MFA"})),
-        ));
+        return Err(internal_error("Failed to enable MFA"));
     }
 
     revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
@@ -263,33 +251,21 @@ pub async fn mfa_disable(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<Value>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
     if !user.is_mfa_enabled() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "MFA is not enabled"})),
-        ));
+        return Err(bad_request("MFA is not enabled"));
     }
 
     let secret = user.mfa_secret.as_ref().ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "MFA secret missing"})),
-        )
+        internal_error("MFA secret missing")
     })?;
 
     let code = payload.code.trim().to_string();
     if !verify_totp_code(secret, &code).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "MFA verification error"})),
-        )
+        internal_error("MFA verification error")
     })? {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid MFA code"})),
-        ));
+        return Err(unauthorized("Invalid MFA code"));
     }
 
     if sqlx::query(
@@ -301,10 +277,7 @@ pub async fn mfa_disable(
     .await
     .is_err()
     {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to disable MFA"})),
-        ));
+        return Err(internal_error("Failed to disable MFA"));
     }
 
     if sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
@@ -313,10 +286,7 @@ pub async fn mfa_disable(
         .await
         .is_err()
     {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to revoke refresh tokens"})),
-        ));
+        return Err(internal_error("Failed to revoke refresh tokens"));
     }
 
     revoke_active_tokens_for_user(&pool, &user.id).await?;
@@ -329,21 +299,15 @@ pub async fn change_password(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<ChangePasswordRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> HandlerResult<Json<Value>> {
     crate::utils::security::verify_request_origin(&headers, &config)?;
 
     // Basic guardrails for the new password to reduce trivial mistakes.
     if payload.new_password.len() < 8 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "New password must be at least 8 characters"})),
-        ));
+        return Err(bad_request("New password must be at least 8 characters"));
     }
     if payload.new_password == payload.current_password {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "New password must differ from current password"})),
-        ));
+        return Err(bad_request("New password must differ from current password"));
     }
 
     ensure_password_matches(
@@ -354,10 +318,7 @@ pub async fn change_password(
 
     // Hash and persist the new password.
     let new_hash = hash_password(&payload.new_password).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to hash password"})),
-        )
+        internal_error("Failed to hash password")
     })?;
 
     if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
@@ -368,10 +329,7 @@ pub async fn change_password(
         .await
         .is_err()
     {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to update password"})),
-        ));
+        return Err(internal_error("Failed to update password"));
     }
 
     revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
@@ -386,7 +344,7 @@ pub async fn logout(
     Extension(claims): Extension<Claims>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<Value>)> {
+) -> HandlerResult<impl axum::response::IntoResponse> {
     let all = payload
         .get("all")
         .and_then(|v| v.as_bool())
@@ -423,20 +381,16 @@ pub async fn logout(
     Ok((response_headers, Json(json!({"message":"Logged out"}))))
 }
 
-fn handler_error(status: StatusCode, message: &'static str) -> HandlerError {
-    (status, Json(json!({ "error": message })))
+fn bad_request(message: impl Into<String>) -> AppError {
+    AppError::BadRequest(message.into())
 }
 
-fn bad_request(message: &'static str) -> HandlerError {
-    handler_error(StatusCode::BAD_REQUEST, message)
+fn unauthorized(message: impl Into<String>) -> AppError {
+    AppError::Unauthorized(message.into())
 }
 
-fn unauthorized(message: &'static str) -> HandlerError {
-    handler_error(StatusCode::UNAUTHORIZED, message)
-}
-
-fn internal_error(message: &'static str) -> HandlerError {
-    handler_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+fn internal_error(message: impl Into<String>) -> AppError {
+    AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }
 
 pub async fn process_login_for_user<PF, AF, PFut, AFut>(
@@ -646,7 +600,7 @@ async fn revoke_tokens_for_user(
 async fn persist_active_access_token(
     pool: &PgPool,
     claims: &Claims,
-    context: Option<&str>,
+    context: Option<String>,
 ) -> HandlerResult<()> {
     let expires_at = claims_expiration_datetime(claims)?;
     auth_repo::cleanup_expired_access_tokens(pool)

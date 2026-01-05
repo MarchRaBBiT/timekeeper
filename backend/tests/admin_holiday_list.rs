@@ -1,8 +1,4 @@
-use axum::{
-    extract::{Extension, Query, State},
-    http::StatusCode,
-    Json,
-};
+use axum::extract::{Extension, Query, State};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use chrono_tz::UTC;
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -19,6 +15,7 @@ use timekeeper_backend::{
     },
     models::user::{User, UserRole},
     utils::cookies::SameSite,
+    error::AppError,
 };
 
 #[cfg(feature = "test-utils")]
@@ -259,12 +256,13 @@ async fn admin_holiday_list_rejects_unknown_type() {
     )
     .await;
 
-    let (status, Json(body)) = result.expect_err("expected bad request for invalid type");
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        body.get("error").and_then(|v| v.as_str()),
-        Some("`type` must be one of public, weekly, exception, all")
-    );
+    match result {
+        Ok(_) => panic!("expected bad request for invalid type"),
+        Err(AppError::BadRequest(msg)) => {
+            assert_eq!(msg, "`type` must be one of public, weekly, exception, all");
+        }
+        Err(e) => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[tokio::test]
@@ -288,12 +286,13 @@ async fn admin_holiday_list_rejects_invalid_date_format() {
     )
     .await;
 
-    let (status, Json(body)) = result.expect_err("expected bad request for invalid date");
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        body.get("error").and_then(|v| v.as_str()),
-        Some("`from`/`to` must be a valid date (YYYY-MM-DD or RFC3339)")
-    );
+    match result {
+        Ok(_) => panic!("expected bad request for invalid date"),
+        Err(AppError::BadRequest(msg)) => {
+            assert_eq!(msg, "`from`/`to` must be a valid date (YYYY-MM-DD or RFC3339)");
+        }
+        Err(e) => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[tokio::test]
@@ -317,12 +316,13 @@ async fn admin_holiday_list_rejects_from_after_to() {
     )
     .await;
 
-    let (status, Json(body)) = result.expect_err("expected bad request when from > to");
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        body.get("error").and_then(|v| v.as_str()),
-        Some("`from` must be before or equal to `to`")
-    );
+    match result {
+        Ok(_) => panic!("expected bad request when from > to"),
+        Err(AppError::BadRequest(msg)) => {
+            assert_eq!(msg, "`from` must be before or equal to `to`");
+        }
+        Err(e) => panic!("unexpected error: {:?}", e),
+    }
 }
 
 #[test]

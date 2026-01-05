@@ -1,11 +1,11 @@
 use crate::config::Config;
-use axum::http::{HeaderMap, StatusCode};
-use serde_json::json;
+use axum::http::HeaderMap;
+use crate::error::AppError;
 
 pub fn verify_request_origin(
     headers: &HeaderMap,
     config: &Config,
-) -> Result<(), (StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<(), AppError> {
     let origin = headers
         .get("Origin")
         .and_then(|v| v.to_str().ok())
@@ -14,18 +14,11 @@ pub fn verify_request_origin(
     let origin_str = match origin {
         Some(o) => o,
         None => {
-            return Err((
-                StatusCode::FORBIDDEN,
-                axum::Json(json!({ "error": "Missing Origin or Referer header" })),
-            ))
+            return Err(AppError::Forbidden("Missing Origin or Referer header".into()))
         }
     };
 
     // If config allows specific origins, check against them.
-    // If config allows '*', this check is technically bypassed for exact matching,
-    // but the user requested "strict" verification.
-    // However, if the server is configured with '*', we can't strictly block others without knowing what is allowed.
-    // For now, we follow the config.
     if config
         .cors_allow_origins
         .iter()
@@ -33,10 +26,7 @@ pub fn verify_request_origin(
     {
         Ok(())
     } else {
-        Err((
-            StatusCode::FORBIDDEN,
-            axum::Json(json!({ "error": "Invalid Origin or Referer" })),
-        ))
+        Err(AppError::Forbidden("Invalid Origin or Referer".into()))
     }
 }
 
