@@ -19,6 +19,7 @@ pub enum AppError {
     NotFound(String),
     Unauthorized(String),
     Forbidden(String),
+    Conflict(String),
     BadRequest(String),
     InternalServerError(anyhow::Error),
     Validation(Vec<String>),
@@ -35,7 +36,13 @@ impl IntoResponse for AppError {
                 None,
             ),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg, "FORBIDDEN".to_string(), None),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg, "BAD_REQUEST".to_string(), None),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg, "CONFLICT".to_string(), None),
+            AppError::BadRequest(msg) => (
+                StatusCode::BAD_REQUEST,
+                msg,
+                "BAD_REQUEST".to_string(),
+                None,
+            ),
             AppError::InternalServerError(err) => {
                 tracing::error!("Internal server error: {:?}", err);
                 (

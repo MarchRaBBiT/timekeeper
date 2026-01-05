@@ -10,12 +10,12 @@ use sqlx::PgPool;
 
 use crate::{
     config::Config,
+    error::AppError,
     models::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         user::User,
     },
     services::holiday_exception::{HolidayExceptionError, HolidayExceptionServiceTrait},
-    error::AppError,
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -84,7 +84,9 @@ pub async fn delete_holiday_exception(
 
 fn holiday_exception_error_to_app_error(error: HolidayExceptionError) -> AppError {
     match error {
-        HolidayExceptionError::Conflict => AppError::BadRequest("Holiday exception already exists for this date".into()),
+        HolidayExceptionError::Conflict => {
+            AppError::Conflict("Holiday exception already exists for this date".into())
+        }
         HolidayExceptionError::NotFound => AppError::NotFound("Holiday exception not found".into()),
         HolidayExceptionError::UserNotFound => AppError::NotFound("User not found".into()),
         HolidayExceptionError::Database(err) => AppError::InternalServerError(err.into()),
@@ -98,7 +100,6 @@ fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
         Err(AppError::Forbidden("Forbidden".into()))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
