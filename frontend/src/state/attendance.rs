@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, AttendanceResponse, AttendanceStatusResponse};
+use crate::api::{ApiClient, AttendanceResponse, AttendanceStatusResponse, ApiError};
 use crate::utils::time::today_in_app_tz;
 use chrono::NaiveDate;
 use leptos::*;
@@ -58,7 +58,7 @@ pub struct AttendanceState {
     pub attendance_history: Vec<AttendanceResponse>,
     pub today_status: Option<AttendanceStatusResponse>,
     pub today_holiday_reason: Option<String>,
-    pub last_refresh_error: Option<String>,
+    pub last_refresh_error: Option<ApiError>,
     pub range_from: Option<NaiveDate>,
     pub range_to: Option<NaiveDate>,
     pub loading: bool,
@@ -72,7 +72,7 @@ pub fn use_attendance() -> (ReadSignal<AttendanceState>, WriteSignal<AttendanceS
 pub async fn clock_in(
     api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     set_attendance_state.update(|state| state.loading = true);
     match api.clock_in().await {
         Ok(attendance) => {
@@ -92,7 +92,7 @@ pub async fn clock_in(
 pub async fn clock_out(
     api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     set_attendance_state.update(|state| state.loading = true);
     match api.clock_out().await {
         Ok(attendance) => {
@@ -109,11 +109,11 @@ pub async fn clock_out(
     }
 }
 
-pub async fn start_break(api: &ApiClient, attendance_id: &str) -> Result<(), String> {
+pub async fn start_break(api: &ApiClient, attendance_id: &str) -> Result<(), ApiError> {
     api.break_start(attendance_id).await.map(|_| ())
 }
 
-pub async fn end_break(api: &ApiClient, break_id: &str) -> Result<(), String> {
+pub async fn end_break(api: &ApiClient, break_id: &str) -> Result<(), ApiError> {
     api.break_end(break_id).await.map(|_| ())
 }
 
@@ -122,7 +122,7 @@ pub async fn load_attendance_range(
     set_attendance_state: WriteSignal<AttendanceState>,
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     set_attendance_state.update(|state| state.loading = true);
     match api.get_my_attendance_range(from, to).await {
         Ok(history) => {
@@ -144,7 +144,7 @@ pub async fn load_attendance_range(
 pub async fn load_today_status(
     api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     set_attendance_state.update(|state| state.loading = true);
     match api.get_attendance_status(None).await {
         Ok(status) => {
@@ -164,7 +164,7 @@ pub async fn load_today_status(
 pub async fn load_today_holiday_reason(
     api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     let today = today_in_app_tz();
     match api.check_holiday(today).await {
         Ok(response) => {
@@ -187,7 +187,7 @@ pub async fn load_today_holiday_reason(
 pub async fn refresh_today_context(
     api: &ApiClient,
     set_attendance_state: WriteSignal<AttendanceState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     if let Err(err) = load_today_status(api, set_attendance_state).await {
         set_attendance_state.update(|state| state.last_refresh_error = Some(err.clone()));
         return Err(err);
@@ -253,10 +253,10 @@ mod tests {
     #[wasm_bindgen_test]
     fn can_store_refresh_error_message() {
         let state = AttendanceState {
-            last_refresh_error: Some("network error".into()),
+            last_refresh_error: Some(crate::api::ApiError::validation("network error")),
             ..Default::default()
         };
-        assert_eq!(state.last_refresh_error.as_deref(), Some("network error"));
+        assert_eq!(state.last_refresh_error.as_ref().map(|e| e.error.as_str()), Some("network error"));
     }
 }
 

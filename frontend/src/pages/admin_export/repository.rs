@@ -1,4 +1,4 @@
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -28,11 +28,11 @@ impl AdminExportRepository {
         username: Option<&str>,
         from: Option<&str>,
         to: Option<&str>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, ApiError> {
         self.client.export_data_filtered(username, from, to).await
     }
 
-    pub async fn fetch_users(&self) -> Result<Vec<crate::api::UserResponse>, String> {
+    pub async fn fetch_users(&self) -> Result<Vec<crate::api::UserResponse>, ApiError> {
         self.client.get_users().await
     }
 }

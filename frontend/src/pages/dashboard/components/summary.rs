@@ -1,5 +1,6 @@
 use crate::{
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::error::InlineErrorMessage,
+    components::layout::LoadingSpinner,
     pages::dashboard::{
         repository::DashboardSummary,
         utils::{format_days, format_hours},
@@ -8,7 +9,7 @@ use crate::{
 use leptos::*;
 
 #[component]
-pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, String>>) -> impl IntoView {
+pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, crate::api::ApiError>>) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <div>
@@ -23,7 +24,10 @@ pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, String>>) -
                             <span>{"勤怠サマリーを読み込み中..."}</span>
                         </div>
                     }.into_view(),
-                    Some(Err(err)) => view! { <ErrorMessage message={err.clone()} /> }.into_view(),
+                    Some(Err(err)) => {
+                        let error_signal = create_rw_signal(Some(err));
+                        view! { <InlineErrorMessage error={error_signal.into()} /> }.into_view()
+                    }
                     Some(Ok(data)) => view! {
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
                             <Metric label="総労働時間".to_string() value={format_hours(data.total_work_hours)} />

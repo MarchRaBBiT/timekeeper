@@ -1,18 +1,18 @@
 use super::utils::LoginFormState;
-use crate::api::LoginRequest;
+use crate::api::{ApiError, LoginRequest};
 use crate::state::auth;
 use leptos::*;
 
 #[derive(Clone)]
 pub struct LoginViewModel {
     pub form: LoginFormState,
-    pub error: RwSignal<Option<String>>,
-    pub login_action: Action<LoginRequest, Result<(), String>>,
+    pub error: RwSignal<Option<ApiError>>,
+    pub login_action: Action<LoginRequest, Result<(), ApiError>>,
 }
 
 pub fn use_login_view_model() -> LoginViewModel {
     let form = LoginFormState::default();
-    let error = create_rw_signal(None::<String>);
+    let error = create_rw_signal(None::<ApiError>);
     let login_action = auth::use_login_action();
 
     let form_copy = form;

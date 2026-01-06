@@ -1,5 +1,5 @@
 use crate::{
-    api::{ApiClient, LoginRequest, UserResponse},
+    api::{ApiClient, ApiError, LoginRequest, UserResponse},
     pages::login::repository as login_repository,
 };
 use leptos::*;
@@ -48,11 +48,11 @@ pub fn use_auth() -> AuthContext {
     use_context::<AuthContext>().unwrap_or_else(|| create_signal(AuthState::default()))
 }
 
-async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, String> {
+async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, ApiError> {
     api_client.get_me().await
 }
 
-async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, String> {
+async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, ApiError> {
     let response = api_client.refresh_token().await?;
     Ok(response.user)
 }
@@ -61,7 +61,7 @@ pub async fn login_request(
     request: LoginRequest,
     repo: &login_repository::LoginRepository,
     set_auth_state: WriteSignal<AuthState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     set_auth_state.update(|state| state.loading = true);
 
     match repo.login(request).await {
@@ -84,7 +84,7 @@ pub async fn logout(
     all_sessions: bool,
     repo: &login_repository::LoginRepository,
     set_auth_state: WriteSignal<AuthState>,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     let result = repo.logout(all_sessions).await;
 
     set_auth_state.update(|state| {
@@ -96,7 +96,7 @@ pub async fn logout(
     result
 }
 
-pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
+pub fn use_login_action() -> Action<LoginRequest, Result<(), ApiError>> {
     let (_auth, set_auth) = use_auth();
     let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
@@ -108,7 +108,7 @@ pub fn use_login_action() -> Action<LoginRequest, Result<(), String>> {
     })
 }
 
-pub fn use_logout_action() -> Action<bool, Result<(), String>> {
+pub fn use_logout_action() -> Action<bool, Result<(), ApiError>> {
     let (_auth, set_auth) = use_auth();
     let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));

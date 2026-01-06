@@ -1,12 +1,13 @@
 use crate::{
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::error::InlineErrorMessage,
+    components::layout::LoadingSpinner,
     pages::dashboard::{repository::DashboardActivity, utils::ActivityStatusFilter},
 };
 use leptos::*;
 
 #[component]
 pub fn ActivitiesSection(
-    activities: Resource<ActivityStatusFilter, Result<Vec<DashboardActivity>, String>>,
+    activities: Resource<ActivityStatusFilter, Result<Vec<DashboardActivity>, crate::api::ApiError>>,
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
@@ -21,7 +22,10 @@ pub fn ActivitiesSection(
                         <span>{"最新の申請情報を読み込み中..."}</span>
                     </div>
                 }.into_view(),
-                Some(Err(err)) => view! { <ErrorMessage message={err.clone()} /> }.into_view(),
+                Some(Err(err)) => {
+                    let error_signal = create_rw_signal(Some(err));
+                    view! { <InlineErrorMessage error={error_signal.into()} /> }.into_view()
+                }
                 Some(Ok(list)) => view! {
                     <ul class="divide-y divide-gray-100">
                         <For

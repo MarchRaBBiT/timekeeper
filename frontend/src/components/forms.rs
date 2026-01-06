@@ -40,7 +40,7 @@ fn button_flags_for(status: Option<&str>, loading: bool) -> AttendanceButtonFlag
 pub fn AttendanceActionButtons(
     attendance_state: ReadSignal<AttendanceState>,
     action_pending: ReadSignal<bool>,
-    message: ReadSignal<Option<String>>,
+    message: ReadSignal<Option<crate::api::ApiError>>,
     on_clock_in: Callback<MouseEvent>,
     on_clock_out: Callback<MouseEvent>,
     on_break_start: Callback<MouseEvent>,
@@ -157,7 +157,8 @@ pub fn AttendanceActionButtons(
             {move || {
                 message
                     .get()
-                    .map(|msg| {
+                    .map(|err| {
+                        let msg = &err.error;
                         let is_error = msg.contains("失敗") || msg.contains("エラー") || msg.contains("できません");
                         let (bg, border, text, icon) = if is_error {
                             ("bg-red-50", "border-red-100", "text-red-700", "fa-exclamation-circle")
@@ -167,7 +168,7 @@ pub fn AttendanceActionButtons(
                         view! {
                             <div class=format!("flex items-center gap-2 p-3 rounded-xl border {} {} {} animate-pop-in", bg, border, text)>
                                 <i class=format!("fas {}", icon)></i>
-                                <p class="text-sm font-medium">{msg}</p>
+                                <p class="text-sm font-medium">{msg.clone()}</p>
                             </div>
                         }.into_view()
                     })

@@ -243,9 +243,52 @@ pub struct CreateUser {
     pub is_system_admin: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use leptos::*;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApiError {
     pub error: String,
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl IntoView for ApiError {
+    fn into_view(self) -> View {
+        self.error.into_view()
+    }
+}
+
+impl ApiError {
+    pub fn validation(msg: impl Into<String>) -> Self {
+        Self {
+            error: msg.into(),
+            code: "VALIDATION_ERROR".to_string(),
+            details: None,
+        }
+    }
+
+    pub fn unknown(msg: impl Into<String>) -> Self {
+        Self {
+            error: msg.into(),
+            code: "UNKNOWN".to_string(),
+            details: None,
+        }
+    }
+
+    pub fn request_failed(msg: impl Into<String>) -> Self {
+        Self {
+            error: msg.into(),
+            code: "REQUEST_FAILED".to_string(),
+            details: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 use super::{repository::MfaRepository, utils::MessageState};
 use crate::{
-    api::{ApiClient, MfaSetupResponse, MfaStatusResponse},
+    api::{ApiClient, MfaSetupResponse, MfaStatusResponse, ApiError},
     state::auth::use_auth,
 };
 use leptos::*;
@@ -13,8 +13,8 @@ pub struct MfaViewModel {
     pub totp_code: RwSignal<String>,
     pub messages: MessageState,
     pub fetch_status_action: Action<(), ()>,
-    pub register_action: Action<(), Result<MfaSetupResponse, String>>,
-    pub activate_action: Action<String, Result<(), String>>,
+    pub register_action: Action<(), Result<MfaSetupResponse, ApiError>>,
+    pub activate_action: Action<String, Result<(), ApiError>>,
 }
 
 pub fn use_mfa_view_model() -> MfaViewModel {

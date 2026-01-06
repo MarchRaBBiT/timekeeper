@@ -1,6 +1,6 @@
 use crate::{
-    api::{CreateUser, UserResponse},
-    components::layout::{ErrorMessage, SuccessMessage},
+    api::{ApiError, CreateUser, UserResponse},
+    components::{error::InlineErrorMessage, layout::SuccessMessage},
     pages::admin_users::utils::{InviteFormState, MessageState},
 };
 use leptos::{ev, *};
@@ -10,7 +10,7 @@ use wasm_bindgen::JsCast;
 pub fn InviteForm(
     form_state: InviteFormState,
     messages: MessageState,
-    invite_action: Action<CreateUser, Result<UserResponse, String>>,
+    invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     is_system_admin: Memo<bool>,
 ) -> impl IntoView {
     let pending = invite_action.pending();
@@ -19,11 +19,11 @@ pub fn InviteForm(
             ev.prevent_default();
             messages.clear();
             if !is_system_admin.get_untracked() {
-                messages.set_error("システム管理者のみ操作できます。");
+                messages.set_error(ApiError::unknown("システム管理者のみ操作できます。"));
                 return;
             }
             if !form_state.is_valid() {
-                messages.set_error("すべての必須項目を入力してください。");
+                messages.set_error(ApiError::validation("すべての必須項目を入力してください。"));
                 return;
             }
             invite_action.dispatch(form_state.to_request());
@@ -38,7 +38,7 @@ pub fn InviteForm(
             </div>
 
             <Show when=move || messages.error.get().is_some()>
-                <ErrorMessage message={messages.error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={messages.error.into()} />
             </Show>
             <Show when=move || messages.success.get().is_some()>
                 <SuccessMessage message={messages.success.get().unwrap_or_default()} />

@@ -1,6 +1,6 @@
 use crate::{
     api::HolidayCalendarEntry,
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
     state::attendance::describe_holiday_reason,
 };
 use leptos::*;
@@ -8,8 +8,8 @@ use leptos::*;
 #[component]
 pub fn HolidayAlerts(
     holiday_entries: Signal<Vec<HolidayCalendarEntry>>,
-    loading: Signal<bool>,
-    error: Signal<Option<String>>,
+    loading:Signal<bool>,
+    error: Signal<Option<crate::api::ApiError>>,
     active_period: Signal<(i32, u32)>,
     on_refresh: Callback<()>,
 ) -> impl IntoView {
@@ -34,7 +34,7 @@ pub fn HolidayAlerts(
                 </button>
             </div>
             <Show when=move || error.get().is_some()>
-                <ErrorMessage message={error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={error} />
             </Show>
             <Show when=move || loading.get()>
                 <div class="flex items-center gap-2 text-sm text-gray-500">

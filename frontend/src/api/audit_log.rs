@@ -11,7 +11,7 @@ impl ApiClient {
         actor_id: Option<String>,
         event_type: Option<String>,
         result: Option<String>,
-    ) -> Result<AuditLogListResponse, String> {
+    ) -> Result<AuditLogListResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params = vec![
             ("page".to_string(), page.to_string()),
@@ -58,13 +58,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
@@ -75,7 +75,7 @@ impl ApiClient {
         actor_id: Option<String>,
         event_type: Option<String>,
         result: Option<String>,
-    ) -> Result<Vec<AuditLog>, String> {
+    ) -> Result<Vec<AuditLog>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params = Vec::new();
         if let Some(v) = from {
@@ -119,13 +119,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 }

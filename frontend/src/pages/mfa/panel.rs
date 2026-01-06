@@ -1,5 +1,5 @@
 use crate::{
-    components::layout::{ErrorMessage, Layout, SuccessMessage},
+    components::{error::InlineErrorMessage, layout::{Layout, SuccessMessage}},
     pages::mfa::{
         components::{setup::SetupSection, verify::VerificationSection},
         utils,
@@ -60,7 +60,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
                     <SuccessMessage message={vm.messages.success.get().unwrap_or_default()} />
                 </Show>
                 <Show when=move || vm.messages.error.get().is_some() fallback=|| ()>
-                    <ErrorMessage message={vm.messages.error.get().unwrap_or_default()} />
+                    <InlineErrorMessage error={vm.messages.error.into()} />
                 </Show>
                 <VerificationSection
                     setup_info=vm.setup_info.read_only()

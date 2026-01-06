@@ -1,5 +1,6 @@
 use crate::{
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
+    api::ApiError,
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         utils::RequestFilterState,
@@ -15,10 +16,10 @@ pub fn AdminRequestsSection(
     filter: RequestFilterState,
     resource: Resource<
         (bool, crate::pages::admin::utils::RequestFilterSnapshot, u32),
-        Result<serde_json::Value, String>,
+        Result<serde_json::Value, ApiError>,
     >,
-    action: Action<RequestActionPayload, Result<(), String>>,
-    action_error: RwSignal<Option<String>>,
+    action: Action<RequestActionPayload, Result<(), ApiError>>,
+    action_error: RwSignal<Option<ApiError>>,
     reload: RwSignal<u32>,
 ) -> impl IntoView {
     let modal_open = create_rw_signal(false);
@@ -120,7 +121,7 @@ pub fn AdminRequestsSection(
                 </button>
             </div>
             <Show when=move || requests_error.get().is_some()>
-                <ErrorMessage message={requests_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={requests_error} />
             </Show>
             <Show when=move || requests_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-gray-600">
@@ -210,7 +211,7 @@ pub fn AdminRequestsSection(
                             ></textarea>
                         </div>
                         <Show when=move || action_error.get().is_some()>
-                            <ErrorMessage message={action_error.get().unwrap_or_default()} />
+                            <InlineErrorMessage error={action_error.into()} />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
                             <button class="px-3 py-1 rounded border" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>

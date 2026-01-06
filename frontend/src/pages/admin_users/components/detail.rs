@@ -1,6 +1,6 @@
 use crate::{
-    api::UserResponse,
-    components::layout::{ErrorMessage, SuccessMessage},
+    api::{ApiError, UserResponse},
+    components::{error::InlineErrorMessage, layout::SuccessMessage},
     pages::admin_users::utils::MessageState,
 };
 use leptos::*;
@@ -9,8 +9,8 @@ use leptos::*;
 pub fn UserDetailDrawer(
     selected_user: RwSignal<Option<UserResponse>>,
     messages: MessageState,
-    reset_mfa_action: Action<String, Result<(), String>>,
-    delete_user_action: Action<(String, bool), Result<(), String>>,
+    reset_mfa_action: Action<String, Result<(), ApiError>>,
+    delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Current user's ID to prevent self-deletion
     current_user_id: Signal<Option<String>>,
 ) -> impl IntoView {
@@ -111,7 +111,7 @@ pub fn UserDetailDrawer(
                                             </p>
                                         </div>
                                         <Show when=move || messages.error.get().is_some()>
-                                            <ErrorMessage message={messages.error.get().unwrap_or_default()} />
+                                            <InlineErrorMessage error={messages.error.into()} />
                                         </Show>
                                         <Show when=move || messages.success.get().is_some()>
                                             <SuccessMessage message={messages.success.get().unwrap_or_default()} />

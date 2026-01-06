@@ -1,8 +1,9 @@
 use crate::{
-    api::{AdminAttendanceUpsert, AdminBreakItem},
+    api::{AdminAttendanceUpsert, AdminBreakItem, ApiError},
     components::{
         forms::DatePicker,
-        layout::{ErrorMessage, SuccessMessage},
+        layout::SuccessMessage,
+        error::InlineErrorMessage,
     },
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
@@ -33,7 +34,7 @@ pub fn AdminAttendanceToolsSection(
     let breaks = create_rw_signal(Vec::<(String, String)>::new());
     let break_force_id = create_rw_signal(String::new());
     let message = create_rw_signal(None::<String>);
-    let error = create_rw_signal(None::<String>);
+    let error = create_rw_signal(None::<ApiError>);
 
     let add_break = {
         move |_| {
@@ -100,9 +101,9 @@ pub fn AdminAttendanceToolsSection(
             let date_raw = att_date.get();
             let clock_in = parse_dt_local(&att_in.get());
             if user_id.trim().is_empty() || date_raw.trim().is_empty() || clock_in.is_none() {
-                error.set(Some(
-                    "ユーザーID・日付・出勤時刻を入力してください。".into(),
-                ));
+                error.set(Some(ApiError::validation(
+                    "ユーザーID・日付・出勤時刻を入力してください。",
+                )));
                 message.set(None);
                 return;
             }
@@ -113,7 +114,7 @@ pub fn AdminAttendanceToolsSection(
             };
             let date = NaiveDate::parse_from_str(&date_raw, "%Y-%m-%d").ok();
             if date.is_none() {
-                error.set(Some("日付は YYYY-MM-DD 形式で入力してください。".into()));
+                error.set(Some(ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。")));
                 message.set(None);
                 return;
             }
@@ -159,7 +160,7 @@ pub fn AdminAttendanceToolsSection(
             }
             let id = break_force_id.get();
             if id.trim().is_empty() {
-                error.set(Some("Break ID を入力してください。".into()));
+                error.set(Some(ApiError::validation("Break ID を入力してください。")));
                 message.set(None);
                 return;
             }
@@ -232,8 +233,8 @@ pub fn AdminAttendanceToolsSection(
                     </div>
                 </div>
                 <Show when=move || error.get().is_some()>
-                    <ErrorMessage message={error.get().unwrap_or_default()} />
-                </Show>
+                <InlineErrorMessage error={error.into()} />
+            </Show>
                 <Show when=move || message.get().is_some()>
                     <SuccessMessage message={message.get().unwrap_or_default()} />
                 </Show>

@@ -1,5 +1,5 @@
 use crate::components::forms::DatePicker;
-use crate::components::layout::{ErrorMessage, SuccessMessage};
+use crate::components::{error::InlineErrorMessage, layout::SuccessMessage};
 use leptos::{ev::MouseEvent, Callback, *};
 
 #[component]
@@ -7,12 +7,12 @@ pub fn RangeFormSection(
     from_input: RwSignal<String>,
     to_input: RwSignal<String>,
     exporting: Signal<bool>,
-    export_error: ReadSignal<Option<String>>,
+    export_error: ReadSignal<Option<crate::api::ApiError>>,
     export_success: ReadSignal<Option<String>>,
     history_loading: Signal<bool>,
-    history_error: Signal<Option<String>>,
+    history_error: Signal<Option<crate::api::ApiError>>,
     range_error: ReadSignal<Option<String>>,
-    last_refresh_error: Signal<Option<String>>,
+    last_refresh_error: Signal<Option<crate::api::ApiError>>,
     on_select_current_month: Callback<MouseEvent>,
     on_load_range: Callback<MouseEvent>,
     on_export_csv: Callback<MouseEvent>,
@@ -53,19 +53,21 @@ pub fn RangeFormSection(
             </button>
         </div>
         <Show when=move || export_error.get().is_some()>
-            <ErrorMessage message={export_error.get().unwrap_or_default()} />
+            <InlineErrorMessage error={export_error.into()} />
         </Show>
         <Show when=move || export_success.get().is_some()>
             <SuccessMessage message={export_success.get().unwrap_or_default()} />
         </Show>
         <Show when=move || range_error.get().is_some()>
-            <ErrorMessage message={range_error.get().unwrap_or_default()} />
+            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                {range_error.get().unwrap_or_default()}
+            </div>
         </Show>
         <Show when=move || history_error.get().is_some()>
-            <ErrorMessage message={history_error.get().unwrap_or_default()} />
+            <InlineErrorMessage error={history_error} />
         </Show>
         <Show when=move || last_refresh_error.get().is_some()>
-            <ErrorMessage message={last_refresh_error.get().unwrap_or_default()} />
+            <InlineErrorMessage error={last_refresh_error} />
         </Show>
     }
 }

@@ -1,4 +1,5 @@
-use crate::components::layout::{ErrorMessage, LoadingSpinner};
+use crate::components::{error::InlineErrorMessage, layout::LoadingSpinner};
+use crate::api::ApiError;
 use crate::pages::requests::types::{RequestKind, RequestSummary};
 use leptos::*;
 
@@ -6,7 +7,7 @@ use leptos::*;
 pub fn RequestsList(
     summaries: Signal<Vec<RequestSummary>>,
     loading: Signal<bool>,
-    error: Signal<Option<String>>,
+    error: Signal<Option<ApiError>>,
     on_select: Callback<RequestSummary>,
     on_edit: Callback<RequestSummary>,
     on_cancel: Callback<RequestSummary>,
@@ -18,7 +19,7 @@ pub fn RequestsList(
                 <h3 class="text-xl font-display font-bold text-slate-900">{"申請一覧"}</h3>
                 <Show when=move || message.get().error.is_some()>
                     <div class="mt-4">
-                        <ErrorMessage message={message.get().error.clone().unwrap_or_default()} />
+                        <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
                     </div>
                 </Show>
                 <Show when=move || message.get().success.is_some()>
@@ -31,7 +32,7 @@ pub fn RequestsList(
 
             <Show when=move || error.get().is_some()>
                 <div class="p-8">
-                    <ErrorMessage message={error.get().unwrap_or_default()} />
+                    <InlineErrorMessage error={error.into()} />
                 </div>
             </Show>
 

@@ -1,6 +1,6 @@
 use crate::{
     api::{AttendanceResponse, BreakRecordResponse, HolidayCalendarEntry},
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
     pages::attendance::repository,
     state::attendance::describe_holiday_reason,
 };
@@ -12,7 +12,7 @@ pub fn HistorySection(
     history: Signal<Vec<AttendanceResponse>>,
     holiday_entries: Signal<Vec<HolidayCalendarEntry>>,
     loading: Signal<bool>,
-    error: Signal<Option<String>>,
+    error: Signal<Option<crate::api::ApiError>>,
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow-premium rounded-3xl overflow-hidden border border-gray-100/50">
@@ -28,7 +28,7 @@ pub fn HistorySection(
             <div class="p-2">
                 <Show when=move || error.get().is_some()>
                     <div class="p-4">
-                        <ErrorMessage message={error.get().unwrap_or_default()} />
+                        <InlineErrorMessage error={error} />
                     </div>
                 </Show>
                 <Show when=move || !loading.get() && history.get().is_empty()>

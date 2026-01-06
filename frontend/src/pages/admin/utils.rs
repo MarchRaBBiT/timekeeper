@@ -1,4 +1,4 @@
-use crate::api::CreateWeeklyHolidayRequest;
+use crate::api::{ApiError, CreateWeeklyHolidayRequest};
 use chrono::NaiveDate;
 use leptos::*;
 
@@ -39,27 +39,27 @@ impl WeeklyHolidayFormState {
         self.ends_on.set(String::new());
     }
 
-    pub fn to_payload(&self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, String> {
+    pub fn to_payload(&self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, ApiError> {
         let weekday_value: u8 = self
             .weekday
             .get()
             .trim()
             .parse::<u8>()
-            .map_err(|_| "曜日は 0 (日) 〜 6 (土) で入力してください。".to_string())?;
+            .map_err(|_| ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。"))?;
         if weekday_value >= 7 {
-            return Err("曜日は 0 (日) 〜 6 (土) で入力してください。".into());
+            return Err(ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。"));
         }
         let start_raw = self.starts_on.get();
         if start_raw.trim().is_empty() {
-            return Err("稼働開始日を入力してください。".into());
+            return Err(ApiError::validation("稼働開始日を入力してください。"));
         }
         let start_date = NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d")
-            .map_err(|_| "稼働開始日は YYYY-MM-DD 形式で入力してください。".to_string())?;
+            .map_err(|_| ApiError::validation("稼働開始日は YYYY-MM-DD 形式で入力してください。"))?;
         if start_date < min_start {
-            return Err(format!(
+            return Err(ApiError::validation(&format!(
                 "稼働開始日は {} 以降の日付を選択してください。",
                 min_start.format("%Y-%m-%d")
-            ));
+            )));
         }
 
         let ends_on = {
@@ -68,9 +68,9 @@ impl WeeklyHolidayFormState {
                 None
             } else {
                 let parsed = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
-                    .map_err(|_| "稼働終了日は YYYY-MM-DD 形式で入力してください。".to_string())?;
+                    .map_err(|_| ApiError::validation("稼働終了日は YYYY-MM-DD 形式で入力してください。"))?;
                 if parsed < start_date {
-                    return Err("稼働終了日は開始日以降を指定してください。".into());
+                    return Err(ApiError::validation("稼働終了日は開始日以降を指定してください。"));
                 }
                 Some(parsed)
             }

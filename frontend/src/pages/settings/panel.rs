@@ -1,5 +1,6 @@
 use crate::{
-    components::layout::{ErrorMessage, Layout, SuccessMessage},
+    components::{error::InlineErrorMessage, layout::{Layout, SuccessMessage}},
+    api::ApiError,
     pages::{
         mfa::{
             components::{setup::SetupSection, verify::VerificationSection},
@@ -10,16 +11,16 @@ use crate::{
 };
 use leptos::{ev::SubmitEvent, Callback, *};
 
-fn map_change_password_error(error: &str) -> String {
-    match error {
-        "Current password is incorrect" => "現在のパスワードが正しくありません。".to_string(),
+fn map_change_password_error(error: &ApiError) -> ApiError {
+    match error.error.as_str() {
+        "Current password is incorrect" => ApiError::validation("現在のパスワードが正しくありません。"),
         "New password must be at least 8 characters" => {
-            "新しいパスワードは8文字以上である必要があります。".to_string()
+            ApiError::validation("新しいパスワードは8文字以上である必要があります。")
         }
         "New password must differ from current password" => {
-            "新しいパスワードは現在のパスワードと異なる必要があります。".to_string()
+            ApiError::validation("新しいパスワードは現在のパスワードと異なる必要があります。")
         }
-        _ => "パスワード変更に失敗しました。時間をおいて再度お試しください。".to_string(),
+        _ => ApiError::unknown("パスワード変更に失敗しました。時間をおいて再度お試しください。"),
     }
 }
 
@@ -34,7 +35,7 @@ pub fn SettingsPage() -> impl IntoView {
 
     let password_loading = vm.change_password_action.pending();
     let (password_success_msg, set_password_success_msg) = create_signal(Option::<String>::None);
-    let (password_error_msg, set_password_error_msg) = create_signal(Option::<String>::None);
+    let (password_error_msg, set_password_error_msg) = create_signal(Option::<ApiError>::None);
 
     create_effect(move |_| {
         if let Some(result) = vm.change_password_action.value().get() {
@@ -66,12 +67,12 @@ pub fn SettingsPage() -> impl IntoView {
 
         if new.len() < 8 {
             set_password_error_msg.set(Some(
-                "新しいパスワードは8文字以上である必要があります。".to_string(),
+                ApiError::validation("新しいパスワードは8文字以上である必要があります。"),
             ));
             return;
         }
         if new != confirm {
-            set_password_error_msg.set(Some("新しいパスワードが一致しません。".to_string()));
+            set_password_error_msg.set(Some(ApiError::validation("新しいパスワードが一致しません。")));
             return;
         }
 
@@ -129,7 +130,7 @@ pub fn SettingsPage() -> impl IntoView {
                         <SuccessMessage message={password_success_msg.get().unwrap_or_default()} />
                     </Show>
                     <Show when=move || password_error_msg.get().is_some() fallback=|| ()>
-                        <ErrorMessage message={password_error_msg.get().unwrap_or_default()} />
+                        <InlineErrorMessage error={password_error_msg.into()} />
                     </Show>
 
                     <form class="space-y-4" on:submit=on_submit_password>
@@ -182,7 +183,7 @@ pub fn SettingsPage() -> impl IntoView {
                         <SuccessMessage message={mfa_vm.messages.success.get().unwrap_or_default()} />
                     </Show>
                     <Show when=move || mfa_vm.messages.error.get().is_some() fallback=|| ()>
-                        <ErrorMessage message={mfa_vm.messages.error.get().unwrap_or_default()} />
+                        <InlineErrorMessage error={mfa_vm.messages.error.into()} />
                     </Show>
                     <VerificationSection
                         setup_info=mfa_vm.setup_info.read_only()
@@ -199,20 +200,21 @@ pub fn SettingsPage() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::map_change_password_error;
+    use crate::api::ApiError;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
     fn map_change_password_error_handles_known_messages() {
         assert_eq!(
-            map_change_password_error("Current password is incorrect"),
+            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
             "現在のパスワードが正しくありません。"
         );
         assert_eq!(
-            map_change_password_error("New password must be at least 8 characters"),
+            map_change_password_error(&ApiError::unknown("New password must be at least 8 characters")).error,
             "新しいパスワードは8文字以上である必要があります。"
         );
         assert_eq!(
-            map_change_password_error("New password must differ from current password"),
+            map_change_password_error(&ApiError::unknown("New password must differ from current password")).error,
             "新しいパスワードは現在のパスワードと異なる必要があります。"
         );
     }
@@ -220,7 +222,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn map_change_password_error_masks_unknown_messages() {
         assert_eq!(
-            map_change_password_error("Failed to update password"),
+            map_change_password_error(&ApiError::unknown("Failed to update password")).error,
             "パスワード変更に失敗しました。時間をおいて再度お試しください。"
         );
     }

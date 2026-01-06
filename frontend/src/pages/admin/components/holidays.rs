@@ -1,8 +1,9 @@
 use crate::{
-    api::CreateHolidayRequest,
+    api::{ApiError, CreateHolidayRequest},
     components::{
         forms::DatePicker,
-        layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+        layout::{LoadingSpinner, SuccessMessage},
+        error::InlineErrorMessage,
     },
     pages::admin::repository::{AdminRepository, HolidayListQuery, HolidayListResult},
     utils::time::now_in_app_tz,
@@ -21,7 +22,7 @@ pub fn HolidayManagementSection(
     let holiday_name_input = create_rw_signal(String::new());
     let holiday_desc_input = create_rw_signal(String::new());
     let holiday_message = create_rw_signal(None::<String>);
-    let holiday_error = create_rw_signal(None::<String>);
+    let holiday_error = create_rw_signal(None::<ApiError>);
     let deleting_id = create_rw_signal(None::<String>);
     let holiday_query = create_rw_signal(HolidayListQuery::default());
     let filter_from_input = create_rw_signal(String::new());
@@ -156,20 +157,20 @@ pub fn HolidayManagementSection(
             let parsed_from = match parse_input(&from_raw, "開始日") {
                 Ok(date) => date,
                 Err(err) => {
-                    holiday_error.set(Some(err));
+                    holiday_error.set(Some(ApiError::validation(&err)));
                     return;
                 }
             };
             let parsed_to = match parse_input(&to_raw, "終了日") {
                 Ok(date) => date,
                 Err(err) => {
-                    holiday_error.set(Some(err));
+                    holiday_error.set(Some(ApiError::validation(&err)));
                     return;
                 }
             };
             if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
                 if from > to {
-                    holiday_error.set(Some("開始日は終了日以前である必要があります。".into()));
+                    holiday_error.set(Some(ApiError::validation("開始日は終了日以前である必要があります。")));
                     return;
                 }
             }
@@ -200,14 +201,14 @@ pub fn HolidayManagementSection(
             let month_raw = calendar_month_input.get();
             let trimmed = month_raw.trim();
             if trimmed.is_empty() {
-                holiday_error.set(Some("月を選択してください。".into()));
+                holiday_error.set(Some(ApiError::validation("月を選択してください。")));
                 return;
             }
             let first_day = match NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
             {
                 Ok(date) => date,
                 Err(_) => {
-                    holiday_error.set(Some("月は YYYY-MM 形式で入力してください。".into()));
+                    holiday_error.set(Some(ApiError::validation("月は YYYY-MM 形式で入力してください。")));
                     return;
                 }
             };
@@ -290,7 +291,7 @@ pub fn HolidayManagementSection(
 
     let google_year_input = create_rw_signal(now_in_app_tz().year().to_string());
     let google_holidays = create_rw_signal(Vec::<CreateHolidayRequest>::new());
-    let google_error = create_rw_signal(None::<String>);
+    let google_error = create_rw_signal(None::<ApiError>);
     let repo_for_google = repository.clone();
     let fetch_google_action = create_action(move |year: &Option<i32>| {
         let repo = repo_for_google.clone();
@@ -365,14 +366,14 @@ pub fn HolidayManagementSection(
             let name_raw = holiday_name_input.get();
             let desc_raw = holiday_desc_input.get();
             if date_raw.trim().is_empty() || name_raw.trim().is_empty() {
-                holiday_error.set(Some("日付と名称を入力してください。".into()));
+                holiday_error.set(Some(ApiError::validation("日付と名称を入力してください。")));
                 holiday_message.set(None);
                 return;
             }
             let parsed_date = match NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d") {
                 Ok(date) => date,
                 Err(_) => {
-                    holiday_error.set(Some("日付は YYYY-MM-DD 形式で入力してください。".into()));
+                    holiday_error.set(Some(ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。")));
                     holiday_message.set(None);
                     return;
                 }
@@ -513,16 +514,16 @@ pub fn HolidayManagementSection(
                 </div>
             </div>
             <Show when=move || holiday_error.get().is_some()>
-                <ErrorMessage message={holiday_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={holiday_error.into()} />
             </Show>
             <Show when=move || holiday_message.get().is_some()>
                 <SuccessMessage message={holiday_message.get().unwrap_or_default()} />
             </Show>
             <Show when=move || holidays_fetch_error.get().is_some()>
-                <ErrorMessage message={holidays_fetch_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={holidays_fetch_error} />
             </Show>
             <Show when=move || google_error.get().is_some()>
-                <ErrorMessage message={google_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={google_error.into()} />
             </Show>
             <Show when=move || holidays_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-gray-600">

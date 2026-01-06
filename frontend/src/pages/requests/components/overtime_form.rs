@@ -1,6 +1,7 @@
-use crate::api::CreateOvertimeRequest;
+use crate::api::{ApiError, CreateOvertimeRequest};
 use crate::components::forms::DatePicker;
-use crate::components::layout::{ErrorMessage, SuccessMessage};
+use crate::components::layout::SuccessMessage;
+use crate::components::error::InlineErrorMessage;
 use crate::pages::requests::types::RequestKind;
 use crate::pages::requests::{
     utils::{EditTarget, MessageState, OvertimeFormState},
@@ -13,8 +14,8 @@ use serde_json::to_value;
 pub fn OvertimeRequestForm(
     state: OvertimeFormState,
     message: RwSignal<MessageState>,
-    action: Action<CreateOvertimeRequest, Result<(), String>>,
-    update_action: Action<EditPayload, Result<(), String>>,
+    action: Action<CreateOvertimeRequest, Result<(), ApiError>>,
+    update_action: Action<EditPayload, Result<(), ApiError>>,
     editing: RwSignal<Option<EditTarget>>,
     on_cancel_edit: Callback<()>,
 ) -> impl IntoView {
@@ -61,7 +62,7 @@ pub fn OvertimeRequestForm(
                 </Show>
             </div>
             <Show when=move || message.get().error.is_some()>
-                <ErrorMessage message={message.get().error.clone().unwrap_or_default()} />
+                <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
             </Show>
             <Show when=move || message.get().success.is_some()>
                 <SuccessMessage message={message.get().success.clone().unwrap_or_default()} />

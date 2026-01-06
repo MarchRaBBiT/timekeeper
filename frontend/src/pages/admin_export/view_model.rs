@@ -1,5 +1,5 @@
 use super::repository::AdminExportRepository;
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use crate::utils::trigger_csv_download;
 use chrono::NaiveDate;
 use leptos::*;
@@ -34,13 +34,13 @@ impl ExportFilters {
         Self::normalized_str(&self.to_date)
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ApiError> {
         let from_str = self.from_date.trim();
         let to_str = self.to_date.trim();
 
         let parse_date = |value: &str| {
             NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| "日付は YYYY-MM-DD 形式で入力してください。".to_string())
+                .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))
         };
 
         let from = if from_str.is_empty() {
@@ -56,7 +56,7 @@ impl ExportFilters {
 
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err("From は To 以前の日付を指定してください。".into());
+                return Err(ApiError::validation("From は To 以前の日付を指定してください。"));
             }
         }
 
@@ -66,22 +66,22 @@ impl ExportFilters {
 
 #[derive(Clone, Copy)]
 pub struct AdminExportViewModel {
-    pub error: RwSignal<Option<String>>,
+    pub error: RwSignal<Option<ApiError>>,
     pub preview: RwSignal<Option<String>>,
     pub filename: RwSignal<String>,
     pub username: RwSignal<String>,
     pub from_date: RwSignal<String>,
     pub to_date: RwSignal<String>,
     pub use_specific_user: RwSignal<bool>,
-    pub users_resource: Resource<bool, Result<Vec<crate::api::UserResponse>, String>>,
-    pub export_action: Action<ExportFilters, Result<serde_json::Value, String>>,
+    pub users_resource: Resource<bool, Result<Vec<crate::api::UserResponse>, ApiError>>,
+    pub export_action: Action<ExportFilters, Result<serde_json::Value, ApiError>>,
 }
 
 pub fn use_admin_export_view_model() -> AdminExportViewModel {
     let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let repo = AdminExportRepository::new_with_client(Rc::new(api));
 
-    let error = create_rw_signal(None::<String>);
+    let error = create_rw_signal(None::<ApiError>);
     let preview = create_rw_signal(None::<String>);
     let filename = create_rw_signal(String::new());
     let username = create_rw_signal(String::new());
@@ -130,7 +130,7 @@ pub fn use_admin_export_view_model() -> AdminExportViewModel {
                     error.set(None);
                 }
                 Err(message) => {
-                    error.set(Some(format!("CSVの取得に失敗しました: {}", message)));
+                    error.set(Some(message));
                     preview.set(None);
                 }
             }

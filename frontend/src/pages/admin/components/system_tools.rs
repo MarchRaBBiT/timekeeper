@@ -1,9 +1,10 @@
 use crate::{
-    components::layout::{ErrorMessage, SuccessMessage},
+    components::{error::InlineErrorMessage, layout::SuccessMessage},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         repository::AdminRepository,
     },
+    api::ApiError,
 };
 use leptos::*;
 
@@ -14,7 +15,7 @@ pub fn AdminMfaResetSection(
     users: UsersResource,
 ) -> impl IntoView {
     let user_id = create_rw_signal(String::new());
-    let error = create_rw_signal(None::<String>);
+    let error = create_rw_signal(None::<ApiError>);
     let success = create_rw_signal(None::<String>);
     let repo_for_reset = repository.clone();
     let reset_action = create_action(move |target: &String| {
@@ -22,7 +23,7 @@ pub fn AdminMfaResetSection(
         let user_id = target.clone();
         async move {
             if user_id.trim().is_empty() {
-                Err("ユーザーIDを入力してください。".into())
+                Err(ApiError::validation("ユーザーIDを入力してください。"))
             } else {
                 repo.reset_mfa(&user_id).await
             }
@@ -53,7 +54,7 @@ pub fn AdminMfaResetSection(
             }
             let value = user_id.get();
             if value.trim().is_empty() {
-                error.set(Some("ユーザーIDを入力してください。".into()));
+                error.set(Some(ApiError::validation("ユーザーIDを入力してください。")));
                 success.set(None);
                 return;
             }
@@ -87,7 +88,7 @@ pub fn AdminMfaResetSection(
                         </span>
                     </button>
                     <Show when=move || error.get().is_some()>
-                        <ErrorMessage message={error.get().unwrap_or_default()} />
+                        <InlineErrorMessage error={error.into()} />
                     </Show>
                     <Show when=move || success.get().is_some()>
                         <SuccessMessage message={success.get().unwrap_or_default()} />
