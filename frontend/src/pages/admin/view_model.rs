@@ -2,29 +2,29 @@ use super::{
     repository::AdminRepository,
     utils::{next_allowed_weekly_start, RequestFilterState, WeeklyHolidayFormState},
 };
-use crate::api::{ApiClient, CreateWeeklyHolidayRequest, UserResponse, WeeklyHolidayResponse};
+use crate::api::{ApiClient, ApiError, CreateWeeklyHolidayRequest, UserResponse, WeeklyHolidayResponse};
 use crate::state::auth::use_auth;
 use crate::utils::time::today_in_app_tz;
 use leptos::*;
 
 #[derive(Clone)]
 pub struct AdminViewModel {
-    pub users_resource: Resource<bool, Result<Vec<UserResponse>, String>>,
+    pub users_resource: Resource<bool, Result<Vec<UserResponse>, ApiError>>,
     pub weekly_holiday_state: WeeklyHolidayFormState,
     pub reload_weekly: RwSignal<u32>,
-    pub weekly_holidays_resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, String>>,
+    pub weekly_holidays_resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, ApiError>>,
     pub weekly_action_message: RwSignal<Option<String>>,
-    pub weekly_action_error: RwSignal<Option<String>>,
+    pub weekly_action_error: RwSignal<Option<ApiError>>,
     pub create_weekly_action:
-        Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, String>>,
-    pub delete_weekly_action: Action<String, Result<(), String>>,
+        Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, ApiError>>,
+    pub delete_weekly_action: Action<String, Result<(), ApiError>>,
     pub requests_filter: RequestFilterState,
     pub requests_resource: Resource<
         (bool, super::utils::RequestFilterSnapshot, u32),
-        Result<serde_json::Value, String>,
+        Result<serde_json::Value, ApiError>,
     >,
-    pub request_action: Action<RequestActionPayload, Result<(), String>>,
-    pub requests_action_error: RwSignal<Option<String>>,
+    pub request_action: Action<RequestActionPayload, Result<(), ApiError>>,
+    pub requests_action_error: RwSignal<Option<ApiError>>,
     pub reload_requests: RwSignal<u32>,
     pub repository: AdminRepository,
     // Add other section states here as needed
@@ -138,13 +138,13 @@ pub fn use_admin_view_model() -> AdminViewModel {
     );
 
     let repo_action = repo.clone();
-    let requests_action_error = create_rw_signal(None::<String>);
+    let requests_action_error = create_rw_signal(None::<ApiError>);
     let request_action = create_action(move |payload: &RequestActionPayload| {
         let repo = repo_action.clone();
         let payload = payload.clone();
         async move {
             if payload.id.trim().is_empty() {
-                Err("リクエストIDを取得できませんでした。".into())
+                Err(ApiError::validation("リクエストIDを取得できませんでした。"))
             } else if payload.approve {
                 repo.approve_request(&payload.id, &payload.comment).await
             } else {

@@ -1,3 +1,4 @@
+use crate::api::ApiError;
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use leptos::*;
 
@@ -28,27 +29,27 @@ impl AttendanceFormState {
         self.to.set(to.format("%Y-%m-%d").to_string());
     }
 
-    pub fn to_payload(&self) -> Result<(Option<NaiveDate>, Option<NaiveDate>), String> {
+    pub fn to_payload(&self) -> Result<(Option<NaiveDate>, Option<NaiveDate>), ApiError> {
         let from_val = self.from.get();
         let to_val = self.to.get();
         let from = parse_date_input(&from_val, "開始日は YYYY-MM-DD 形式で入力してください。")?;
         let to = parse_date_input(&to_val, "終了日は YYYY-MM-DD 形式で入力してください。")?;
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err("開始日は終了日以前の日付を指定してください。".into());
+                return Err(ApiError::validation("開始日は終了日以前の日付を指定してください。"));
             }
         }
         Ok((from, to))
     }
 }
 
-fn parse_date_input(value: &str, error_message: &str) -> Result<Option<NaiveDate>, String> {
+fn parse_date_input(value: &str, error_message: &str) -> Result<Option<NaiveDate>, ApiError> {
     if value.trim().is_empty() {
         return Ok(None);
     }
     NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d")
         .map(Some)
-        .map_err(|_| error_message.into())
+        .map_err(|_| ApiError::validation(error_message))
 }
 
 pub fn month_bounds(today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {

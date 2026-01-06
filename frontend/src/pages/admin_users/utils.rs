@@ -1,4 +1,4 @@
-use crate::api::CreateUser;
+use crate::api::{ApiError, CreateUser};
 use leptos::*;
 
 #[derive(Clone, Copy)]
@@ -51,7 +51,7 @@ impl InviteFormState {
 #[derive(Clone, Copy)]
 pub struct MessageState {
     pub success: RwSignal<Option<String>>,
-    pub error: RwSignal<Option<String>>,
+    pub error: RwSignal<Option<ApiError>>,
 }
 
 impl Default for MessageState {
@@ -74,8 +74,8 @@ impl MessageState {
         self.error.set(None);
     }
 
-    pub fn set_error(&self, message: impl Into<String>) {
-        self.error.set(Some(message.into()));
+    pub fn set_error(&self, message: ApiError) {
+        self.error.set(Some(message));
         self.success.set(None);
     }
 }
@@ -119,7 +119,7 @@ mod tests {
     fn message_state_resets_flags() {
         with_runtime(|| {
             let state = MessageState::default();
-            state.set_error("NG");
+            state.set_error(crate::api::ApiError::validation("NG"));
             assert!(state.error.get().is_some());
             assert!(state.success.get().is_none());
 

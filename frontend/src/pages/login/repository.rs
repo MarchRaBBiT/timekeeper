@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, LoginRequest, LoginResponse};
+use crate::api::{ApiError, ApiClient, LoginRequest, LoginResponse};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -17,11 +17,11 @@ impl LoginRepository {
         Self { client }
     }
 
-    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, String> {
+    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, ApiError> {
         self.client.login(request).await
     }
 
-    pub async fn logout(&self, all: bool) -> Result<(), String> {
+    pub async fn logout(&self, all: bool) -> Result<(), ApiError> {
         self.client.logout(all).await
     }
 }

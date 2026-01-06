@@ -1,14 +1,15 @@
 use base64::{engine::general_purpose, Engine as _};
 use leptos::*;
+use crate::api::ApiError;
 
 #[derive(Clone, Copy, Default)]
 pub struct MessageState {
-    pub error: RwSignal<Option<String>>,
+    pub error: RwSignal<Option<ApiError>>,
     pub success: RwSignal<Option<String>>,
 }
 
 impl MessageState {
-    pub fn set_error(&self, msg: String) {
+    pub fn set_error(&self, msg: ApiError) {
         self.error.set(Some(msg));
         self.success.set(None);
     }
@@ -24,10 +25,10 @@ impl MessageState {
     }
 }
 
-pub fn validate_totp_code(code: &str) -> Result<String, String> {
+pub fn validate_totp_code(code: &str) -> Result<String, ApiError> {
     let trimmed = code.trim();
     if trimmed.len() < 6 {
-        Err("6桁の確認コードを入力してください".into())
+        Err(ApiError::validation("6桁の確認コードを入力してください"))
     } else {
         Ok(trimmed.to_string())
     }

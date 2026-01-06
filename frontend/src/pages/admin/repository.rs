@@ -1,6 +1,7 @@
 use crate::api::{
-    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient, CreateHolidayRequest,
-    CreateWeeklyHolidayRequest, HolidayResponse, UserResponse, WeeklyHolidayResponse,
+    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient, ApiError,
+    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, UserResponse,
+    WeeklyHolidayResponse,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -67,18 +68,18 @@ impl AdminRepository {
         Self { client }
     }
 
-    pub async fn list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, String> {
+    pub async fn list_weekly_holidays(&self) -> Result<Vec<WeeklyHolidayResponse>, ApiError> {
         self.client.admin_list_weekly_holidays().await
     }
 
     pub async fn create_weekly_holiday(
         &self,
         payload: CreateWeeklyHolidayRequest,
-    ) -> Result<WeeklyHolidayResponse, String> {
+    ) -> Result<WeeklyHolidayResponse, ApiError> {
         self.client.admin_create_weekly_holiday(&payload).await
     }
 
-    pub async fn delete_weekly_holiday(&self, id: &str) -> Result<(), String> {
+    pub async fn delete_weekly_holiday(&self, id: &str) -> Result<(), ApiError> {
         self.client.admin_delete_weekly_holiday(id).await
     }
 
@@ -88,7 +89,7 @@ impl AdminRepository {
         user_id: Option<String>,
         page: u32,
         per_page: u32,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, ApiError> {
         self.client
             .admin_list_requests(
                 status.as_deref(),
@@ -99,32 +100,32 @@ impl AdminRepository {
             .await
     }
 
-    pub async fn approve_request(&self, id: &str, comment: &str) -> Result<(), String> {
+    pub async fn approve_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
         self.client
             .admin_approve_request(id, comment)
             .await
             .map(|_| ())
     }
 
-    pub async fn reject_request(&self, id: &str, comment: &str) -> Result<(), String> {
+    pub async fn reject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
         self.client
             .admin_reject_request(id, comment)
             .await
             .map(|_| ())
     }
 
-    pub async fn reset_mfa(&self, user_id: &str) -> Result<(), String> {
+    pub async fn reset_mfa(&self, user_id: &str) -> Result<(), ApiError> {
         self.client.admin_reset_mfa(user_id).await.map(|_| ())
     }
 
-    pub async fn upsert_attendance(&self, payload: AdminAttendanceUpsert) -> Result<(), String> {
+    pub async fn upsert_attendance(&self, payload: AdminAttendanceUpsert) -> Result<(), ApiError> {
         self.client
             .admin_upsert_attendance(payload)
             .await
             .map(|_| ())
     }
 
-    pub async fn force_end_break(&self, break_id: &str) -> Result<(), String> {
+    pub async fn force_end_break(&self, break_id: &str) -> Result<(), ApiError> {
         self.client
             .admin_force_end_break(break_id)
             .await
@@ -134,7 +135,7 @@ impl AdminRepository {
     pub async fn list_holidays(
         &self,
         query: HolidayListQuery,
-    ) -> Result<HolidayListResult, String> {
+    ) -> Result<HolidayListResult, ApiError> {
         let response = self
             .client
             .admin_list_holidays(query.page, query.per_page, query.from, query.to)
@@ -157,22 +158,22 @@ impl AdminRepository {
     pub async fn fetch_google_holidays(
         &self,
         year: Option<i32>,
-    ) -> Result<Vec<CreateHolidayRequest>, String> {
+    ) -> Result<Vec<CreateHolidayRequest>, ApiError> {
         self.client.admin_fetch_google_holidays(year).await
     }
 
     pub async fn create_holiday(
         &self,
         payload: CreateHolidayRequest,
-    ) -> Result<HolidayResponse, String> {
+    ) -> Result<HolidayResponse, ApiError> {
         self.client.admin_create_holiday(&payload).await
     }
 
-    pub async fn delete_holiday(&self, id: &str) -> Result<(), String> {
+    pub async fn delete_holiday(&self, id: &str) -> Result<(), ApiError> {
         self.client.admin_delete_holiday(id).await.map(|_| ())
     }
 
-    pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, String> {
+    pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, ApiError> {
         self.client.get_users().await
     }
 }

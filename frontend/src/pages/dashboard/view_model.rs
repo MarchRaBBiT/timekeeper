@@ -1,4 +1,4 @@
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use crate::pages::dashboard::{repository, utils::ActivityStatusFilter};
 use crate::state::attendance::{
     self as attendance_state, refresh_today_context, use_attendance, AttendanceState,
@@ -8,17 +8,17 @@ use leptos::{ev::MouseEvent, *};
 
 #[derive(Clone, Copy)]
 pub struct DashboardViewModel {
-    pub summary_resource: Resource<(), Result<repository::DashboardSummary, String>>,
+    pub summary_resource: Resource<(), Result<repository::DashboardSummary, ApiError>>,
     pub alerts_resource: Resource<
-        Option<Result<repository::DashboardSummary, String>>,
-        Result<Vec<repository::DashboardAlert>, String>,
+        Option<Result<repository::DashboardSummary, ApiError>>,
+        Result<Vec<repository::DashboardAlert>, ApiError>,
     >,
     pub activities_resource:
-        Resource<ActivityStatusFilter, Result<Vec<repository::DashboardActivity>, String>>,
+        Resource<ActivityStatusFilter, Result<Vec<repository::DashboardActivity>, ApiError>>,
     pub activity_filter: RwSignal<ActivityStatusFilter>,
     pub attendance_state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
-    pub clock_action: Action<ClockEventPayload, Result<(), String>>,
-    pub clock_message: RwSignal<Option<String>>,
+    pub clock_action: Action<ClockEventPayload, Result<(), ApiError>>,
+    pub clock_message: RwSignal<Option<ApiError>>,
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
 }
 
@@ -74,14 +74,14 @@ impl DashboardViewModel {
                         let attendance_id = payload
                             .attendance_id
                             .as_deref()
-                            .ok_or_else(|| "出勤レコードが見つかりません。".to_string())?;
+                            .ok_or_else(|| ApiError::unknown("出勤レコードが見つかりません。"))?;
                         attendance_state::start_break(&api, attendance_id).await?
                     }
                     ClockEventKind::BreakEnd => {
                         let break_id = payload
                             .break_id
                             .as_deref()
-                            .ok_or_else(|| "休憩レコードが見つかりません。".to_string())?;
+                            .ok_or_else(|| ApiError::unknown("休憩レコードが見つかりません。"))?;
                         attendance_state::end_break(&api, break_id).await?
                     }
                 };
@@ -104,7 +104,7 @@ impl DashboardViewModel {
                                 Some(ClockEventKind::ClockOut) => "退勤しました。",
                                 None => "操作が完了しました。",
                             };
-                            clock_message.set(Some(success.into()));
+                            clock_message.set(Some(ApiError::validation(success)));
                         }
                         Err(err) => clock_message.set(Some(err)),
                     }
@@ -172,15 +172,15 @@ impl DashboardViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some("ステータスを取得できません。".into()));
+                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };
             if status.status != "clocked_in" {
-                clock_message.set(Some("出勤中のみ休憩を開始できます。".into()));
+                clock_message.set(Some(ApiError::validation("出勤中のみ休憩を開始できます。")));
                 return;
             }
             let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some("出勤レコードが見つかりません。".into()));
+                clock_message.set(Some(ApiError::validation("出勤レコードが見つかりません。")));
                 return;
             };
             clock_message.set(None);
@@ -199,15 +199,15 @@ impl DashboardViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some("ステータスを取得できません。".into()));
+                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };
             if status.status != "on_break" {
-                clock_message.set(Some("休憩中のみ休憩を終了できます。".into()));
+                clock_message.set(Some(ApiError::validation("休憩中のみ休憩を終了できます。")));
                 return;
             }
             let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some("休憩レコードが見つかりません。".into()));
+                clock_message.set(Some(ApiError::validation("休憩レコードが見つかりません。")));
                 return;
             };
             clock_message.set(None);

@@ -1,8 +1,10 @@
 use super::view_model::{
     needs_specific_user_selection, use_admin_export_view_model, ExportFilters,
 };
+use crate::api::ApiError;
 use crate::components::forms::DatePicker;
 use crate::components::layout::*;
+use crate::components::error::InlineErrorMessage;
 use crate::pages::admin::components::user_select::{AdminUserSelect, UserSelectValue};
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -66,7 +68,7 @@ fn AdminExportPanel() -> impl IntoView {
                 &filters.username,
             ) {
                 vm.error
-                    .set(Some("指定ユーザーを選択してください。".into()));
+                    .set(Some(ApiError::validation("指定ユーザーを選択してください。")));
                 vm.preview.set(None);
                 return;
             }
@@ -131,7 +133,7 @@ fn AdminExportPanel() -> impl IntoView {
                                         on:input=move |ev| vm.username.set(event_target_value(&ev))
                                         disabled=specific_user_disabled
                                     />
-                                    <ErrorMessage message={users_error.get().unwrap_or_default()} />
+                                    <InlineErrorMessage error={users_error} />
                                 </div>
                             </Show>
                             <Show when=move || users_error.get().is_none()>
@@ -161,7 +163,7 @@ fn AdminExportPanel() -> impl IntoView {
                     />
                 </div>
                 <Show when=move || vm.error.get().is_some()>
-                    <ErrorMessage message={vm.error.get().unwrap_or_default()} />
+                    <InlineErrorMessage error={vm.error.into()} />
                 </Show>
                 <button
                     class="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"

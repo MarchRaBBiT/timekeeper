@@ -1,4 +1,5 @@
 use leptos::*;
+use crate::api::ApiError;
 
 #[derive(Clone, Copy)]
 pub struct LoginFormState {
@@ -18,15 +19,15 @@ impl Default for LoginFormState {
 }
 
 impl LoginFormState {
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ApiError> {
         let username = self.username.get();
         let password = self.password.get();
 
         if username.trim().is_empty() {
-            return Err("ユーザー名を入力してください".into());
+            return Err(ApiError::validation("ユーザー名を入力してください"));
         }
         if password.is_empty() {
-            return Err("パスワードを入力してください".into());
+            return Err(ApiError::validation("パスワードを入力してください"));
         }
         Ok(())
     }
@@ -42,12 +43,12 @@ impl LoginFormState {
     }
 }
 
-pub fn validate_credentials(username: &str, password: &str) -> Result<(), String> {
+pub fn validate_credentials(username: &str, password: &str) -> Result<(), ApiError> {
     if username.trim().is_empty() {
-        return Err("ユーザー名を入力してください".into());
+        return Err(ApiError::validation("ユーザー名を入力してください"));
     }
     if password.is_empty() {
-        return Err("パスワードを入力してください".into());
+        return Err(ApiError::validation("パスワードを入力してください"));
     }
     Ok(())
 }

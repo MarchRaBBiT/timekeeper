@@ -2,7 +2,7 @@ use super::{
     repository::AdminUsersRepository,
     utils::{InviteFormState, MessageState},
 };
-use crate::api::{ApiClient, ArchivedUserResponse, CreateUser, UserResponse};
+use crate::api::{ApiClient, ArchivedUserResponse, CreateUser, UserResponse, ApiError};
 use crate::state::auth::use_auth;
 use leptos::*;
 use std::rc::Rc;
@@ -23,16 +23,16 @@ pub struct AdminUsersViewModel {
     pub selected_user: RwSignal<Option<UserResponse>>,
     pub selected_archived_user: RwSignal<Option<ArchivedUserResponse>>,
     pub active_tab: RwSignal<UserTab>,
-    pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, String>>,
-    pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, String>>,
-    pub invite_action: Action<CreateUser, Result<UserResponse, String>>,
-    pub reset_mfa_action: Action<String, Result<(), String>>,
+    pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, ApiError>>,
+    pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, ApiError>>,
+    pub invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
+    pub reset_mfa_action: Action<String, Result<(), ApiError>>,
     /// Delete a user: (user_id, hard_delete)
-    pub delete_user_action: Action<(String, bool), Result<(), String>>,
+    pub delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Restore an archived user
-    pub restore_archived_action: Action<String, Result<(), String>>,
+    pub restore_archived_action: Action<String, Result<(), ApiError>>,
     /// Delete an archived user permanently
-    pub delete_archived_action: Action<String, Result<(), String>>,
+    pub delete_archived_action: Action<String, Result<(), ApiError>>,
     pub is_system_admin: Memo<bool>,
 }
 
@@ -64,7 +64,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
             let repo = repo_resource.clone();
             async move {
                 if !allowed {
-                    Err("システム管理者のみ利用できます。".to_string())
+                    Err(ApiError::validation("システム管理者のみ利用できます。"))
                 } else {
                     repo.fetch_users().await
                 }
@@ -80,7 +80,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
             let repo = repo_archived.clone();
             async move {
                 if !allowed {
-                    Err("システム管理者のみ利用できます。".to_string())
+                    Err(ApiError::validation("システム管理者のみ利用できます。"))
                 } else {
                     repo.fetch_archived_users().await
                 }

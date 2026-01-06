@@ -1,8 +1,9 @@
 use crate::{
-    api::{CreateWeeklyHolidayRequest, WeeklyHolidayResponse},
+    api::{ApiError, CreateWeeklyHolidayRequest, WeeklyHolidayResponse},
     components::{
         forms::DatePicker,
-        layout::{ErrorMessage, LoadingSpinner, SuccessMessage},
+        layout::{LoadingSpinner, SuccessMessage},
+        error::InlineErrorMessage,
     },
     pages::admin::utils::WeeklyHolidayFormState,
     utils::time::today_in_app_tz,
@@ -12,12 +13,12 @@ use leptos::{ev, *};
 #[component]
 pub fn WeeklyHolidaySection(
     state: WeeklyHolidayFormState,
-    resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, String>>,
-    action: Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, String>>,
-    delete_action: Action<String, Result<(), String>>,
+    resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, ApiError>>,
+    action: Action<CreateWeeklyHolidayRequest, Result<WeeklyHolidayResponse, ApiError>>,
+    delete_action: Action<String, Result<(), ApiError>>,
     reload: RwSignal<u32>,
     message: RwSignal<Option<String>>,
-    error: RwSignal<Option<String>>,
+    error: RwSignal<Option<ApiError>>,
     admin_allowed: Memo<bool>,
     system_admin_allowed: Memo<bool>,
 ) -> impl IntoView {
@@ -156,13 +157,13 @@ pub fn WeeklyHolidaySection(
                 </div>
             </form>
             <Show when=move || error.get().is_some()>
-                <ErrorMessage message={error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={error.into()} />
             </Show>
             <Show when=move || message.get().is_some()>
                 <SuccessMessage message={message.get().unwrap_or_default()} />
             </Show>
             <Show when=move || holidays_error.get().is_some()>
-                <ErrorMessage message={holidays_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={holidays_error} />
             </Show>
             <Show when=move || holidays_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-gray-600">

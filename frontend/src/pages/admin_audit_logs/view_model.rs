@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, AuditLogListResponse};
+use crate::api::{ApiClient, AuditLogListResponse, ApiError};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
@@ -25,11 +25,11 @@ impl Default for AuditLogFilters {
 
 #[derive(Clone)]
 pub struct AuditLogViewModel {
-    pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, String>>,
+    pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
     pub page: RwSignal<i64>,
     pub filters: RwSignal<AuditLogFilters>,
     pub api_client: ApiClient,
-    pub export_action: Action<(), Result<(), String>>,
+    pub export_action: Action<(), Result<(), ApiError>>,
 }
 
 pub fn use_audit_log_view_model() -> AuditLogViewModel {
@@ -124,7 +124,7 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
                         trigger_download("audit_logs.json", &json_str);
                         Ok(())
                     } else {
-                        Err("Failed to serialize export data".to_string())
+                        Err(ApiError::unknown("Failed to serialize export data"))
                     }
                 }
                 Err(e) => Err(e),

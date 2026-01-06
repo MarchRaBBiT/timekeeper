@@ -1,4 +1,4 @@
-use crate::api::{CreateLeaveRequest, CreateOvertimeRequest};
+use crate::api::{ApiError, CreateLeaveRequest, CreateOvertimeRequest};
 use chrono::NaiveDate;
 use leptos::*;
 use serde_json::Value;
@@ -81,7 +81,7 @@ impl LeaveFormState {
         }
     }
 
-    pub fn to_payload(self) -> Result<CreateLeaveRequest, String> {
+    pub fn to_payload(self) -> Result<CreateLeaveRequest, ApiError> {
         let start = parse_date(
             &self.start_date.get(),
             "開始日を YYYY-MM-DD 形式で入力してください。",
@@ -91,7 +91,7 @@ impl LeaveFormState {
             "終了日を YYYY-MM-DD 形式で入力してください。",
         )?;
         if end < start {
-            return Err("終了日は開始日以降の日付を指定してください。".into());
+            return Err(ApiError::validation("終了日は開始日以降の日付を指定してください。"));
         }
         Ok(CreateLeaveRequest {
             leave_type: self.leave_type.get(),
@@ -143,7 +143,7 @@ impl OvertimeFormState {
         }
     }
 
-    pub fn to_payload(self) -> Result<CreateOvertimeRequest, String> {
+    pub fn to_payload(self) -> Result<CreateOvertimeRequest, ApiError> {
         let date = parse_date(
             &self.date.get(),
             "残業日を YYYY-MM-DD 形式で入力してください。",
@@ -152,9 +152,9 @@ impl OvertimeFormState {
         let hours = hours_raw
             .trim()
             .parse::<f64>()
-            .map_err(|_| "残業時間は数値で入力してください。".to_string())?;
+            .map_err(|_| ApiError::validation("残業時間は数値で入力してください。"))?;
         if !(0.25..=24.0).contains(&hours) {
-            return Err("残業時間は0.25〜24.0の範囲で指定してください。".into());
+            return Err(ApiError::validation("残業時間は0.25〜24.0の範囲で指定してください。"));
         }
         Ok(CreateOvertimeRequest {
             date,
@@ -167,7 +167,7 @@ impl OvertimeFormState {
 #[derive(Clone, Default)]
 pub struct MessageState {
     pub success: Option<String>,
-    pub error: Option<String>,
+    pub error: Option<ApiError>,
 }
 
 impl MessageState {
@@ -176,8 +176,8 @@ impl MessageState {
         self.error = None;
     }
 
-    pub fn set_error(&mut self, msg: impl Into<String>) {
-        self.error = Some(msg.into());
+    pub fn set_error(&mut self, msg: ApiError) {
+        self.error = Some(msg);
         self.success = None;
     }
 
@@ -205,8 +205,8 @@ impl RequestFilterState {
     }
 }
 
-fn parse_date(input: &str, err: &str) -> Result<NaiveDate, String> {
-    NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d").map_err(|_| err.to_string())
+fn parse_date(input: &str, err: &str) -> Result<NaiveDate, ApiError> {
+    NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d").map_err(|_| ApiError::validation(err.to_string()))
 }
 
 fn optional_string(value: String) -> Option<String> {

@@ -1,10 +1,10 @@
 use crate::{
-    api::UserResponse,
-    components::layout::{ErrorMessage, LoadingSpinner},
+    api::{UserResponse, ApiError},
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
 };
 use leptos::{ev, *};
 
-pub type UsersResource = Resource<bool, Result<Vec<UserResponse>, String>>;
+pub type UsersResource = Resource<bool, Result<Vec<UserResponse>, ApiError>>;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum UserSelectValue {
@@ -22,7 +22,7 @@ pub fn AdminUserSelect(
     #[prop(default = UserSelectValue::Id)] value_kind: UserSelectValue,
     #[prop(into, default = MaybeSignal::Static(false))] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
-    let fetch_error = create_rw_signal(None::<String>);
+    let fetch_error = create_rw_signal(None::<ApiError>);
     let loading = users.loading();
 
     {
@@ -31,7 +31,7 @@ pub fn AdminUserSelect(
                 match result {
                     Ok(_) => fetch_error.set(None),
                     Err(err) => {
-                        fetch_error.set(Some(format!("ユーザー一覧の取得に失敗しました: {}", err)))
+                        fetch_error.set(Some(err))
                     }
                 }
             }
@@ -117,7 +117,7 @@ pub fn AdminUserSelect(
             </select>
             <Show when=move || fetch_error.get().is_some()>
                 <div class="flex items-center gap-2">
-                    <ErrorMessage message={fetch_error.get().unwrap_or_default()} />
+                    <InlineErrorMessage error={fetch_error.into()} />
                     <button
                         class="text-sm text-blue-700 hover:underline disabled:opacity-50"
                         on:click=on_retry

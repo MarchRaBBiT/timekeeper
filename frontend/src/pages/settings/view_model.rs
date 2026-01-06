@@ -1,11 +1,11 @@
 use super::repository;
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use crate::pages::mfa::view_model::MfaViewModel;
 use leptos::*;
 
 #[derive(Clone)]
 pub struct SettingsViewModel {
-    pub change_password_action: Action<(String, String), Result<(), String>>,
+    pub change_password_action: Action<(String, String), Result<(), ApiError>>,
     pub mfa_view_model: MfaViewModel, // Reuse existing MFA logic
 }
 

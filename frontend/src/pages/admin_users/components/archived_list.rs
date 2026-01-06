@@ -1,9 +1,12 @@
-use crate::api::ArchivedUserResponse;
+use crate::{
+    api::{ApiError, ArchivedUserResponse},
+    components::error::InlineErrorMessage,
+};
 use leptos::*;
 
 #[component]
 pub fn ArchivedUserList(
-    archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, String>>,
+    archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, ApiError>>,
     loading: Signal<bool>,
     on_select: Callback<ArchivedUserResponse>,
 ) -> impl IntoView {
@@ -65,8 +68,9 @@ pub fn ArchivedUserList(
                                                 .into_view()
                                         }
                                         Err(err) => {
+                                            let error_signal = create_rw_signal(Some(err));
                                             view! {
-                                                <p class="text-red-500">{format!("エラー: {}", err)}</p>
+                                                <InlineErrorMessage error={error_signal.into()} />
                                             }
                                                 .into_view()
                                         }

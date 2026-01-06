@@ -10,7 +10,7 @@ use super::{
 };
 
 impl ApiClient {
-    pub async fn clock_in(&self) -> Result<AttendanceResponse, String> {
+    pub async fn clock_in(&self) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -27,17 +27,17 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn clock_out(&self) -> Result<AttendanceResponse, String> {
+    pub async fn clock_out(&self) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -54,13 +54,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
@@ -68,7 +68,7 @@ impl ApiClient {
         &self,
         year: Option<i32>,
         month: Option<u32>,
-    ) -> Result<Vec<AttendanceResponse>, String> {
+    ) -> Result<Vec<AttendanceResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/attendance/me", base_url);
         let mut query_params = Vec::new();
@@ -95,17 +95,17 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn break_start(&self, attendance_id: &str) -> Result<BreakRecordResponse, String> {
+    pub async fn break_start(&self, attendance_id: &str) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -121,17 +121,17 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn break_end(&self, break_record_id: &str) -> Result<BreakRecordResponse, String> {
+    pub async fn break_end(&self, break_record_id: &str) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -147,13 +147,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
@@ -161,7 +161,7 @@ impl ApiClient {
         &self,
         from: Option<NaiveDate>,
         to: Option<NaiveDate>,
-    ) -> Result<Vec<AttendanceResponse>, String> {
+    ) -> Result<Vec<AttendanceResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/attendance/me", base_url);
         let mut query_params = Vec::new();
@@ -188,20 +188,20 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
     pub async fn get_attendance_status(
         &self,
         date: Option<NaiveDate>,
-    ) -> Result<AttendanceStatusResponse, String> {
+    ) -> Result<AttendanceStatusResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/attendance/status", base_url);
         if let Some(d) = date {
@@ -216,20 +216,20 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
     pub async fn get_breaks_by_attendance(
         &self,
         attendance_id: &str,
-    ) -> Result<Vec<BreakRecordResponse>, String> {
+    ) -> Result<Vec<BreakRecordResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let url = format!("{}/attendance/{}/breaks", base_url, attendance_id);
         let response = self
@@ -241,20 +241,20 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
     pub async fn admin_upsert_attendance(
         &self,
         payload: AdminAttendanceUpsert,
-    ) -> Result<AttendanceResponse, String> {
+    ) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -270,20 +270,20 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
     pub async fn admin_force_end_break(
         &self,
         break_id: &str,
-    ) -> Result<BreakRecordResponse, String> {
+    ) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -298,13 +298,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
@@ -312,7 +312,7 @@ impl ApiClient {
         &self,
         year: Option<i32>,
         month: Option<u32>,
-    ) -> Result<AttendanceSummary, String> {
+    ) -> Result<AttendanceSummary, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut url = format!("{}/attendance/me/summary", base_url);
         let mut query_params = Vec::new();
@@ -339,13 +339,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
@@ -353,7 +353,7 @@ impl ApiClient {
         &self,
         from: Option<&str>,
         to: Option<&str>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(f) = from {
@@ -385,13 +385,13 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 }

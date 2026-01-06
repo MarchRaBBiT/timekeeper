@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, MfaSetupResponse, MfaStatusResponse};
+use crate::api::{ApiClient, MfaSetupResponse, MfaStatusResponse, ApiError};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -17,15 +17,15 @@ impl MfaRepository {
         Self { client }
     }
 
-    pub async fn fetch_status(&self) -> Result<MfaStatusResponse, String> {
+    pub async fn fetch_status(&self) -> Result<MfaStatusResponse, ApiError> {
         self.client.get_mfa_status().await
     }
 
-    pub async fn register(&self) -> Result<MfaSetupResponse, String> {
+    pub async fn register(&self) -> Result<MfaSetupResponse, ApiError> {
         self.client.register_mfa().await
     }
 
-    pub async fn activate(&self, code: &str) -> Result<(), String> {
+    pub async fn activate(&self, code: &str) -> Result<(), ApiError> {
         self.client.activate_mfa(code).await
     }
 }

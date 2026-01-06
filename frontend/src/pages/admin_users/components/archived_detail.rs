@@ -1,6 +1,6 @@
 use crate::{
-    api::ArchivedUserResponse,
-    components::layout::{ErrorMessage, SuccessMessage},
+    api::{ApiError, ArchivedUserResponse},
+    components::{error::InlineErrorMessage, layout::SuccessMessage},
     pages::admin_users::utils::MessageState,
 };
 use leptos::*;
@@ -9,8 +9,8 @@ use leptos::*;
 pub fn ArchivedUserDetailDrawer(
     selected_archived_user: RwSignal<Option<ArchivedUserResponse>>,
     messages: MessageState,
-    restore_action: Action<String, Result<(), String>>,
-    delete_action: Action<String, Result<(), String>>,
+    restore_action: Action<String, Result<(), ApiError>>,
+    delete_action: Action<String, Result<(), ApiError>>,
 ) -> impl IntoView {
     let restore_pending = restore_action.pending();
     let delete_pending = delete_action.pending();
@@ -98,7 +98,7 @@ pub fn ArchivedUserDetailDrawer(
                                             </p>
                                         </div>
                                         <Show when=move || messages.error.get().is_some()>
-                                            <ErrorMessage message={messages.error.get().unwrap_or_default()} />
+                                            <InlineErrorMessage error={messages.error.into()} />
                                         </Show>
                                         <Show when=move || messages.success.get().is_some()>
                                             <SuccessMessage message={messages.success.get().unwrap_or_default()} />

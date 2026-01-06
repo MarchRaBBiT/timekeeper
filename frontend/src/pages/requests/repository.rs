@@ -1,5 +1,5 @@
 use crate::api::{
-    ApiClient, CreateLeaveRequest, CreateOvertimeRequest, LeaveRequestResponse,
+    ApiClient, ApiError, CreateLeaveRequest, CreateOvertimeRequest, LeaveRequestResponse,
     OvertimeRequestResponse,
 };
 use serde_json::Value;
@@ -22,28 +22,28 @@ impl RequestsRepository {
     pub async fn submit_leave(
         &self,
         payload: CreateLeaveRequest,
-    ) -> Result<LeaveRequestResponse, String> {
+    ) -> Result<LeaveRequestResponse, ApiError> {
         self.client.create_leave_request(payload).await
     }
 
     pub async fn submit_overtime(
         &self,
         payload: CreateOvertimeRequest,
-    ) -> Result<OvertimeRequestResponse, String> {
+    ) -> Result<OvertimeRequestResponse, ApiError> {
         self.client.create_overtime_request(payload).await
     }
 
-    pub async fn update_request(&self, id: &str, payload: Value) -> Result<(), String> {
+    pub async fn update_request(&self, id: &str, payload: Value) -> Result<(), ApiError> {
         self.client.update_request(id, payload).await.map(|_| ())
     }
 
-    pub async fn cancel_request(&self, id: &str) -> Result<(), String> {
+    pub async fn cancel_request(&self, id: &str) -> Result<(), ApiError> {
         self.client.cancel_request(id).await.map(|_| ())
     }
 
-    pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, String> {
+    pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {
         let value: Value = self.client.get_my_requests().await?;
         serde_json::from_value(value)
-            .map_err(|err| format!("Failed to parse requests response: {}", err))
+            .map_err(|err| ApiError::unknown(format!("Failed to parse requests response: {}", err)))
     }
 }

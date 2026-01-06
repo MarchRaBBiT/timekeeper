@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, CreateLeaveRequest, CreateOvertimeRequest};
+use crate::api::{ApiClient, CreateLeaveRequest, CreateOvertimeRequest, ApiError};
 use crate::pages::requests::types::MyRequestsResponse;
 use crate::pages::requests::{
     repository::RequestsRepository,
@@ -19,12 +19,12 @@ pub struct RequestsViewModel {
     pub editing_request: RwSignal<Option<EditTarget>>,
     pub active_form: ReadSignal<RequestFormKind>,
     pub set_active_form: WriteSignal<RequestFormKind>,
-    pub requests_resource: Resource<u32, Result<MyRequestsResponse, String>>,
+    pub requests_resource: Resource<u32, Result<MyRequestsResponse, ApiError>>,
     pub reload: RwSignal<u32>,
-    pub leave_action: Action<CreateLeaveRequest, Result<(), String>>,
-    pub overtime_action: Action<CreateOvertimeRequest, Result<(), String>>,
-    pub update_action: Action<EditPayload, Result<(), String>>,
-    pub cancel_action: Action<String, Result<(), String>>,
+    pub leave_action: Action<CreateLeaveRequest, Result<(), ApiError>>,
+    pub overtime_action: Action<CreateOvertimeRequest, Result<(), ApiError>>,
+    pub update_action: Action<EditPayload, Result<(), ApiError>>,
+    pub cancel_action: Action<String, Result<(), ApiError>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,13 +75,23 @@ impl RequestsViewModel {
         let leave_action = create_action(move |payload: &CreateLeaveRequest| {
             let repo = repository.get_value();
             let payload = payload.clone();
-            async move { repo.submit_leave(payload).await.map(|_| ()) }
+            async move {
+                match repo.submit_leave(payload).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
         });
 
         let overtime_action = create_action(move |payload: &CreateOvertimeRequest| {
             let repo = repository.get_value();
             let payload = payload.clone();
-            async move { repo.submit_overtime(payload).await.map(|_| ()) }
+            async move {
+                match repo.submit_overtime(payload).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
         });
 
         let update_action = create_action(move |payload: &EditPayload| {

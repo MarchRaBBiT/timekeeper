@@ -7,8 +7,8 @@ use super::{
 use crate::utils::storage as storage_utils;
 
 impl ApiClient {
-    pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, String> {
-        let storage = storage_utils::local_storage()?;
+    pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, ApiError> {
+        let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         if request.device_label.is_none() {
             request.device_label = Some(ensure_device_label(&storage)?);
         }
@@ -20,25 +20,25 @@ impl ApiClient {
         )
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
 
         if response.status().is_success() {
             let login_response: LoginResponse = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))?;
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
             Ok(login_response)
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn refresh_token(&self) -> Result<LoginResponse, String> {
-        let storage = storage_utils::local_storage()?;
+    pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
+        let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         let device_label = ensure_device_label(&storage)?;
 
         let base_url = self.resolved_base_url().await;
@@ -53,7 +53,7 @@ impl ApiClient {
         )
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -61,18 +61,18 @@ impl ApiClient {
             let login_response: LoginResponse = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))?;
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
             Ok(login_response)
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn logout(&self, all: bool) -> Result<(), String> {
+    pub async fn logout(&self, all: bool) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
 
         let body = if all {
@@ -95,13 +95,11 @@ impl ApiClient {
             Ok(())
         } else {
             let err: Result<ApiError, _> = resp.json().await;
-            Err(err
-                .map(|e| e.error)
-                .unwrap_or_else(|_| "Logout failed".into()))
+            Err(err.unwrap_or_else(|_| ApiError::unknown("Logout failed")))
         }
     }
 
-    pub async fn get_mfa_status(&self) -> Result<MfaStatusResponse, String> {
+    pub async fn get_mfa_status(&self) -> Result<MfaStatusResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| Ok(self.http_client().get(format!("{}/auth/mfa", base_url))))
@@ -113,17 +111,17 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn register_mfa(&self) -> Result<MfaSetupResponse, String> {
+    pub async fn register_mfa(&self) -> Result<MfaSetupResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -140,17 +138,17 @@ impl ApiClient {
             response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse response: {}", e))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
         } else {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn activate_mfa(&self, code: &str) -> Result<(), String> {
+    pub async fn activate_mfa(&self, code: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -169,12 +167,12 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 
-    pub async fn change_password(&self, current: String, new: String) -> Result<(), String> {
+    pub async fn change_password(&self, current: String, new: String) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
         let payload = crate::api::types::ChangePasswordRequest {
             current_password: current,
@@ -198,8 +196,8 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| format!("Failed to parse error: {}", e))?;
-            Err(error.error)
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
         }
     }
 }

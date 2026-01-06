@@ -1,9 +1,9 @@
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 
 pub async fn change_password(
     client: ApiClient,
     current: String,
     new: String,
-) -> Result<(), String> {
+) -> Result<(), ApiError> {
     client.change_password(current, new).await
 }

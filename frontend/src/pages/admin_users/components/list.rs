@@ -1,12 +1,12 @@
 use crate::{
-    api::UserResponse,
-    components::layout::{ErrorMessage, LoadingSpinner},
+    api::{ApiError, UserResponse},
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
 };
 use leptos::*;
 
 #[component]
 pub fn UserList(
-    users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, String>>,
+    users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, ApiError>>,
     loading: Signal<bool>,
     on_select: Callback<UserResponse>,
 ) -> impl IntoView {
@@ -28,7 +28,7 @@ pub fn UserList(
             </div>
 
             <Show when=move || fetch_error.get().is_some()>
-                <ErrorMessage message={fetch_error.get().unwrap_or_default()} />
+                <InlineErrorMessage error={fetch_error.into()} />
             </Show>
             <Show when=move || loading.get()>
                 <LoadingSpinner />

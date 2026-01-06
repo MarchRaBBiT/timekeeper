@@ -8,7 +8,7 @@ use leptos::{ev::MouseEvent, *};
 pub fn SummarySection(
     state: ReadSignal<AttendanceState>,
     action_pending: ReadSignal<bool>,
-    message: ReadSignal<Option<String>>,
+    message: ReadSignal<Option<crate::api::ApiError>>,
     on_clock_in: Callback<MouseEvent>,
     on_clock_out: Callback<MouseEvent>,
     on_break_start: Callback<MouseEvent>,

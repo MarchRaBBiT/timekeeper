@@ -1,11 +1,12 @@
 use crate::{
-    components::layout::{ErrorMessage, LoadingSpinner},
+    components::error::InlineErrorMessage,
+    components::layout::LoadingSpinner,
     pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel, DashboardSummary},
 };
 use leptos::*;
 
 type AlertsResource =
-    Resource<Option<Result<DashboardSummary, String>>, Result<Vec<DashboardAlert>, String>>;
+    Resource<Option<Result<DashboardSummary, crate::api::ApiError>>, Result<Vec<DashboardAlert>, crate::api::ApiError>>;
 
 #[component]
 pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
@@ -22,7 +23,10 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
                         <span>{"アラート情報を読み込み中..."}</span>
                     </div>
                 }.into_view(),
-                Some(Err(err)) => view! { <ErrorMessage message={err.clone()} /> }.into_view(),
+                Some(Err(err)) => {
+                    let error_signal = create_rw_signal(Some(err));
+                    view! { <InlineErrorMessage error={error_signal.into()} /> }.into_view()
+                }
                 Some(Ok(list)) => view! {
                     <ul class="space-y-2">
                         <For

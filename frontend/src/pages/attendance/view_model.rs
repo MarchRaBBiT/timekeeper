@@ -1,6 +1,6 @@
 use super::repository;
 use super::utils::{month_bounds, AttendanceFormState};
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
 use crate::state::attendance::{
     self as attendance_state, load_attendance_range, refresh_today_context, use_attendance,
     AttendanceState, ClockEventKind, ClockEventPayload,
@@ -85,17 +85,17 @@ pub struct AttendanceViewModel {
     pub state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
     pub form_state: AttendanceFormState,
     pub history_query: RwSignal<HistoryQuery>,
-    pub history_resource: Resource<HistoryQuery, Result<(), String>>,
+    pub history_resource: Resource<HistoryQuery, Result<(), ApiError>>,
     pub holiday_query: RwSignal<HolidayQuery>,
     pub holiday_resource:
-        Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, String>>,
-    pub context_resource: Resource<(), Result<(), String>>,
-    pub export_action: Action<ExportPayload, Result<Value, String>>,
-    pub clock_action: Action<ClockEventPayload, Result<(), String>>,
-    pub clock_message: RwSignal<Option<String>>,
+        Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, ApiError>>,
+    pub context_resource: Resource<(), Result<(), ApiError>>,
+    pub export_action: Action<ExportPayload, Result<Value, ApiError>>,
+    pub clock_action: Action<ClockEventPayload, Result<(), ApiError>>,
+    pub clock_message: RwSignal<Option<ApiError>>,
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
     pub range_error: RwSignal<Option<String>>,
-    pub export_error: RwSignal<Option<String>>,
+    pub export_error: RwSignal<Option<ApiError>>,
     pub export_success: RwSignal<Option<String>>,
 }
 
@@ -168,14 +168,14 @@ impl AttendanceViewModel {
                         let attendance_id = payload
                             .attendance_id
                             .as_deref()
-                            .ok_or_else(|| "出勤レコードが見つかりません。".to_string())?;
+                            .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))?;
                         attendance_state::start_break(&api, attendance_id).await?
                     }
                     ClockEventKind::BreakEnd => {
                         let break_id = payload
                             .break_id
                             .as_deref()
-                            .ok_or_else(|| "休憩レコードが見つかりません。".to_string())?;
+                            .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))?;
                         attendance_state::end_break(&api, break_id).await?
                     }
                 };
@@ -201,7 +201,7 @@ impl AttendanceViewModel {
                                 Some(ClockEventKind::ClockOut) => "退勤しました。",
                                 None => "操作が完了しました。",
                             };
-                            clock_message.set(Some(success.into()));
+                            clock_message.set(Some(ApiError::validation(success)));
                         }
                         Err(err) => clock_message.set(Some(err)),
                     }
@@ -227,10 +227,10 @@ impl AttendanceViewModel {
                                     export_success
                                         .set(Some(format!("{filename} をダウンロードしました。")));
                                 }
-                                Err(err) => {
-                                    export_error.set(Some(format!(
+                                 Err(err) => {
+                                    export_error.set(Some(ApiError::unknown(format!(
                                         "CSVのダウンロードに失敗しました: {err}"
-                                    )));
+                                    ))));
                                 }
                             }
                         }
@@ -305,7 +305,7 @@ impl AttendanceViewModel {
                         });
                     }
                 }
-                Err(err) => range_error.set(Some(err)),
+                Err(err) => range_error.set(Some(err.error)),
             }
         }
     }
@@ -376,15 +376,15 @@ impl AttendanceViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some("ステータスを取得できません。".into()));
+                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };
             if status.status != "clocked_in" {
-                clock_message.set(Some("出勤中のみ休憩を開始できます。".into()));
+                clock_message.set(Some(ApiError::validation("出勤中のみ休憩を開始できます。")));
                 return;
             }
             let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some("出勤レコードが見つかりません。".into()));
+                clock_message.set(Some(ApiError::validation("出勤レコードが見つかりません。")));
                 return;
             };
             clock_message.set(None);
@@ -403,15 +403,15 @@ impl AttendanceViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some("ステータスを取得できません。".into()));
+                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };
             if status.status != "on_break" {
-                clock_message.set(Some("休憩中のみ休憩を終了できます。".into()));
+                clock_message.set(Some(ApiError::validation("休憩中のみ休憩を終了できます。")));
                 return;
             }
             let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some("休憩レコードが見つかりません。".into()));
+                clock_message.set(Some(ApiError::validation("休憩レコードが見つかりません。")));
                 return;
             };
             clock_message.set(None);
