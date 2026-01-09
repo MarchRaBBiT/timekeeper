@@ -1,16 +1,16 @@
-# 監査ログテーブル マイグレーションガイド
+# Audit Log Table Migration Guide
 
-## 概要
+## Overview
 
-マイグレーション `018_create_audit_logs.sql` は、監査ログの新スキーマを導入し、既存テーブルがある場合はリネームして保持します。
+Migration `018_create_audit_logs.sql` introduces a new audit log schema and renames the existing table to preserve data.
 
-## マイグレーション内容
+## Migration Contents
 
 ```sql
--- 既存テーブルをリネーム（既存データを保持）
+-- Rename existing table (preserves existing data)
 ALTER TABLE IF EXISTS audit_logs RENAME TO audit_logs_legacy;
 
--- 新スキーマでテーブル作成
+-- Create table with new schema
 CREATE TABLE audit_logs (
     id TEXT PRIMARY KEY,
     occurred_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE audit_logs (
     request_id TEXT
 );
 
--- インデックス作成
+-- Create indexes
 CREATE INDEX idx_audit_logs_occurred_at ON audit_logs(occurred_at);
 CREATE INDEX idx_audit_logs_actor_id ON audit_logs(actor_id);
 CREATE INDEX idx_audit_logs_event_type ON audit_logs(event_type);
@@ -35,24 +35,24 @@ CREATE INDEX idx_audit_logs_target_id ON audit_logs(target_id);
 CREATE INDEX idx_audit_logs_request_id ON audit_logs(request_id);
 ```
 
-## 既存データの扱い
+## Handling Existing Data
 
-### ケース1: 新規環境（既存テーブルなし）
+### Case 1: New Environment (No Existing Table)
 
-マイグレーションはそのまま実行され、新テーブルが作成されます。
+The migration executes as-is and creates the new table.
 
-### ケース2: 旧スキーマからの移行
+### Case 2: Migration from Old Schema
 
-1. 既存の `audit_logs` テーブルは `audit_logs_legacy` にリネームされます
-2. 新しい `audit_logs` テーブルが作成されます
-3. 既存データは `audit_logs_legacy` に保持されます
+1. Existing `audit_logs` table is renamed to `audit_logs_legacy`
+2. New `audit_logs` table is created
+3. Existing data is preserved in `audit_logs_legacy`
 
-### レガシーデータの移行（必要な場合）
+### Legacy Data Migration (If Needed)
 
-旧スキーマのデータを新テーブルに移行する場合は、以下のSQLを参考にしてください：
+To migrate old schema data to the new table, use the following SQL as reference:
 
 ```sql
--- 例: 旧スキーマのカラムに応じて調整してください
+-- Example: Adjust according to old schema columns
 INSERT INTO audit_logs (id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, error_code, metadata, ip, user_agent, request_id)
 SELECT 
     id,
@@ -71,43 +71,43 @@ SELECT
 FROM audit_logs_legacy;
 ```
 
-### レガシーテーブルの削除
+### Removing Legacy Table
 
-移行が完了し、レガシーデータが不要になった場合：
+When migration is complete and legacy data is no longer needed:
 
 ```sql
 DROP TABLE IF EXISTS audit_logs_legacy;
 ```
 
-## 実行手順
+## Execution Steps
 
-### 開発環境
+### Development Environment
 
 ```bash
 cd backend
 cargo sqlx migrate run
 ```
 
-### 本番環境
+### Production Environment
 
-1. データベースのバックアップを取得
-2. マイグレーションを実行
-3. アプリケーションを再起動
-4. 動作確認後、必要に応じてレガシーテーブルを削除
+1. Obtain database backup
+2. Execute migration
+3. Restart application
+4. After verification, delete legacy table if needed
 
-## ロールバック
+## Rollback
 
-マイグレーションをロールバックする場合（手動）：
+To rollback the migration (manual):
 
 ```sql
--- 新テーブルを削除
+-- Drop new table
 DROP TABLE IF EXISTS audit_logs;
 
--- レガシーテーブルを元に戻す
+-- Restore legacy table
 ALTER TABLE IF EXISTS audit_logs_legacy RENAME TO audit_logs;
 ```
 
-## 注意事項
+## Notes
 
-- `audit_logs_legacy` はアプリケーションから参照されないため、移行期間後に削除を検討してください
-- 本番環境での実行前に、ステージング環境でテストすることを推奨します
+- `audit_logs_legacy` is not referenced by the application, so consider deleting it after the migration period
+- Testing in a staging environment before production execution is recommended

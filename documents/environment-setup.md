@@ -1,33 +1,33 @@
-# Timekeeper 環境構築ガイド
+# Timekeeper Environment Setup Guide
 
-このドキュメントは `SETUP_GUIDE.md` や `README.md`、`scripts/` 内の手順を要約し、Timekeeper のローカル環境を素早く立ち上げるための手引きです。macOS / Linux / Windows (PowerShell) のいずれでも同じ流れで進められます。
+This document summarizes the procedures from `SETUP_GUIDE.md`, `README.md`, and `scripts/` to quickly set up a local Timekeeper environment. The same flow applies to macOS / Linux / Windows (PowerShell).
 
-## 1. 必要要件
+## 1. Requirements
 
-| 用途 | ツール |
+| Purpose | Tool |
 | --- | --- |
-| バックエンド | [Rust 1.70+](https://www.rust-lang.org/tools/install)（`cargo` 付き） |
-| フロントエンド（WASM） | `wasm-pack`（`cargo install wasm-pack`）と Python 3（静的サーバ用） |
-| データベース | ローカル実行は SQLite（同梱）、PostgreSQL も `DATABASE_URL` で利用可 |
-| 自動化（任意） | Podman Desktop + Podman Compose |
-| テスト | Firefox（`wasm-pack test --headless --firefox`）、Node.js 18+（Playwright/E2E） |
+| Backend | [Rust 1.70+](https://www.rust-lang.org/tools/install) (with `cargo`) |
+| Frontend (WASM) | `wasm-pack` (`cargo install wasm-pack`) and Python 3 (for static server) |
+| Database | SQLite (bundled) for local execution, PostgreSQL also available via `DATABASE_URL` |
+| Automation (optional) | Podman Desktop + Podman Compose |
+| Testing | Firefox (`wasm-pack test --headless --firefox`), Node.js 18+ (Playwright/E2E) |
 
-> 補足: Windows では `scripts/backend.ps1` / `scripts/frontend.ps1` を使えば start/stop/status/logs を一括操作できます。
+> Note: On Windows, use `scripts/backend.ps1` / `scripts/frontend.ps1` to batch control start/stop/status/logs.
 
-## 2. リポジトリの取得
+## 2. Clone the Repository
 
 ```bash
 git clone <repository-url>
 cd timekeeper
 ```
 
-## 3. 環境変数
+## 3. Environment Variables
 
-1. テンプレートをコピー  
+1. Copy the template
    ```bash
    cp env.example .env
    ```
-2. `.env` を編集し、使用する DB とシークレットを設定  
+2. Edit `.env` and configure the database and secrets
    ```env
    DATABASE_URL=postgres://timekeeper:timekeeper@localhost:5432/timekeeper
    JWT_SECRET=change-me-for-local
@@ -36,28 +36,28 @@ cd timekeeper
    AUDIT_LOG_RETENTION_DAYS=365
    AUDIT_LOG_RETENTION_FOREVER=false
    ```
-3. ローカル PostgreSQL / ステージングで利用する場合は `DATABASE_URL` を DSN に置き換え、`JWT_SECRET` を十分ランダムな値に更新してください（Podman Compose でも `.env` を直接読むため）。
+3. For local PostgreSQL / staging, replace `DATABASE_URL` with the DSN and update `JWT_SECRET` to a sufficiently random value (Podman Compose also reads `.env` directly).
 
-> SQLite を利用する場合は `DATABASE_URL=sqlite:./timekeeper.db` のように書き換えてください。既定値と `env.example` は PostgreSQL を前提としています。
-> 監査ログの保持期間は `AUDIT_LOG_RETENTION_DAYS=0` で記録無効化、`AUDIT_LOG_RETENTION_FOREVER=true` で削除無効化します。両方指定した場合は FOREVER を優先します。
+> For SQLite, rewrite as `DATABASE_URL=sqlite:./timekeeper.db`. The default and `env.example` assume PostgreSQL.
+> Audit log retention: `AUDIT_LOG_RETENTION_DAYS=0` disables recording, `AUDIT_LOG_RETENTION_FOREVER=true` disables deletion. When both are specified, FOREVER takes precedence.
 
-## 4. バックエンドのセットアップ
+## 4. Backend Setup
 
 ```bash
 cd backend
-cargo fetch          # 任意：依存取得のみ
-cargo sqlx prepare   # オフラインモードを使う場合
-cargo run            # マイグレーション適用 + Axum API (3000番) 起動
+cargo fetch          # Optional: fetch dependencies only
+cargo sqlx prepare   # If using offline mode
+cargo run            # Apply migrations + start Axum API (port 3000)
 ```
 
-便利なコマンド:
+Useful commands:
 
 - `pwsh -File ..\scripts\backend.ps1 start|stop|status|logs`
 - `cargo test`, `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`
 
-初回起動時には `Server listening on 0.0.0.0:3000` が表示されれば成功です。
+On first startup, success is indicated by `Server listening on 0.0.0.0:3000`.
 
-## 5. フロントエンドのセットアップ
+## 5. Frontend Setup
 
 ```bash
 cd frontend
@@ -65,47 +65,47 @@ wasm-pack build --target web --out-dir pkg --dev
 python -m http.server 8000
 ```
 
-`http://localhost:8000` にアクセスして UI を確認します。SPA は `http://localhost:3000/api` をバックエンドとして期待します。
+Access `http://localhost:8000` to view the UI. The SPA expects `http://localhost:3000/api` as the backend.
 
-補助ツール:
+Helper tools:
 
-- `pwsh -File ..\scripts\frontend.ps1 start`（ビルド + 静的サーバ起動をまとめて実行）
-- `wasm-pack test --headless --firefox`（フロントの単体テスト）
+- `pwsh -File ..\scripts\frontend.ps1 start` (runs build + static server together)
+- `wasm-pack test --headless --firefox` (frontend unit tests)
 
-## 6. デフォルトアカウント
+## 6. Default Account
 
-マイグレーション実行後、以下のシステム管理者アカウントが自動で作成されます。
+After running migrations, the following system administrator account is automatically created:
 
 ```
 username: admin
 password: admin123
 ```
 
-このユーザーでログインし、UI や `POST /api/admin/users` から従業員/管理者を追加してください。
+Log in with this user and add employees/admins via the UI or `POST /api/admin/users`.
 
-## 7. Podman（任意）
+## 7. Podman (Optional)
 
-リポジトリには以下のコンテナ定義が含まれています。
+The repository includes the following container definitions:
 
-- `backend/Dockerfile`（Rust ビルド → Debian スリム）
-- `frontend/Dockerfile`（Rust ビルド + nginx）
-- compose 定義（`docker-compose.yml` / `.example`）
+- `backend/Dockerfile` (Rust build → Debian slim)
+- `frontend/Dockerfile` (Rust build + nginx)
+- Compose definitions (`docker-compose.yml` / `.example`)
 
-クイックスタート:
+Quick start:
 
 ```bash
 podman compose up --build
 ```
 
-`.env` あるいは Compose の `environment` セクションでシークレットを上書きし、SQLite/PostgreSQL を永続化したい場合はボリュームをマウントしてください。
+Override secrets via `.env` or the Compose `environment` section. Mount volumes if you want to persist SQLite/PostgreSQL.
 
-## 8. E2E スモークテスト
+## 8. E2E Smoke Test
 
-1. バックエンドとフロントエンドを起動（例：`scripts/backend.ps1 start`、`scripts/frontend.ps1 start`）。
-2. `e2e/` ディレクトリで `npm install`（初回のみ）を実行し、`node run.mjs` を起動。`FRONTEND_BASE_URL` が `http://localhost:8080` 以外なら環境変数で上書きします。
+1. Start backend and frontend (e.g., `scripts/backend.ps1 start`, `scripts/frontend.ps1 start`).
+2. Run `npm install` (first time only) in the `e2e/` directory, then start `node run.mjs`. Override `FRONTEND_BASE_URL` via environment variable if not `http://localhost:8080`.
 
-Playwright スクリプトは管理者でログインし、主要ページを巡回してログアウトするスモークシナリオです。
+The Playwright script logs in as admin, navigates through main pages, and logs out as a smoke scenario.
 
 ---
 
-より詳細な OS 別手順は `SETUP_GUIDE.md`、API のリクエスト/レスポンスは `API_DOCS.md` を参照してください。
+For more detailed OS-specific procedures, see `SETUP_GUIDE.md`. For API request/response details, see `API_DOCS.md`.

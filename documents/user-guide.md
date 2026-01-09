@@ -1,101 +1,100 @@
-# Timekeeper ユーザーガイド
+# Timekeeper User Guide
 
-本ガイドは、従業員・管理者・システム管理者それぞれの利用フローをまとめたものです。`README.md` や `API_DOCS.md`、最新の管理画面仕様をもとにしています。
+This guide summarizes the usage flows for employees, administrators, and system administrators. It is based on `README.md`, `API_DOCS.md`, and the latest admin panel specifications.
 
-## 1. 役割と権限
+## 1. Roles and Permissions
 
-| ロール | 主な権限 |
+| Role | Main Permissions |
 | --- | --- |
-| 従業員 (`role=employee`) | 出退勤・休憩の記録、休暇/残業/修正申請の作成、履歴閲覧、MFA 登録/解除、パスワード変更、自己データのエクスポート |
-| 管理者 (`role=admin`, `is_system_admin=false`) | 従業員同等の機能に加え、残業・休暇・修正申請の承認/却下、休日管理、CSV エクスポート |
-| システム管理者 (`is_system_admin=true`) | 管理者機能に加え、ユーザー管理、勤怠データの直接編集、強制休憩終了、MFA リセット、休日管理、CSV エクスポート、パスワードリセットなど全権限 |
+| Employee (`role=employee`) | Clock in/out, break recording, create leave/overtime/correction requests, view history, MFA registration/removal, password change, export own data |
+| Administrator (`role=admin`, `is_system_admin=false`) | All employee functions plus: approve/reject overtime/leave/correction requests, holiday management, CSV export |
+| System Administrator (`is_system_admin=true`) | All admin functions plus: user management, direct attendance data editing, force break end, MFA reset, holiday management, CSV export, password reset, etc. |
 
-> MFA リセットおよびパスワードリセットは必ずシステム管理者が実施してください。
+> MFA reset and password reset must be performed by a system administrator.
 
-## 2. ログインと MFA
+## 2. Login and MFA
 
-1. フロントエンド（既定では `http://localhost:8000`）にアクセスし、`/login` を開きます。
-2. ユーザー名とパスワードを入力します。MFA が有効な場合は 6 桁の TOTP コードも求められます。
-3. ログイン成功後、ブラウザの `localStorage` にアクセストークンとリフレッシュトークンが保存されます。
+1. Access the frontend (default: `http://localhost:8000`) and navigate to `/login`.
+2. Enter username and password. If MFA is enabled, a 6-digit TOTP code is also required.
+3. Upon successful login, access and refresh tokens are stored in the browser's `localStorage`.
 
-### MFA の登録手順
+### MFA Registration Procedure
 
-1. `/mfa/register` に移動し、**MFA設定** ボタンを押して QR コードとシークレットを発行します。
-2. 認証アプリで QR コードを読み取り、表示された確認コードを入力します。
-3. 無効化したい場合は同ページで現在の TOTP コードを送信します。
-4. 端末を紛失した場合はシステム管理者に **Admin -> MFA Reset** を依頼し、再度登録してください。
+1. Navigate to `/mfa/register` and press the **MFA Setup** button to generate a QR code and secret.
+2. Scan the QR code with an authenticator app and enter the displayed confirmation code.
+3. To disable, submit the current TOTP code on the same page.
+4. If you lose your device, request **Admin -> MFA Reset** from a system administrator and re-register.
 
-## 3. 従業員向けの基本操作
+## 3. Basic Operations for Employees
 
-### 勤怠アクション
+### Attendance Actions
 
-| 操作 | UI | API |
+| Operation | UI | API |
 | --- | --- | --- |
-| 出勤 | ダッシュボード -> **勤務開始 (Clock In)** | `POST /api/attendance/clock-in` |
-| 休憩開始/終了 | Attendance ページのボタン | `POST /api/attendance/break-start` / `POST /api/attendance/break-end` |
-| 退勤 | ダッシュボード -> **勤務終了 (Clock Out)** | `POST /api/attendance/clock-out` |
-| ステータス/履歴の確認 | Attendance -> 「本日の状況 / 履歴」 | `GET /api/attendance/status`, `GET /api/attendance/me` |
-| CSV エクスポート | Attendance -> 「CSV エクスポート」カード | `GET /api/attendance/export` |
+| Clock In | Dashboard -> **Clock In** | `POST /api/attendance/clock-in` |
+| Break Start/End | Attendance page buttons | `POST /api/attendance/break-start` / `POST /api/attendance/break-end` |
+| Clock Out | Dashboard -> **Clock Out** | `POST /api/attendance/clock-out` |
+| Check Status/History | Attendance -> "Today's Status / History" | `GET /api/attendance/status`, `GET /api/attendance/me` |
+| CSV Export | Attendance -> "CSV Export" card | `GET /api/attendance/export` |
 
-### 申請フロー（休暇/残業/修正）
+### Request Flow (Leave/Overtime/Correction)
 
-1. `/requests` で申請種別を選択し、期間や理由を入力して送信します。
-2. ステータス（`pending` / `approved` / `rejected` / `cancelled`）は同ページで確認できます。
-3. `pending` の間は編集・取消が可能です。
+1. Select request type on `/requests`, enter period and reason, and submit.
+2. Status (`pending` / `approved` / `rejected` / `cancelled`) can be checked on the same page.
+3. While `pending`, editing and cancellation are possible.
 
-## 4. 管理者（承認担当）
+## 4. Administrator (Approver)
 
-`role=admin` のユーザーはヘッダーに **Admin** が表示され、`/admin` ダッシュボードへアクセスできます。
+Users with `role=admin` see **Admin** in the header and can access the `/admin` dashboard.
 
-1. **申請一覧** - ステータスやユーザーでフィルタし、詳細モーダルからコメント付きで承認/却下します。  
-   - 承認: `PUT /api/admin/requests/:id/approve`  
-   - 却下: `PUT /api/admin/requests/:id/reject`
-2. **詳細モーダル** - 承認前に JSON ペイロードを確認できます。
+1. **Request List** - Filter by status or user, and approve/reject with comments from the detail modal.
+   - Approve: `PUT /api/admin/requests/:id/approve`
+   - Reject: `PUT /api/admin/requests/:id/reject`
+2. **Detail Modal** - Review JSON payload before approval.
+3. **Holiday Management and CSV Export** - Add/delete holidays, import from Google Calendar, and download attendance CSV from cards at the bottom of the page.
 
-3. **休日管理とCSVエクスポート** - ページ下部のカードから休日の追加/削除や Google カレンダー取り込み、勤怠 CSV のダウンロードが可能です。
+Non-system administrator admins can use the above functions, but user management, manual attendance editing, and MFA reset remain system administrator exclusive.
 
-システム管理者でない管理者は上記機能を利用できますが、ユーザー管理や勤怠手動修正、MFA リセットは引き続きシステム管理者専用です。
+## 5. System Administrator Console
 
-## 5. システム管理者コンソール
+System administrators have **User Management** added to navigation and can use the following additional tools on `/admin` (holiday management and CSV export are also available to regular admins).
 
-システム管理者はナビゲーションに **ユーザー管理** が追加され、`/admin` で以下の追加ツールを利用できます（休日管理と CSV エクスポートは通常の管理者も利用可能です）。
+### 5.1 User Management (`/admin/users`)
 
-### 5.1 ユーザー管理 (`/admin/users`)
+- Create employees/admins with `POST /api/admin/users`. Initial password is set here.
+- **System Administrator** checkbox grants highest tier privileges.
+- View username/full name/role/system admin flag in the user table.
 
-- `POST /api/admin/users` で従業員・管理者を作成。初期パスワードもここで設定します。
-- **システム管理者** チェックボックスで最上位権限を付与。
-- 一覧テーブルでユーザー名/氏名/ロール/システム管理者フラグを確認。
+### 5.2 Manual Attendance Data Editing
 
-### 5.2 勤怠データの手動編集
+- Use the "Manual Attendance Registration (Upsert)" form to call `PUT /api/admin/attendance` and directly register/overwrite user ID, date, clock in/out, and break intervals.
+- "Force Break End" specifies a break ID and calls `PUT /api/admin/breaks/:id/force-end` to immediately end an unfinished break.
 
-- 「勤務の手動登録（アップサート）」フォームから `PUT /api/admin/attendance` を呼び出し、ユーザーID・日付・出退勤・休憩区間を直接登録/上書きできます。
-- 「休憩の強制終了」ではブレーク ID を指定し、`PUT /api/admin/breaks/:id/force-end` で未終了休憩を即時終了させます。
+### 5.3 MFA Reset
 
-### 5.3 MFA リセット
+- Select a target from the user list obtained via `/api/admin/users` and press the **Reset MFA** button to execute `POST /api/admin/mfa/reset`.
+- After reset, all refresh tokens for that user are also revoked, requiring re-login.
 
-- `/api/admin/users` で取得したユーザー一覧から対象を選び、**Reset MFA** ボタンを押すと `POST /api/admin/mfa/reset` が実行されます。
-- リセット後は該当ユーザーのリフレッシュトークンも全て破棄され、再ログインが必要になります。
+### 5.4 Holiday Management
 
-### 5.4 休日管理
+- (Common to admins/system admins) In addition to manual addition (`POST /api/admin/holidays`), holiday candidates can be imported from Google Calendar ICS via `GET /api/admin/holidays/google`.
+- Existing holidays can be deleted with `DELETE /api/admin/holidays/:id`.
 
-- （管理者/システム管理者共通）手動追加（`POST /api/admin/holidays`）に加え、Google Calendar ICS から `GET /api/admin/holidays/google` で休日候補を取り込み可能。
-- 既存の休日は `DELETE /api/admin/holidays/:id` で削除できます。
+### 5.5 CSV Export
 
-### 5.5 CSV エクスポート
+- (Common to admins/system admins) `/admin/export` allows downloading attendance CSV filtered by username and date range (`GET /api/admin/export`).
+- The beginning of the downloaded file is also previewed on screen.
 
-- （管理者/システム管理者共通）`/admin/export` ではユーザー名・日付範囲で絞り込んだ勤怠 CSV をダウンロードできます（`GET /api/admin/export`）。
-- 取得したファイルの冒頭は画面上でもプレビューされます。
+## 6. Logout and Password
 
-## 6. ログアウトとパスワード
+- Call `POST /api/auth/logout` from the **Logout** button in the header. Sending `{"all": true}` invalidates refresh tokens on all devices at once.
+- Password change is executed via `/api/auth/change-password` (minimum 8 characters, must differ from current password).
 
-- ヘッダーの **ログアウト** ボタンから `POST /api/auth/logout` を呼び出します。`{"all": true}` を送ると全端末のリフレッシュトークンを一括失効できます。
-- パスワード変更は `/api/auth/change-password`（最低 8 文字・現在のパスワードと異なる必要あり）で実行します。
+## 7. Troubleshooting
 
-## 7. トラブルシューティング
+1. **401 Unauthorized** - Token expired/missing. Try re-login or refresh.
+2. **403 Forbidden** - Possibly executing system admin-only functions as a regular admin.
+3. **Migration Inconsistency** - Apply latest schema with `cargo run` or `cargo sqlx migrate run`.
+4. **Frontend Not Displaying** - Re-run `wasm-pack build --dev` and restart Python server. Set `FRONTEND_BASE_URL` appropriately when running Playwright.
 
-1. **401 Unauthorized** - トークンの期限切れ/欠落。再ログインまたはリフレッシュを試してください。
-2. **403 Forbidden** - システム管理者限定機能を一般管理者で実行している可能性があります。
-3. **マイグレーション不整合** - `cargo run` または `cargo sqlx migrate run` で最新スキーマを適用してください。
-4. **フロントが表示されない** - `wasm-pack build --dev` を再実行し、Python サーバを再起動。Playwright 実行時は `FRONTEND_BASE_URL` を適切に設定してください。
-
-API の詳細は `API_DOCS.md`、環境構築の詳細は `documents/environment-setup.md` を参照してください。
+For API details, see `API_DOCS.md`. For environment setup details, see `documents/environment-setup.md`.
