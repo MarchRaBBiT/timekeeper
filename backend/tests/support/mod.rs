@@ -41,15 +41,11 @@ static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
 
 #[ctor]
 fn init_test_database_url() {
-    if let Ok(test_url) = env::var("TEST_DATABASE_URL") {
-        if env::var("DATABASE_URL").is_err() {
-            env::set_var("DATABASE_URL", test_url);
-        }
+    if env::var("TEST_DATABASE_URL").is_ok() {
         return;
     }
 
     let url = start_embedded_postgres();
-    env::set_var("DATABASE_URL", url.clone());
     env::set_var("TEST_DATABASE_URL", url);
 }
 
@@ -154,9 +150,7 @@ pub async fn test_pool() -> PgPool {
 }
 
 fn test_database_url() -> String {
-    env::var("TEST_DATABASE_URL")
-        .or_else(|_| env::var("DATABASE_URL"))
-        .unwrap_or_else(|_| start_embedded_postgres())
+    env::var("TEST_DATABASE_URL").unwrap_or_else(|_| start_embedded_postgres())
 }
 
 async fn insert_user_with_password_hash(
