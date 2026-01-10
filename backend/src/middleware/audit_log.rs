@@ -99,7 +99,7 @@ pub async fn audit_log(
 
     let entry = AuditLogEntry {
         occurred_at: Utc::now(),
-        actor_id: actor.as_ref().map(|user| user.id.clone()),
+        actor_id: actor.as_ref().map(|user| user.id),
         actor_type: actor
             .as_ref()
             .map(|_| "user".to_string())
