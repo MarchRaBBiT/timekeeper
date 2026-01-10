@@ -17,6 +17,7 @@ use timekeeper_backend::{
     },
     models::{audit_log::AuditLog, user::UserRole},
     repositories::audit_log,
+    types::{AuditLogId, UserId},
 };
 use tokio::sync::Mutex;
 use tower::ServiceExt;
@@ -38,7 +39,7 @@ async fn reset_audit_logs(pool: &PgPool) {
 }
 
 fn build_log(
-    actor_id: Option<String>,
+    actor_id: Option<UserId>,
     event_type: &str,
     target_type: Option<&str>,
     target_id: Option<&str>,
@@ -46,15 +47,15 @@ fn build_log(
     occurred_at: DateTime<Utc>,
 ) -> AuditLog {
     AuditLog {
-        id: Uuid::new_v4().to_string(),
+        id: AuditLogId::new(),
         occurred_at,
-        actor_id: actor_id.clone(),
+        actor_id,
         actor_type: actor_id
             .map(|_| "user".to_string())
             .unwrap_or_else(|| "anonymous".to_string()),
         event_type: event_type.to_string(),
-        target_type: target_type.map(|value| value.to_string()),
-        target_id: target_id.map(|value| value.to_string()),
+        target_type: target_type.map(|v| v.to_string()),
+        target_id: target_id.map(|v| v.to_string()),
         result: result.to_string(),
         error_code: if result == "failure" {
             Some("http_400".to_string())
@@ -117,7 +118,7 @@ async fn audit_log_list_filters_and_paginates() {
 
     let now = Utc::now();
     let log_one = build_log(
-        Some(actor_one.id.clone()),
+        Some(actor_one.id),
         "attendance_clock_in",
         Some("attendance"),
         Some("target-1"),
@@ -125,7 +126,7 @@ async fn audit_log_list_filters_and_paginates() {
         now - Duration::minutes(10),
     );
     let log_two = build_log(
-        Some(actor_one.id.clone()),
+        Some(actor_one.id),
         "request_update",
         Some("request"),
         Some("target-2"),
@@ -133,7 +134,7 @@ async fn audit_log_list_filters_and_paginates() {
         now - Duration::minutes(5),
     );
     let log_three = build_log(
-        Some(actor_two.id.clone()),
+        Some(actor_two.id),
         "attendance_clock_out",
         Some("attendance"),
         Some("target-3"),
@@ -173,7 +174,7 @@ async fn audit_log_list_filters_and_paginates() {
     let payload: AuditLogListResponse = serde_json::from_slice(&body).expect("parse response");
     assert_eq!(payload.total, 2);
     assert_eq!(payload.items.len(), 1);
-    assert_eq!(payload.items[0].id, log_one.id);
+    assert_eq!(payload.items[0].id, log_one.id.to_string());
 
     let response = app
         .oneshot(
@@ -191,7 +192,7 @@ async fn audit_log_list_filters_and_paginates() {
         .expect("read body");
     let payload: AuditLogListResponse = serde_json::from_slice(&body).expect("parse response");
     assert_eq!(payload.total, 1);
-    assert_eq!(payload.items[0].id, log_two.id);
+    assert_eq!(payload.items[0].id, log_two.id.to_string());
 }
 
 #[tokio::test]
@@ -208,7 +209,7 @@ async fn audit_log_detail_returns_log() {
 
     let system_admin = support::seed_user(&pool, UserRole::Admin, true).await;
     let log = build_log(
-        Some(system_admin.id.clone()),
+        Some(system_admin.id),
         "attendance_clock_in",
         Some("attendance"),
         Some("target-1"),
@@ -241,7 +242,7 @@ async fn audit_log_detail_returns_log() {
     let payload: serde_json::Value = serde_json::from_slice(&body).expect("parse response");
     assert_eq!(
         payload.get("id").and_then(|v| v.as_str()),
-        Some(log.id.as_str())
+        Some(log.id.to_string()).as_deref()
     );
 }
 
@@ -259,7 +260,7 @@ async fn audit_log_export_returns_json_file() {
 
     let system_admin = support::seed_user(&pool, UserRole::Admin, true).await;
     let log = build_log(
-        Some(system_admin.id.clone()),
+        Some(system_admin.id),
         "request_update",
         Some("request"),
         Some("target-2"),
@@ -307,6 +308,6 @@ async fn audit_log_export_returns_json_file() {
     assert_eq!(payload.len(), 1);
     assert_eq!(
         payload[0].get("id").and_then(|value| value.as_str()),
-        Some(log.id.as_str())
+        Some(log.id.to_string()).as_deref()
     );
 }

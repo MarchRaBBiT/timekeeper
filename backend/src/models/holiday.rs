@@ -1,12 +1,12 @@
+use crate::types::{HolidayId, UserId, WeeklyHolidayId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Holiday {
-    pub id: String,
+    pub id: HolidayId,
     pub holiday_date: NaiveDate,
     pub name: String,
     pub description: Option<String>,
@@ -18,7 +18,7 @@ impl Holiday {
     pub fn new(holiday_date: NaiveDate, name: String, description: Option<String>) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: HolidayId::new(),
             holiday_date,
             name,
             description,
@@ -38,7 +38,7 @@ pub struct CreateHolidayPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HolidayResponse {
-    pub id: String,
+    pub id: HolidayId,
     pub holiday_date: NaiveDate,
     pub name: String,
     pub description: Option<String>,
@@ -65,13 +65,13 @@ pub struct CreateWeeklyHolidayPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct WeeklyHoliday {
-    pub id: String,
+    pub id: WeeklyHolidayId,
     pub weekday: i16,
     pub starts_on: NaiveDate,
     pub ends_on: Option<NaiveDate>,
     pub enforced_from: NaiveDate,
     pub enforced_to: Option<NaiveDate>,
-    pub created_by: String,
+    pub created_by: UserId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -81,11 +81,11 @@ impl WeeklyHoliday {
         weekday: u8,
         starts_on: NaiveDate,
         ends_on: Option<NaiveDate>,
-        created_by: String,
+        created_by: UserId,
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: WeeklyHolidayId::new(),
             weekday: weekday as i16,
             starts_on,
             ends_on,
@@ -100,7 +100,7 @@ impl WeeklyHoliday {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WeeklyHolidayResponse {
-    pub id: String,
+    pub id: WeeklyHolidayId,
     pub weekday: u8,
     pub starts_on: NaiveDate,
     pub ends_on: Option<NaiveDate>,

@@ -2,12 +2,13 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use crate::models::audit_log::AuditLog;
+use crate::types::{AuditLogId, UserId};
 
 #[derive(Debug, Clone, Default)]
 pub struct AuditLogFilters {
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
-    pub actor_id: Option<String>,
+    pub actor_id: Option<UserId>,
     pub actor_type: Option<String>,
     pub event_type: Option<String>,
     pub target_type: Option<String>,
@@ -22,9 +23,9 @@ pub async fn insert_audit_log(pool: &PgPool, log: &AuditLog) -> Result<(), sqlx:
          error_code, metadata, ip, user_agent, request_id) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
-    .bind(&log.id)
+    .bind(log.id.to_string())
     .bind(log.occurred_at)
-    .bind(&log.actor_id)
+    .bind(log.actor_id.as_ref().map(|id| id.to_string()))
     .bind(&log.actor_type)
     .bind(&log.event_type)
     .bind(&log.target_type)
@@ -40,13 +41,13 @@ pub async fn insert_audit_log(pool: &PgPool, log: &AuditLog) -> Result<(), sqlx:
     .map(|_| ())
 }
 
-pub async fn fetch_audit_log(pool: &PgPool, id: &str) -> Result<Option<AuditLog>, sqlx::Error> {
+pub async fn fetch_audit_log(pool: &PgPool, id: AuditLogId) -> Result<Option<AuditLog>, sqlx::Error> {
     sqlx::query_as::<_, AuditLog>(
         "SELECT id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, \
          error_code, metadata, ip, user_agent, request_id \
          FROM audit_logs WHERE id = $1",
     )
-    .bind(id)
+    .bind(id.to_string())
     .fetch_optional(pool)
     .await
 }

@@ -18,6 +18,7 @@ use timekeeper_backend::{
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
+    types::{HolidayExceptionId, UserId, WeeklyHolidayId},
     utils::{cookies::SameSite, password::hash_password},
 };
 use uuid::Uuid;
@@ -40,9 +41,13 @@ static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
 
 #[ctor]
 fn init_test_database_url() {
-    if env::var("DATABASE_URL").is_ok() || env::var("TEST_DATABASE_URL").is_ok() {
+    if let Ok(test_url) = env::var("TEST_DATABASE_URL") {
+        if env::var("DATABASE_URL").is_err() {
+            env::set_var("DATABASE_URL", test_url);
+        }
         return;
     }
+
     let url = start_embedded_postgres();
     env::set_var("DATABASE_URL", url.clone());
     env::set_var("TEST_DATABASE_URL", url);
@@ -59,7 +64,7 @@ fn start_embedded_postgres() -> String {
             password: "timekeeper_test".into(),
             auth_method: PgAuthMethod::Plain,
             persistent: false,
-            timeout: Some(StdDuration::from_secs(15)),
+            timeout: Some(StdDuration::from_secs(60)),
             migration_dir: None,
         };
         let fetch_settings = PgFetchSettings {
@@ -82,6 +87,7 @@ fn start_embedded_postgres() -> String {
             "postgres://{}:{}@127.0.0.1:{}/postgres",
             pg.pg_settings.user, pg.pg_settings.password, pg.pg_settings.port
         );
+        eprintln!("--- Embedded Postgres started at {} ---", url);
         EMBEDDED_PG
             .set(EmbeddedPostgres {
                 instance: pg,
@@ -126,12 +132,25 @@ pub fn test_config() -> Config {
 
 pub async fn test_pool() -> PgPool {
     let database_url = test_database_url();
-    PgPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(StdDuration::from_secs(120))
-        .connect(&database_url)
-        .await
-        .expect("connect test database")
+    let mut retry_count = 0;
+    let max_retries = 3;
+
+    loop {
+        match PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(StdDuration::from_secs(30))
+            .connect(&database_url)
+            .await
+        {
+            Ok(pool) => return pool,
+            Err(e) if retry_count < max_retries => {
+                retry_count += 1;
+                eprintln!("Retrying DB connection (attempt {}/{}): {}", retry_count, max_retries, e);
+                tokio::time::sleep(StdDuration::from_secs(2)).await;
+            }
+            Err(e) => panic!("Failed to connect to test database after {} retries: {}", max_retries, e),
+        }
+    }
 }
 
 fn test_database_url() -> String {
@@ -158,7 +177,7 @@ async fn insert_user_with_password_hash(
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
-    .bind(&user.id)
+    .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
@@ -194,12 +213,13 @@ pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
     sqlx::query(
         "INSERT INTO weekly_holidays \
             (id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at) \
-         VALUES ($1, $2, $3, NULL, $4, NULL, 'test', NOW(), NOW())",
+         VALUES ($1, $2, $3, NULL, $4, NULL, $5, NOW(), NOW())",
     )
-    .bind(Uuid::new_v4().to_string())
+    .bind(WeeklyHolidayId::new().to_string())
     .bind(weekday)
     .bind(date - ChronoDuration::days(7))
     .bind(date)
+    .bind(UserId::new().to_string())
     .execute(pool)
     .await
     .expect("insert weekly holiday");
@@ -207,13 +227,13 @@ pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
 
 pub async fn seed_leave_request(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
     leave_type: LeaveType,
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> LeaveRequest {
     let request = LeaveRequest::new(
-        user_id.to_string(),
+        user_id,
         leave_type,
         start_date,
         end_date,
@@ -223,8 +243,8 @@ pub async fn seed_leave_request(
         "INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
     )
-    .bind(&request.id)
-    .bind(&request.user_id)
+    .bind(request.id.to_string())
+    .bind(request.user_id.to_string())
     .bind(match request.leave_type {
         LeaveType::Annual => "annual",
         LeaveType::Sick => "sick",
@@ -240,10 +260,10 @@ pub async fn seed_leave_request(
         timekeeper_backend::models::leave_request::RequestStatus::Rejected => "rejected",
         timekeeper_backend::models::leave_request::RequestStatus::Cancelled => "cancelled",
     })
-    .bind(&request.approved_by)
+    .bind(request.approved_by.map(|id| id.to_string()))
     .bind(request.approved_at)
     .bind(&request.decision_comment)
-    .bind(&request.rejected_by)
+    .bind(request.rejected_by.map(|id| id.to_string()))
     .bind(request.rejected_at)
     .bind(request.cancelled_at)
     .bind(request.created_at)
@@ -256,12 +276,12 @@ pub async fn seed_leave_request(
 
 pub async fn seed_overtime_request(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
     date: NaiveDate,
     planned_hours: f64,
 ) -> OvertimeRequest {
     let request = OvertimeRequest::new(
-        user_id.to_string(),
+        user_id,
         date,
         planned_hours,
         Some("test OT".into()),
@@ -270,8 +290,8 @@ pub async fn seed_overtime_request(
         "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
     )
-    .bind(&request.id)
-    .bind(&request.user_id)
+    .bind(request.id.to_string())
+    .bind(request.user_id.to_string())
     .bind(request.date)
     .bind(request.planned_hours)
     .bind(&request.reason)
@@ -281,10 +301,10 @@ pub async fn seed_overtime_request(
         timekeeper_backend::models::overtime_request::RequestStatus::Rejected => "rejected",
         timekeeper_backend::models::overtime_request::RequestStatus::Cancelled => "cancelled",
     })
-    .bind(&request.approved_by)
+    .bind(request.approved_by.map(|id| id.to_string()))
     .bind(request.approved_at)
     .bind(&request.decision_comment)
-    .bind(&request.rejected_by)
+    .bind(request.rejected_by.map(|id| id.to_string()))
     .bind(request.rejected_at)
     .bind(request.cancelled_at)
     .bind(request.created_at)
@@ -301,7 +321,7 @@ pub async fn seed_public_holiday(pool: &PgPool, date: NaiveDate, name: &str) -> 
         "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(&holiday.id)
+    .bind(holiday.id.to_string())
     .bind(holiday.holiday_date)
     .bind(&holiday.name)
     .bind(&holiday.description)
@@ -315,7 +335,7 @@ pub async fn seed_public_holiday(pool: &PgPool, date: NaiveDate, name: &str) -> 
 
 pub async fn seed_holiday_exception(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
     date: NaiveDate,
     override_value: bool,
     reason: &str,
@@ -323,13 +343,14 @@ pub async fn seed_holiday_exception(
     sqlx::query(
         "INSERT INTO holiday_exceptions \
             (id, user_id, exception_date, override, reason, created_by, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, 'test', NOW(), NOW())",
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())",
     )
-    .bind(Uuid::new_v4().to_string())
-    .bind(user_id)
+    .bind(HolidayExceptionId::new().to_string())
+    .bind(user_id.to_string())
     .bind(date)
     .bind(override_value)
     .bind(reason)
+    .bind(UserId::new().to_string())
     .execute(pool)
     .await
     .expect("insert holiday exception");

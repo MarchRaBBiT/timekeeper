@@ -1,33 +1,33 @@
+use crate::types::{HolidayExceptionId, UserId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct HolidayException {
-    pub id: String,
-    pub user_id: String,
+    pub id: HolidayExceptionId,
+    pub user_id: UserId,
     pub exception_date: NaiveDate,
     #[serde(default)]
     #[sqlx(rename = "override")]
     pub is_holiday_override: bool,
     pub reason: Option<String>,
-    pub created_by: String,
+    pub created_by: UserId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl HolidayException {
     pub fn new(
-        user_id: String,
+        user_id: UserId,
         exception_date: NaiveDate,
         reason: Option<String>,
-        created_by: String,
+        created_by: UserId,
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: HolidayExceptionId::new(),
             user_id,
             exception_date,
             is_holiday_override: false,
@@ -52,7 +52,7 @@ pub struct CreateHolidayExceptionPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HolidayExceptionResponse {
-    pub id: String,
+    pub id: HolidayExceptionId,
     pub exception_date: NaiveDate,
     pub is_workday: bool,
     pub reason: Option<String>,
@@ -76,14 +76,16 @@ mod tests {
 
     #[test]
     fn new_sets_workday_override() {
+        let user_id = UserId::new();
+        let admin_id = UserId::new();
         let exception = HolidayException::new(
-            "user-1".to_string(),
+            user_id,
             NaiveDate::from_ymd_opt(2024, 12, 24).unwrap(),
             Some("オフサイト参加".to_string()),
-            "admin-1".to_string(),
+            admin_id,
         );
 
-        assert_eq!(exception.user_id, "user-1");
+        assert_eq!(exception.user_id, user_id);
         assert_eq!(
             exception.exception_date,
             NaiveDate::from_ymd_opt(2024, 12, 24).unwrap()
@@ -91,6 +93,6 @@ mod tests {
         assert!(!exception.is_holiday_override);
         assert!(exception.is_workday());
         assert_eq!(exception.reason.as_deref(), Some("オフサイト参加"));
-        assert_eq!(exception.created_by, "admin-1");
+        assert_eq!(exception.created_by, admin_id);
     }
 }

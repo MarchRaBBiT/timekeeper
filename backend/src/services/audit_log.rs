@@ -1,14 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::{types::Json, PgPool};
-use uuid::Uuid;
 
+use crate::types::{AuditLogId, UserId};
 use crate::{models::audit_log::AuditLog, repositories::audit_log};
 
 #[derive(Debug, Clone)]
 pub struct AuditLogEntry {
     pub occurred_at: DateTime<Utc>,
-    pub actor_id: Option<String>,
+    pub actor_id: Option<UserId>,
     pub actor_type: String,
     pub event_type: String,
     pub target_type: Option<String>,
@@ -42,7 +42,7 @@ pub trait AuditLogServiceTrait: Send + Sync {
 impl AuditLogServiceTrait for AuditLogService {
     async fn record_event(&self, entry: AuditLogEntry) -> Result<(), sqlx::Error> {
         let log = AuditLog {
-            id: Uuid::new_v4().to_string(),
+            id: AuditLogId::new(),
             occurred_at: entry.occurred_at,
             actor_id: entry.actor_id,
             actor_type: entry.actor_type,

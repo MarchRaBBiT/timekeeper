@@ -27,6 +27,7 @@ mod middleware;
 mod models;
 mod repositories;
 mod services;
+mod types;
 mod utils;
 mod validation;
 

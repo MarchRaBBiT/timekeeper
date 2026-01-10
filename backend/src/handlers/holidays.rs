@@ -105,7 +105,7 @@ pub async fn check_holiday(
     Query(query): Query<HolidayCheckQuery>,
 ) -> Result<Json<HolidayCheckResponse>, AppError> {
     let decision = holiday_service
-        .is_holiday(query.date, Some(&user.id))
+        .is_holiday(query.date, Some(&user.id.to_string()))
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -131,7 +131,7 @@ pub async fn list_month_holidays(
     }
 
     let entries = holiday_service
-        .list_month(query.year, query.month, Some(&user.id))
+        .list_month(query.year, query.month, Some(&user.id.to_string()))
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 

@@ -1,10 +1,11 @@
 use chrono::NaiveDate;
 use crate::{models::attendance::{Attendance, AttendanceStatus}, error::AppError};
+use crate::types::{AttendanceId, UserId};
 use sqlx::PgPool;
 
 pub fn ensure_authorized_access(
     attendance: &Attendance,
-    user_id: &str,
+    user_id: UserId,
 ) -> Result<(), AppError> {
     if attendance.user_id == user_id {
         Ok(())
@@ -47,14 +48,14 @@ pub fn ensure_clocked_in(attendance: &Attendance) -> Result<(), AppError> {
 
 pub async fn fetch_attendance_by_user_date(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
     date: NaiveDate,
 ) -> Result<Option<Attendance>, AppError> {
     Ok(sqlx::query_as::<sqlx::Postgres, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at \
          FROM attendance WHERE user_id = $1 AND date = $2",
     )
-    .bind(user_id)
+    .bind(user_id.to_string())
     .bind(date)
     .fetch_optional(pool)
     .await?)
@@ -62,13 +63,13 @@ pub async fn fetch_attendance_by_user_date(
 
 pub async fn fetch_attendance_by_id(
     pool: &PgPool,
-    attendance_id: &str,
+    attendance_id: AttendanceId,
 ) -> Result<Attendance, AppError> {
     sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at \
          FROM attendance WHERE id = $1",
     )
-    .bind(attendance_id)
+    .bind(attendance_id.to_string())
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Attendance record not found".into()))
@@ -82,8 +83,8 @@ pub async fn insert_attendance_record(
         "INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
-    .bind(&attendance.id)
-    .bind(&attendance.user_id)
+    .bind(attendance.id.to_string())
+    .bind(attendance.user_id.to_string())
     .bind(attendance.date)
     .bind(attendance.clock_in_time)
     .bind(attendance.clock_out_time)
@@ -104,7 +105,7 @@ pub async fn update_clock_in(
     sqlx::query("UPDATE attendance SET clock_in_time = $1, updated_at = $2 WHERE id = $3")
         .bind(attendance.clock_in_time)
         .bind(attendance.updated_at)
-        .bind(&attendance.id)
+        .bind(attendance.id.to_string())
         .execute(pool)
         .await?;
 
@@ -121,7 +122,7 @@ pub async fn update_clock_out(
     .bind(attendance.clock_out_time)
     .bind(attendance.total_work_hours)
     .bind(attendance.updated_at)
-    .bind(&attendance.id)
+    .bind(attendance.id.to_string())
     .execute(pool)
     .await?;
 

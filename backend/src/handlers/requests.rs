@@ -14,10 +14,12 @@ use crate::{
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     error::AppError,
+    types::{LeaveRequestId, OvertimeRequestId},
 };
 
 use chrono::Utc;
 use serde::Deserialize;
+use std::str::FromStr;
 
 pub async fn create_leave_request(
     State((pool, _config)): State<(PgPool, Config)>,
@@ -29,7 +31,7 @@ pub async fn create_leave_request(
     payload.validate()?;
 
     let leave_request = LeaveRequest::new(
-        user_id.to_string(),
+        user_id,
         payload.leave_type,
         payload.start_date,
         payload.end_date,
@@ -54,7 +56,7 @@ pub async fn create_overtime_request(
     payload.validate()?;
 
     let overtime_request = OvertimeRequest::new(
-        user_id.to_string(),
+        user_id,
         payload.date,
         payload.planned_hours,
         payload.reason,
@@ -74,11 +76,11 @@ pub async fn get_my_requests(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = user.id;
 
-    let leave_requests = requests_repo::list_leave_requests_by_user(&pool, &user_id)
+    let leave_requests = requests_repo::list_leave_requests_by_user(&pool, user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    let overtime_requests = requests_repo::list_overtime_requests_by_user(&pool, &user_id)
+    let overtime_requests = requests_repo::list_overtime_requests_by_user(&pool, user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -113,8 +115,11 @@ pub async fn update_request(
 ) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
 
-    // Try leave update
-    if let Some(req) = requests_repo::fetch_leave_request_by_id(&pool, &request_id, &user_id)
+    // Try leave update first
+    let leave_request_id = LeaveRequestId::from_str(&request_id)
+        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
+    
+    if let Some(req) = requests_repo::fetch_leave_request_by_id(&pool, leave_request_id, user_id)
         .await?
     {
         if !req.is_pending() {
@@ -131,14 +136,17 @@ pub async fn update_request(
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
         requests_repo::update_leave_request(
-            &pool, &req.id, new_type, new_start, new_end, new_reason, now,
+            &pool, req.id, new_type, new_start, new_end, new_reason, now,
         )
         .await?;
         return Ok(Json(json!({"message":"Leave request updated"})));
     }
 
     // Try overtime update
-    if let Some(req) = requests_repo::fetch_overtime_request_by_id(&pool, &request_id, &user_id)
+    let overtime_request_id = OvertimeRequestId::from_str(&request_id)
+        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
+    
+    if let Some(req) = requests_repo::fetch_overtime_request_by_id(&pool, overtime_request_id, user_id)
         .await?
     {
         if !req.is_pending() {
@@ -154,7 +162,7 @@ pub async fn update_request(
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
         requests_repo::update_overtime_request(
-            &pool, &req.id, new_date, new_hours, new_reason, now,
+            &pool, req.id, new_date, new_hours, new_reason, now,
         )
         .await?;
         return Ok(Json(json!({"message":"Overtime request updated"})));
@@ -169,16 +177,21 @@ pub async fn cancel_request(
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
-    // Leave
     let now = Utc::now();
-    let result = requests_repo::cancel_leave_request(&pool, &request_id, &user_id, now)
+    
+    // Try leave cancellation first
+    let leave_request_id = LeaveRequestId::from_str(&request_id)
+        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
+    let result = requests_repo::cancel_leave_request(&pool, leave_request_id, user_id, now)
         .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
-    // Overtime
-    let result = requests_repo::cancel_overtime_request(&pool, &request_id, &user_id, Utc::now())
+    // Try overtime cancellation
+    let overtime_request_id = OvertimeRequestId::from_str(&request_id)
+        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
+    let result = requests_repo::cancel_overtime_request(&pool, overtime_request_id, user_id, Utc::now())
         .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));

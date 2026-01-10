@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::str::FromStr;
 
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -16,6 +17,7 @@ use crate::{
         user::User,
     },
     services::holiday_exception::{HolidayExceptionError, HolidayExceptionServiceTrait},
+    types::{HolidayExceptionId, UserId},
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -33,8 +35,11 @@ pub async fn create_holiday_exception(
 ) -> Result<(StatusCode, Json<HolidayExceptionResponse>), AppError> {
     ensure_admin_or_system(&user)?;
 
+    let user_id = UserId::from_str(&target_user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
+
     let created = service
-        .create_workday_override(&target_user_id, payload, &user.id)
+        .create_workday_override(user_id, payload, user.id)
         .await
         .map_err(holiday_exception_error_to_app_error)?;
 
@@ -53,8 +58,11 @@ pub async fn list_holiday_exceptions(
 ) -> Result<Json<Vec<HolidayExceptionResponse>>, AppError> {
     ensure_admin_or_system(&user)?;
 
-    let exceptions = service
-        .list_for_user(&target_user_id, query.from, query.to)
+    let user_id = UserId::from_str(&target_user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
+
+    let exceptions =service
+        .list_for_user(user_id, query.from, query.to)
         .await
         .map_err(holiday_exception_error_to_app_error)?;
 
@@ -74,8 +82,13 @@ pub async fn delete_holiday_exception(
 ) -> Result<StatusCode, AppError> {
     ensure_admin_or_system(&user)?;
 
+    let exception_id = HolidayExceptionId::from_str(&id)
+        .map_err(|_| AppError::BadRequest("Invalid exception ID format".into()))?;
+    let user_id = UserId::from_str(&target_user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
+
     service
-        .delete_for_user(&id, &target_user_id)
+        .delete_for_user(exception_id, user_id)
         .await
         .map_err(holiday_exception_error_to_app_error)?;
 
