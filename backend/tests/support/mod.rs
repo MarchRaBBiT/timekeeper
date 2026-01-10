@@ -41,7 +41,10 @@ static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
 
 #[ctor]
 fn init_test_database_url() {
-    if env::var("TEST_DATABASE_URL").is_ok() {
+    if let Ok(test_url) = env::var("TEST_DATABASE_URL") {
+        if env::var("DATABASE_URL").is_err() {
+            env::set_var("DATABASE_URL", test_url);
+        }
         return;
     }
 
