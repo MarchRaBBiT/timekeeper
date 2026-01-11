@@ -17,10 +17,13 @@
   - `pwsh -File ./scripts/test_backend.ps1` failed: `pwsh` not found.
   - User reports `cargo test` succeeds after setting TMPDIR=/tmp and TEST_DATABASE_URL.
   - Added bash equivalent script `scripts/test_backend.sh`.
+  - Staged all tracked changes and the new bash script.
+  - Git commit failed because user.name/user.email are not configured.
+  - Ran `TMPDIR=/tmp TEST_DATABASE_URL=postgres://timekeeper_test:timekeeper_test@localhost:55432/timekeeper_test cargo test`; `tests/audit_log_middleware` failed to connect (Operation not permitted).
 - Now:
   - Commit and push changes, then create PR via gh.
 - Next:
-  - Commit, push, and open PR with gh.
+  - Commit, push, and open PR with gh after git identity is set.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
