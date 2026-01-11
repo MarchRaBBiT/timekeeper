@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 use sqlx::PgPool;
 
+use crate::types::{HolidayExceptionId, UserId};
 use crate::{
     handlers::holiday_exception_repo,
     models::holiday_exception::{CreateHolidayExceptionPayload, HolidayException},
@@ -29,22 +30,22 @@ impl HolidayExceptionService {
 pub trait HolidayExceptionServiceTrait: Send + Sync {
     async fn list_for_user(
         &self,
-        user_id: &str,
+        user_id: UserId,
         from: Option<NaiveDate>,
         to: Option<NaiveDate>,
     ) -> Result<Vec<HolidayException>, HolidayExceptionError>;
 
     async fn create_workday_override(
         &self,
-        user_id: &str,
+        user_id: UserId,
         payload: CreateHolidayExceptionPayload,
-        created_by: &str,
+        created_by: UserId,
     ) -> Result<HolidayException, HolidayExceptionError>;
 
     async fn delete_for_user(
         &self,
-        id: &str,
-        user_id: &str,
+        id: HolidayExceptionId,
+        user_id: UserId,
     ) -> Result<(), HolidayExceptionError>;
 }
 
@@ -52,7 +53,7 @@ pub trait HolidayExceptionServiceTrait: Send + Sync {
 impl HolidayExceptionServiceTrait for HolidayExceptionService {
     async fn list_for_user(
         &self,
-        user_id: &str,
+        user_id: UserId,
         from: Option<NaiveDate>,
         to: Option<NaiveDate>,
     ) -> Result<Vec<HolidayException>, HolidayExceptionError> {
@@ -67,19 +68,19 @@ impl HolidayExceptionServiceTrait for HolidayExceptionService {
 
     async fn create_workday_override(
         &self,
-        user_id: &str,
+        user_id: UserId,
         payload: CreateHolidayExceptionPayload,
-        created_by: &str,
+        created_by: UserId,
     ) -> Result<HolidayException, HolidayExceptionError> {
         if !self.user_exists(user_id).await? {
             return Err(HolidayExceptionError::UserNotFound);
         }
 
         let exception = HolidayException::new(
-            user_id.to_string(),
+            user_id,
             payload.exception_date,
             payload.reason,
-            created_by.to_string(),
+            created_by,
         );
 
         holiday_exception_repo::insert_holiday_exception(&self.pool, &exception)
@@ -91,8 +92,8 @@ impl HolidayExceptionServiceTrait for HolidayExceptionService {
 
     async fn delete_for_user(
         &self,
-        id: &str,
-        user_id: &str,
+        id: HolidayExceptionId,
+        user_id: UserId,
     ) -> Result<(), HolidayExceptionError> {
         let affected =
             holiday_exception_repo::delete_holiday_exception(&self.pool, id, user_id).await?;
@@ -106,11 +107,11 @@ impl HolidayExceptionServiceTrait for HolidayExceptionService {
 }
 
 impl HolidayExceptionService {
-    async fn user_exists(&self, user_id: &str) -> Result<bool, HolidayExceptionError> {
+    async fn user_exists(&self, user_id: UserId) -> Result<bool, HolidayExceptionError> {
         let exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 LIMIT 1)",
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .fetch_one(&self.pool)
         .await?;
 

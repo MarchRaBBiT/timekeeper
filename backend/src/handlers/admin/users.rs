@@ -6,6 +6,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
@@ -13,6 +14,7 @@ use crate::{
     config::Config,
     models::user::{CreateUser, User, UserResponse, UserRole},
     repositories::user as user_repo,
+    types::UserId,
     utils::password::hash_password,
     error::AppError,
 };
@@ -77,7 +79,7 @@ pub async fn create_user(
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
-    .bind(&user.id)
+    .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
@@ -162,8 +164,12 @@ pub async fn delete_user(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
+    // Parse and validate user_id
+    let parsed_user_id = UserId::from_str(&user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
+
     // Cannot delete self
-    if requester.id == user_id {
+    if requester.id == parsed_user_id {
         return Err(AppError::BadRequest("Cannot delete yourself".into()));
     }
 
@@ -206,7 +212,7 @@ pub async fn delete_user(
         })))
     } else {
         // Soft delete - move to archive tables
-        user_repo::soft_delete_user(&pool, &user_id, &requester.id)
+        user_repo::soft_delete_user(&pool, &user_id, &requester.id.to_string())
             .await
             .map_err(|e| {
                 AppError::InternalServerError(e.into())

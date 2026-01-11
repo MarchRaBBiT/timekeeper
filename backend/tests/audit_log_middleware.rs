@@ -432,7 +432,7 @@ async fn audit_log_middleware_records_approval_metadata() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/admin/requests/req-123/approve")
+                .uri("/api/admin/requests/550e8400-e29b-41d4-a716-446655440000/approve")
                 .header("content-type", "application/json")
                 .header("x-request-id", &request_id)
                 .body(Body::from(r#"{"comment":"ok"}"#))

@@ -19,8 +19,10 @@ use crate::{
     config::Config,
     models::{audit_log::AuditLog, user::User},
     repositories::audit_log::{self, AuditLogFilters},
+    types::{AuditLogId, UserId},
     utils::time,
 };
+use std::str::FromStr;
 
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
@@ -73,9 +75,9 @@ pub struct AuditLogResponse {
 impl From<AuditLog> for AuditLogResponse {
     fn from(log: AuditLog) -> Self {
         Self {
-            id: log.id,
+            id: log.id.to_string(),
             occurred_at: log.occurred_at,
-            actor_id: log.actor_id,
+            actor_id: log.actor_id.map(|id| id.to_string()),
             actor_type: log.actor_type,
             event_type: log.event_type,
             target_type: log.target_type,
@@ -126,7 +128,10 @@ pub async fn get_audit_log_detail(
 ) -> Result<Json<AuditLogResponse>, AppError> {
     ensure_system_admin(&user)?;
 
-    let log = audit_log::fetch_audit_log(&pool, &id)
+    let audit_log_id = AuditLogId::from_str(&id)
+        .map_err(|_| AppError::BadRequest("Invalid audit log ID".into()))?;
+
+    let log = audit_log::fetch_audit_log(&pool, audit_log_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("Not found".into()))?;
@@ -239,10 +244,16 @@ fn build_filters(input: AuditLogFilterInput) -> Result<AuditLogFilters, AppError
         }
     }
 
+    let actor_id = input.actor_id
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| UserId::from_str(&s))
+        .transpose()
+        .map_err(|_| AppError::BadRequest("Invalid actor ID".into()))?;
+
     Ok(AuditLogFilters {
         from,
         to,
-        actor_id: normalize_filter(input.actor_id),
+        actor_id,
         actor_type: normalize_filter(input.actor_type).map(|value| value.to_ascii_lowercase()),
         event_type: normalize_filter(input.event_type).map(|value| value.to_ascii_lowercase()),
         target_type: normalize_filter(input.target_type).map(|value| value.to_ascii_lowercase()),

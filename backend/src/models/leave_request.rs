@@ -1,10 +1,10 @@
 //! Models describing employee leave requests and their lifecycle.
 
+use crate::types::{LeaveRequestId, UserId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
@@ -13,9 +13,9 @@ pub use crate::models::request::RequestStatus;
 /// Database representation of a leave request submitted by an employee.
 pub struct LeaveRequest {
     /// Unique identifier for the leave request.
-    pub id: String,
+    pub id: LeaveRequestId,
     /// Identifier of the employee who submitted the request.
-    pub user_id: String,
+    pub user_id: UserId,
     /// Type of leave being requested.
     pub leave_type: LeaveType,
     /// First day of the requested leave period.
@@ -27,11 +27,11 @@ pub struct LeaveRequest {
     /// Current status of the leave request.
     pub status: RequestStatus,
     /// Administrator who approved the request, if any.
-    pub approved_by: Option<String>,
+    pub approved_by: Option<UserId>,
     /// Timestamp when the request was approved.
     pub approved_at: Option<DateTime<Utc>>,
     /// Administrator who rejected the request, if any.
-    pub rejected_by: Option<String>,
+    pub rejected_by: Option<UserId>,
     /// Timestamp when the request was rejected.
     pub rejected_at: Option<DateTime<Utc>>,
     /// Timestamp when the requester cancelled the request.
@@ -91,16 +91,16 @@ fn validate_leave_date_range(req: &CreateLeaveRequest) -> Result<(), validator::
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API representation shared with clients.
 pub struct LeaveRequestResponse {
-    pub id: String,
-    pub user_id: String,
+    pub id: LeaveRequestId,
+    pub user_id: UserId,
     pub leave_type: LeaveType,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     pub reason: Option<String>,
     pub status: RequestStatus,
-    pub approved_by: Option<String>,
+    pub approved_by: Option<UserId>,
     pub approved_at: Option<DateTime<Utc>>,
-    pub rejected_by: Option<String>,
+    pub rejected_by: Option<UserId>,
     pub rejected_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
     pub decision_comment: Option<String>,
@@ -132,7 +132,7 @@ impl From<LeaveRequest> for LeaveRequestResponse {
 impl LeaveRequest {
     /// Creates a new leave request pending approval.
     pub fn new(
-        user_id: String,
+        user_id: UserId,
         leave_type: LeaveType,
         start_date: NaiveDate,
         end_date: NaiveDate,
@@ -140,7 +140,7 @@ impl LeaveRequest {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: LeaveRequestId::new(),
             user_id,
             leave_type,
             start_date,
@@ -160,7 +160,7 @@ impl LeaveRequest {
 
     /// Marks the request as approved and records reviewer details.
     #[allow(dead_code)]
-    pub fn approve(&mut self, approved_by: String) {
+    pub fn approve(&mut self, approved_by: UserId) {
         self.status = RequestStatus::Approved;
         self.approved_by = Some(approved_by);
         self.approved_at = Some(Utc::now());
@@ -169,7 +169,7 @@ impl LeaveRequest {
 
     /// Marks the request as rejected and records reviewer details.
     #[allow(dead_code)]
-    pub fn reject(&mut self, approved_by: String) {
+    pub fn reject(&mut self, approved_by: UserId) {
         self.status = RequestStatus::Rejected;
         self.rejected_by = Some(approved_by);
         self.rejected_at = Some(Utc::now());
@@ -208,18 +208,22 @@ mod tests {
         let start = NaiveDate::from_ymd_opt(2024, 4, 1).unwrap();
         let end = NaiveDate::from_ymd_opt(2024, 4, 2).unwrap();
 
-        let mut request = LeaveRequest::new("user".into(), LeaveType::Annual, start, end, None);
+        let user_id = UserId::new();
+        let admin_id = UserId::new();
+        let admin2_id = UserId::new();
+
+        let mut request = LeaveRequest::new(user_id, LeaveType::Annual, start, end, None);
         assert!(request.is_pending());
 
-        request.approve("admin".into());
+        request.approve(admin_id);
         assert!(matches!(request.status, RequestStatus::Approved));
-        assert_eq!(request.approved_by.as_deref(), Some("admin"));
+        assert_eq!(request.approved_by, Some(admin_id));
         assert!(request.approved_at.is_some());
 
-        let mut rejected = LeaveRequest::new("user".into(), LeaveType::Sick, start, end, None);
-        rejected.reject("admin2".into());
+        let mut rejected = LeaveRequest::new(user_id, LeaveType::Sick, start, end, None);
+        rejected.reject(admin2_id);
         assert!(matches!(rejected.status, RequestStatus::Rejected));
-        assert_eq!(rejected.rejected_by.as_deref(), Some("admin2"));
+        assert_eq!(rejected.rejected_by, Some(admin2_id));
         assert!(rejected.rejected_at.is_some());
     }
 }

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use std::sync::Arc;
+use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::attendance_utils::{
@@ -15,6 +16,7 @@ use crate::handlers::attendance_utils::{
     insert_attendance_record, update_clock_in, update_clock_out,
 };
 use crate::error::AppError;
+use crate::types::{AttendanceId, UserId};
 use crate::{
     config::Config,
     models::{
@@ -57,7 +59,7 @@ pub async fn clock_in(
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockInRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
-    let user_id = user.id.as_str();
+    let user_id = user.id;
 
     let tz = &config.time_zone;
     let now_local = time::now_in_timezone(tz);
@@ -76,14 +78,14 @@ pub async fn clock_in(
             attendance
         }
         None => {
-            let mut attendance = Attendance::new(user_id.to_string(), date, now_utc);
+            let mut attendance = Attendance::new(user_id, date, now_utc);
             attendance.clock_in_time = Some(clock_in_time);
             insert_attendance_record(&pool, &attendance).await?;
             attendance
         }
     };
 
-    let break_records = get_break_records(&pool, &attendance.id).await?;
+    let break_records = get_break_records(&pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
@@ -95,7 +97,7 @@ pub async fn clock_out(
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockOutRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
-    let user_id = user.id.as_str();
+    let user_id = user.id;
 
     let tz = &config.time_zone;
     let now_local = time::now_in_timezone(tz);
@@ -117,7 +119,7 @@ pub async fn clock_out(
     let active_break = sqlx::query(
         "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL LIMIT 1",
     )
-    .bind(&attendance.id)
+    .bind(attendance.id.to_string())
     .fetch_optional(&pool)
     .await?;
 
@@ -126,13 +128,13 @@ pub async fn clock_out(
     }
 
     attendance.clock_out_time = Some(clock_out_time);
-    let break_minutes = total_break_minutes(&pool, &attendance.id).await?;
+    let break_minutes = total_break_minutes(&pool, attendance.id).await?;
     attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = now_utc;
 
     update_clock_out(&pool, &attendance).await?;
 
-    let break_records = get_break_records(&pool, &attendance.id).await?;
+    let break_records = get_break_records(&pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
@@ -149,15 +151,15 @@ pub async fn break_start(
     let break_start_time = now_local.naive_local();
 
     // Check if attendance record exists and user is clocked in
-    let attendance = fetch_attendance_by_id(&pool, &payload.attendance_id).await?;
-    ensure_authorized_access(&attendance, &user.id)?;
+    let attendance = fetch_attendance_by_id(&pool, payload.attendance_id).await?;
+    ensure_authorized_access(&attendance, user.id)?;
     ensure_clocked_in(&attendance)?;
 
     // Check if there's already an active break
     let active_break = sqlx::query_as::<_, BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL"
     )
-    .bind(&payload.attendance_id)
+    .bind(payload.attendance_id.to_string())
     .fetch_optional(&pool)
     .await?;
 
@@ -170,8 +172,8 @@ pub async fn break_start(
     sqlx::query(
                 "INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"
     )
-    .bind(&break_record.id)
-    .bind(&break_record.attendance_id)
+    .bind(break_record.id.to_string())
+    .bind(break_record.attendance_id.to_string())
     .bind(break_record.break_start_time)
     .bind(break_record.break_end_time)
     .bind(break_record.duration_minutes)
@@ -198,7 +200,7 @@ pub async fn break_end(
     let mut break_record = sqlx::query_as::<_, BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
-    .bind(&payload.break_record_id)
+    .bind(payload.break_record_id.to_string())
     .fetch_optional(&pool)
     .await?
     .ok_or_else(|| {
@@ -208,8 +210,8 @@ pub async fn break_end(
     if !break_record.is_active() {
         return Err(AppError::BadRequest("Break already ended".into()));
     }
-    let att = fetch_attendance_by_id(&pool, &break_record.attendance_id).await?;
-    ensure_authorized_access(&att, &user.id)?;
+    let att = fetch_attendance_by_id(&pool, break_record.attendance_id).await?;
+    ensure_authorized_access(&att, user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
 
@@ -219,7 +221,7 @@ pub async fn break_end(
     .bind(break_record.break_end_time)
     .bind(break_record.duration_minutes)
     .bind(break_record.updated_at)
-    .bind(&break_record.id)
+    .bind(break_record.id.to_string())
     .execute(&pool)
     .await?;
 
@@ -236,7 +238,7 @@ pub async fn get_my_attendance(
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
 ) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
-    let user_id = user.id.as_str();
+    let user_id = user.id;
 
     // from/to range takes precedence over year/month
     let attendances = if params.from.is_some() || params.to.is_some() {
@@ -249,7 +251,7 @@ pub async fn get_my_attendance(
         sqlx::query_as::<_, Attendance>(
             "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .bind(from)
         .bind(to)
         .fetch_all(&pool)
@@ -271,7 +273,7 @@ pub async fn get_my_attendance(
         sqlx::query_as::<_, Attendance>(
             "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC"
         )
-        .bind(user_id)
+        .bind(user_id.to_string())
         .bind(first_day)
         .bind(last_day)
         .fetch_all(&pool)
@@ -280,7 +282,7 @@ pub async fn get_my_attendance(
 
     let mut responses = Vec::new();
     for attendance in attendances {
-        let break_records = get_break_records(&pool, &attendance.id).await?;
+        let break_records = get_break_records(&pool, attendance.id).await?;
         responses.push(build_attendance_response(attendance, break_records));
     }
 
@@ -292,7 +294,7 @@ pub async fn get_attendance_status(
     Extension(user): Extension<User>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<AttendanceStatusResponse>, AppError> {
-    let user_id = user.id.as_str();
+    let user_id = user.id;
     let date = params
         .get("date")
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
@@ -301,7 +303,7 @@ pub async fn get_attendance_status(
     let attendance: Option<Attendance> = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
-    .bind(user_id)
+    .bind(user_id.to_string())
     .bind(date)
     .fetch_optional(&pool)
     .await?;
@@ -311,14 +313,14 @@ pub async fn get_attendance_status(
         let active_break = sqlx::query(
             "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL ORDER BY break_start_time DESC LIMIT 1"
         )
-        .bind(&att.id)
+        .bind(att.id.to_string())
         .fetch_optional(&pool)
         .await?;
 
         let resp = if att.clock_in_time.is_none() {
             AttendanceStatusResponse {
                 status: "not_started".into(),
-                attendance_id: Some(att.id),
+                attendance_id: Some(att.id.to_string()),
                 active_break_id: None,
                 clock_in_time: None,
                 clock_out_time: None,
@@ -326,7 +328,7 @@ pub async fn get_attendance_status(
         } else if att.is_clocked_out() {
             AttendanceStatusResponse {
                 status: "clocked_out".into(),
-                attendance_id: Some(att.id),
+                attendance_id: Some(att.id.to_string()),
                 active_break_id: None,
                 clock_in_time: att.clock_in_time,
                 clock_out_time: att.clock_out_time,
@@ -335,7 +337,7 @@ pub async fn get_attendance_status(
             let bid: Option<String> = b.try_get("id").ok();
             AttendanceStatusResponse {
                 status: "on_break".into(),
-                attendance_id: Some(att.id),
+                attendance_id: Some(att.id.to_string()),
                 active_break_id: bid,
                 clock_in_time: att.clock_in_time,
                 clock_out_time: None,
@@ -343,7 +345,7 @@ pub async fn get_attendance_status(
         } else {
             AttendanceStatusResponse {
                 status: "clocked_in".into(),
-                attendance_id: Some(att.id),
+                attendance_id: Some(att.id.to_string()),
                 active_break_id: None,
                 clock_in_time: att.clock_in_time,
                 clock_out_time: None,
@@ -365,7 +367,9 @@ pub async fn get_breaks_by_attendance(
     State((pool, _config)): State<(PgPool, Config)>,
     Path(attendance_id): Path<String>,
 ) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
-    let records = get_break_records(&pool, &attendance_id).await?;
+    let attendance_id = AttendanceId::from_str(&attendance_id)
+        .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
+    let records = get_break_records(&pool, attendance_id).await?;
     Ok(Json(records))
 }
 
@@ -374,7 +378,7 @@ pub async fn get_my_summary(
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
 ) -> Result<Json<AttendanceSummary>, AppError> {
-    let user_id = user.id.as_str();
+    let user_id = user.id;
 
     let now_local = time::now_in_timezone(&config.time_zone);
     let year = params.year.unwrap_or_else(|| now_local.year());
@@ -395,7 +399,7 @@ pub async fn get_my_summary(
     let row = sqlx::query(
         "SELECT COALESCE(SUM(total_work_hours), 0) as total_hours, COUNT(*) as total_days FROM attendance WHERE user_id = $1 AND date BETWEEN $2 AND $3 AND total_work_hours IS NOT NULL"
     )
-    .bind(user_id)
+    .bind(user_id.to_string())
     .bind(first_day)
     .bind(last_day)
     .fetch_one(&pool)
@@ -441,7 +445,7 @@ pub async fn export_my_attendance(
          JOIN users u ON a.user_id = u.id \
          WHERE a.user_id = ",
     );
-    builder.push_bind(&user.id);
+    builder.push_bind(user.id.to_string());
     if let Some(f) = from {
         builder.push(" AND a.date >= ").push_bind(f);
     }
@@ -531,12 +535,12 @@ fn build_attendance_response(
 
 async fn get_break_records(
     pool: &PgPool,
-    attendance_id: &str,
+    attendance_id: AttendanceId,
 ) -> Result<Vec<BreakRecordResponse>, AppError> {
     let break_records = sqlx::query_as::<_, BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
-    .bind(attendance_id)
+    .bind(attendance_id.to_string())
     .fetch_all(pool)
     .await?;
 
@@ -548,12 +552,12 @@ async fn get_break_records(
 
 pub(crate) async fn total_break_minutes(
     pool: &PgPool,
-    attendance_id: &str,
+    attendance_id: AttendanceId,
 ) -> Result<i64, AppError> {
     let row = sqlx::query(
         "SELECT COALESCE(SUM(duration_minutes), 0) AS minutes FROM break_records WHERE attendance_id = $1 AND duration_minutes IS NOT NULL",
     )
-    .bind(attendance_id)
+    .bind(attendance_id.to_string())
     .fetch_one(pool)
     .await?;
 
@@ -570,14 +574,14 @@ pub(crate) async fn recalculate_total_hours(
         return Ok(());
     }
 
-    let break_minutes = total_break_minutes(pool, &attendance.id).await?;
+    let break_minutes = total_break_minutes(pool, attendance.id).await?;
     attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = updated_at;
 
     sqlx::query("UPDATE attendance SET total_work_hours = $1, updated_at = $2 WHERE id = $3")
         .bind(attendance.total_work_hours)
         .bind(attendance.updated_at)
-        .bind(&attendance.id)
+        .bind(attendance.id.to_string())
         .execute(pool)
         .await?;
 
@@ -587,10 +591,10 @@ pub(crate) async fn recalculate_total_hours(
 async fn reject_if_holiday(
     holiday_service: &dyn HolidayServiceTrait,
     date: NaiveDate,
-    user_id: &str,
+    user_id: UserId,
 ) -> Result<(), AppError> {
     let decision = holiday_service
-        .is_holiday(date, Some(user_id))
+        .is_holiday(date, Some(&user_id.to_string()))
         .await?;
 
     if decision.is_holiday {

@@ -5,8 +5,10 @@ use axum::{
 use chrono::Utc;
 use serde::Deserialize;
 use sqlx::{PgPool, Transaction, Postgres};
+use std::str::FromStr;
 use utoipa::ToSchema;
 use crate::error::AppError;
+use crate::types::{AttendanceId, UserId, BreakRecordId};
 
 use crate::{
     config::Config,
@@ -35,7 +37,7 @@ pub async fn get_all_attendance(
 
     let mut responses = Vec::new();
     for attendance in attendances {
-        let break_records = get_break_records(&pool, &attendance.id).await?;
+        let break_records = get_break_records(&pool, attendance.id).await?;
         let response = AttendanceResponse {
             id: attendance.id,
             user_id: attendance.user_id,
@@ -108,16 +110,20 @@ pub async fn upsert_attendance(
 
     let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    // Parse and validate user_id
+    let user_id_typed = UserId::from_str(&user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user_id format".into()))?;
+
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
     sqlx::query::<sqlx::Postgres>("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
-        .bind(&user_id)
+        .bind(user_id_typed.to_string())
         .bind(date)
         .execute(&mut *tx)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
     let mut att = crate::models::attendance::Attendance::new(
-        user_id.clone(),
+        user_id_typed,
         date,
         time::now_utc(&config.time_zone),
     );
@@ -146,7 +152,7 @@ pub async fn upsert_attendance(
                     .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
             });
             let now_utc = time::now_utc(&config.time_zone);
-            let mut br = crate::models::break_record::BreakRecord::new(att.id.clone(), bs, now_utc);
+            let mut br = crate::models::break_record::BreakRecord::new(att.id, bs, now_utc);
             if let Some(bev) = be {
                 br.break_end_time = Some(bev);
                 let duration = bev.signed_duration_since(bs);
@@ -162,8 +168,8 @@ pub async fn upsert_attendance(
     att.calculate_work_hours(total_break_minutes);
 
     sqlx::query::<sqlx::Postgres>("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
-        .bind(&att.id)
-        .bind(&att.user_id)
+        .bind(att.id.to_string())
+        .bind(att.user_id.to_string())
         .bind(att.date)
         .bind(att.clock_in_time)
         .bind(att.clock_out_time)
@@ -179,8 +185,8 @@ pub async fn upsert_attendance(
     // insert breaks
     for br in pending_breaks {
         sqlx::query::<sqlx::Postgres>("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
-            .bind(&br.id)
-            .bind(&br.attendance_id)
+            .bind(br.id.to_string())
+            .bind(br.attendance_id.to_string())
             .bind(br.break_start_time)
             .bind(br.break_end_time)
             .bind(br.duration_minutes)
@@ -193,7 +199,7 @@ pub async fn upsert_attendance(
 
     tx.commit().await.map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
-    let breaks = get_break_records(&pool, &att.id).await?;
+    let breaks = get_break_records(&pool, att.id).await?;
     Ok(Json(AttendanceResponse {
         id: att.id,
         user_id: att.user_id,
@@ -216,13 +222,15 @@ pub async fn force_end_break(
     if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    let break_record_id = BreakRecordId::from_str(&break_id)
+        .map_err(|_| AppError::BadRequest("Invalid break record ID format".into()))?;
     let now_local = time::now_in_timezone(&config.time_zone);
     let now_utc = now_local.with_timezone(&Utc);
     let now = now_local.naive_local();
     let mut rec = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
-    .bind(&break_id)
+    .bind(break_record_id.to_string())
     .fetch_optional(&pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?
@@ -240,7 +248,7 @@ pub async fn force_end_break(
         .bind(rec.break_end_time)
         .bind(rec.duration_minutes)
         .bind(rec.updated_at)
-        .bind(&rec.id)
+        .bind(rec.id.to_string())
         .execute(&pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
@@ -248,7 +256,7 @@ pub async fn force_end_break(
     if let Some(attendance) = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
     )
-    .bind(&rec.attendance_id)
+    .bind(rec.attendance_id.to_string())
     .fetch_optional(&pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))? {
@@ -264,12 +272,12 @@ pub async fn force_end_break(
 
 pub async fn get_break_records(
     pool: &PgPool,
-    attendance_id: &str,
+    attendance_id: AttendanceId,
 ) -> Result<Vec<BreakRecordResponse>, AppError> {
     let break_records = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
     )
-    .bind(attendance_id)
+    .bind(attendance_id.to_string())
     .fetch_all(pool)
     .await?;
 

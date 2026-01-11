@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{audit_log::AuditLog, user::UserRole},
     repositories::audit_log,
+    types::AuditLogId,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -33,9 +34,9 @@ async fn audit_log_repo_inserts_and_fetches() {
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let metadata_value = json!({ "source": "test" });
     let log = AuditLog {
-        id: Uuid::new_v4().to_string(),
+        id: AuditLogId::new(),
         occurred_at: Utc::now(),
-        actor_id: Some(user.id.clone()),
+        actor_id: Some(user.id),
         actor_type: "user".into(),
         event_type: "attendance_clock_in".into(),
         target_type: Some("attendance".into()),
@@ -52,7 +53,7 @@ async fn audit_log_repo_inserts_and_fetches() {
         .await
         .expect("insert audit log");
 
-    let fetched = audit_log::fetch_audit_log(&pool, &log.id)
+    let fetched = audit_log::fetch_audit_log(&pool, log.id)
         .await
         .expect("fetch audit log")
         .expect("audit log exists");
@@ -99,9 +100,9 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let now = Utc::now();
     let old_log = AuditLog {
-        id: Uuid::new_v4().to_string(),
+        id: AuditLogId::new(),
         occurred_at: now - ChronoDuration::days(40),
-        actor_id: Some(user.id.clone()),
+        actor_id: Some(user.id),
         actor_type: "user".into(),
         event_type: "admin_user_create".into(),
         target_type: Some("user".into()),
@@ -114,9 +115,9 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
         request_id: Some("req-old".into()),
     };
     let recent_log = AuditLog {
-        id: Uuid::new_v4().to_string(),
+        id: AuditLogId::new(),
         occurred_at: now - ChronoDuration::days(10),
-        actor_id: Some(user.id.clone()),
+        actor_id: Some(user.id),
         actor_type: "user".into(),
         event_type: "admin_user_create".into(),
         target_type: Some("user".into()),
@@ -150,7 +151,7 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
     assert_eq!(remaining.0, 1);
 
     let remaining_old: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM audit_logs WHERE id = $1")
-        .bind(&old_log.id)
+        .bind(old_log.id.to_string())
         .fetch_one(&pool)
         .await
         .expect("count old logs");

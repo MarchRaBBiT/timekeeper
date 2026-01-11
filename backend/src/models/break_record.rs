@@ -1,18 +1,18 @@
 //! Models that capture break sessions within an attendance record.
 
+use crate::types::{AttendanceId, BreakRecordId};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Persistent representation of a single break interval.
 pub struct BreakRecord {
     /// Unique identifier for the break record.
-    pub id: String,
+    pub id: BreakRecordId,
     /// Associated attendance record identifier.
-    pub attendance_id: String,
+    pub attendance_id: AttendanceId,
     /// Timestamp when the break started.
     pub break_start_time: NaiveDateTime,
     /// Timestamp when the break ended, if the break is closed.
@@ -28,8 +28,8 @@ pub struct BreakRecord {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API-friendly representation of a break interval.
 pub struct BreakRecordResponse {
-    pub id: String,
-    pub attendance_id: String,
+    pub id: BreakRecordId,
+    pub attendance_id: AttendanceId,
     pub break_start_time: NaiveDateTime,
     pub break_end_time: Option<NaiveDateTime>,
     pub duration_minutes: Option<i32>,
@@ -50,9 +50,9 @@ impl From<BreakRecord> for BreakRecordResponse {
 
 impl BreakRecord {
     /// Creates a new break record that starts immediately.
-    pub fn new(attendance_id: String, break_start_time: NaiveDateTime, now: DateTime<Utc>) -> Self {
+    pub fn new(attendance_id: AttendanceId, break_start_time: NaiveDateTime, now: DateTime<Utc>) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: BreakRecordId::new(),
             attendance_id,
             break_start_time,
             break_end_time: None,
@@ -88,7 +88,7 @@ mod tests {
             .and_hms_opt(12, 0, 0)
             .unwrap();
         let now = Utc::now();
-        let mut record = BreakRecord::new("att".into(), start, now);
+        let mut record = BreakRecord::new(AttendanceId::new(), start, now);
         assert!(record.is_active());
 
         let end = start + chrono::Duration::minutes(15);

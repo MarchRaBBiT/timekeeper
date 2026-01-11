@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::future::Future;
+use std::str::FromStr;
 
 use crate::{
     config::Config,
@@ -15,6 +16,7 @@ use crate::{
         ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
         MfaStatusResponse, User, UserResponse,
     },
+    types::UserId,
     utils::{
         cookies::{
             build_auth_cookie, build_clear_cookie, extract_cookie_value, CookieOptions,
@@ -96,13 +98,13 @@ pub async fn refresh(
     let token_record = fetch_refresh_token_or_unauthorized(&pool, &refresh_token_id).await?;
     verify_refresh_secret(&refresh_token_secret, &token_record.token_hash)?;
 
-    let user = auth_repo::find_user_by_id(&pool, &token_record.user_id)
+    let user = auth_repo::find_user_by_id(&pool, token_record.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
 
     let (access_token, claims) = create_access_token(
-        user.id.clone(),
+        user.id.to_string(),
         user.username.clone(),
         user.role.as_str().to_string(),
         &config.jwt_secret,
@@ -111,7 +113,7 @@ pub async fn refresh(
     .map_err(|_| internal_error("Token creation error"))?;
 
     let new_refresh_token_data =
-        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days)
+        create_refresh_token(user.id.to_string(), config.refresh_token_expiration_days)
             .map_err(|_| internal_error("Refresh token creation error"))?;
 
     revoke_refresh_token_by_id(
@@ -181,7 +183,7 @@ async fn begin_mfa_enrollment(
     )
     .bind(&secret)
     .bind(Utc::now())
-    .bind(&user.id)
+    .bind(user.id.to_string())
     .execute(pool)
     .await
     .is_err()
@@ -235,7 +237,7 @@ pub async fn mfa_activate(
     let now = Utc::now();
     if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
         .bind(now)
-        .bind(&user.id)
+        .bind(user.id.to_string())
         .execute(&pool)
         .await
         .is_err()
@@ -243,8 +245,8 @@ pub async fn mfa_activate(
         return Err(internal_error("Failed to enable MFA"));
     }
 
-    revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
-    revoke_active_tokens_for_user(&pool, &user.id).await?;
+    revoke_tokens_for_user(&pool, user.id, "Failed to revoke refresh tokens").await?;
+    revoke_active_tokens_for_user(&pool, user.id).await?;
 
     Ok(Json(json!({"message": "MFA enabled"})))
 }
@@ -275,7 +277,7 @@ pub async fn mfa_disable(
         "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
     )
     .bind(Utc::now())
-    .bind(&user.id)
+    .bind(user.id.to_string())
     .execute(&pool)
     .await
     .is_err()
@@ -284,7 +286,7 @@ pub async fn mfa_disable(
     }
 
     if sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(&user.id)
+        .bind(user.id.to_string())
         .execute(&pool)
         .await
         .is_err()
@@ -292,7 +294,7 @@ pub async fn mfa_disable(
         return Err(internal_error("Failed to revoke refresh tokens"));
     }
 
-    revoke_active_tokens_for_user(&pool, &user.id).await?;
+    revoke_active_tokens_for_user(&pool, user.id).await?;
 
     Ok(Json(json!({"message": "MFA disabled"})))
 }
@@ -323,7 +325,7 @@ pub async fn change_password(
     if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
         .bind(&new_hash)
         .bind(Utc::now())
-        .bind(&user.id)
+        .bind(user.id.to_string())
         .execute(&pool)
         .await
         .is_err()
@@ -331,8 +333,8 @@ pub async fn change_password(
         return Err(internal_error("Failed to update password"));
     }
 
-    revoke_tokens_for_user(&pool, &user.id, "Failed to revoke refresh tokens").await?;
-    revoke_active_tokens_for_user(&pool, &user.id).await?;
+    revoke_tokens_for_user(&pool, user.id, "Failed to revoke refresh tokens").await?;
+    revoke_active_tokens_for_user(&pool, user.id).await?;
 
     Ok(Json(json!({"message": "Password updated successfully"})))
 }
@@ -349,8 +351,8 @@ pub async fn logout(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if all {
-        revoke_tokens_for_user(&pool, &user.id, "Failed to revoke tokens").await?;
-        revoke_active_tokens_for_user(&pool, &user.id).await?;
+        revoke_tokens_for_user(&pool, user.id, "Failed to revoke tokens").await?;
+        revoke_active_tokens_for_user(&pool, user.id).await?;
         let mut response_headers = HeaderMap::new();
         clear_auth_cookies(&mut response_headers, &config);
         return Ok((response_headers, Json(json!({"message":"Logged out"}))));
@@ -367,7 +369,7 @@ pub async fn logout(
     {
         let (token_id, _) =
             decode_refresh_token(&rt).map_err(|_| bad_request("Invalid refresh token"))?;
-        revoke_refresh_token_for_user(&pool, &token_id, &user.id).await?;
+        revoke_refresh_token_for_user(&pool, &token_id, user.id).await?;
         revoke_active_access_token(&pool, &claims.jti).await?;
         let mut response_headers = HeaderMap::new();
         clear_auth_cookies(&mut response_headers, &config);
@@ -413,7 +415,7 @@ where
     enforce_mfa(&user, payload.totp_code.as_deref())?;
 
     let (access_token, claims) = create_access_token(
-        user.id.clone(),
+        user.id.to_string(),
         user.username.clone(),
         user.role.as_str().to_string(),
         &config.jwt_secret,
@@ -422,7 +424,7 @@ where
     .map_err(|_| internal_error("Token creation error"))?;
 
     let refresh_token_data =
-        create_refresh_token(user.id.clone(), config.refresh_token_expiration_days)
+        create_refresh_token(user.id.to_string(), config.refresh_token_expiration_days)
             .map_err(|_| internal_error("Refresh token creation error"))?;
     let refresh_token = refresh_token_data.encoded();
 
@@ -579,7 +581,7 @@ async fn revoke_refresh_token_by_id(
 async fn revoke_refresh_token_for_user(
     pool: &PgPool,
     token_id: &str,
-    user_id: &str,
+    user_id: UserId,
 ) -> HandlerResult<()> {
     auth_repo::delete_refresh_token_for_user(pool, token_id, user_id)
         .await
@@ -588,7 +590,7 @@ async fn revoke_refresh_token_for_user(
 
 async fn revoke_tokens_for_user(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
     error_message: &'static str,
 ) -> HandlerResult<()> {
     auth_repo::delete_refresh_tokens_for_user(pool, user_id)
@@ -613,9 +615,11 @@ async fn persist_active_access_token(
             Some(trimmed.chars().take(128).collect::<String>())
         }
     });
+    let user_id = UserId::from_str(&claims.sub)
+        .map_err(|_| internal_error("Invalid user ID in claims"))?;
     let token = ActiveAccessToken {
         jti: &claims.jti,
-        user_id: &claims.sub,
+        user_id,
         expires_at,
         context: sanitized_context.as_deref(),
     };
@@ -630,7 +634,7 @@ async fn revoke_active_access_token(pool: &PgPool, jti: &str) -> HandlerResult<(
         .map_err(|_| internal_error("Failed to revoke access token"))
 }
 
-async fn revoke_active_tokens_for_user(pool: &PgPool, user_id: &str) -> HandlerResult<()> {
+async fn revoke_active_tokens_for_user(pool: &PgPool, user_id: UserId) -> HandlerResult<()> {
     auth_repo::delete_active_access_tokens_for_user(pool, user_id)
         .await
         .map_err(|_| internal_error("Failed to revoke access tokens"))

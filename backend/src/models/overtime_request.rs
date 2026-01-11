@@ -1,10 +1,10 @@
 //! Models describing overtime requests and review workflow.
 
+use crate::types::{OvertimeRequestId, UserId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
@@ -13,9 +13,9 @@ pub use crate::models::request::RequestStatus;
 /// Database representation of an overtime work request.
 pub struct OvertimeRequest {
     /// Unique identifier for the overtime request.
-    pub id: String,
+    pub id: OvertimeRequestId,
     /// Identifier of the employee submitting the request.
-    pub user_id: String,
+    pub user_id: UserId,
     /// Date when the overtime is planned.
     pub date: NaiveDate,
     /// Number of overtime hours planned.
@@ -25,11 +25,11 @@ pub struct OvertimeRequest {
     /// Current status of the request.
     pub status: RequestStatus,
     /// Administrator who approved the request, if any.
-    pub approved_by: Option<String>,
+    pub approved_by: Option<UserId>,
     /// Timestamp when the request received approval.
     pub approved_at: Option<DateTime<Utc>>,
     /// Administrator who rejected the request, if any.
-    pub rejected_by: Option<String>,
+    pub rejected_by: Option<UserId>,
     /// Timestamp when the request was rejected.
     pub rejected_at: Option<DateTime<Utc>>,
     /// Timestamp when the requester cancelled the request.
@@ -55,15 +55,15 @@ pub struct CreateOvertimeRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API response returned for overtime requests.
 pub struct OvertimeRequestResponse {
-    pub id: String,
-    pub user_id: String,
+    pub id: OvertimeRequestId,
+    pub user_id: UserId,
     pub date: NaiveDate,
     pub planned_hours: f64,
     pub reason: Option<String>,
     pub status: RequestStatus,
-    pub approved_by: Option<String>,
+    pub approved_by: Option<UserId>,
     pub approved_at: Option<DateTime<Utc>>,
-    pub rejected_by: Option<String>,
+    pub rejected_by: Option<UserId>,
     pub rejected_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
     pub decision_comment: Option<String>,
@@ -94,14 +94,14 @@ impl From<OvertimeRequest> for OvertimeRequestResponse {
 impl OvertimeRequest {
     /// Creates a new overtime request pending review.
     pub fn new(
-        user_id: String,
+        user_id: UserId,
         date: NaiveDate,
         planned_hours: f64,
         reason: Option<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: OvertimeRequestId::new(),
             user_id,
             date,
             planned_hours,
@@ -120,7 +120,7 @@ impl OvertimeRequest {
 
     /// Marks the request as approved.
     #[allow(dead_code)]
-    pub fn approve(&mut self, approved_by: String) {
+    pub fn approve(&mut self, approved_by: UserId) {
         self.status = RequestStatus::Approved;
         self.approved_by = Some(approved_by);
         self.approved_at = Some(Utc::now());
@@ -129,7 +129,7 @@ impl OvertimeRequest {
 
     /// Marks the request as rejected.
     #[allow(dead_code)]
-    pub fn reject(&mut self, approved_by: String) {
+    pub fn reject(&mut self, approved_by: UserId) {
         self.status = RequestStatus::Rejected;
         self.rejected_by = Some(approved_by);
         self.rejected_at = Some(Utc::now());
@@ -160,17 +160,21 @@ mod tests {
 
         let date = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
 
-        let mut request = OvertimeRequest::new("user".into(), date, 2.5, None);
+        let user_id = UserId::new();
+        let admin_id = UserId::new();
+        let admin2_id = UserId::new();
+
+        let mut request = OvertimeRequest::new(user_id, date, 2.5, None);
         assert!(request.is_pending());
-        request.approve("approver".into());
+        request.approve(admin_id);
         assert!(matches!(request.status, RequestStatus::Approved));
-        assert_eq!(request.approved_by.as_deref(), Some("approver"));
+        assert_eq!(request.approved_by, Some(admin_id));
         assert!(request.approved_at.is_some());
 
-        let mut rejected = OvertimeRequest::new("user".into(), date, 1.0, None);
-        rejected.reject("approver2".into());
+        let mut rejected = OvertimeRequest::new(user_id, date, 1.0, None);
+        rejected.reject(admin2_id);
         assert!(matches!(rejected.status, RequestStatus::Rejected));
-        assert_eq!(rejected.rejected_by.as_deref(), Some("approver2"));
+        assert_eq!(rejected.rejected_by, Some(admin2_id));
         assert!(rejected.rejected_at.is_some());
     }
 }

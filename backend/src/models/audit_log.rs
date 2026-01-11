@@ -1,3 +1,4 @@
+use crate::types::{AuditLogId, UserId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -5,9 +6,9 @@ use sqlx::{types::Json, FromRow};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AuditLog {
-    pub id: String,
+    pub id: AuditLogId,
     pub occurred_at: DateTime<Utc>,
-    pub actor_id: Option<String>,
+    pub actor_id: Option<UserId>,
     pub actor_type: String,
     pub event_type: String,
     pub target_type: Option<String>,

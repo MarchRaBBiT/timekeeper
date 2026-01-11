@@ -1,19 +1,19 @@
 //! Models that represent employee attendance records and related requests.
 
 use crate::models::break_record::BreakRecordResponse;
+use crate::types::{AttendanceId, BreakRecordId, UserId};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Persistent record of a single day's attendance for an employee.
 pub struct Attendance {
     /// Unique identifier for the attendance record.
-    pub id: String,
+    pub id: AttendanceId,
     /// Identifier of the employee that owns the record.
-    pub user_id: String,
+    pub user_id: UserId,
     /// Calendar day the record tracks.
     pub date: NaiveDate,
     /// Timestamp when the employee clocked in, if any.
@@ -61,20 +61,20 @@ pub struct ClockOutRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload for starting a break against an attendance record.
 pub struct BreakStartRequest {
-    pub attendance_id: String,
+    pub attendance_id: AttendanceId,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload for ending a break session.
 pub struct BreakEndRequest {
-    pub break_record_id: String,
+    pub break_record_id: BreakRecordId,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// API representation of attendance with associated break records.
 pub struct AttendanceResponse {
-    pub id: String,
-    pub user_id: String,
+    pub id: AttendanceId,
+    pub user_id: UserId,
     pub date: NaiveDate,
     pub clock_in_time: Option<NaiveDateTime>,
     pub clock_out_time: Option<NaiveDateTime>,
@@ -95,9 +95,9 @@ pub struct AttendanceSummary {
 
 impl Attendance {
     /// Builds a new attendance record with default status and timestamps.
-    pub fn new(user_id: String, date: NaiveDate, now: DateTime<Utc>) -> Self {
+    pub fn new(user_id: UserId, date: NaiveDate, now: DateTime<Utc>) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: AttendanceId::new(),
             user_id,
             date,
             clock_in_time: None,
@@ -150,7 +150,7 @@ mod tests {
 
         let date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
         let now = Utc::now();
-        let mut attendance = Attendance::new("user".into(), date, now);
+        let mut attendance = Attendance::new(UserId::new(), date, now);
 
         assert!(!attendance.is_clocked_in());
         assert!(!attendance.is_clocked_out());

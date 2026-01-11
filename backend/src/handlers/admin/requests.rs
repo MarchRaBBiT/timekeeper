@@ -6,6 +6,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder};
+use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
@@ -16,6 +17,7 @@ use crate::{
         overtime_request::{OvertimeRequest, OvertimeRequestResponse},
         user::User,
     },
+    types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
     error::AppError,
 };
@@ -41,20 +43,26 @@ pub async fn approve_request(
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
 
-    if requests_repo::approve_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        > 0
-    {
-        return Ok(Json(json!({"message": "Leave request approved"})));
+    // Try as leave request
+    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
+        if requests_repo::approve_leave_request(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+            > 0
+        {
+            return Ok(Json(json!({"message": "Leave request approved"})));
+        }
     }
 
-    if requests_repo::approve_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        > 0
-    {
-        return Ok(Json(json!({"message": "Overtime request approved"})));
+    // Try as overtime request
+    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
+        if requests_repo::approve_overtime_request(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+            > 0
+        {
+            return Ok(Json(json!({"message": "Overtime request approved"})));
+        }
     }
 
     Err(AppError::NotFound("Request not found or already processed".into()))
@@ -79,20 +87,26 @@ pub async fn reject_request(
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
 
-    if requests_repo::reject_leave_request(&pool, &request_id, &approver_id, &comment, now_utc)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        > 0
-    {
-        return Ok(Json(json!({"message": "Leave request rejected"})));
+    // Try as leave request
+    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
+        if requests_repo::reject_leave_request(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+            > 0
+        {
+            return Ok(Json(json!({"message": "Leave request rejected"})));
+        }
     }
 
-    if requests_repo::reject_overtime_request(&pool, &request_id, &approver_id, &comment, now_utc)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        > 0
-    {
-        return Ok(Json(json!({"message": "Overtime request rejected"})));
+    // Try as overtime request
+    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
+        if requests_repo::reject_overtime_request(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+            > 0
+        {
+            return Ok(Json(json!({"message": "Overtime request rejected"})));
+        }
     }
 
     Err(AppError::NotFound("Request not found or already processed".into()))
@@ -228,22 +242,31 @@ pub async fn get_request_detail(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    if let Some(item) = requests_repo::fetch_leave_request(&pool, &request_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-    {
-        return Ok(Json(
-            json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
-        ));
+    
+    // Try as leave request
+    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
+        if let Some(item) = requests_repo::fetch_leave_request(&pool, leave_request_id)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+        {
+            return Ok(Json(
+                json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
+            ));
+        }
     }
-    if let Some(item) = requests_repo::fetch_overtime_request(&pool, &request_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-    {
-        return Ok(Json(
-            json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
-        ));
+    
+    // Try as overtime request
+    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
+        if let Some(item) = requests_repo::fetch_overtime_request(&pool, overtime_request_id)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+        {
+            return Ok(Json(
+                json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
+            ));
+        }
     }
+    
     Err(AppError::NotFound("Request not found".into()))
 }
 

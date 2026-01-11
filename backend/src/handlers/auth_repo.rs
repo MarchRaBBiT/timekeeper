@@ -2,12 +2,13 @@ use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 
 use crate::{models::user::User, utils::jwt::RefreshToken};
+use crate::types::UserId;
 
 #[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct StoredRefreshToken {
     pub id: String,
-    pub user_id: String,
+    pub user_id: UserId,
     pub token_hash: String,
     pub expires_at: DateTime<Utc>,
 }
@@ -15,7 +16,7 @@ pub struct StoredRefreshToken {
 #[derive(Debug)]
 pub struct ActiveAccessToken<'a> {
     pub jti: &'a str,
-    pub user_id: &'a str,
+    pub user_id: UserId,
     pub expires_at: DateTime<Utc>,
     pub context: Option<&'a str>,
 }
@@ -33,12 +34,12 @@ pub async fn find_user_by_username(
     .await
 }
 
-pub async fn find_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
+pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
     )
-    .bind(user_id)
+    .bind(user_id.to_string())
     .fetch_optional(pool)
     .await
 }
@@ -48,7 +49,7 @@ pub async fn insert_refresh_token(pool: &PgPool, token: &RefreshToken) -> Result
         "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
     .bind(&token.id)
-    .bind(&token.user_id)
+    .bind(token.user_id.to_string())
     .bind(&token.token_hash)
     .bind(token.expires_at)
     .execute(pool)
@@ -67,11 +68,11 @@ pub async fn delete_refresh_token_by_id(pool: &PgPool, token_id: &str) -> Result
 pub async fn delete_refresh_token_for_user(
     pool: &PgPool,
     token_id: &str,
-    user_id: &str,
+    user_id: UserId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2")
         .bind(token_id)
-        .bind(user_id)
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map(|_| ())
@@ -79,10 +80,10 @@ pub async fn delete_refresh_token_for_user(
 
 pub async fn delete_refresh_tokens_for_user(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(user_id)
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map(|_| ())
@@ -112,7 +113,7 @@ pub async fn insert_active_access_token(
          VALUES ($1, $2, $3, $4)",
     )
     .bind(token.jti)
-    .bind(token.user_id)
+    .bind(token.user_id.to_string())
     .bind(token.expires_at)
     .bind(token.context)
     .execute(pool)
@@ -142,10 +143,10 @@ pub async fn delete_active_access_token_by_jti(
 
 pub async fn delete_active_access_tokens_for_user(
     pool: &PgPool,
-    user_id: &str,
+    user_id: UserId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM active_access_tokens WHERE user_id = $1")
-        .bind(user_id)
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map(|_| ())

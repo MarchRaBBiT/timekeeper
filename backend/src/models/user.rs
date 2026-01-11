@@ -4,16 +4,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
+use crate::types::UserId;
 use crate::validation::rules;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of an authenticated user account.
 pub struct User {
     /// Unique identifier for the user.
-    pub id: String,
+    pub id: UserId,
     /// Immutable username used for login.
     pub username: String,
     /// Argon2/Bcrypt/Scrypt hash of the user's password.
@@ -174,7 +174,7 @@ pub struct MfaStatusResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Public-facing representation of a user returned by the API.
 pub struct UserResponse {
-    pub id: String,
+    pub id: UserId,
     pub username: String,
     pub full_name: String,
     pub role: String,
@@ -208,7 +208,7 @@ impl User {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: UserId::new(),
             username,
             password_hash,
             full_name,
