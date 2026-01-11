@@ -20,10 +20,13 @@
   - Staged all tracked changes and the new bash script.
   - Git commit failed because user.name/user.email are not configured.
   - Ran `TMPDIR=/tmp TEST_DATABASE_URL=postgres://timekeeper_test:timekeeper_test@localhost:55432/timekeeper_test cargo test`; `tests/audit_log_middleware` failed to connect (Operation not permitted).
+  - Committed changes: `chore: update deps and add backend test script`.
+  - Committed ledger update: `chore: update continuity ledger`.
+  - `git push` timed out (20s/60s) with network access.
 - Now:
-  - Commit and push changes, then create PR via gh.
+  - Push branch and create PR via gh (blocked by push timeout).
 - Next:
-  - Commit, push, and open PR with gh after git identity is set.
+  - Retry push or have user push manually, then create PR via gh.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
