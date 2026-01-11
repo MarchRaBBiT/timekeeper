@@ -1,7 +1,7 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Commit and push current uncommitted work, then create a PR via gh.
+  - Rebase current branch onto origin/master and update remote branch.
 - Constraints/Assumptions:
   - Respond to user in Japanese; output UTF-8 for non-ASCII.
   - Update and consult `CONTINUITY.md` each turn; keep it brief and factual.
@@ -23,10 +23,15 @@
   - Committed changes: `chore: update deps and add backend test script`.
   - Committed ledger update: `chore: update continuity ledger`.
   - `git push` timed out (20s/60s) with network access.
+  - User pushed the branch.
+  - `gh pr create --fill` reported existing PR: https://github.com/MarchRaBBiT/timekeeper/pull/177
+  - Rebased branch onto origin/master; resolved conflict in `backend/tests/support/mod.rs`.
+  - Completed rebase with an extra continuity ledger commit.
+  - Restored stashed continuity ledger update.
 - Now:
-  - Push branch and create PR via gh (blocked by push timeout).
+  - Force-push rebased branch and update PR #177.
 - Next:
-  - Retry push or have user push manually, then create PR via gh.
+  - None.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
