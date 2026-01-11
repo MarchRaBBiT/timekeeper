@@ -8,12 +8,12 @@ use validator::Validate;
 
 use crate::{
     config::Config,
+    error::AppError,
     handlers::requests_repo,
     models::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
-    error::AppError,
     types::{LeaveRequestId, OvertimeRequestId},
 };
 
@@ -55,12 +55,8 @@ pub async fn create_overtime_request(
 
     payload.validate()?;
 
-    let overtime_request = OvertimeRequest::new(
-        user_id,
-        payload.date,
-        payload.planned_hours,
-        payload.reason,
-    );
+    let overtime_request =
+        OvertimeRequest::new(user_id, payload.date, payload.planned_hours, payload.reason);
 
     requests_repo::insert_overtime_request(&pool, &overtime_request)
         .await
@@ -118,12 +114,14 @@ pub async fn update_request(
     // Try leave update first
     let leave_request_id = LeaveRequestId::from_str(&request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    
-    if let Some(req) = requests_repo::fetch_leave_request_by_id(&pool, leave_request_id, user_id)
-        .await?
+
+    if let Some(req) =
+        requests_repo::fetch_leave_request_by_id(&pool, leave_request_id, user_id).await?
     {
         if !req.is_pending() {
-            return Err(AppError::BadRequest("Only pending requests can be updated".into()));
+            return Err(AppError::BadRequest(
+                "Only pending requests can be updated".into(),
+            ));
         }
         let upd: UpdateLeavePayload = serde_json::from_value(payload.clone())
             .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
@@ -131,7 +129,9 @@ pub async fn update_request(
         let new_start = upd.start_date.unwrap_or(req.start_date);
         let new_end = upd.end_date.unwrap_or(req.end_date);
         if new_start > new_end {
-            return Err(AppError::BadRequest("start_date must be <= end_date".into()));
+            return Err(AppError::BadRequest(
+                "start_date must be <= end_date".into(),
+            ));
         }
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
@@ -145,12 +145,14 @@ pub async fn update_request(
     // Try overtime update
     let overtime_request_id = OvertimeRequestId::from_str(&request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    
-    if let Some(req) = requests_repo::fetch_overtime_request_by_id(&pool, overtime_request_id, user_id)
-        .await?
+
+    if let Some(req) =
+        requests_repo::fetch_overtime_request_by_id(&pool, overtime_request_id, user_id).await?
     {
         if !req.is_pending() {
-            return Err(AppError::BadRequest("Only pending requests can be updated".into()));
+            return Err(AppError::BadRequest(
+                "Only pending requests can be updated".into(),
+            ));
         }
         let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone())
             .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
@@ -161,10 +163,8 @@ pub async fn update_request(
         }
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
-        requests_repo::update_overtime_request(
-            &pool, req.id, new_date, new_hours, new_reason, now,
-        )
-        .await?;
+        requests_repo::update_overtime_request(&pool, req.id, new_date, new_hours, new_reason, now)
+            .await?;
         return Ok(Json(json!({"message":"Overtime request updated"})));
     }
 
@@ -178,12 +178,11 @@ pub async fn cancel_request(
 ) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
     let now = Utc::now();
-    
+
     // Try leave cancellation first
     let leave_request_id = LeaveRequestId::from_str(&request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    let result = requests_repo::cancel_leave_request(&pool, leave_request_id, user_id, now)
-        .await?;
+    let result = requests_repo::cancel_leave_request(&pool, leave_request_id, user_id, now).await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
@@ -191,13 +190,16 @@ pub async fn cancel_request(
     // Try overtime cancellation
     let overtime_request_id = OvertimeRequestId::from_str(&request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    let result = requests_repo::cancel_overtime_request(&pool, overtime_request_id, user_id, Utc::now())
-        .await?;
+    let result =
+        requests_repo::cancel_overtime_request(&pool, overtime_request_id, user_id, Utc::now())
+            .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 
-    Err(AppError::NotFound("Request not found or not cancellable".into()))
+    Err(AppError::NotFound(
+        "Request not found or not cancellable".into(),
+    ))
 }
 
 #[cfg(test)]

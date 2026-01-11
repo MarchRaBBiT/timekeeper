@@ -1,29 +1,42 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Report current codebase size/scale per user request.
+  - Rebase current branch onto origin/master and update remote branch.
 - Constraints/Assumptions:
-  - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
-  - Create a topic branch before implementation.
-  - Use TDD: add/adjust test before implementation.
-  - Run relevant backend tests/builds before responding (document failures if any).
-  - Do not revert unrelated local changes; stop and ask if unexpected changes appear.
+  - Respond to user in Japanese; output UTF-8 for non-ASCII.
+  - Update and consult `CONTINUITY.md` each turn; keep it brief and factual.
+  - Run relevant tests/builds after changes and report failures.
 - Key decisions:
-  - User asserts `reqwest 0.12.24` includes wasm support equivalent to `reqwest-wasm`.
+  - Treat unexpected changes as `cargo fmt --all` output and include in commit.
 - State:
-  - REPORTED
+  - IN_PROGRESS
 - Done:
-  - Reviewed uncommitted diffs across backend/frontend for archived user feature additions.
+  - Ran `cargo fmt --all`.
+  - Ran `cargo clippy --all-targets -- -D warnings`.
+  - Ran `cargo test` (initial failure at `tests/audit_log_middleware` due to `bind ephemeral port` permission error).
+  - `pwsh -File ./scripts/test_backend.ps1` failed: `pwsh` not found.
+  - User reports `cargo test` succeeds after setting TMPDIR=/tmp and TEST_DATABASE_URL.
+  - Added bash equivalent script `scripts/test_backend.sh`.
+  - Staged all tracked changes and the new bash script.
+  - Git commit failed because user.name/user.email are not configured.
+  - Ran `TMPDIR=/tmp TEST_DATABASE_URL=postgres://timekeeper_test:timekeeper_test@localhost:55432/timekeeper_test cargo test`; `tests/audit_log_middleware` failed to connect (Operation not permitted).
+  - Committed changes: `chore: update deps and add backend test script`.
+  - Committed ledger update: `chore: update continuity ledger`.
+  - `git push` timed out (20s/60s) with network access.
+  - User pushed the branch.
+  - `gh pr create --fill` reported existing PR: https://github.com/MarchRaBBiT/timekeeper/pull/177
+  - Rebased branch onto origin/master; resolved conflict in `backend/tests/support/mod.rs`.
+  - Completed rebase with an extra continuity ledger commit.
+  - Restored stashed continuity ledger update.
 - Now:
-  - Gathering repository size metrics (files/lines) for backend/frontend.
+  - Force-push rebased branch and update PR #177.
 - Next:
-  - Summarize codebase size once metrics collected.
+  - None.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
-  - `backend/src/handlers/admin/mod.rs`
-  - `backend/src/main.rs`
-  - `backend/src/repositories/user.rs`
-  - `frontend/src/api/client.rs`
-  - `frontend/src/api/types.rs`
-  - `frontend/src/pages/admin_users/*`
+  - /mnt/d/Users/Toshiki/Documents/github/timekeeper
+  - cargo fmt --all
+  - cargo clippy --all-targets -- -D warnings
+  - cargo test
+  - pwsh -File ./scripts/test_backend.ps1

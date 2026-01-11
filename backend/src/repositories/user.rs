@@ -241,21 +241,19 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Erro
 
 /// Checks if a user exists by ID.
 pub async fn user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(result.is_some())
 }
 
 /// Fetches username by user ID.
 pub async fn fetch_username(pool: &PgPool, user_id: &str) -> Result<Option<String>, sqlx::Error> {
-    let result: Option<(String,)> =
-        sqlx::query_as("SELECT username FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let result: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(result.map(|(u,)| u))
 }
 
@@ -309,16 +307,18 @@ pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(
 
 /// Checks if an archived user exists by ID.
 pub async fn archived_user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM archived_users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM archived_users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(result.is_some())
 }
 
 /// Fetches archived username by user ID.
-pub async fn fetch_archived_username(pool: &PgPool, user_id: &str) -> Result<Option<String>, sqlx::Error> {
+pub async fn fetch_archived_username(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Option<String>, sqlx::Error> {
     let result: Option<(String,)> =
         sqlx::query_as("SELECT username FROM archived_users WHERE id = $1")
             .bind(user_id)
@@ -352,4 +352,3 @@ pub async fn get_archived_users(pool: &PgPool) -> Result<Vec<ArchivedUserRow>, s
     .await?;
     Ok(rows)
 }
-

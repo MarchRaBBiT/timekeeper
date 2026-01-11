@@ -59,7 +59,10 @@ pub async fn audit_log(
         None
     };
 
-    let audit_service = request.extensions().get::<Arc<dyn AuditLogServiceTrait>>().cloned();
+    let audit_service = request
+        .extensions()
+        .get::<Arc<dyn AuditLogServiceTrait>>()
+        .cloned();
     let actor_before = request.extensions().get::<User>().cloned();
     let request_id = request
         .extensions()

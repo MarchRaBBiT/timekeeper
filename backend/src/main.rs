@@ -58,9 +58,11 @@ async fn main() -> anyhow::Result<()> {
 
     let pool: DbPool = create_pool(&config.database_url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
-    let audit_log_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
+    let audit_log_service: Arc<dyn AuditLogServiceTrait> =
+        Arc::new(AuditLogService::new(pool.clone()));
     let holiday_service: Arc<dyn HolidayServiceTrait> = Arc::new(HolidayService::new(pool.clone()));
-    let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> = Arc::new(HolidayExceptionService::new(pool.clone()));
+    let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
+        Arc::new(HolidayExceptionService::new(pool.clone()));
     let shared_state: AuthState = (pool.clone(), config.clone());
 
     spawn_audit_log_cleanup(
@@ -167,7 +169,7 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::attendance::get_my_summary),
         )
         .route(
-            "/api/attendance/:id/breaks",
+            "/api/attendance/{id}/breaks",
             get(handlers::attendance::get_breaks_by_attendance),
         )
         .route(
@@ -184,7 +186,7 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
         )
         .route("/api/requests/me", get(handlers::requests::get_my_requests))
         .route(
-            "/api/requests/:id",
+            "/api/requests/{id}",
             put(handlers::requests::update_request).delete(handlers::requests::cancel_request),
         )
         .route("/api/auth/mfa", get(handlers::auth::mfa_status))
@@ -222,15 +224,15 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
-            "/api/admin/requests/:id",
+            "/api/admin/requests/{id}",
             get(handlers::admin::get_request_detail),
         )
         .route(
-            "/api/admin/requests/:id/approve",
+            "/api/admin/requests/{id}/approve",
             put(handlers::admin::approve_request),
         )
         .route(
-            "/api/admin/requests/:id/reject",
+            "/api/admin/requests/{id}/reject",
             put(handlers::admin::reject_request),
         )
         .route(
@@ -242,7 +244,7 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::admin::list_weekly_holidays).post(handlers::admin::create_weekly_holiday),
         )
         .route(
-            "/api/admin/holidays/weekly/:id",
+            "/api/admin/holidays/weekly/{id}",
             delete(handlers::admin::delete_weekly_holiday),
         )
         .route("/api/admin/users", get(handlers::admin::get_users))
@@ -251,7 +253,7 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::admin::get_all_attendance),
         )
         .route(
-            "/api/admin/holidays/:id",
+            "/api/admin/holidays/{id}",
             delete(handlers::admin::delete_holiday),
         )
         .route(
@@ -259,12 +261,12 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::holidays::fetch_google_holidays),
         )
         .route(
-            "/api/admin/users/:user_id/holiday-exceptions",
+            "/api/admin/users/{user_id}/holiday-exceptions",
             post(handlers::holiday_exceptions::create_holiday_exception)
                 .get(handlers::holiday_exceptions::list_holiday_exceptions),
         )
         .route(
-            "/api/admin/users/:user_id/holiday-exceptions/:id",
+            "/api/admin/users/{user_id}/holiday-exceptions/{id}",
             delete(handlers::holiday_exceptions::delete_holiday_exception),
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
@@ -290,7 +292,7 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::admin::export_audit_logs),
         )
         .route(
-            "/api/admin/audit-logs/:id",
+            "/api/admin/audit-logs/{id}",
             get(handlers::admin::get_audit_log_detail),
         )
         .route("/api/admin/users", post(handlers::admin::create_user))
@@ -299,7 +301,7 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             put(handlers::admin::upsert_attendance),
         )
         .route(
-            "/api/admin/breaks/:id/force-end",
+            "/api/admin/breaks/{id}/force-end",
             put(handlers::admin::force_end_break),
         )
         .route(
@@ -307,7 +309,7 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             post(handlers::admin::reset_user_mfa),
         )
         .route(
-            "/api/admin/users/:id",
+            "/api/admin/users/{id}",
             delete(handlers::admin::delete_user),
         )
         .route(
@@ -315,11 +317,11 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             get(handlers::admin::get_archived_users),
         )
         .route(
-            "/api/admin/archived-users/:id",
+            "/api/admin/archived-users/{id}",
             delete(handlers::admin::delete_archived_user),
         )
         .route(
-            "/api/admin/archived-users/:id/restore",
+            "/api/admin/archived-users/{id}/restore",
             post(handlers::admin::restore_archived_user),
         )
         .route_layer(axum_middleware::from_fn_with_state(

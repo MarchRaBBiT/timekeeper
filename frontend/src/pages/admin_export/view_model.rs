@@ -56,7 +56,9 @@ impl ExportFilters {
 
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err(ApiError::validation("From は To 以前の日付を指定してください。"));
+                return Err(ApiError::validation(
+                    "From は To 以前の日付を指定してください。",
+                ));
             }
         }
 

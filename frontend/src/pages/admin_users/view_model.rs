@@ -2,7 +2,7 @@ use super::{
     repository::AdminUsersRepository,
     utils::{InviteFormState, MessageState},
 };
-use crate::api::{ApiClient, ArchivedUserResponse, CreateUser, UserResponse, ApiError};
+use crate::api::{ApiClient, ApiError, ArchivedUserResponse, CreateUser, UserResponse};
 use crate::state::auth::use_auth;
 use leptos::*;
 use std::rc::Rc;
@@ -217,5 +217,3 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         is_system_admin,
     }
 }
-
-

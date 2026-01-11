@@ -41,10 +41,7 @@ pub fn validate_username(username: &str) -> Result<(), ValidationError> {
         return Err(ValidationError::new("username_invalid_length"));
     }
 
-    if !username
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !username.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err(ValidationError::new("username_invalid_characters"));
     }
 
@@ -57,7 +54,7 @@ pub fn validate_username(username: &str) -> Result<(), ValidationError> {
 /// - Between 0.5 and 24.0 hours
 #[allow(dead_code)]
 pub fn validate_planned_hours(hours: f64) -> Result<(), ValidationError> {
-    if hours < 0.5 || hours > 24.0 {
+    if !(0.5..=24.0).contains(&hours) {
         return Err(ValidationError::new("planned_hours_out_of_range"));
     }
     Ok(())

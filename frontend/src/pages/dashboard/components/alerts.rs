@@ -5,8 +5,10 @@ use crate::{
 };
 use leptos::*;
 
-type AlertsResource =
-    Resource<Option<Result<DashboardSummary, crate::api::ApiError>>, Result<Vec<DashboardAlert>, crate::api::ApiError>>;
+type AlertsResource = Resource<
+    Option<Result<DashboardSummary, crate::api::ApiError>>,
+    Result<Vec<DashboardAlert>, crate::api::ApiError>,
+>;
 
 #[component]
 pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {

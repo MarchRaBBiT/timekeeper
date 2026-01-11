@@ -9,7 +9,9 @@ use crate::{
 use leptos::*;
 
 #[component]
-pub fn SummarySection(summary: Resource<(), Result<DashboardSummary, crate::api::ApiError>>) -> impl IntoView {
+pub fn SummarySection(
+    summary: Resource<(), Result<DashboardSummary, crate::api::ApiError>>,
+) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">
             <div>

@@ -100,4 +100,3 @@ impl From<validator::ValidationErrors> for AppError {
         AppError::Validation(messages)
     }
 }
-

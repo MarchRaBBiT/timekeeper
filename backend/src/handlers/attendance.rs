@@ -6,16 +6,16 @@ use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::error::AppError;
 use crate::handlers::attendance_utils::{
-    ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in, ensure_not_clocked_out,
-    fetch_attendance_by_id, fetch_attendance_by_user_date, ensure_authorized_access,
+    ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
+    ensure_not_clocked_out, fetch_attendance_by_id, fetch_attendance_by_user_date,
     insert_attendance_record, update_clock_in, update_clock_out,
 };
-use crate::error::AppError;
 use crate::types::{AttendanceId, UserId};
 use crate::{
     config::Config,
@@ -107,11 +107,10 @@ pub async fn clock_out(
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
-    let attendance_opt: Option<Attendance> = fetch_attendance_by_user_date(&pool, user_id, date)
-        .await?;
-    let mut attendance: Attendance = attendance_opt.ok_or_else(|| {
-            AppError::NotFound("No attendance record found for today".into())
-        })?;
+    let attendance_opt: Option<Attendance> =
+        fetch_attendance_by_user_date(&pool, user_id, date).await?;
+    let mut attendance: Attendance = attendance_opt
+        .ok_or_else(|| AppError::NotFound("No attendance record found for today".into()))?;
 
     ensure_not_clocked_out(&attendance)?;
     ensure_clock_in_exists(&attendance)?;
@@ -124,7 +123,9 @@ pub async fn clock_out(
     .await?;
 
     if active_break.is_some() {
-        return Err(AppError::BadRequest("Break in progress. End break before clocking out".into()));
+        return Err(AppError::BadRequest(
+            "Break in progress. End break before clocking out".into(),
+        ));
     }
 
     attendance.clock_out_time = Some(clock_out_time);

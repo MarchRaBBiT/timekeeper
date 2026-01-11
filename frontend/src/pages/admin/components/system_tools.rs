@@ -1,10 +1,10 @@
 use crate::{
+    api::ApiError,
     components::{error::InlineErrorMessage, layout::SuccessMessage},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         repository::AdminRepository,
     },
-    api::ApiError,
 };
 use leptos::*;
 

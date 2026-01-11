@@ -41,7 +41,10 @@ pub async fn insert_audit_log(pool: &PgPool, log: &AuditLog) -> Result<(), sqlx:
     .map(|_| ())
 }
 
-pub async fn fetch_audit_log(pool: &PgPool, id: AuditLogId) -> Result<Option<AuditLog>, sqlx::Error> {
+pub async fn fetch_audit_log(
+    pool: &PgPool,
+    id: AuditLogId,
+) -> Result<Option<AuditLog>, sqlx::Error> {
     sqlx::query_as::<_, AuditLog>(
         "SELECT id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, \
          error_code, metadata, ip, user_agent, request_id \

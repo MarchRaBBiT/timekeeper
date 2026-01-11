@@ -1,5 +1,7 @@
 use chrono::NaiveDate;
-use timekeeper_backend::services::holiday::{HolidayReason, HolidayServiceStub, HolidayServiceTrait};
+use timekeeper_backend::services::holiday::{
+    HolidayReason, HolidayServiceStub, HolidayServiceTrait,
+};
 
 #[tokio::test]
 async fn sunday_is_index_zero_convention() {

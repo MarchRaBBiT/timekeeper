@@ -2,7 +2,9 @@ use super::{
     repository::AdminRepository,
     utils::{next_allowed_weekly_start, RequestFilterState, WeeklyHolidayFormState},
 };
-use crate::api::{ApiClient, ApiError, CreateWeeklyHolidayRequest, UserResponse, WeeklyHolidayResponse};
+use crate::api::{
+    ApiClient, ApiError, CreateWeeklyHolidayRequest, UserResponse, WeeklyHolidayResponse,
+};
 use crate::state::auth::use_auth;
 use crate::utils::time::today_in_app_tz;
 use leptos::*;
@@ -12,7 +14,8 @@ pub struct AdminViewModel {
     pub users_resource: Resource<bool, Result<Vec<UserResponse>, ApiError>>,
     pub weekly_holiday_state: WeeklyHolidayFormState,
     pub reload_weekly: RwSignal<u32>,
-    pub weekly_holidays_resource: Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, ApiError>>,
+    pub weekly_holidays_resource:
+        Resource<(bool, u32), Result<Vec<WeeklyHolidayResponse>, ApiError>>,
     pub weekly_action_message: RwSignal<Option<String>>,
     pub weekly_action_error: RwSignal<Option<ApiError>>,
     pub create_weekly_action:

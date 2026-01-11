@@ -6,13 +6,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::{Database, Decode, Encode, Type};
 use std::fmt;
 use std::str::FromStr;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Macro to generate typed ID wrappers with common trait implementations.
 macro_rules! typed_id {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
         pub struct $name(Uuid);
 
         impl $name {
@@ -109,12 +110,10 @@ macro_rules! typed_id {
             String: Decode<'r, DB>,
         {
             fn decode(
-                value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef,
+                value: <DB as Database>::ValueRef<'r>,
             ) -> Result<Self, sqlx::error::BoxDynError> {
                 let s = String::decode(value)?;
-                Uuid::parse_str(&s)
-                    .map(Self)
-                    .map_err(|e| e.into())
+                Uuid::parse_str(&s).map(Self).map_err(|e| e.into())
             }
         }
 
@@ -125,8 +124,8 @@ macro_rules! typed_id {
         {
             fn encode_by_ref(
                 &self,
-                buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
-            ) -> sqlx::encode::IsNull {
+                buf: &mut <DB as Database>::ArgumentBuffer<'q>,
+            ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
                 self.0.to_string().encode_by_ref(buf)
             }
         }
@@ -151,8 +150,14 @@ typed_id!(UserId, "Unique identifier for a user.");
 typed_id!(AttendanceId, "Unique identifier for an attendance record.");
 typed_id!(BreakRecordId, "Unique identifier for a break record.");
 typed_id!(LeaveRequestId, "Unique identifier for a leave request.");
-typed_id!(OvertimeRequestId, "Unique identifier for an overtime request.");
+typed_id!(
+    OvertimeRequestId,
+    "Unique identifier for an overtime request."
+);
 typed_id!(HolidayId, "Unique identifier for a holiday.");
 typed_id!(WeeklyHolidayId, "Unique identifier for a weekly holiday.");
-typed_id!(HolidayExceptionId, "Unique identifier for a holiday exception.");
+typed_id!(
+    HolidayExceptionId,
+    "Unique identifier for a holiday exception."
+);
 typed_id!(AuditLogId, "Unique identifier for an audit log entry.");

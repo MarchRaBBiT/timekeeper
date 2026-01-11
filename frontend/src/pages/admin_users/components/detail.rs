@@ -189,4 +189,3 @@ pub fn UserDetailDrawer(
         </Show>
     }
 }
-

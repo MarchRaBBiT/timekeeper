@@ -416,7 +416,7 @@ async fn audit_log_middleware_records_approval_metadata() {
 
     let app = Router::new()
         .route(
-            "/api/admin/requests/:id/approve",
+            "/api/admin/requests/{id}/approve",
             axum::routing::put(ok_handler),
         )
         .route_layer(axum_middleware::from_fn_with_state(

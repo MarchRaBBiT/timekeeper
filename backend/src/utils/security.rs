@@ -1,11 +1,8 @@
 use crate::config::Config;
-use axum::http::HeaderMap;
 use crate::error::AppError;
+use axum::http::HeaderMap;
 
-pub fn verify_request_origin(
-    headers: &HeaderMap,
-    config: &Config,
-) -> Result<(), AppError> {
+pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
     let origin = headers
         .get("Origin")
         .and_then(|v| v.to_str().ok())
@@ -14,7 +11,9 @@ pub fn verify_request_origin(
     let origin_str = match origin {
         Some(o) => o,
         None => {
-            return Err(AppError::Forbidden("Missing Origin or Referer header".into()))
+            return Err(AppError::Forbidden(
+                "Missing Origin or Referer header".into(),
+            ))
         }
     };
 

@@ -1,5 +1,5 @@
-use leptos::*;
 use crate::api::ApiError;
+use leptos::*;
 
 #[component]
 pub fn InlineErrorMessage(error: Signal<Option<ApiError>>) -> impl IntoView {

@@ -12,11 +12,11 @@ use validator::Validate;
 
 use crate::{
     config::Config,
+    error::AppError,
     models::user::{CreateUser, User, UserResponse, UserRole},
     repositories::user as user_repo,
     types::UserId,
     utils::password::hash_password,
-    error::AppError,
 };
 
 pub async fn get_users(
@@ -112,7 +112,9 @@ pub async fn reset_user_mfa(
     Json(payload): Json<ResetMfaPayload>,
 ) -> Result<Json<Value>, AppError> {
     if !requester.is_system_admin() {
-        return Err(AppError::Forbidden("Only system administrators can reset MFA".into()));
+        return Err(AppError::Forbidden(
+            "Only system administrators can reset MFA".into(),
+        ));
     }
     let now = Utc::now();
     let result = sqlx::query(
@@ -174,9 +176,9 @@ pub async fn delete_user(
     }
 
     // Check if user exists
-    let exists = user_repo::user_exists(&pool, &user_id).await.map_err(|e| {
-        AppError::InternalServerError(e.into())
-    })?;
+    let exists = user_repo::user_exists(&pool, &user_id)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if !exists {
         return Err(AppError::NotFound("User not found".into()));
@@ -185,18 +187,14 @@ pub async fn delete_user(
     // Get username for audit log
     let username = user_repo::fetch_username(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
     if params.hard {
         // Hard delete - CASCADE will remove all related data
         user_repo::hard_delete_user(&pool, &user_id)
             .await
-            .map_err(|e| {
-                AppError::InternalServerError(e.into())
-            })?;
+            .map_err(|e| AppError::InternalServerError(e.into()))?;
 
         tracing::info!(
             user_id = %user_id,
@@ -214,9 +212,7 @@ pub async fn delete_user(
         // Soft delete - move to archive tables
         user_repo::soft_delete_user(&pool, &user_id, &requester.id.to_string())
             .await
-            .map_err(|e| {
-                AppError::InternalServerError(e.into())
-            })?;
+            .map_err(|e| AppError::InternalServerError(e.into()))?;
 
         tracing::info!(
             user_id = %user_id,
@@ -259,9 +255,9 @@ pub async fn get_archived_users(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    let rows = user_repo::get_archived_users(&pool).await.map_err(|e| {
-        AppError::InternalServerError(e.into())
-    })?;
+    let rows = user_repo::get_archived_users(&pool)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response: Vec<ArchivedUserResponse> = rows
         .into_iter()
@@ -293,9 +289,7 @@ pub async fn restore_archived_user(
     // Check if archived user exists
     let exists = user_repo::archived_user_exists(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if !exists {
         return Err(AppError::NotFound("Archived user not found".into()));
@@ -304,28 +298,27 @@ pub async fn restore_archived_user(
     // Check if username already exists in active users
     let username = user_repo::fetch_archived_username(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
     // Check for username conflict
-    let conflict_check: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = $1")
-        .bind(&username)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?;
+    let conflict_check: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM users WHERE username = $1")
+            .bind(&username)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if conflict_check.is_some() {
-        return Err(AppError::BadRequest("Username already in use by another user".into()));
+        return Err(AppError::BadRequest(
+            "Username already in use by another user".into(),
+        ));
     }
 
     // Restore user
-    user_repo::restore_user(&pool, &user_id).await.map_err(|e| {
-        AppError::InternalServerError(e.into())
-    })?;
+    user_repo::restore_user(&pool, &user_id)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     tracing::info!(
         user_id = %user_id,
@@ -354,9 +347,7 @@ pub async fn delete_archived_user(
     // Check if archived user exists
     let exists = user_repo::archived_user_exists(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if !exists {
         return Err(AppError::NotFound("Archived user not found".into()));
@@ -365,17 +356,13 @@ pub async fn delete_archived_user(
     // Get username for logging
     let username = user_repo::fetch_archived_username(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?
+        .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
     // Delete archived user
     user_repo::hard_delete_archived_user(&pool, &user_id)
         .await
-        .map_err(|e| {
-            AppError::InternalServerError(e.into())
-        })?;
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     tracing::info!(
         user_id = %user_id,

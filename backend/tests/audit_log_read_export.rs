@@ -221,7 +221,7 @@ async fn audit_log_detail_returns_log() {
         .expect("insert audit log");
 
     let app = Router::new()
-        .route("/api/admin/audit-logs/:id", get(get_audit_log_detail))
+        .route("/api/admin/audit-logs/{id}", get(get_audit_log_detail))
         .layer(Extension(system_admin))
         .with_state(state);
 

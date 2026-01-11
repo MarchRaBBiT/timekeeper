@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, MfaSetupResponse, MfaStatusResponse, ApiError};
+use crate::api::{ApiClient, ApiError, MfaSetupResponse, MfaStatusResponse};
 use std::rc::Rc;
 
 #[derive(Clone)]

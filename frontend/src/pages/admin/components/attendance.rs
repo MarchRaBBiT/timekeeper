@@ -1,10 +1,6 @@
 use crate::{
     api::{AdminAttendanceUpsert, AdminBreakItem, ApiError},
-    components::{
-        forms::DatePicker,
-        layout::SuccessMessage,
-        error::InlineErrorMessage,
-    },
+    components::{error::InlineErrorMessage, forms::DatePicker, layout::SuccessMessage},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         repository::AdminRepository,
@@ -114,7 +110,9 @@ pub fn AdminAttendanceToolsSection(
             };
             let date = NaiveDate::parse_from_str(&date_raw, "%Y-%m-%d").ok();
             if date.is_none() {
-                error.set(Some(ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。")));
+                error.set(Some(ApiError::validation(
+                    "日付は YYYY-MM-DD 形式で入力してください。",
+                )));
                 message.set(None);
                 return;
             }

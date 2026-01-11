@@ -165,17 +165,15 @@ impl AttendanceViewModel {
                         attendance_state::clock_out(&api, set_attendance_state).await?
                     }
                     ClockEventKind::BreakStart => {
-                        let attendance_id = payload
-                            .attendance_id
-                            .as_deref()
-                            .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))?;
+                        let attendance_id = payload.attendance_id.as_deref().ok_or_else(|| {
+                            ApiError::validation("出勤レコードが見つかりません。")
+                        })?;
                         attendance_state::start_break(&api, attendance_id).await?
                     }
                     ClockEventKind::BreakEnd => {
-                        let break_id = payload
-                            .break_id
-                            .as_deref()
-                            .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))?;
+                        let break_id = payload.break_id.as_deref().ok_or_else(|| {
+                            ApiError::validation("休憩レコードが見つかりません。")
+                        })?;
                         attendance_state::end_break(&api, break_id).await?
                     }
                 };
@@ -227,7 +225,7 @@ impl AttendanceViewModel {
                                     export_success
                                         .set(Some(format!("{filename} をダウンロードしました。")));
                                 }
-                                 Err(err) => {
+                                Err(err) => {
                                     export_error.set(Some(ApiError::unknown(format!(
                                         "CSVのダウンロードに失敗しました: {err}"
                                     ))));

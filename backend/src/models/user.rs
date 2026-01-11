@@ -88,7 +88,10 @@ impl<'de> Deserialize<'de> for UserRole {
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload for creating a new user account.
 pub struct CreateUser {
-    #[validate(length(min = 1, max = 50), custom(function = "validate_username_format"))]
+    #[validate(
+        length(min = 1, max = 50),
+        custom(function = "validate_username_format")
+    )]
     pub username: String,
     #[validate(length(min = 8), custom(function = "validate_password_format"))]
     pub password: String,

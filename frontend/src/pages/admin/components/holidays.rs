@@ -1,9 +1,9 @@
 use crate::{
     api::{ApiError, CreateHolidayRequest},
     components::{
+        error::InlineErrorMessage,
         forms::DatePicker,
         layout::{LoadingSpinner, SuccessMessage},
-        error::InlineErrorMessage,
     },
     pages::admin::repository::{AdminRepository, HolidayListQuery, HolidayListResult},
     utils::time::now_in_app_tz,
@@ -170,7 +170,9 @@ pub fn HolidayManagementSection(
             };
             if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
                 if from > to {
-                    holiday_error.set(Some(ApiError::validation("開始日は終了日以前である必要があります。")));
+                    holiday_error.set(Some(ApiError::validation(
+                        "開始日は終了日以前である必要があります。",
+                    )));
                     return;
                 }
             }
@@ -208,7 +210,9 @@ pub fn HolidayManagementSection(
             {
                 Ok(date) => date,
                 Err(_) => {
-                    holiday_error.set(Some(ApiError::validation("月は YYYY-MM 形式で入力してください。")));
+                    holiday_error.set(Some(ApiError::validation(
+                        "月は YYYY-MM 形式で入力してください。",
+                    )));
                     return;
                 }
             };
@@ -373,7 +377,9 @@ pub fn HolidayManagementSection(
             let parsed_date = match NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d") {
                 Ok(date) => date,
                 Err(_) => {
-                    holiday_error.set(Some(ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。")));
+                    holiday_error.set(Some(ApiError::validation(
+                        "日付は YYYY-MM-DD 形式で入力してください。",
+                    )));
                     holiday_message.set(None);
                     return;
                 }
