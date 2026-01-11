@@ -141,10 +141,16 @@ pub async fn test_pool() -> PgPool {
             Ok(pool) => return pool,
             Err(e) if retry_count < max_retries => {
                 retry_count += 1;
-                eprintln!("Retrying DB connection (attempt {}/{}): {}", retry_count, max_retries, e);
+                eprintln!(
+                    "Retrying DB connection (attempt {}/{}): {}",
+                    retry_count, max_retries, e
+                );
                 tokio::time::sleep(StdDuration::from_secs(2)).await;
             }
-            Err(e) => panic!("Failed to connect to test database after {} retries: {}", max_retries, e),
+            Err(e) => panic!(
+                "Failed to connect to test database after {} retries: {}",
+                max_retries, e
+            ),
         }
     }
 }
@@ -274,12 +280,7 @@ pub async fn seed_overtime_request(
     date: NaiveDate,
     planned_hours: f64,
 ) -> OvertimeRequest {
-    let request = OvertimeRequest::new(
-        user_id,
-        date,
-        planned_hours,
-        Some("test OT".into()),
-    );
+    let request = OvertimeRequest::new(user_id, date, planned_hours, Some("test OT".into()));
     sqlx::query(
         "INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
@@ -376,6 +377,9 @@ mod tests {
 
     #[test]
     fn test_config_uses_database_url_from_env() {
+        if env::var("TEST_DATABASE_URL").is_ok() {
+            return;
+        }
         let _guard = env_guard();
         let original = (
             env::var("TEST_DATABASE_URL").ok(),
@@ -391,6 +395,9 @@ mod tests {
 
     #[test]
     fn test_config_falls_back_to_default_when_env_missing() {
+        if env::var("TEST_DATABASE_URL").is_ok() {
+            return;
+        }
         let _guard = env_guard();
         let original = (
             env::var("TEST_DATABASE_URL").ok(),

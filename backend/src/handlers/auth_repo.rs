@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 
-use crate::{models::user::User, utils::jwt::RefreshToken};
 use crate::types::UserId;
+use crate::{models::user::User, utils::jwt::RefreshToken};
 
 #[allow(dead_code)]
 #[derive(Debug, FromRow)]

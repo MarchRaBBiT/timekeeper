@@ -1,4 +1,3 @@
-
 use gloo_timers::callback::Interval;
 use leptos::*;
 
@@ -10,11 +9,9 @@ pub fn Clock() -> impl IntoView {
 
     // Update time every second
     // We use store_value to keep the Interval alive. It will be dropped (and cancelled) when the component is unmounted.
-    let _interval = store_value(
-        Interval::new(1000, move || {
-            set_time.set(now_in_app_tz());
-        })
-    );
+    let _interval = store_value(Interval::new(1000, move || {
+        set_time.set(now_in_app_tz());
+    }));
 
     // Format date: "2024年12月30日(月)"
     let date_str = move || {
@@ -24,7 +21,7 @@ pub fn Clock() -> impl IntoView {
         // For simplicity and robustness, specific format:
         format!("{}", t.format("%Y年%m月%d日"))
     };
-    
+
     // Day of week in Japanese
     let weekday_str = move || {
         let t = time.get();
@@ -36,14 +33,12 @@ pub fn Clock() -> impl IntoView {
             "Friday" => "(金)",
             "Saturday" => "(土)",
             "Sunday" => "(日)",
-             _ => "",
+            _ => "",
         }
     };
 
     // Format time: "12:34:56"
-    let time_str = move || {
-        time.get().format("%H:%M:%S").to_string()
-    };
+    let time_str = move || time.get().format("%H:%M:%S").to_string();
 
     view! {
         <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none shadow-lg rounded-lg overflow-hidden">

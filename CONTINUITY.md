@@ -1,29 +1,31 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Report current codebase size/scale per user request.
+  - Commit and push current uncommitted work, then create a PR via gh.
 - Constraints/Assumptions:
-  - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
-  - Create a topic branch before implementation.
-  - Use TDD: add/adjust test before implementation.
-  - Run relevant backend tests/builds before responding (document failures if any).
-  - Do not revert unrelated local changes; stop and ask if unexpected changes appear.
+  - Respond to user in Japanese; output UTF-8 for non-ASCII.
+  - Update and consult `CONTINUITY.md` each turn; keep it brief and factual.
+  - Run relevant tests/builds after changes and report failures.
 - Key decisions:
-  - User asserts `reqwest 0.12.24` includes wasm support equivalent to `reqwest-wasm`.
+  - Treat unexpected changes as `cargo fmt --all` output and include in commit.
 - State:
-  - REPORTED
+  - IN_PROGRESS
 - Done:
-  - Reviewed uncommitted diffs across backend/frontend for archived user feature additions.
+  - Ran `cargo fmt --all`.
+  - Ran `cargo clippy --all-targets -- -D warnings`.
+  - Ran `cargo test` (initial failure at `tests/audit_log_middleware` due to `bind ephemeral port` permission error).
+  - `pwsh -File ./scripts/test_backend.ps1` failed: `pwsh` not found.
+  - User reports `cargo test` succeeds after setting TMPDIR=/tmp and TEST_DATABASE_URL.
+  - Added bash equivalent script `scripts/test_backend.sh`.
 - Now:
-  - Gathering repository size metrics (files/lines) for backend/frontend.
+  - Commit and push changes, then create PR via gh.
 - Next:
-  - Summarize codebase size once metrics collected.
+  - Commit, push, and open PR with gh.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
-  - `backend/src/handlers/admin/mod.rs`
-  - `backend/src/main.rs`
-  - `backend/src/repositories/user.rs`
-  - `frontend/src/api/client.rs`
-  - `frontend/src/api/types.rs`
-  - `frontend/src/pages/admin_users/*`
+  - /mnt/d/Users/Toshiki/Documents/github/timekeeper
+  - cargo fmt --all
+  - cargo clippy --all-targets -- -D warnings
+  - cargo test
+  - pwsh -File ./scripts/test_backend.ps1

@@ -9,9 +9,9 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
+    error::AppError,
     models::user::User,
     utils::{csv::append_csv_row, time},
-    error::AppError,
 };
 
 use super::common::{parse_date_value, push_clause};
@@ -46,7 +46,9 @@ pub async fn export_data(
     };
     if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
         if from > to {
-            return Err(AppError::BadRequest("`from` must be on or before `to`".into()));
+            return Err(AppError::BadRequest(
+                "`from` must be on or before `to`".into(),
+            ));
         }
     }
 
@@ -68,9 +70,11 @@ pub async fn export_data(
         builder.push("a.date <= ").push_bind(to);
     }
     builder.push(" ORDER BY a.date DESC, u.username");
-    let data: Vec<sqlx::postgres::PgRow> = builder.build().fetch_all(&pool).await.map_err(|e| {
-        AppError::InternalServerError(e.into())
-    })?;
+    let data: Vec<sqlx::postgres::PgRow> = builder
+        .build()
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     // Convert to CSV format
     let mut csv_data = String::new();
@@ -88,7 +92,9 @@ pub async fn export_data(
     );
 
     for record in data {
-        let username = record.try_get::<String, &str>("username").unwrap_or_default();
+        let username = record
+            .try_get::<String, &str>("username")
+            .unwrap_or_default();
         let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
         let date = record.try_get::<String, _>("date").unwrap_or_default();
         let clock_in = record

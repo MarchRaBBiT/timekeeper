@@ -1,6 +1,6 @@
 use super::{repository::MfaRepository, utils::MessageState};
 use crate::{
-    api::{ApiClient, MfaSetupResponse, MfaStatusResponse, ApiError},
+    api::{ApiClient, ApiError, MfaSetupResponse, MfaStatusResponse},
     state::auth::use_auth,
 };
 use leptos::*;

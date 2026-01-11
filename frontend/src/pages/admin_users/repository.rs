@@ -56,4 +56,3 @@ impl AdminUsersRepository {
         self.client.admin_delete_archived_user(&user_id).await
     }
 }
-

@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use axum::{
     body::Body,
     extract::{Extension, Path, Query, State},
@@ -10,7 +11,6 @@ use axum::{
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::error::AppError;
 use serde_json::Value;
 use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
@@ -109,15 +109,19 @@ pub async fn list_audit_logs(
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
-    let (items, total): (Vec<crate::models::audit_log::AuditLog>, i64) = audit_log::list_audit_logs(&pool, &filters, per_page, offset)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let (items, total): (Vec<crate::models::audit_log::AuditLog>, i64) =
+        audit_log::list_audit_logs(&pool, &filters, per_page, offset)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(AuditLogListResponse {
         page,
         per_page,
         total,
-        items: items.into_iter().map(AuditLogResponse::from).collect::<Vec<_>>(),
+        items: items
+            .into_iter()
+            .map(AuditLogResponse::from)
+            .collect::<Vec<_>>(),
     }))
 }
 
@@ -152,9 +156,7 @@ pub async fn export_audit_logs(
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let payload: Vec<AuditLogResponse> = logs.into_iter().map(AuditLogResponse::from).collect();
-    let body = serde_json::to_vec(&payload).map_err(|e| {
-        AppError::InternalServerError(e.into())
-    })?;
+    let body = serde_json::to_vec(&payload).map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let filename = format!(
         "audit_logs_{}.json",
@@ -180,9 +182,7 @@ fn ensure_system_admin(user: &User) -> Result<(), AppError> {
     }
 }
 
-fn validate_list_query(
-    q: AuditLogListQuery,
-) -> Result<(i64, i64, AuditLogFilters), AppError> {
+fn validate_list_query(q: AuditLogListQuery) -> Result<(i64, i64, AuditLogFilters), AppError> {
     let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
     let per_page = q
         .per_page
@@ -201,9 +201,7 @@ fn validate_list_query(
     Ok((page, per_page, filters))
 }
 
-fn validate_export_query(
-    q: AuditLogExportQuery,
-) -> Result<AuditLogFilters, AppError> {
+fn validate_export_query(q: AuditLogExportQuery) -> Result<AuditLogFilters, AppError> {
     build_filters(AuditLogFilterInput {
         from: q.from,
         to: q.to,
@@ -228,23 +226,29 @@ struct AuditLogFilterInput {
 }
 
 fn build_filters(input: AuditLogFilterInput) -> Result<AuditLogFilters, AppError> {
-    let from = parse_from_datetime(input.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let from =
+        parse_from_datetime(input.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
     let to = parse_to_datetime(input.to.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(AppError::BadRequest("`from` must be before or equal to `to`".into()));
+            return Err(AppError::BadRequest(
+                "`from` must be before or equal to `to`".into(),
+            ));
         }
     }
 
     let result = normalize_filter(input.result).map(|value| value.to_ascii_lowercase());
     if let Some(ref value) = result {
         if value != "success" && value != "failure" {
-            return Err(AppError::BadRequest("`result` must be success or failure".into()));
+            return Err(AppError::BadRequest(
+                "`result` must be success or failure".into(),
+            ));
         }
     }
 
-    let actor_id = input.actor_id
+    let actor_id = input
+        .actor_id
         .filter(|s| !s.trim().is_empty())
         .map(|s| UserId::from_str(&s))
         .transpose()
@@ -309,4 +313,3 @@ fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
     }
     None
 }
-

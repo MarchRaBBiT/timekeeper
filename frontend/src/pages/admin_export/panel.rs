@@ -2,9 +2,9 @@ use super::view_model::{
     needs_specific_user_selection, use_admin_export_view_model, ExportFilters,
 };
 use crate::api::ApiError;
+use crate::components::error::InlineErrorMessage;
 use crate::components::forms::DatePicker;
 use crate::components::layout::*;
-use crate::components::error::InlineErrorMessage;
 use crate::pages::admin::components::user_select::{AdminUserSelect, UserSelectValue};
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -67,8 +67,9 @@ fn AdminExportPanel() -> impl IntoView {
                 vm.use_specific_user.get_untracked(),
                 &filters.username,
             ) {
-                vm.error
-                    .set(Some(ApiError::validation("指定ユーザーを選択してください。")));
+                vm.error.set(Some(ApiError::validation(
+                    "指定ユーザーを選択してください。",
+                )));
                 vm.preview.set(None);
                 return;
             }

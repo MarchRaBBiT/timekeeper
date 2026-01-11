@@ -11,6 +11,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
+    error::AppError,
     handlers::requests_repo,
     models::{
         leave_request::{LeaveRequest, LeaveRequestResponse},
@@ -19,7 +20,6 @@ use crate::{
     },
     types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
-    error::AppError,
 };
 
 const MAX_DECISION_COMMENT_LENGTH: usize = 500;
@@ -45,9 +45,15 @@ pub async fn approve_request(
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if requests_repo::approve_leave_request(&pool, leave_request_id, approver_id, &comment, now_utc)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
+        if requests_repo::approve_leave_request(
+            &pool,
+            leave_request_id,
+            approver_id,
+            &comment,
+            now_utc,
+        )
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
             > 0
         {
             return Ok(Json(json!({"message": "Leave request approved"})));
@@ -56,16 +62,24 @@ pub async fn approve_request(
 
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if requests_repo::approve_overtime_request(&pool, overtime_request_id, approver_id, &comment, now_utc)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
+        if requests_repo::approve_overtime_request(
+            &pool,
+            overtime_request_id,
+            approver_id,
+            &comment,
+            now_utc,
+        )
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
             > 0
         {
             return Ok(Json(json!({"message": "Overtime request approved"})));
         }
     }
 
-    Err(AppError::NotFound("Request not found or already processed".into()))
+    Err(AppError::NotFound(
+        "Request not found or already processed".into(),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -89,9 +103,15 @@ pub async fn reject_request(
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if requests_repo::reject_leave_request(&pool, leave_request_id, approver_id, &comment, now_utc)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
+        if requests_repo::reject_leave_request(
+            &pool,
+            leave_request_id,
+            approver_id,
+            &comment,
+            now_utc,
+        )
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
             > 0
         {
             return Ok(Json(json!({"message": "Leave request rejected"})));
@@ -100,16 +120,24 @@ pub async fn reject_request(
 
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if requests_repo::reject_overtime_request(&pool, overtime_request_id, approver_id, &comment, now_utc)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
+        if requests_repo::reject_overtime_request(
+            &pool,
+            overtime_request_id,
+            approver_id,
+            &comment,
+            now_utc,
+        )
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
             > 0
         {
             return Ok(Json(json!({"message": "Overtime request rejected"})));
         }
     }
 
-    Err(AppError::NotFound("Request not found or already processed".into()))
+    Err(AppError::NotFound(
+        "Request not found or already processed".into(),
+    ))
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -207,9 +235,7 @@ pub async fn list_requests(
     }))
 }
 
-pub fn paginate_requests(
-    q: &RequestListQuery,
-) -> Result<(i64, i64, i64), AppError> {
+pub fn paginate_requests(q: &RequestListQuery) -> Result<(i64, i64, i64), AppError> {
     let page = q.page.unwrap_or(1).max(1);
     let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
     let offset = page
@@ -242,7 +268,7 @@ pub async fn get_request_detail(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    
+
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
         if let Some(item) = requests_repo::fetch_leave_request(&pool, leave_request_id)
@@ -254,7 +280,7 @@ pub async fn get_request_detail(
             ));
         }
     }
-    
+
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
         if let Some(item) = requests_repo::fetch_overtime_request(&pool, overtime_request_id)
@@ -266,7 +292,7 @@ pub async fn get_request_detail(
             ));
         }
     }
-    
+
     Err(AppError::NotFound("Request not found".into()))
 }
 

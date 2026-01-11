@@ -91,7 +91,9 @@ impl LeaveFormState {
             "終了日を YYYY-MM-DD 形式で入力してください。",
         )?;
         if end < start {
-            return Err(ApiError::validation("終了日は開始日以降の日付を指定してください。"));
+            return Err(ApiError::validation(
+                "終了日は開始日以降の日付を指定してください。",
+            ));
         }
         Ok(CreateLeaveRequest {
             leave_type: self.leave_type.get(),
@@ -154,7 +156,9 @@ impl OvertimeFormState {
             .parse::<f64>()
             .map_err(|_| ApiError::validation("残業時間は数値で入力してください。"))?;
         if !(0.25..=24.0).contains(&hours) {
-            return Err(ApiError::validation("残業時間は0.25〜24.0の範囲で指定してください。"));
+            return Err(ApiError::validation(
+                "残業時間は0.25〜24.0の範囲で指定してください。",
+            ));
         }
         Ok(CreateOvertimeRequest {
             date,
@@ -206,7 +210,8 @@ impl RequestFilterState {
 }
 
 fn parse_date(input: &str, err: &str) -> Result<NaiveDate, ApiError> {
-    NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d").map_err(|_| ApiError::validation(err.to_string()))
+    NaiveDate::parse_from_str(input.trim(), "%Y-%m-%d")
+        .map_err(|_| ApiError::validation(err.to_string()))
 }
 
 fn optional_string(value: String) -> Option<String> {

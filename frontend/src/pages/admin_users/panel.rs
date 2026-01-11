@@ -1,13 +1,14 @@
-use crate::{api::{ArchivedUserResponse, UserResponse}, components::layout::Layout, state::auth::use_auth};
+use crate::{
+    api::{ArchivedUserResponse, UserResponse},
+    components::layout::Layout,
+    state::auth::use_auth,
+};
 use leptos::*;
 
 use super::{
     components::{
-        archived_detail::ArchivedUserDetailDrawer,
-        archived_list::ArchivedUserList,
-        detail::UserDetailDrawer,
-        invite_form::InviteForm,
-        list::UserList,
+        archived_detail::ArchivedUserDetailDrawer, archived_list::ArchivedUserList,
+        detail::UserDetailDrawer, invite_form::InviteForm, list::UserList,
     },
     layout::{AdminUsersFrame, UnauthorizedAdminUsersMessage},
     view_model::UserTab,
@@ -18,9 +19,7 @@ pub fn AdminUsersPage() -> impl IntoView {
     let vm = super::view_model::use_admin_users_view_model();
     let (auth, _) = use_auth();
 
-    let current_user_id = Signal::derive(move || {
-        auth.get().user.as_ref().map(|u| u.id.clone())
-    });
+    let current_user_id = Signal::derive(move || auth.get().user.as_ref().map(|u| u.id.clone()));
 
     let select_user = Callback::new({
         let selected = vm.selected_user;
@@ -132,5 +131,3 @@ pub fn AdminUsersPage() -> impl IntoView {
         </Layout>
     }
 }
-
-

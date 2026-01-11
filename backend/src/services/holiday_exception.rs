@@ -76,12 +76,8 @@ impl HolidayExceptionServiceTrait for HolidayExceptionService {
             return Err(HolidayExceptionError::UserNotFound);
         }
 
-        let exception = HolidayException::new(
-            user_id,
-            payload.exception_date,
-            payload.reason,
-            created_by,
-        );
+        let exception =
+            HolidayException::new(user_id, payload.exception_date, payload.reason, created_by);
 
         holiday_exception_repo::insert_holiday_exception(&self.pool, &exception)
             .await

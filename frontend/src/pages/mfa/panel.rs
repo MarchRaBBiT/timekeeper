@@ -1,5 +1,8 @@
 use crate::{
-    components::{error::InlineErrorMessage, layout::{Layout, SuccessMessage}},
+    components::{
+        error::InlineErrorMessage,
+        layout::{Layout, SuccessMessage},
+    },
     pages::mfa::{
         components::{setup::SetupSection, verify::VerificationSection},
         utils,

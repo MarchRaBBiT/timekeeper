@@ -7,7 +7,10 @@ use leptos::*;
 
 #[component]
 pub fn ActivitiesSection(
-    activities: Resource<ActivityStatusFilter, Result<Vec<DashboardActivity>, crate::api::ApiError>>,
+    activities: Resource<
+        ActivityStatusFilter,
+        Result<Vec<DashboardActivity>, crate::api::ApiError>,
+    >,
 ) -> impl IntoView {
     view! {
         <div class="bg-white shadow rounded-lg p-6 space-y-4">

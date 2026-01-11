@@ -9,13 +9,13 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use timekeeper_backend::{
     config::Config,
+    error::AppError,
     handlers::admin::{
         list_holidays, AdminHolidayKind, AdminHolidayListItem, AdminHolidayListQuery,
         AdminHolidayListResponse,
     },
     models::user::{User, UserRole},
     utils::cookies::SameSite,
-    error::AppError,
 };
 
 #[cfg(feature = "test-utils")]
@@ -289,7 +289,10 @@ async fn admin_holiday_list_rejects_invalid_date_format() {
     match result {
         Ok(_) => panic!("expected bad request for invalid date"),
         Err(AppError::BadRequest(msg)) => {
-            assert_eq!(msg, "`from`/`to` must be a valid date (YYYY-MM-DD or RFC3339)");
+            assert_eq!(
+                msg,
+                "`from`/`to` must be a valid date (YYYY-MM-DD or RFC3339)"
+            );
         }
         Err(e) => panic!("unexpected error: {:?}", e),
     }

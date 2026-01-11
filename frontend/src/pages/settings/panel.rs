@@ -1,6 +1,9 @@
 use crate::{
-    components::{error::InlineErrorMessage, layout::{Layout, SuccessMessage}},
     api::ApiError,
+    components::{
+        error::InlineErrorMessage,
+        layout::{Layout, SuccessMessage},
+    },
     pages::{
         mfa::{
             components::{setup::SetupSection, verify::VerificationSection},
@@ -13,7 +16,9 @@ use leptos::{ev::SubmitEvent, Callback, *};
 
 fn map_change_password_error(error: &ApiError) -> ApiError {
     match error.error.as_str() {
-        "Current password is incorrect" => ApiError::validation("現在のパスワードが正しくありません。"),
+        "Current password is incorrect" => {
+            ApiError::validation("現在のパスワードが正しくありません。")
+        }
         "New password must be at least 8 characters" => {
             ApiError::validation("新しいパスワードは8文字以上である必要があります。")
         }
@@ -66,13 +71,15 @@ pub fn SettingsPage() -> impl IntoView {
         let confirm = confirm_password.get();
 
         if new.len() < 8 {
-            set_password_error_msg.set(Some(
-                ApiError::validation("新しいパスワードは8文字以上である必要があります。"),
-            ));
+            set_password_error_msg.set(Some(ApiError::validation(
+                "新しいパスワードは8文字以上である必要があります。",
+            )));
             return;
         }
         if new != confirm {
-            set_password_error_msg.set(Some(ApiError::validation("新しいパスワードが一致しません。")));
+            set_password_error_msg.set(Some(ApiError::validation(
+                "新しいパスワードが一致しません。",
+            )));
             return;
         }
 
@@ -210,11 +217,17 @@ mod tests {
             "現在のパスワードが正しくありません。"
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown("New password must be at least 8 characters")).error,
+            map_change_password_error(&ApiError::unknown(
+                "New password must be at least 8 characters"
+            ))
+            .error,
             "新しいパスワードは8文字以上である必要があります。"
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown("New password must differ from current password")).error,
+            map_change_password_error(&ApiError::unknown(
+                "New password must differ from current password"
+            ))
+            .error,
             "新しいパスワードは現在のパスワードと異なる必要があります。"
         );
     }

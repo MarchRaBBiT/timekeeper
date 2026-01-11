@@ -1,14 +1,14 @@
+use crate::error::AppError;
+use crate::types::{AttendanceId, BreakRecordId, UserId};
 use axum::{
     extract::{Extension, Path, State},
     Json,
 };
 use chrono::Utc;
 use serde::Deserialize;
-use sqlx::{PgPool, Transaction, Postgres};
+use sqlx::{PgPool, Postgres, Transaction};
 use std::str::FromStr;
 use utoipa::ToSchema;
-use crate::error::AppError;
-use crate::types::{AttendanceId, UserId, BreakRecordId};
 
 use crate::{
     config::Config,
@@ -89,26 +89,24 @@ pub async fn upsert_attendance(
         breaks,
     } = body;
 
-    let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|_| {
-        AppError::BadRequest("Invalid date".into())
-    })?;
+    let date = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("Invalid date".into()))?;
     let cin = NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(&clock_in_time, "%Y-%m-%d %H:%M:%S"))
-        .map_err(|_| {
-            AppError::BadRequest("Invalid clock_in_time".into())
-        })?;
+        .map_err(|_| AppError::BadRequest("Invalid clock_in_time".into()))?;
     let cout = match &clock_out_time {
         Some(s) => Some(
             NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                 .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
-                .map_err(|_| {
-                    AppError::BadRequest("Invalid clock_out_time".into())
-                })?,
+                .map_err(|_| AppError::BadRequest("Invalid clock_out_time".into()))?,
         ),
         None => None,
     };
 
-    let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(|e| AppError::InternalServerError(e.into()))?;
+    let mut tx: Transaction<'_, Postgres> = pool
+        .begin()
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     // Parse and validate user_id
     let user_id_typed = UserId::from_str(&user_id)
@@ -143,9 +141,7 @@ pub async fn upsert_attendance(
                             "%Y-%m-%d %H:%M:%S",
                         )
                     })
-                    .map_err(|_| {
-                        AppError::BadRequest("Invalid break_start_time".into())
-                    })?;
+                    .map_err(|_| AppError::BadRequest("Invalid break_start_time".into()))?;
             let be: Option<chrono::NaiveDateTime> = b.break_end_time.as_ref().and_then(|s| {
                 chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                     .ok()
@@ -197,7 +193,9 @@ pub async fn upsert_attendance(
             .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
     }
 
-    tx.commit().await.map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
+    tx.commit()
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
     let breaks = get_break_records(&pool, att.id).await?;
     Ok(Json(AttendanceResponse {

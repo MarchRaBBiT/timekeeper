@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, AttendanceResponse, AttendanceStatusResponse, ApiError};
+use crate::api::{ApiClient, ApiError, AttendanceResponse, AttendanceStatusResponse};
 use crate::utils::time::today_in_app_tz;
 use chrono::NaiveDate;
 use leptos::*;
@@ -256,7 +256,10 @@ mod tests {
             last_refresh_error: Some(crate::api::ApiError::validation("network error")),
             ..Default::default()
         };
-        assert_eq!(state.last_refresh_error.as_ref().map(|e| e.error.as_str()), Some("network error"));
+        assert_eq!(
+            state.last_refresh_error.as_ref().map(|e| e.error.as_str()),
+            Some("network error")
+        );
     }
 }
 

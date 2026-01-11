@@ -8,7 +8,7 @@ use leptos::*;
 #[component]
 pub fn HolidayAlerts(
     holiday_entries: Signal<Vec<HolidayCalendarEntry>>,
-    loading:Signal<bool>,
+    loading: Signal<bool>,
     error: Signal<Option<crate::api::ApiError>>,
     active_period: Signal<(i32, u32)>,
     on_refresh: Callback<()>,

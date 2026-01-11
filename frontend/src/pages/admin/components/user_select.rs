@@ -1,5 +1,5 @@
 use crate::{
-    api::{UserResponse, ApiError},
+    api::{ApiError, UserResponse},
     components::{error::InlineErrorMessage, layout::LoadingSpinner},
 };
 use leptos::{ev, *};
@@ -30,9 +30,7 @@ pub fn AdminUserSelect(
             if let Some(result) = users.get() {
                 match result {
                     Ok(_) => fetch_error.set(None),
-                    Err(err) => {
-                        fetch_error.set(Some(err))
-                    }
+                    Err(err) => fetch_error.set(Some(err)),
                 }
             }
         });

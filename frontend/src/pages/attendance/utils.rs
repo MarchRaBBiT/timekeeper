@@ -36,7 +36,9 @@ impl AttendanceFormState {
         let to = parse_date_input(&to_val, "終了日は YYYY-MM-DD 形式で入力してください。")?;
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err(ApiError::validation("開始日は終了日以前の日付を指定してください。"));
+                return Err(ApiError::validation(
+                    "開始日は終了日以前の日付を指定してください。",
+                ));
             }
         }
         Ok((from, to))

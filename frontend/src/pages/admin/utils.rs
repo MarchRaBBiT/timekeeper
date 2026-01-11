@@ -40,21 +40,22 @@ impl WeeklyHolidayFormState {
     }
 
     pub fn to_payload(&self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, ApiError> {
-        let weekday_value: u8 = self
-            .weekday
-            .get()
-            .trim()
-            .parse::<u8>()
-            .map_err(|_| ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。"))?;
+        let weekday_value: u8 =
+            self.weekday.get().trim().parse::<u8>().map_err(|_| {
+                ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。")
+            })?;
         if weekday_value >= 7 {
-            return Err(ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。"));
+            return Err(ApiError::validation(
+                "曜日は 0 (日) 〜 6 (土) で入力してください。",
+            ));
         }
         let start_raw = self.starts_on.get();
         if start_raw.trim().is_empty() {
             return Err(ApiError::validation("稼働開始日を入力してください。"));
         }
-        let start_date = NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d")
-            .map_err(|_| ApiError::validation("稼働開始日は YYYY-MM-DD 形式で入力してください。"))?;
+        let start_date = NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d").map_err(|_| {
+            ApiError::validation("稼働開始日は YYYY-MM-DD 形式で入力してください。")
+        })?;
         if start_date < min_start {
             return Err(ApiError::validation(&format!(
                 "稼働開始日は {} 以降の日付を選択してください。",
@@ -67,10 +68,13 @@ impl WeeklyHolidayFormState {
             if raw.trim().is_empty() {
                 None
             } else {
-                let parsed = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
-                    .map_err(|_| ApiError::validation("稼働終了日は YYYY-MM-DD 形式で入力してください。"))?;
+                let parsed = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d").map_err(|_| {
+                    ApiError::validation("稼働終了日は YYYY-MM-DD 形式で入力してください。")
+                })?;
                 if parsed < start_date {
-                    return Err(ApiError::validation("稼働終了日は開始日以降を指定してください。"));
+                    return Err(ApiError::validation(
+                        "稼働終了日は開始日以降を指定してください。",
+                    ));
                 }
                 Some(parsed)
             }

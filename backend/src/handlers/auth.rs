@@ -11,6 +11,7 @@ use std::str::FromStr;
 
 use crate::{
     config::Config,
+    error::AppError,
     handlers::auth_repo::{self, ActiveAccessToken, StoredRefreshToken},
     models::user::{
         ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
@@ -29,7 +30,6 @@ use crate::{
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
         password::{hash_password, verify_password},
     },
-    error::AppError,
     validation::Validate,
 };
 
@@ -157,9 +157,7 @@ pub async fn mfa_status(
     }))
 }
 
-pub async fn me(
-    Extension(user): Extension<User>,
-) -> HandlerResult<Json<UserResponse>> {
+pub async fn me(Extension(user): Extension<User>) -> HandlerResult<Json<UserResponse>> {
     Ok(Json(UserResponse::from(user)))
 }
 
@@ -173,10 +171,8 @@ async fn begin_mfa_enrollment(
     }
 
     let secret = generate_totp_secret();
-    let otpauth_url =
-        generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret).map_err(|_| {
-            internal_error("Failed to issue MFA secret")
-        })?;
+    let otpauth_url = generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret)
+        .map_err(|_| internal_error("Failed to issue MFA secret"))?;
 
     if sqlx::query(
         "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
@@ -262,14 +258,13 @@ pub async fn mfa_disable(
         return Err(bad_request("MFA is not enabled"));
     }
 
-    let secret = user.mfa_secret.as_ref().ok_or_else(|| {
-        internal_error("MFA secret missing")
-    })?;
+    let secret = user
+        .mfa_secret
+        .as_ref()
+        .ok_or_else(|| internal_error("MFA secret missing"))?;
 
     let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| {
-        internal_error("MFA verification error")
-    })? {
+    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
         return Err(unauthorized("Invalid MFA code"));
     }
 
@@ -308,7 +303,9 @@ pub async fn change_password(
     crate::utils::security::verify_request_origin(&headers, &config)?;
     payload.validate()?;
     if payload.new_password == payload.current_password {
-        return Err(bad_request("New password must differ from current password"));
+        return Err(bad_request(
+            "New password must differ from current password",
+        ));
     }
 
     ensure_password_matches(
@@ -318,9 +315,8 @@ pub async fn change_password(
     )?;
 
     // Hash and persist the new password.
-    let new_hash = hash_password(&payload.new_password).map_err(|_| {
-        internal_error("Failed to hash password")
-    })?;
+    let new_hash = hash_password(&payload.new_password)
+        .map_err(|_| internal_error("Failed to hash password"))?;
 
     if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
         .bind(&new_hash)
@@ -615,8 +611,8 @@ async fn persist_active_access_token(
             Some(trimmed.chars().take(128).collect::<String>())
         }
     });
-    let user_id = UserId::from_str(&claims.sub)
-        .map_err(|_| internal_error("Invalid user ID in claims"))?;
+    let user_id =
+        UserId::from_str(&claims.sub).map_err(|_| internal_error("Invalid user ID in claims"))?;
     let token = ActiveAccessToken {
         jti: &claims.jti,
         user_id,

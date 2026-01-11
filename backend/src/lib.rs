@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod docs;
+pub mod error;
 pub mod handlers;
 pub mod middleware;
 pub mod models;
@@ -9,4 +10,3 @@ pub mod services;
 pub mod types;
 pub mod utils;
 pub mod validation;
-pub mod error;

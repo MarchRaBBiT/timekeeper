@@ -3,4 +3,3 @@ pub mod archived_list;
 pub mod detail;
 pub mod invite_form;
 pub mod list;
-

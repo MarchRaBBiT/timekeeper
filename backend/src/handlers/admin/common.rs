@@ -28,4 +28,3 @@ pub fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bo
         *has_clause = true;
     }
 }
-

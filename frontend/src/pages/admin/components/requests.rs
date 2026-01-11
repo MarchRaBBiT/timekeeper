@@ -1,6 +1,6 @@
 use crate::{
-    components::{error::InlineErrorMessage, layout::LoadingSpinner},
     api::ApiError,
+    components::{error::InlineErrorMessage, layout::LoadingSpinner},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         utils::RequestFilterState,

@@ -50,7 +50,11 @@ impl From<BreakRecord> for BreakRecordResponse {
 
 impl BreakRecord {
     /// Creates a new break record that starts immediately.
-    pub fn new(attendance_id: AttendanceId, break_start_time: NaiveDateTime, now: DateTime<Utc>) -> Self {
+    pub fn new(
+        attendance_id: AttendanceId,
+        break_start_time: NaiveDateTime,
+        now: DateTime<Utc>,
+    ) -> Self {
         Self {
             id: BreakRecordId::new(),
             attendance_id,

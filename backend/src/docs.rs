@@ -5,8 +5,9 @@ use crate::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
             AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
-            AdminRequestListResponse, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
-            AuditLogResponse, ExportQuery, RequestListQuery, ResetMfaPayload,
+            AdminRequestListResponse, ApprovePayload, AuditLogExportQuery, AuditLogListQuery,
+            AuditLogListResponse, AuditLogResponse, ExportQuery, RejectPayload, RequestListQuery,
+            ResetMfaPayload,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     },
@@ -73,7 +74,6 @@ use utoipa::{
         admin_list_audit_logs_doc,
         admin_get_audit_log_doc,
         admin_export_audit_logs_doc,
-        admin_export_audit_logs_doc,
         system_admin_reset_mfa_doc,
         admin_create_holiday_exception_doc,
         admin_list_holiday_exceptions_doc,
@@ -123,6 +123,8 @@ use utoipa::{
             // admin-specific payloads
             AdminAttendanceUpsert,
             AdminBreakItem,
+            ApprovePayload,
+            RejectPayload,
             ResetMfaPayload,
             AdminHolidayListQuery,
             AdminHolidayListResponse,

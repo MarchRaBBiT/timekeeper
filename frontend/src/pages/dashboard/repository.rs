@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, AttendanceSummary, ApiError};
+use crate::api::{ApiClient, ApiError, AttendanceSummary};
 use crate::pages::dashboard::utils::{current_year_month, ActivityStatusFilter};
 use crate::pages::requests::repository::RequestsRepository;
 use crate::pages::requests::types::{flatten_requests, RequestKind, RequestSummary};

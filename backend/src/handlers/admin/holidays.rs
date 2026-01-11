@@ -11,6 +11,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     config::Config,
+    error::AppError,
     models::{
         holiday::{
             CreateHolidayPayload, CreateWeeklyHolidayPayload, Holiday, HolidayResponse,
@@ -19,7 +20,6 @@ use crate::{
         user::User,
     },
     utils::time,
-    error::AppError,
 };
 
 use super::common::{parse_optional_date, push_clause};
@@ -97,7 +97,7 @@ pub async fn create_holiday(
         "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(&holiday.id)
+    .bind(holiday.id)
     .bind(holiday.holiday_date)
     .bind(&holiday.name)
     .bind(&holiday.description)
@@ -111,7 +111,9 @@ pub async fn create_holiday(
         Err(SqlxError::Database(db_err))
             if db_err.constraint() == Some("holidays_holiday_date_key") =>
         {
-            Err(AppError::BadRequest("Holiday already exists for that date".into()))
+            Err(AppError::BadRequest(
+                "Holiday already exists for that date".into(),
+            ))
         }
         Err(e) => Err(AppError::InternalServerError(e.into())),
     }
@@ -173,40 +175,41 @@ pub async fn create_weekly_holiday(
     }
 
     if payload.weekday > 6 {
-        return Err(AppError::BadRequest("Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)".into()));
+        return Err(AppError::BadRequest(
+            "Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)".into(),
+        ));
     }
 
     if let Some(ends_on) = payload.ends_on {
         if ends_on < payload.starts_on {
-            return Err(AppError::BadRequest("End date must be on or after the start date".into()));
+            return Err(AppError::BadRequest(
+                "End date must be on or after the start date".into(),
+            ));
         }
     }
 
     let today = time::today_local(&config.time_zone);
     let tomorrow = today + Duration::days(1);
     if !user.is_system_admin() && payload.starts_on < tomorrow {
-        return Err(AppError::BadRequest("Start date must be at least tomorrow".into()));
+        return Err(AppError::BadRequest(
+            "Start date must be at least tomorrow".into(),
+        ));
     }
 
-    let weekly = WeeklyHoliday::new(
-        payload.weekday,
-        payload.starts_on,
-        payload.ends_on,
-        user.id.clone(),
-    );
+    let weekly = WeeklyHoliday::new(payload.weekday, payload.starts_on, payload.ends_on, user.id);
 
     sqlx::query(
         "INSERT INTO weekly_holidays \
             (id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
-    .bind(&weekly.id)
+    .bind(weekly.id)
     .bind(weekly.weekday)
     .bind(weekly.starts_on)
     .bind(weekly.ends_on)
     .bind(weekly.enforced_from)
     .bind(weekly.enforced_to)
-    .bind(&weekly.created_by)
+    .bind(weekly.created_by)
     .bind(weekly.created_at)
     .bind(weekly.updated_at)
     .execute(&pool)
@@ -259,13 +262,17 @@ pub fn validate_admin_holiday_query(
         .unwrap_or(DEFAULT_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
 
-    let kind = parse_type_filter(q.r#type.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
-    let from = parse_optional_date(q.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let kind =
+        parse_type_filter(q.r#type.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let from =
+        parse_optional_date(q.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
     let to = parse_optional_date(q.to.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(AppError::BadRequest("`from` must be before or equal to `to`".into()));
+            return Err(AppError::BadRequest(
+                "`from` must be before or equal to `to`".into(),
+            ));
         }
     }
 

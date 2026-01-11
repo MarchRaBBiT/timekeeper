@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -61,7 +61,7 @@ pub async fn list_holiday_exceptions(
     let user_id = UserId::from_str(&target_user_id)
         .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
 
-    let exceptions =service
+    let exceptions = service
         .list_for_user(user_id, query.from, query.to)
         .await
         .map_err(holiday_exception_error_to_app_error)?;

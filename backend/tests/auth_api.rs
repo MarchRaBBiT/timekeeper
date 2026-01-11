@@ -7,10 +7,10 @@ use chrono::Utc;
 use chrono_tz::UTC;
 use timekeeper_backend::{
     config::Config,
+    error::AppError,
     handlers::auth::process_login_for_user,
     models::user::{LoginRequest, User, UserRole},
     utils::{cookies::SameSite, mfa::generate_totp_secret, password::hash_password},
-    error::AppError,
 };
 
 const TEST_PASSWORD: &str = "correct-horse-battery-staple";

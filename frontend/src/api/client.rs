@@ -212,7 +212,11 @@ impl ApiClient {
     pub async fn admin_get_archived_users(&self) -> Result<Vec<ArchivedUserResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let resp = self
-            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/archived-users", base_url))))
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .get(format!("{}/admin/archived-users", base_url)))
+            })
             .await?;
         let status = resp.status();
         Self::handle_unauthorized_status(status);
@@ -234,9 +238,10 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let resp = self
             .send_with_refresh(|| {
-                Ok(self
-                    .client
-                    .post(format!("{}/admin/archived-users/{}/restore", base_url, user_id)))
+                Ok(self.client.post(format!(
+                    "{}/admin/archived-users/{}/restore",
+                    base_url, user_id
+                )))
             })
             .await?;
         let status = resp.status();

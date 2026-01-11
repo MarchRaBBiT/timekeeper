@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, AuditLogListResponse, ApiError};
+use crate::api::{ApiClient, ApiError, AuditLogListResponse};
 use leptos::*;
 use wasm_bindgen::JsCast;
 

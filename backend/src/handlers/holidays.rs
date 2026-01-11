@@ -10,12 +10,12 @@ use std::sync::Arc;
 
 use crate::{
     config::Config,
+    error::AppError,
     models::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
     services::holiday::HolidayServiceTrait,
-    error::AppError,
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -82,18 +82,28 @@ pub async fn fetch_google_holidays(
     let client = Client::builder()
         .user_agent("timekeeper-backend/1.0")
         .build()
-        .map_err(|e: reqwest::Error| AppError::InternalServerError(anyhow::anyhow!("Failed to initialize HTTP client: {}", e)))?;
+        .map_err(|e: reqwest::Error| {
+            AppError::InternalServerError(anyhow::anyhow!(
+                "Failed to initialize HTTP client: {}",
+                e
+            ))
+        })?;
 
-    let resp: reqwest::Response = client
-        .get(GOOGLE_JP_HOLIDAY_ICS)
-        .send()
-        .await
-        .map_err(|e: reqwest::Error| AppError::InternalServerError(anyhow::anyhow!("Failed to fetch Google Calendar: {}", e)))?;
+    let resp: reqwest::Response =
+        client
+            .get(GOOGLE_JP_HOLIDAY_ICS)
+            .send()
+            .await
+            .map_err(|e: reqwest::Error| {
+                AppError::InternalServerError(anyhow::anyhow!(
+                    "Failed to fetch Google Calendar: {}",
+                    e
+                ))
+            })?;
 
-    let response_text = resp
-        .text()
-        .await
-        .map_err(|e: reqwest::Error| AppError::InternalServerError(anyhow::anyhow!("Failed to read Google Calendar: {}", e)))?;
+    let response_text = resp.text().await.map_err(|e: reqwest::Error| {
+        AppError::InternalServerError(anyhow::anyhow!("Failed to read Google Calendar: {}", e))
+    })?;
 
     let parsed = parse_google_calendar_ics(&response_text, params.year);
     Ok(Json(parsed))
@@ -127,7 +137,9 @@ pub async fn list_month_holidays(
     Query(query): Query<HolidayMonthQuery>,
 ) -> Result<Json<Vec<HolidayMonthEntry>>, AppError> {
     if !(1..=12).contains(&query.month) {
-        return Err(AppError::BadRequest("Month must be between 1 and 12".into()));
+        return Err(AppError::BadRequest(
+            "Month must be between 1 and 12".into(),
+        ));
     }
 
     let entries = holiday_service

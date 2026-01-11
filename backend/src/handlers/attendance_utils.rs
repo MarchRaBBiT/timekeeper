@@ -1,12 +1,12 @@
-use chrono::NaiveDate;
-use crate::{models::attendance::{Attendance, AttendanceStatus}, error::AppError};
 use crate::types::{AttendanceId, UserId};
+use crate::{
+    error::AppError,
+    models::attendance::{Attendance, AttendanceStatus},
+};
+use chrono::NaiveDate;
 use sqlx::PgPool;
 
-pub fn ensure_authorized_access(
-    attendance: &Attendance,
-    user_id: UserId,
-) -> Result<(), AppError> {
+pub fn ensure_authorized_access(attendance: &Attendance, user_id: UserId) -> Result<(), AppError> {
     if attendance.user_id == user_id {
         Ok(())
     } else {
@@ -32,7 +32,9 @@ pub fn ensure_not_clocked_out(attendance: &Attendance) -> Result<(), AppError> {
 
 pub fn ensure_clock_in_exists(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.clock_in_time.is_none() {
-        Err(AppError::BadRequest("Must clock in before clocking out".into()))
+        Err(AppError::BadRequest(
+            "Must clock in before clocking out".into(),
+        ))
     } else {
         Ok(())
     }
@@ -42,7 +44,9 @@ pub fn ensure_clocked_in(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.is_clocked_in() {
         Ok(())
     } else {
-        Err(AppError::BadRequest("Must be clocked in to start break".into()))
+        Err(AppError::BadRequest(
+            "Must be clocked in to start break".into(),
+        ))
     }
 }
 
@@ -98,10 +102,7 @@ pub async fn insert_attendance_record(
     Ok(())
 }
 
-pub async fn update_clock_in(
-    pool: &PgPool,
-    attendance: &Attendance,
-) -> Result<(), AppError> {
+pub async fn update_clock_in(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
     sqlx::query("UPDATE attendance SET clock_in_time = $1, updated_at = $2 WHERE id = $3")
         .bind(attendance.clock_in_time)
         .bind(attendance.updated_at)
@@ -112,10 +113,7 @@ pub async fn update_clock_in(
     Ok(())
 }
 
-pub async fn update_clock_out(
-    pool: &PgPool,
-    attendance: &Attendance,
-) -> Result<(), AppError> {
+pub async fn update_clock_out(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE attendance SET clock_out_time = $1, total_work_hours = $2, updated_at = $3 WHERE id = $4",
     )
