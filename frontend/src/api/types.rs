@@ -218,6 +218,47 @@ pub struct OvertimeRequestResponse {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DataSubjectRequestType {
+    Access,
+    Rectify,
+    Delete,
+    Stop,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDataSubjectRequest {
+    pub request_type: DataSubjectRequestType,
+    #[serde(default)]
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSubjectRequestResponse {
+    pub id: String,
+    pub user_id: String,
+    pub request_type: DataSubjectRequestType,
+    pub status: String,
+    pub details: Option<String>,
+    pub approved_by: Option<String>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub rejected_by: Option<String>,
+    pub rejected_at: Option<DateTime<Utc>>,
+    pub cancelled_at: Option<DateTime<Utc>>,
+    pub decision_comment: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubjectRequestListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<DataSubjectRequestResponse>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminAttendanceUpsert {
     pub user_id: String,

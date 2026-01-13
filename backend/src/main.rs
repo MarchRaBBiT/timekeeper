@@ -35,6 +35,7 @@ use config::{AuditLogRetentionPolicy, Config};
 use db::connection::{create_pool, DbPool};
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
+    consent_log::ConsentLogService,
     holiday::{HolidayService, HolidayServiceTrait},
     holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
 };
@@ -60,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     let audit_log_service: Arc<dyn AuditLogServiceTrait> =
         Arc::new(AuditLogService::new(pool.clone()));
+    let consent_log_service = Arc::new(ConsentLogService::new(pool.clone()));
     let holiday_service: Arc<dyn HolidayServiceTrait> = Arc::new(HolidayService::new(pool.clone()));
     let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
         Arc::new(HolidayExceptionService::new(pool.clone()));
@@ -68,6 +70,10 @@ async fn main() -> anyhow::Result<()> {
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
         config.audit_log_retention_policy(),
+    );
+    spawn_consent_log_cleanup(
+        consent_log_service.clone(),
+        config.consent_log_retention_policy(),
     );
 
     let openapi = docs::ApiDoc::openapi();
@@ -117,6 +123,12 @@ fn log_config(config: &Config) {
         refresh_token_expiration_days = config.refresh_token_expiration_days,
         audit_log_retention_days = config.audit_log_retention_days,
         audit_log_retention_forever = config.audit_log_retention_forever,
+        consent_log_retention_days = config.consent_log_retention_days,
+        consent_log_retention_forever = config.consent_log_retention_forever,
+        aws_region = %config.aws_region,
+        aws_kms_key_id = %mask_secret(&config.aws_kms_key_id),
+        aws_audit_log_bucket = %config.aws_audit_log_bucket,
+        aws_cloudtrail_enabled = config.aws_cloudtrail_enabled,
         cookie_secure = config.cookie_secure,
         cookie_same_site = ?config.cookie_same_site,
         cors_allow_origins = ?config.cors_allow_origins,
@@ -189,6 +201,23 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
             "/api/requests/{id}",
             put(handlers::requests::update_request).delete(handlers::requests::cancel_request),
         )
+        .route("/api/consents", post(handlers::consents::record_consent))
+        .route(
+            "/api/consents/me",
+            get(handlers::consents::list_my_consents),
+        )
+        .route(
+            "/api/subject-requests",
+            post(handlers::subject_requests::create_subject_request),
+        )
+        .route(
+            "/api/subject-requests/me",
+            get(handlers::subject_requests::list_my_subject_requests),
+        )
+        .route(
+            "/api/subject-requests/{id}",
+            delete(handlers::subject_requests::cancel_subject_request),
+        )
         .route("/api/auth/mfa", get(handlers::auth::mfa_status))
         .route("/api/auth/mfa", delete(handlers::auth::mfa_disable))
         .route("/api/auth/mfa/register", post(handlers::auth::mfa_register))
@@ -234,6 +263,30 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
         .route(
             "/api/admin/requests/{id}/reject",
             put(handlers::admin::reject_request),
+        )
+        .route(
+            "/api/admin/subject-requests",
+            get(handlers::admin::list_subject_requests),
+        )
+        .route(
+            "/api/admin/subject-requests/{id}/approve",
+            put(handlers::admin::approve_subject_request),
+        )
+        .route(
+            "/api/admin/subject-requests/{id}/reject",
+            put(handlers::admin::reject_subject_request),
+        )
+        .route(
+            "/api/admin/audit-logs",
+            get(handlers::admin::list_audit_logs),
+        )
+        .route(
+            "/api/admin/audit-logs/export",
+            get(handlers::admin::export_audit_logs),
+        )
+        .route(
+            "/api/admin/audit-logs/{id}",
+            get(handlers::admin::get_audit_log_detail),
         )
         .route(
             "/api/admin/holidays",
@@ -283,18 +336,6 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
 fn system_admin_routes(state: AuthState) -> Router<AuthState> {
     let audit_state = state.clone();
     Router::new()
-        .route(
-            "/api/admin/audit-logs",
-            get(handlers::admin::list_audit_logs),
-        )
-        .route(
-            "/api/admin/audit-logs/export",
-            get(handlers::admin::export_audit_logs),
-        )
-        .route(
-            "/api/admin/audit-logs/{id}",
-            get(handlers::admin::get_audit_log_detail),
-        )
         .route("/api/admin/users", post(handlers::admin::create_user))
         .route(
             "/api/admin/attendance",
@@ -392,6 +433,39 @@ fn spawn_audit_log_cleanup(
     });
 }
 
+fn spawn_consent_log_cleanup(
+    consent_log_service: Arc<ConsentLogService>,
+    retention_policy: AuditLogRetentionPolicy,
+) {
+    let Some(retention_days) = retention_policy.retention_days() else {
+        tracing::info!(
+            retention_policy = ?retention_policy,
+            "Consent log cleanup disabled"
+        );
+        return;
+    };
+
+    tracing::info!(retention_days, "Starting daily consent log cleanup task");
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        loop {
+            interval.tick().await;
+            let Some(cutoff) = retention_policy.cleanup_cutoff(Utc::now()) else {
+                continue;
+            };
+            match consent_log_service.delete_logs_before(cutoff).await {
+                Ok(deleted) => {
+                    tracing::info!(deleted, "Consent log cleanup completed");
+                }
+                Err(err) => {
+                    tracing::warn!(error = ?err, "Consent log cleanup failed");
+                }
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,8 +479,14 @@ mod tests {
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
-            audit_log_retention_days: 365,
+            audit_log_retention_days: 1825,
             audit_log_retention_forever: false,
+            consent_log_retention_days: 1825,
+            consent_log_retention_forever: false,
+            aws_region: "ap-northeast-1".to_string(),
+            aws_kms_key_id: "alias/timekeeper-test".to_string(),
+            aws_audit_log_bucket: "timekeeper-audit-logs".to_string(),
+            aws_cloudtrail_enabled: true,
             cookie_secure: false,
             cookie_same_site: crate::utils::cookies::SameSite::Lax,
             cors_allow_origins,

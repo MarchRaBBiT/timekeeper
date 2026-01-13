@@ -6,8 +6,8 @@ use crate::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayKind, AdminHolidayListItem,
             AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
             AdminRequestListResponse, ApprovePayload, AuditLogExportQuery, AuditLogListQuery,
-            AuditLogListResponse, AuditLogResponse, ExportQuery, RejectPayload, RequestListQuery,
-            ResetMfaPayload,
+            AuditLogListResponse, AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload,
+            RequestListQuery, ResetMfaPayload, SubjectRequestListQuery, SubjectRequestListResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
     },
@@ -17,6 +17,7 @@ use crate::{
             ClockInRequest, ClockOutRequest,
         },
         break_record::BreakRecordResponse,
+        consent_log::{ConsentLogResponse, RecordConsentPayload},
         holiday::{
             CreateHolidayPayload, CreateWeeklyHolidayPayload, HolidayResponse,
             WeeklyHolidayResponse,
@@ -25,6 +26,9 @@ use crate::{
         leave_request::{CreateLeaveRequest, LeaveRequestResponse, LeaveType},
         overtime_request::{CreateOvertimeRequest, OvertimeRequestResponse},
         request::RequestStatus,
+        subject_request::{
+            CreateDataSubjectRequest, DataSubjectRequestResponse, DataSubjectRequestType,
+        },
         user::{
             ChangePasswordRequest, CreateUser, LoginRequest, LoginResponse, MfaCodeRequest,
             MfaSetupResponse, MfaStatusResponse, UpdateUser, UserResponse,
@@ -59,10 +63,18 @@ use utoipa::{
         create_leave_doc,
         create_overtime_doc,
         my_requests_doc,
+        record_consent_doc,
+        list_my_consents_doc,
+        create_subject_request_doc,
+        list_my_subject_requests_doc,
+        cancel_subject_request_doc,
         admin_list_requests_doc,
         admin_request_detail_doc,
         admin_approve_request_doc,
         admin_reject_request_doc,
+        admin_list_subject_requests_doc,
+        admin_approve_subject_request_doc,
+        admin_reject_subject_request_doc,
         admin_get_users_doc,
         admin_create_user_doc,
         admin_list_holidays_doc,
@@ -110,9 +122,17 @@ use utoipa::{
             CreateOvertimeRequest,
             OvertimeRequestResponse,
             RequestStatus,
+            CreateDataSubjectRequest,
+            DataSubjectRequestResponse,
+            DataSubjectRequestType,
+            RecordConsentPayload,
+            ConsentLogResponse,
             RequestListQuery,
             AdminRequestListResponse,
             AdminRequestListPageInfo,
+            SubjectRequestListQuery,
+            SubjectRequestListResponse,
+            DecisionPayload,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
@@ -142,6 +162,7 @@ use utoipa::{
         (name = "Auth", description = "認証・MFA・パスワード関連"),
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
         (name = "Requests", description = "申請 API (休暇/残業)"),
+        (name = "Compliance", description = "同意・法令対応 API"),
         (name = "Admin", description = "管理者向け API")
     ),
     security(("BearerAuth" = []))
@@ -345,6 +366,49 @@ fn create_overtime_doc() {}
 fn my_requests_doc() {}
 
 #[utoipa::path(
+    post,
+    path = "/api/consents",
+    request_body = RecordConsentPayload,
+    responses((status = 200, body = ConsentLogResponse)),
+    tag = "Compliance"
+)]
+fn record_consent_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/consents/me",
+    responses((status = 200, body = [ConsentLogResponse])),
+    tag = "Compliance"
+)]
+fn list_my_consents_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/subject-requests",
+    request_body = CreateDataSubjectRequest,
+    responses((status = 200, body = DataSubjectRequestResponse)),
+    tag = "Compliance"
+)]
+fn create_subject_request_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/subject-requests/me",
+    responses((status = 200, body = [DataSubjectRequestResponse])),
+    tag = "Compliance"
+)]
+fn list_my_subject_requests_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/subject-requests/{id}",
+    params(("id" = String, Path, description = "Subject request ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Compliance"
+)]
+fn cancel_subject_request_doc() {}
+
+#[utoipa::path(
     get,
     path = "/api/admin/requests",
     params(RequestListQuery),
@@ -381,6 +445,35 @@ fn admin_approve_request_doc() {}
     tag = "Admin"
 )]
 fn admin_reject_request_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/subject-requests",
+    params(SubjectRequestListQuery),
+    responses((status = 200, body = SubjectRequestListResponse)),
+    tag = "Admin"
+)]
+fn admin_list_subject_requests_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/subject-requests/{id}/approve",
+    params(("id" = String, Path, description = "Subject request ID")),
+    request_body = DecisionPayload,
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_approve_subject_request_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/subject-requests/{id}/reject",
+    params(("id" = String, Path, description = "Subject request ID")),
+    request_body = DecisionPayload,
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_reject_subject_request_doc() {}
 
 #[utoipa::path(
     get,

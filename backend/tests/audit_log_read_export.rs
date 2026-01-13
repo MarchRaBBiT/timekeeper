@@ -16,7 +16,7 @@ use timekeeper_backend::{
         export_audit_logs, get_audit_log_detail, list_audit_logs, AuditLogListResponse,
     },
     models::{audit_log::AuditLog, user::UserRole},
-    repositories::audit_log,
+    repositories::{audit_log, permissions},
     types::{AuditLogId, UserId},
 };
 use tokio::sync::Mutex;
@@ -70,7 +70,7 @@ fn build_log(
 }
 
 #[tokio::test]
-async fn audit_log_list_requires_system_admin() {
+async fn audit_log_list_requires_permission() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
@@ -112,7 +112,16 @@ async fn audit_log_list_filters_and_paginates() {
     let config = support::test_config();
     let state = (pool.clone(), config);
 
-    let system_admin = support::seed_user(&pool, UserRole::Admin, true).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+    assert!(permissions::user_has_permission(
+        &pool,
+        &permissioned_user_id,
+        permissions::AUDIT_LOG_READ
+    )
+    .await
+    .expect("check permission"));
     let actor_one = support::seed_user(&pool, UserRole::Employee, false).await;
     let actor_two = support::seed_user(&pool, UserRole::Employee, false).await;
 
@@ -150,7 +159,7 @@ async fn audit_log_list_filters_and_paginates() {
 
     let app = Router::new()
         .route("/api/admin/audit-logs", get(list_audit_logs))
-        .layer(Extension(system_admin.clone()))
+        .layer(Extension(permissioned_user.clone()))
         .with_state(state.clone());
 
     let response = app
@@ -207,9 +216,18 @@ async fn audit_log_detail_returns_log() {
     let config = support::test_config();
     let state = (pool.clone(), config);
 
-    let system_admin = support::seed_user(&pool, UserRole::Admin, true).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+    assert!(permissions::user_has_permission(
+        &pool,
+        &permissioned_user_id,
+        permissions::AUDIT_LOG_READ
+    )
+    .await
+    .expect("check permission"));
     let log = build_log(
-        Some(system_admin.id),
+        Some(permissioned_user.id),
         "attendance_clock_in",
         Some("attendance"),
         Some("target-1"),
@@ -222,7 +240,7 @@ async fn audit_log_detail_returns_log() {
 
     let app = Router::new()
         .route("/api/admin/audit-logs/{id}", get(get_audit_log_detail))
-        .layer(Extension(system_admin))
+        .layer(Extension(permissioned_user))
         .with_state(state);
 
     let response = app
@@ -258,9 +276,18 @@ async fn audit_log_export_returns_json_file() {
     let config = support::test_config();
     let state = (pool.clone(), config);
 
-    let system_admin = support::seed_user(&pool, UserRole::Admin, true).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+    assert!(permissions::user_has_permission(
+        &pool,
+        &permissioned_user_id,
+        permissions::AUDIT_LOG_READ
+    )
+    .await
+    .expect("check permission"));
     let log = build_log(
-        Some(system_admin.id),
+        Some(permissioned_user.id),
         "request_update",
         Some("request"),
         Some("target-2"),
@@ -273,7 +300,7 @@ async fn audit_log_export_returns_json_file() {
 
     let app = Router::new()
         .route("/api/admin/audit-logs/export", get(export_audit_logs))
-        .layer(Extension(system_admin))
+        .layer(Extension(permissioned_user))
         .with_state(state);
 
     let response = app

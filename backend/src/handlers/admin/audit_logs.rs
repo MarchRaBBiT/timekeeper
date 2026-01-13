@@ -18,7 +18,10 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     config::Config,
     models::{audit_log::AuditLog, user::User},
-    repositories::audit_log::{self, AuditLogFilters},
+    repositories::{
+        audit_log::{self, AuditLogFilters},
+        permissions,
+    },
     types::{AuditLogId, UserId},
     utils::time,
 };
@@ -105,7 +108,7 @@ pub async fn list_audit_logs(
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogListQuery>,
 ) -> Result<Json<AuditLogListResponse>, AppError> {
-    ensure_system_admin(&user)?;
+    ensure_audit_log_access(&pool, &user).await?;
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
@@ -130,7 +133,7 @@ pub async fn get_audit_log_detail(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<AuditLogResponse>, AppError> {
-    ensure_system_admin(&user)?;
+    ensure_audit_log_access(&pool, &user).await?;
 
     let audit_log_id = AuditLogId::from_str(&id)
         .map_err(|_| AppError::BadRequest("Invalid audit log ID".into()))?;
@@ -148,7 +151,7 @@ pub async fn export_audit_logs(
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogExportQuery>,
 ) -> Result<Response, AppError> {
-    ensure_system_admin(&user)?;
+    ensure_audit_log_access(&pool, &user).await?;
 
     let filters = validate_export_query(q)?;
     let logs = audit_log::export_audit_logs(&pool, &filters)
@@ -174,8 +177,20 @@ pub async fn export_audit_logs(
     Ok(response)
 }
 
-fn ensure_system_admin(user: &User) -> Result<(), AppError> {
+async fn ensure_audit_log_access(pool: &PgPool, user: &User) -> Result<(), AppError> {
     if user.is_system_admin() {
+        return Ok(());
+    }
+
+    let user_id = user.id.to_string();
+    let allowed = permissions::user_has_permission(pool, &user_id, permissions::AUDIT_LOG_READ)
+        .await
+        .map_err(|err| {
+            tracing::error!(error = %err, "failed to check audit log permission");
+            AppError::InternalServerError(err.into())
+        })?;
+
+    if allowed {
         Ok(())
     } else {
         Err(AppError::Forbidden("Forbidden".into()))

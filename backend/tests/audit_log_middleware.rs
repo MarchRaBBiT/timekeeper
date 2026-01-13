@@ -343,6 +343,62 @@ async fn audit_log_middleware_records_request_metadata() {
 }
 
 #[tokio::test]
+async fn audit_log_middleware_records_consent_metadata() {
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config.clone());
+
+    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
+
+    let app = Router::new()
+        .route("/api/consents", post(ok_handler))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            timekeeper_backend::middleware::audit_log,
+        ))
+        .layer(Extension(user))
+        .layer(Extension(audit_service))
+        .with_state(state);
+
+    let request_id = Uuid::new_v4().to_string();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/consents")
+                .header("content-type", "application/json")
+                .header("x-request-id", &request_id)
+                .body(Body::from(
+                    r#"{"purpose":"attendance","policy_version":"2026-01"}"#,
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let logged = wait_for_audit_log_by_request_id(&pool, &request_id)
+        .await
+        .expect("audit log");
+    assert_eq!(logged.event_type, "consent_record");
+    let metadata = metadata_value(&logged);
+    assert_eq!(
+        metadata.get("purpose").and_then(Value::as_str),
+        Some("attendance")
+    );
+    assert_eq!(
+        metadata.get("policy_version").and_then(Value::as_str),
+        Some("2026-01")
+    );
+}
+
+#[tokio::test]
 async fn audit_log_middleware_records_request_metadata_on_failure_with_large_body() {
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")

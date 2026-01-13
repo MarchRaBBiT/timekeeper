@@ -1,7 +1,7 @@
 use crate::api::{
     AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient, ApiError,
-    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, UserResponse,
-    WeeklyHolidayResponse,
+    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, SubjectRequestListResponse,
+    UserResponse, WeeklyHolidayResponse,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -112,6 +112,33 @@ impl AdminRepository {
             .admin_reject_request(id, comment)
             .await
             .map(|_| ())
+    }
+
+    pub async fn list_subject_requests(
+        &self,
+        status: Option<String>,
+        request_type: Option<String>,
+        user_id: Option<String>,
+        page: i64,
+        per_page: i64,
+    ) -> Result<SubjectRequestListResponse, ApiError> {
+        self.client
+            .admin_list_subject_requests(status, request_type, user_id, None, None, page, per_page)
+            .await
+    }
+
+    pub async fn approve_subject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
+        self.client
+            .admin_approve_subject_request(id, comment)
+            .await
+            .map_err(|e| e.into())
+    }
+
+    pub async fn reject_subject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
+        self.client
+            .admin_reject_subject_request(id, comment)
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn reset_mfa(&self, user_id: &str) -> Result<(), ApiError> {

@@ -150,6 +150,77 @@ impl RequestFilterState {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubjectRequestFilterSnapshot {
+    pub status: Option<String>,
+    pub request_type: Option<String>,
+    pub user_id: Option<String>,
+    pub page: u32,
+    pub per_page: u32,
+}
+
+#[derive(Clone, Copy)]
+pub struct SubjectRequestFilterState {
+    status: RwSignal<String>,
+    request_type: RwSignal<String>,
+    user_id: RwSignal<String>,
+    page: RwSignal<u32>,
+    per_page: u32,
+}
+
+impl SubjectRequestFilterState {
+    pub fn new() -> Self {
+        Self {
+            status: create_rw_signal(String::new()),
+            request_type: create_rw_signal(String::new()),
+            user_id: create_rw_signal(String::new()),
+            page: create_rw_signal(1),
+            per_page: 20,
+        }
+    }
+
+    pub fn status_signal(&self) -> RwSignal<String> {
+        self.status
+    }
+
+    pub fn request_type_signal(&self) -> RwSignal<String> {
+        self.request_type
+    }
+
+    pub fn user_id_signal(&self) -> RwSignal<String> {
+        self.user_id
+    }
+
+    pub fn snapshot(&self) -> SubjectRequestFilterSnapshot {
+        let status_value = self.status.get();
+        let request_type_value = self.request_type.get();
+        let user_id_value = self.user_id.get();
+        SubjectRequestFilterSnapshot {
+            status: if status_value.is_empty() {
+                None
+            } else {
+                Some(status_value)
+            },
+            request_type: if request_type_value.is_empty() {
+                None
+            } else {
+                Some(request_type_value)
+            },
+            user_id: if user_id_value.is_empty() {
+                None
+            } else {
+                Some(user_id_value)
+            },
+            page: self.page.get(),
+            per_page: self.per_page,
+        }
+    }
+
+    pub fn reset_page(&self) {
+        self.page.set(1);
+    }
+}
+
 pub fn next_allowed_weekly_start(today: NaiveDate, is_system_admin: bool) -> NaiveDate {
     if is_system_admin {
         today
