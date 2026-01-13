@@ -8,20 +8,20 @@
   - Remove undefined `view_model` reference in frontend component (P1).
   - Make AWS environment variables optional in backend config (P2).
 - State:
-  - IN PROGRESS
+  - COMPLETED
 - Done:
   - Fixed P1: Removed undefined `view_model.reload_subject_requests` reference in `frontend/src/pages/admin/components/subject_requests.rs`.
   - Fixed P2: Made `AWS_KMS_KEY_ID` and `AWS_AUDIT_LOG_BUCKET` optional in `backend/src/config.rs`.
   - Updated tests for optional AWS config.
   - Verified backend tests pass and clippy clean.
+  - Committed and pushed fixes to remote.
 - Now:
-  - Commit and push changes to address PR comments.
+  - None.
 - Next:
-  - Update PR to reflect the fixes.
+  - None.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/commands):
-  - `git add .`
   - `git commit -m "fix: address PR #179 comments"`
   - `git push`
   - `CONTINUITY.md`
