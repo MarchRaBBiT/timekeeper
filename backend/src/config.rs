@@ -102,8 +102,8 @@ impl Config {
             .unwrap_or(false);
 
         let aws_region = env::var("AWS_REGION").unwrap_or_else(|_| "ap-northeast-1".to_string());
-        let aws_kms_key_id = required_env("AWS_KMS_KEY_ID")?;
-        let aws_audit_log_bucket = required_env("AWS_AUDIT_LOG_BUCKET")?;
+        let aws_kms_key_id = env::var("AWS_KMS_KEY_ID").unwrap_or_default();
+        let aws_audit_log_bucket = env::var("AWS_AUDIT_LOG_BUCKET").unwrap_or_default();
         let aws_cloudtrail_enabled = env::var("AWS_CLOUDTRAIL_ENABLED")
             .unwrap_or_else(|_| "true".to_string())
             .parse()
@@ -182,17 +182,6 @@ fn parse_same_site(raw: String) -> anyhow::Result<SameSite> {
     }
 }
 
-fn required_env(key: &str) -> anyhow::Result<String> {
-    let value = env::var(key)
-        .map_err(|_| anyhow!("{} must be set", key))?
-        .trim()
-        .to_string();
-    if value.is_empty() {
-        return Err(anyhow!("{} must be set", key));
-    }
-    Ok(value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,9 +209,9 @@ mod tests {
         }
     }
 
-    fn set_required_aws_env() {
-        env::set_var("AWS_KMS_KEY_ID", "alias/timekeeper-test");
-        env::set_var("AWS_AUDIT_LOG_BUCKET", "timekeeper-audit-logs");
+    fn set_optional_aws_env() {
+        env::remove_var("AWS_KMS_KEY_ID");
+        env::remove_var("AWS_AUDIT_LOG_BUCKET");
     }
 
     fn base_config() -> Config {
@@ -270,7 +259,7 @@ mod tests {
         env::remove_var("CONSENT_LOG_RETENTION_FOREVER");
         env::remove_var("AWS_REGION");
         env::remove_var("AWS_CLOUDTRAIL_ENABLED");
-        set_required_aws_env();
+        set_optional_aws_env();
 
         let config = Config::load().expect("load config");
 
@@ -278,6 +267,8 @@ mod tests {
         assert!(!config.audit_log_retention_forever);
         assert_eq!(config.consent_log_retention_days, 1825);
         assert!(!config.consent_log_retention_forever);
+        assert_eq!(config.aws_kms_key_id, "");
+        assert_eq!(config.aws_audit_log_bucket, "");
 
         restore_env(&keys, original);
     }
@@ -299,18 +290,20 @@ mod tests {
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::remove_var("AWS_REGION");
         env::remove_var("AWS_CLOUDTRAIL_ENABLED");
-        set_required_aws_env();
+        set_optional_aws_env();
 
         let config = Config::load().expect("load config");
 
         assert_eq!(config.aws_region, "ap-northeast-1");
         assert!(config.aws_cloudtrail_enabled);
+        assert_eq!(config.aws_kms_key_id, "");
+        assert_eq!(config.aws_audit_log_bucket, "");
 
         restore_env(&keys, original);
     }
 
     #[test]
-    fn config_requires_aws_kms_key_id() {
+    fn config_aws_kms_key_id_is_optional() {
         let _guard = env_guard();
         let keys = ["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"];
         let original = snapshot_env(&keys);
@@ -319,14 +312,15 @@ mod tests {
         env::remove_var("AWS_KMS_KEY_ID");
         env::set_var("AWS_AUDIT_LOG_BUCKET", "timekeeper-audit-logs");
 
-        let err = Config::load().expect_err("missing kms key should fail");
-        assert!(err.to_string().contains("AWS_KMS_KEY_ID"));
+        let config = Config::load().expect("config should load without kms key");
+        assert_eq!(config.aws_kms_key_id, "");
+        assert_eq!(config.aws_audit_log_bucket, "timekeeper-audit-logs");
 
         restore_env(&keys, original);
     }
 
     #[test]
-    fn config_requires_aws_audit_log_bucket() {
+    fn config_aws_audit_log_bucket_is_optional() {
         let _guard = env_guard();
         let keys = ["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"];
         let original = snapshot_env(&keys);
@@ -335,8 +329,9 @@ mod tests {
         env::set_var("AWS_KMS_KEY_ID", "alias/timekeeper-test");
         env::remove_var("AWS_AUDIT_LOG_BUCKET");
 
-        let err = Config::load().expect_err("missing audit bucket should fail");
-        assert!(err.to_string().contains("AWS_AUDIT_LOG_BUCKET"));
+        let config = Config::load().expect("config should load without audit bucket");
+        assert_eq!(config.aws_kms_key_id, "alias/timekeeper-test");
+        assert_eq!(config.aws_audit_log_bucket, "");
 
         restore_env(&keys, original);
     }

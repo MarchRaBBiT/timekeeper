@@ -1,28 +1,27 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Review frontend changes for MVVM compliance and report findings.
+  - Address PR comments for #179: Fix P1 and P2 issues.
 - Constraints/Assumptions:
   - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
 - Key decisions:
-  - Focus on frontend MVVM files (view_model/repository/panels/components).
+  - Remove undefined `view_model` reference in frontend component (P1).
+  - Make AWS environment variables optional in backend config (P2).
 - State:
-  - COMPLETED
+  - IN PROGRESS
 - Done:
-  - Unified error types in `AdminRepository` subject request methods.
-  - Moved `reload` signal handling to ViewModel to reduce view coupling.
-  - Fixed `reload_subject_requests` prop access in AdminSubjectRequestsSection.
-  - Updated placeholder label from "種別" to "請求種別".
-  - Changed settings heading from "本人対応申請" to "請求種別".
+  - Fixed P1: Removed undefined `view_model.reload_subject_requests` reference in `frontend/src/pages/admin/components/subject_requests.rs`.
+  - Fixed P2: Made `AWS_KMS_KEY_ID` and `AWS_AUDIT_LOG_BUCKET` optional in `backend/src/config.rs`.
+  - Updated tests for optional AWS config.
+  - Verified backend tests pass and clippy clean.
 - Now:
-  - None.
+  - Commit and push changes to address PR comments.
 - Next:
-  - None.
+  - Update PR to reflect the fixes.
 - Open questions (UNCONFIRMED if needed):
   - None.
-- Working set (files/ids/commands):
-  - `frontend/src/pages/admin/view_model.rs`
-  - `frontend/src/pages/admin/repository.rs`
-  - `frontend/src/pages/admin/components/subject_requests.rs`
-  - `frontend/src/pages/settings/panel.rs`
+- Working set (files/commands):
+  - `git add .`
+  - `git commit -m "fix: address PR #179 comments"`
+  - `git push`
   - `CONTINUITY.md`

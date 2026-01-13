@@ -38,7 +38,6 @@ pub fn AdminSubjectRequestsSection(
             .and_then(|request| to_string_pretty(&request).ok())
             .unwrap_or_default()
     });
-    let reload_subject_requests = view_model.reload_subject_requests;
     let modal_pending = Signal::derive(move || {
         modal_request
             .get()
