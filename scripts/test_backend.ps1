@@ -180,6 +180,25 @@ Write-Step "Admin: List requests (pending)"
 $al = Invoke-Api -Method GET -Path '/api/admin/requests?status=pending&page=1&per_page=10'
 if(-not $al.ok){ Write-Warn "admin list failed: $($al.status) $($al.error)" } else { Write-Ok ("items: leave={0}, overtime={1}" -f $al.data.leave_requests.Count, $al.data.overtime_requests.Count) }
 
+# Subject requests (admin user)
+Write-Step "Subject Requests: Create (admin)"
+$sr = Invoke-Api -Method POST -Path '/api/subject-requests' -Body @{ request_type = 'access'; details = 'subject request (admin)' }
+if(-not $sr.ok){ Write-Warn "subject request create failed: $($sr.status) $($sr.error)" } else { $subjectId = $sr.data.id; Write-Ok "subject_request id=$subjectId" }
+
+Write-Step "Subject Requests: My List"
+$srList = Invoke-Api -Method GET -Path '/api/subject-requests/me'
+if(-not $srList.ok){ Write-Warn "subject request list failed: $($srList.status) $($srList.error)" } else { Write-Ok ("subject_requests={0}" -f $srList.data.Count) }
+
+Write-Step "Admin: Subject Requests (pending)"
+$srAdmin = Invoke-Api -Method GET -Path '/api/admin/subject-requests?status=pending&page=1&per_page=10'
+if(-not $srAdmin.ok){ Write-Warn "admin subject requests failed: $($srAdmin.status) $($srAdmin.error)" } else { Write-Ok ("items={0}" -f $srAdmin.data.items.Count) }
+
+if($subjectId){
+  Write-Step "Admin: Approve subject request"
+  $srApprove = Invoke-Api -Method PUT -Path "/api/admin/subject-requests/$subjectId/approve" -Body @{ comment = 'approved' }
+  if(-not $srApprove.ok){ Write-Warn "subject request approve failed: $($srApprove.status) $($srApprove.error)" } else { Write-Ok "subject request approved" }
+}
+
 # Admin: Attendance list (all)
 Write-Step "Admin: Attendance list"
 $aa = Invoke-Api -Method GET -Path '/api/admin/attendance'
@@ -211,7 +230,8 @@ if($empLogin.ok){
     @{ method = 'GET'; path = '/api/admin/users' },
     @{ method = 'GET'; path = '/api/admin/requests' },
     @{ method = 'GET'; path = '/api/admin/attendance' },
-    @{ method = 'GET'; path = '/api/admin/export' }
+    @{ method = 'GET'; path = '/api/admin/export' },
+    @{ method = 'GET'; path = '/api/admin/subject-requests' }
   )
   foreach($chk in $forbiddenChecks){
     $resp = Invoke-Api -Method $chk.method -Path $chk.path -Session $EmpSession
@@ -241,6 +261,17 @@ if($empLogin.ok){
     if(-not $del.ok){ Write-Warn "emp leave cancel failed: $($del.status) $($del.error)" } else { Write-Ok ("emp leave cancelled -> {0}" -f $del.data.status) }
   } else {
     Write-Warn "emp leave create failed: $($empLeave.status) $($empLeave.error)"
+  }
+
+  Write-Step "Emp Subject Requests: Create/Cancel"
+  $empSubject = Invoke-Api -Method POST -Path '/api/subject-requests' -Session $EmpSession -Body @{ request_type = 'delete'; details = 'emp subject request' }
+  if($empSubject.ok){
+    $empSubjectId = $empSubject.data.id
+    Write-Ok "emp subject request id=$empSubjectId"
+    $empSubjectCancel = Invoke-Api -Method DELETE -Path "/api/subject-requests/$empSubjectId" -Session $EmpSession
+    if(-not $empSubjectCancel.ok){ Write-Warn "emp subject cancel failed: $($empSubjectCancel.status) $($empSubjectCancel.error)" } else { Write-Ok "emp subject request cancelled" }
+  } else {
+    Write-Warn "emp subject request create failed: $($empSubject.status) $($empSubject.error)"
   }
 }
 

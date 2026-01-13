@@ -1,8 +1,8 @@
 use crate::pages::admin::{
     components::{
         attendance::AdminAttendanceToolsSection, holidays::HolidayManagementSection,
-        requests::AdminRequestsSection, system_tools::AdminMfaResetSection,
-        weekly_holidays::WeeklyHolidaySection,
+        requests::AdminRequestsSection, subject_requests::AdminSubjectRequestsSection,
+        system_tools::AdminMfaResetSection, weekly_holidays::WeeklyHolidaySection,
     },
     layout,
     view_model::use_admin_view_model,
@@ -63,6 +63,14 @@ pub fn AdminPanel() -> impl IntoView {
                     users=vm.users_resource
                 />
             </div>
+            <AdminSubjectRequestsSection
+                users=vm.users_resource
+                filter=vm.subject_request_filter
+                resource=vm.subject_requests_resource
+                action=vm.subject_request_action
+                action_error=vm.subject_request_action_error
+                reload=vm.reload_subject_requests
+            />
             <HolidayManagementSection
                 repository=vm.repository.clone()
                 admin_allowed=admin_allowed

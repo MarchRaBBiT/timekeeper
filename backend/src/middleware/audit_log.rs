@@ -248,7 +248,14 @@ async fn buffer_request_body(request: Request) -> (Request, Option<Bytes>) {
 fn needs_body_for_metadata(event_type: &str) -> bool {
     matches!(
         event_type,
-        "request_leave_create" | "request_overtime_create" | "request_update" | "request_cancel"
+        "request_leave_create"
+            | "request_overtime_create"
+            | "request_update"
+            | "request_cancel"
+            | "consent_record"
+            | "subject_request_create"
+            | "admin_subject_request_approve"
+            | "admin_subject_request_reject"
     )
 }
 
@@ -270,6 +277,17 @@ fn build_metadata(
         | "request_cancel" => {
             let payload = parse_json_body(body_bytes);
             Some(build_request_metadata(event_type, payload.as_ref()))
+        }
+        "consent_record" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_consent_metadata(payload.as_ref()))
+        }
+        "subject_request_create"
+        | "subject_request_cancel"
+        | "admin_subject_request_approve"
+        | "admin_subject_request_reject" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_subject_request_metadata(event_type, payload.as_ref()))
         }
         "admin_request_approve" | "admin_request_reject" => {
             Some(build_approval_metadata(event_type))
@@ -329,6 +347,72 @@ fn build_request_payload_summary(request_type: &str, payload: Option<&Value>) ->
                 insert_number_if_present(&mut summary, payload, "planned_hours");
             }
         }
+    }
+    Value::Object(summary)
+}
+
+fn build_consent_metadata(payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    if let Some(payload) = payload {
+        insert_string_if_present(&mut summary, payload, "purpose");
+        insert_string_if_present(&mut summary, payload, "policy_version");
+    }
+    Value::Object(summary)
+}
+
+fn build_subject_request_metadata(event_type: &str, payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    match event_type {
+        "subject_request_create" => {
+            let request_type = payload
+                .and_then(|value| value.get("request_type"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            summary.insert(
+                "request_type".to_string(),
+                Value::String(request_type.to_string()),
+            );
+            let details_len = payload
+                .and_then(|value| value.get("details"))
+                .and_then(Value::as_str)
+                .map(|value| value.chars().count() as u64);
+            summary.insert(
+                "details_present".to_string(),
+                Value::Bool(details_len.unwrap_or(0) > 0),
+            );
+            if let Some(len) = details_len {
+                summary.insert(
+                    "details_length".to_string(),
+                    Value::Number(serde_json::Number::from(len)),
+                );
+            }
+        }
+        "admin_subject_request_approve" | "admin_subject_request_reject" => {
+            let decision = if event_type == "admin_subject_request_approve" {
+                "approve"
+            } else {
+                "reject"
+            };
+            summary.insert("decision".to_string(), Value::String(decision.to_string()));
+            let comment_len = payload
+                .and_then(|value| value.get("comment"))
+                .and_then(Value::as_str)
+                .map(|value| value.chars().count() as u64);
+            summary.insert(
+                "comment_present".to_string(),
+                Value::Bool(comment_len.unwrap_or(0) > 0),
+            );
+            if let Some(len) = comment_len {
+                summary.insert(
+                    "comment_length".to_string(),
+                    Value::Number(serde_json::Number::from(len)),
+                );
+            }
+        }
+        "subject_request_cancel" => {
+            summary.insert("status".to_string(), Value::String("cancelled".to_string()));
+        }
+        _ => {}
     }
     Value::Object(summary)
 }
@@ -455,6 +539,28 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::DELETE, ["api", "requests", request_id]) => Some(event(
             "request_cancel",
             "request",
+            Some((*request_id).to_string()),
+        )),
+        (&Method::POST, ["api", "consents"]) => Some(event("consent_record", "consent_log", None)),
+        (&Method::POST, ["api", "subject-requests"]) => {
+            Some(event("subject_request_create", "subject_request", None))
+        }
+        (&Method::DELETE, ["api", "subject-requests", request_id]) => Some(event(
+            "subject_request_cancel",
+            "subject_request",
+            Some((*request_id).to_string()),
+        )),
+        (&Method::GET, ["api", "admin", "subject-requests"]) => {
+            Some(event("admin_subject_request_list", "subject_request", None))
+        }
+        (&Method::PUT, ["api", "admin", "subject-requests", request_id, "approve"]) => Some(event(
+            "admin_subject_request_approve",
+            "subject_request",
+            Some((*request_id).to_string()),
+        )),
+        (&Method::PUT, ["api", "admin", "subject-requests", request_id, "reject"]) => Some(event(
+            "admin_subject_request_reject",
+            "subject_request",
             Some((*request_id).to_string()),
         )),
         (&Method::GET, ["api", "admin", "requests"]) => {
@@ -613,6 +719,34 @@ mod tests {
         assert_eq!(event.event_type, "admin_request_approve");
         assert_eq!(event.target_type, Some("request"));
         assert_eq!(event.target_id.as_deref(), Some("req-123"));
+    }
+
+    #[test]
+    fn classify_event_matches_subject_request_paths() {
+        let create_event =
+            classify_event(&Method::POST, "/api/subject-requests").expect("create maps");
+        assert_eq!(create_event.event_type, "subject_request_create");
+        assert_eq!(create_event.target_type, Some("subject_request"));
+        assert!(create_event.target_id.is_none());
+
+        let cancel_event =
+            classify_event(&Method::DELETE, "/api/subject-requests/req-1").expect("cancel maps");
+        assert_eq!(cancel_event.event_type, "subject_request_cancel");
+        assert_eq!(cancel_event.target_type, Some("subject_request"));
+        assert_eq!(cancel_event.target_id.as_deref(), Some("req-1"));
+
+        let admin_list =
+            classify_event(&Method::GET, "/api/admin/subject-requests").expect("admin list maps");
+        assert_eq!(admin_list.event_type, "admin_subject_request_list");
+        assert_eq!(admin_list.target_type, Some("subject_request"));
+        assert!(admin_list.target_id.is_none());
+
+        let admin_approve =
+            classify_event(&Method::PUT, "/api/admin/subject-requests/req-2/approve")
+                .expect("admin approve maps");
+        assert_eq!(admin_approve.event_type, "admin_subject_request_approve");
+        assert_eq!(admin_approve.target_type, Some("subject_request"));
+        assert_eq!(admin_approve.target_id.as_deref(), Some("req-2"));
     }
 
     #[test]

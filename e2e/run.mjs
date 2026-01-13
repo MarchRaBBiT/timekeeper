@@ -10,6 +10,8 @@ try {
   await page.fill('#password', 'admin123');
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 15000 });
+  await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('text=本人対応申請', { timeout: 15000 });
   console.log('Login redirect OK:', page.url());
   await browser.close();
   process.exit(0);

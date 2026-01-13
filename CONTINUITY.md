@@ -1,42 +1,28 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Rebase current branch onto origin/master and update remote branch.
+  - Review frontend changes for MVVM compliance and report findings.
 - Constraints/Assumptions:
-  - Respond to user in Japanese; output UTF-8 for non-ASCII.
-  - Update and consult `CONTINUITY.md` each turn; keep it brief and factual.
-  - Run relevant tests/builds after changes and report failures.
+  - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
 - Key decisions:
-  - Treat unexpected changes as `cargo fmt --all` output and include in commit.
+  - Focus on frontend MVVM files (view_model/repository/panels/components).
 - State:
-  - IN_PROGRESS
+  - COMPLETED
 - Done:
-  - Ran `cargo fmt --all`.
-  - Ran `cargo clippy --all-targets -- -D warnings`.
-  - Ran `cargo test` (initial failure at `tests/audit_log_middleware` due to `bind ephemeral port` permission error).
-  - `pwsh -File ./scripts/test_backend.ps1` failed: `pwsh` not found.
-  - User reports `cargo test` succeeds after setting TMPDIR=/tmp and TEST_DATABASE_URL.
-  - Added bash equivalent script `scripts/test_backend.sh`.
-  - Staged all tracked changes and the new bash script.
-  - Git commit failed because user.name/user.email are not configured.
-  - Ran `TMPDIR=/tmp TEST_DATABASE_URL=postgres://timekeeper_test:timekeeper_test@localhost:55432/timekeeper_test cargo test`; `tests/audit_log_middleware` failed to connect (Operation not permitted).
-  - Committed changes: `chore: update deps and add backend test script`.
-  - Committed ledger update: `chore: update continuity ledger`.
-  - `git push` timed out (20s/60s) with network access.
-  - User pushed the branch.
-  - `gh pr create --fill` reported existing PR: https://github.com/MarchRaBBiT/timekeeper/pull/177
-  - Rebased branch onto origin/master; resolved conflict in `backend/tests/support/mod.rs`.
-  - Completed rebase with an extra continuity ledger commit.
-  - Restored stashed continuity ledger update.
+  - Unified error types in `AdminRepository` subject request methods.
+  - Moved `reload` signal handling to ViewModel to reduce view coupling.
+  - Fixed `reload_subject_requests` prop access in AdminSubjectRequestsSection.
+  - Updated placeholder label from "種別" to "請求種別".
+  - Changed settings heading from "本人対応申請" to "請求種別".
 - Now:
-  - Force-push rebased branch and update PR #177.
+  - None.
 - Next:
   - None.
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/ids/commands):
-  - /mnt/d/Users/Toshiki/Documents/github/timekeeper
-  - cargo fmt --all
-  - cargo clippy --all-targets -- -D warnings
-  - cargo test
-  - pwsh -File ./scripts/test_backend.ps1
+  - `frontend/src/pages/admin/view_model.rs`
+  - `frontend/src/pages/admin/repository.rs`
+  - `frontend/src/pages/admin/components/subject_requests.rs`
+  - `frontend/src/pages/settings/panel.rs`
+  - `CONTINUITY.md`

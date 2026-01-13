@@ -1,9 +1,13 @@
 use super::{
     repository::AdminRepository,
-    utils::{next_allowed_weekly_start, RequestFilterState, WeeklyHolidayFormState},
+    utils::{
+        next_allowed_weekly_start, RequestFilterState, SubjectRequestFilterState,
+        WeeklyHolidayFormState,
+    },
 };
 use crate::api::{
-    ApiClient, ApiError, CreateWeeklyHolidayRequest, UserResponse, WeeklyHolidayResponse,
+    ApiClient, ApiError, CreateWeeklyHolidayRequest, SubjectRequestListResponse, UserResponse,
+    WeeklyHolidayResponse,
 };
 use crate::state::auth::use_auth;
 use crate::utils::time::today_in_app_tz;
@@ -29,6 +33,14 @@ pub struct AdminViewModel {
     pub request_action: Action<RequestActionPayload, Result<(), ApiError>>,
     pub requests_action_error: RwSignal<Option<ApiError>>,
     pub reload_requests: RwSignal<u32>,
+    pub subject_request_filter: SubjectRequestFilterState,
+    pub subject_requests_resource: Resource<
+        (bool, super::utils::SubjectRequestFilterSnapshot, u32),
+        Result<SubjectRequestListResponse, String>,
+    >,
+    pub subject_request_action: Action<SubjectRequestActionPayload, Result<(), String>>,
+    pub subject_request_action_error: RwSignal<Option<String>>,
+    pub reload_subject_requests: RwSignal<u32>,
     pub repository: AdminRepository,
     // Add other section states here as needed
 }
@@ -156,6 +168,63 @@ pub fn use_admin_view_model() -> AdminViewModel {
         }
     });
 
+    // Subject Requests Section State
+    let subject_request_filter = SubjectRequestFilterState::new();
+    let subject_filter_state = subject_request_filter.clone();
+    let subject_snapshot = Signal::derive(move || subject_filter_state.snapshot());
+
+    let repo_for_subject_requests = repo.clone();
+    let reload_subject_requests = create_rw_signal(0u32);
+    let subject_requests_resource = create_resource(
+        move || {
+            (
+                admin_allowed.get(),
+                subject_snapshot.get(),
+                reload_subject_requests.get(),
+            )
+        },
+        move |(allowed, snapshot, reload)| {
+            let repo = repo_for_subject_requests.clone();
+            async move {
+                if !allowed {
+                    Ok(SubjectRequestListResponse {
+                        page: snapshot.page as i64,
+                        per_page: snapshot.per_page as i64,
+                        total: 0,
+                        items: Vec::new(),
+                    })
+                } else {
+                    repo.list_subject_requests(
+                        snapshot.status.clone(),
+                        snapshot.request_type.clone(),
+                        snapshot.user_id.clone(),
+                        snapshot.page as i64,
+                        snapshot.per_page as i64,
+                    )
+                    .await
+                }
+            }
+        },
+    );
+
+    let repo_subject_action = repo.clone();
+    let subject_request_action_error = create_rw_signal(None::<ApiError>);
+    let subject_request_action = create_action(move |payload: &SubjectRequestActionPayload| {
+        let repo = repo_subject_action.clone();
+        let payload = payload.clone();
+        async move {
+            if payload.id.trim().is_empty() {
+                Err("リクエストIDを取得できませんでした。".into())
+            } else if payload.approve {
+                repo.approve_subject_request(&payload.id, &payload.comment)
+                    .await
+            } else {
+                repo.reject_subject_request(&payload.id, &payload.comment)
+                    .await
+            }
+        }
+    });
+
     AdminViewModel {
         users_resource,
         weekly_holiday_state,
@@ -170,12 +239,24 @@ pub fn use_admin_view_model() -> AdminViewModel {
         request_action,
         requests_action_error,
         reload_requests,
+        subject_request_filter,
+        subject_requests_resource,
+        subject_request_action,
+        subject_request_action_error,
+        reload_subject_requests,
         repository: repo,
     }
 }
 
 #[derive(Clone)]
 pub struct RequestActionPayload {
+    pub id: String,
+    pub comment: String,
+    pub approve: bool,
+}
+
+#[derive(Clone)]
+pub struct SubjectRequestActionPayload {
     pub id: String,
     pub comment: String,
     pub approve: bool,

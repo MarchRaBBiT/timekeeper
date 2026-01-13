@@ -8,7 +8,13 @@ use pg_embed::{
     postgres::{PgEmbed, PgSettings},
 };
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::{env, net::TcpListener, path::PathBuf, sync::OnceLock, time::Duration as StdDuration};
+use std::{
+    env,
+    net::TcpListener,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+    time::Duration as StdDuration,
+};
 use tempfile::TempDir;
 use timekeeper_backend::{
     config::Config,
@@ -38,6 +44,7 @@ impl std::fmt::Debug for EmbeddedPostgres {
 
 static EMBEDDED_PG: OnceLock<EmbeddedPostgres> = OnceLock::new();
 static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
+static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[ctor]
 fn init_test_database_url() {
@@ -47,6 +54,13 @@ fn init_test_database_url() {
 
     let url = start_embedded_postgres();
     env::set_var("TEST_DATABASE_URL", url);
+}
+
+fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+    ENV_MUTEX
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("lock env")
 }
 
 fn start_embedded_postgres() -> String {
@@ -116,8 +130,14 @@ pub fn test_config() -> Config {
         jwt_secret: "a_secure_token_that_is_long_enough_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
-        audit_log_retention_days: 365,
+        audit_log_retention_days: 1825,
         audit_log_retention_forever: false,
+        consent_log_retention_days: 1825,
+        consent_log_retention_forever: false,
+        aws_region: "ap-northeast-1".into(),
+        aws_kms_key_id: "alias/timekeeper-test".into(),
+        aws_audit_log_bucket: "timekeeper-audit-logs".into(),
+        aws_cloudtrail_enabled: true,
         cookie_secure: false,
         cookie_same_site: SameSite::Lax,
         cors_allow_origins: vec!["http://localhost:8000".into()],
@@ -156,7 +176,10 @@ pub async fn test_pool() -> PgPool {
 }
 
 fn test_database_url() -> String {
-    env::var("TEST_DATABASE_URL").unwrap_or_else(|_| start_embedded_postgres())
+    let _guard = ENV_MUTEX.get_or_init(|| Mutex::new(())).try_lock().ok();
+    env::var("TEST_DATABASE_URL")
+        .or_else(|_| env::var("DATABASE_URL"))
+        .unwrap_or_else(|_| start_embedded_postgres())
 }
 
 async fn insert_user_with_password_hash(
@@ -206,6 +229,18 @@ pub async fn seed_user_with_password(
 ) -> User {
     let password_hash = hash_password(password).expect("hash password");
     insert_user_with_password_hash(pool, role, is_system_admin, password_hash).await
+}
+
+pub async fn grant_permission(pool: &PgPool, user_id: &str, permission: &str) {
+    sqlx::query(
+        "INSERT INTO user_permissions (user_id, permission_name) VALUES ($1, $2) \
+         ON CONFLICT (user_id, permission_name) DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(permission)
+    .execute(pool)
+    .await
+    .expect("grant permission");
 }
 
 pub async fn seed_weekly_holiday(pool: &PgPool, date: NaiveDate) {
@@ -354,15 +389,6 @@ pub async fn seed_holiday_exception(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
-        static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-        ENV_MUTEX
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("lock env")
-    }
 
     fn restore_env(original: (Option<String>, Option<String>)) {
         match original.0 {
