@@ -1,20 +1,17 @@
 # Continuity Ledger
 
 - Goal (incl. success criteria):
-  - Address PR comments for #179: Fix P1 and P2 issues.
+  - None.
 - Constraints/Assumptions:
   - Respond to user in Japanese; keep edits ASCII unless file already uses non-ASCII.
 - Key decisions:
-  - Remove undefined `view_model` reference in frontend component (P1).
-  - Make AWS environment variables optional in backend config (P2).
+  - None.
 - State:
-  - COMPLETED
+  - IDLE
 - Done:
-  - Fixed P1: Removed undefined `view_model.reload_subject_requests` reference in `frontend/src/pages/admin/components/subject_requests.rs`.
-  - Fixed P2: Made `AWS_KMS_KEY_ID` and `AWS_AUDIT_LOG_BUCKET` optional in `backend/src/config.rs`.
-  - Updated tests for optional AWS config.
-  - Verified backend tests pass and clippy clean.
-  - Committed and pushed fixes to remote.
+  - PR #179 merged successfully.
+  - All Codex review comments addressed (P1 and P2).
+  - Local repository updated to latest master.
 - Now:
   - None.
 - Next:
@@ -22,6 +19,6 @@
 - Open questions (UNCONFIRMED if needed):
   - None.
 - Working set (files/commands):
-  - `git commit -m "fix: address PR #179 comments"`
-  - `git push`
+  - `git checkout master`
+  - `git pull origin master`
   - `CONTINUITY.md`
