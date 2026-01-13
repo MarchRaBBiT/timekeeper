@@ -161,6 +161,10 @@ fn dummy_config() -> Config {
         cors_allow_origins: vec!["http://localhost:8000".into()],
         time_zone: UTC,
         mfa_issuer: "Timekeeper".into(),
+        rate_limit_ip_max_requests: 15,
+        rate_limit_ip_window_seconds: 900,
+        rate_limit_user_max_requests: 20,
+        rate_limit_user_window_seconds: 3600,
     }
 }
 
