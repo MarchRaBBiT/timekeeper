@@ -32,6 +32,7 @@ mod utils;
 mod validation;
 
 use config::{AuditLogRetentionPolicy, Config};
+use middleware::rate_limit::create_auth_rate_limiter;
 use db::connection::{create_pool, DbPool};
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
@@ -100,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
@@ -139,10 +140,12 @@ fn log_config(config: &Config) {
 }
 
 fn public_routes(state: AuthState) -> Router<AuthState> {
+    let rate_limiter = create_auth_rate_limiter(&state.1);
     Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
         .route("/api/config/timezone", get(handlers::config::get_time_zone))
+        .route_layer(rate_limiter)
         .route_layer(axum_middleware::from_fn_with_state(
             state,
             middleware::audit_log,
@@ -492,6 +495,10 @@ mod tests {
             cors_allow_origins,
             time_zone: UTC,
             mfa_issuer: "Timekeeper".to_string(),
+            rate_limit_ip_max_requests: 15,
+            rate_limit_ip_window_seconds: 900,
+            rate_limit_user_max_requests: 20,
+            rate_limit_user_window_seconds: 3600,
         }
     }
 

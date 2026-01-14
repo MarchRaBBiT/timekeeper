@@ -53,6 +53,10 @@ mod tests {
             cors_allow_origins: allowed,
             time_zone: UTC,
             mfa_issuer: "".into(),
+            rate_limit_ip_max_requests: 15,
+            rate_limit_ip_window_seconds: 900,
+            rate_limit_user_max_requests: 20,
+            rate_limit_user_window_seconds: 3600,
         }
     }
 

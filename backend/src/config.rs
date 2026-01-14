@@ -25,6 +25,10 @@ pub struct Config {
     pub cors_allow_origins: Vec<String>,
     pub time_zone: Tz,
     pub mfa_issuer: String,
+    pub rate_limit_ip_max_requests: u32,
+    pub rate_limit_ip_window_seconds: u64,
+    pub rate_limit_user_max_requests: u32,
+    pub rate_limit_user_window_seconds: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +135,26 @@ impl Config {
 
         let mfa_issuer = env::var("MFA_ISSUER").unwrap_or_else(|_| "Timekeeper".to_string());
 
+        let rate_limit_ip_max_requests = env::var("RATE_LIMIT_IP_MAX_REQUESTS")
+            .unwrap_or_else(|_| "15".to_string())
+            .parse()
+            .unwrap_or(15);
+
+        let rate_limit_ip_window_seconds = env::var("RATE_LIMIT_IP_WINDOW_SECONDS")
+            .unwrap_or_else(|_| "900".to_string())
+            .parse()
+            .unwrap_or(900);
+
+        let rate_limit_user_max_requests = env::var("RATE_LIMIT_USER_MAX_REQUESTS")
+            .unwrap_or_else(|_| "20".to_string())
+            .parse()
+            .unwrap_or(20);
+
+        let rate_limit_user_window_seconds = env::var("RATE_LIMIT_USER_WINDOW_SECONDS")
+            .unwrap_or_else(|_| "3600".to_string())
+            .parse()
+            .unwrap_or(3600);
+
         Ok(Config {
             database_url,
             jwt_secret,
@@ -147,6 +171,10 @@ impl Config {
             cookie_secure,
             cookie_same_site,
             cors_allow_origins,
+            rate_limit_ip_max_requests,
+            rate_limit_ip_window_seconds,
+            rate_limit_user_max_requests,
+            rate_limit_user_window_seconds,
             time_zone,
             mfa_issuer,
         })
@@ -233,6 +261,10 @@ mod tests {
             cors_allow_origins: Vec::new(),
             time_zone: UTC,
             mfa_issuer: "Timekeeper".to_string(),
+            rate_limit_ip_max_requests: 15,
+            rate_limit_ip_window_seconds: 900,
+            rate_limit_user_max_requests: 20,
+            rate_limit_user_window_seconds: 3600,
         }
     }
 

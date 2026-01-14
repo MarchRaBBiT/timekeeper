@@ -26,6 +26,10 @@ http-body = "1.0"
 # Database (PostgreSQL)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate"] }
 
+# Rate limiting
+governor = "0.10"
+tower_governor = "0.8"
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true

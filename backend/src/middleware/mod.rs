@@ -2,6 +2,7 @@ pub mod audit_log;
 pub mod auth;
 pub mod logging;
 
+pub mod rate_limit;
 pub mod request_id;
 
 pub use audit_log::*;
