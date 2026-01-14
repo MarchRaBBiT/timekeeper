@@ -94,36 +94,18 @@ async fn rate_limit_includes_headers() {
 }
 
 #[tokio::test]
-async fn rate_limit_tracks_forwarded_for() {
+async fn rate_limit_blocks_same_peer_ip() {
     let config = test_config(1, 2);
     let (addr, handle) = spawn_rate_limited_app(config).await;
 
     let client = reqwest::Client::new();
     let url = format!("http://{}/login", addr);
 
-    let resp = client
-        .post(&url)
-        .header("x-forwarded-for", "203.0.113.1")
-        .send()
-        .await
-        .unwrap();
+    let resp = client.post(&url).send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let resp = client
-        .post(&url)
-        .header("x-forwarded-for", "203.0.113.1")
-        .send()
-        .await
-        .unwrap();
+    let resp = client.post(&url).send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
-
-    let resp = client
-        .post(&url)
-        .header("x-forwarded-for", "203.0.113.2")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
 
     handle.abort();
 }
