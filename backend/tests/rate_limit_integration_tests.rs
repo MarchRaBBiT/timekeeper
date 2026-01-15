@@ -1,15 +1,8 @@
-use axum::{
-    http::StatusCode,
-    routing::post,
-    Router,
-};
+use axum::{http::StatusCode, routing::post, Router};
 use std::{net::SocketAddr, time::Duration};
 use tokio::net::TcpListener;
 
-use timekeeper_backend::{
-    config::Config,
-    middleware::rate_limit::create_auth_rate_limiter,
-};
+use timekeeper_backend::{config::Config, middleware::rate_limit::create_auth_rate_limiter};
 
 fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u64) -> Config {
     Config {
@@ -46,7 +39,10 @@ async fn spawn_rate_limited_app(config: Config) -> (SocketAddr, tokio::task::Joi
         .route("/login", post(|| async { StatusCode::OK }))
         .route_layer(limiter);
 
-    let server = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>());
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    );
     let handle = tokio::spawn(async move {
         server.await.expect("server should run");
     });

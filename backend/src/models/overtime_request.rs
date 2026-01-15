@@ -152,6 +152,7 @@ mod tests {
         assert!(matches!(s, RequestStatus::Approved));
         let v = serde_json::to_value(RequestStatus::Pending).unwrap();
         assert_eq!(v, serde_json::json!("pending"));
+        assert_eq!(RequestStatus::Approved.db_value(), "approved");
     }
 
     #[test]

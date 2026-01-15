@@ -1,8 +1,5 @@
 use crate::types::{AttendanceId, UserId};
-use crate::{
-    error::AppError,
-    models::attendance::{Attendance, AttendanceStatus},
-};
+use crate::{error::AppError, models::attendance::Attendance};
 use chrono::NaiveDate;
 use sqlx::PgPool;
 
@@ -92,7 +89,7 @@ pub async fn insert_attendance_record(
     .bind(attendance.date)
     .bind(attendance.clock_in_time)
     .bind(attendance.clock_out_time)
-    .bind(status_to_str(&attendance.status))
+    .bind(attendance.status.db_value())
     .bind(attendance.total_work_hours)
     .bind(attendance.created_at)
     .bind(attendance.updated_at)
@@ -125,14 +122,4 @@ pub async fn update_clock_out(pool: &PgPool, attendance: &Attendance) -> Result<
     .await?;
 
     Ok(())
-}
-
-pub fn status_to_str(status: &AttendanceStatus) -> &'static str {
-    use AttendanceStatus::*;
-    match status {
-        Present => "present",
-        Absent => "absent",
-        Late => "late",
-        HalfDay => "half_day",
-    }
 }
