@@ -1,12 +1,11 @@
 use axum::body::Body;
 use axum::http::{header::CONTENT_TYPE, HeaderValue, Response, StatusCode};
-use std::time::Duration;
 use governor::middleware::StateInformationMiddleware;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_governor::{
-    governor::GovernorConfigBuilder,
-    key_extractor::PeerIpKeyExtractor,
-    GovernorError, GovernorLayer,
+    governor::GovernorConfigBuilder, key_extractor::PeerIpKeyExtractor, GovernorError,
+    GovernorLayer,
 };
 
 use crate::config::Config;

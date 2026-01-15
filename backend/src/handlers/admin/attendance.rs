@@ -14,7 +14,7 @@ use crate::{
     config::Config,
     handlers::attendance::recalculate_total_hours,
     models::{
-        attendance::{Attendance, AttendanceResponse, AttendanceStatus},
+        attendance::{Attendance, AttendanceResponse},
         break_record::BreakRecordResponse,
         user::User,
     },
@@ -169,9 +169,8 @@ pub async fn upsert_attendance(
         .bind(att.date)
         .bind(att.clock_in_time)
         .bind(att.clock_out_time)
-          // Store enum as snake_case text to match sqlx mapping
-          .bind(match att.status { AttendanceStatus::Present => "present", AttendanceStatus::Absent => "absent", AttendanceStatus::Late => "late", AttendanceStatus::HalfDay => "half_day" })
-          .bind(att.total_work_hours)
+        .bind(att.status.db_value())
+        .bind(att.total_work_hours)
         .bind(att.created_at)
         .bind(att.updated_at)
         .execute(&mut *tx)

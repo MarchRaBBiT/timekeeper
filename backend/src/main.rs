@@ -32,8 +32,8 @@ mod utils;
 mod validation;
 
 use config::{AuditLogRetentionPolicy, Config};
-use middleware::rate_limit::create_auth_rate_limiter;
 use db::connection::{create_pool, DbPool};
+use middleware::rate_limit::create_auth_rate_limiter;
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
     consent_log::ConsentLogService,
@@ -101,7 +101,11 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

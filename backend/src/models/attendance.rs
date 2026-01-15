@@ -46,6 +46,17 @@ pub enum AttendanceStatus {
     HalfDay,
 }
 
+impl AttendanceStatus {
+    pub fn db_value(&self) -> &'static str {
+        match self {
+            AttendanceStatus::Present => "present",
+            AttendanceStatus::Absent => "absent",
+            AttendanceStatus::Late => "late",
+            AttendanceStatus::HalfDay => "half_day",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 /// Request payload used when an employee clocks in.
 pub struct ClockInRequest {
@@ -163,5 +174,13 @@ mod tests {
         let clock_out = date.and_hms_opt(17, 0, 0).unwrap();
         attendance.clock_out_time = Some(clock_out);
         assert!(attendance.is_clocked_out());
+    }
+
+    #[test]
+    fn attendance_status_db_value_matches_schema() {
+        assert_eq!(AttendanceStatus::Present.db_value(), "present");
+        assert_eq!(AttendanceStatus::Absent.db_value(), "absent");
+        assert_eq!(AttendanceStatus::Late.db_value(), "late");
+        assert_eq!(AttendanceStatus::HalfDay.db_value(), "half_day");
     }
 }

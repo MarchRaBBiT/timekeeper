@@ -12,12 +12,12 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     config::Config,
     error::AppError,
-    handlers::requests_repo,
     models::{
         leave_request::{LeaveRequest, LeaveRequestResponse},
         overtime_request::{OvertimeRequest, OvertimeRequestResponse},
         user::User,
     },
+    repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
     types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
 };
@@ -42,18 +42,14 @@ pub async fn approve_request(
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
+    let leave_repo = LeaveRequestRepository::new();
+    let overtime_repo = OvertimeRequestRepository::new();
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if requests_repo::approve_leave_request(
-            &pool,
-            leave_request_id,
-            approver_id,
-            &comment,
-            now_utc,
-        )
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
+        if leave_repo
+            .approve(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .await?
             > 0
         {
             return Ok(Json(json!({"message": "Leave request approved"})));
@@ -62,15 +58,9 @@ pub async fn approve_request(
 
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if requests_repo::approve_overtime_request(
-            &pool,
-            overtime_request_id,
-            approver_id,
-            &comment,
-            now_utc,
-        )
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
+        if overtime_repo
+            .approve(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .await?
             > 0
         {
             return Ok(Json(json!({"message": "Overtime request approved"})));
@@ -100,18 +90,14 @@ pub async fn reject_request(
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&config.time_zone);
+    let leave_repo = LeaveRequestRepository::new();
+    let overtime_repo = OvertimeRequestRepository::new();
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if requests_repo::reject_leave_request(
-            &pool,
-            leave_request_id,
-            approver_id,
-            &comment,
-            now_utc,
-        )
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
+        if leave_repo
+            .reject(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .await?
             > 0
         {
             return Ok(Json(json!({"message": "Leave request rejected"})));
@@ -120,15 +106,9 @@ pub async fn reject_request(
 
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if requests_repo::reject_overtime_request(
-            &pool,
-            overtime_request_id,
-            approver_id,
-            &comment,
-            now_utc,
-        )
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
+        if overtime_repo
+            .reject(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .await?
             > 0
         {
             return Ok(Json(json!({"message": "Overtime request rejected"})));
@@ -271,25 +251,29 @@ pub async fn get_request_detail(
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if let Some(item) = requests_repo::fetch_leave_request(&pool, leave_request_id)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
-        {
-            return Ok(Json(
-                json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
-            ));
+        let leave_repo = LeaveRequestRepository::new();
+        match leave_repo.find_by_id(&pool, leave_request_id).await {
+            Ok(item) => {
+                return Ok(Json(
+                    json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
+                ));
+            }
+            Err(AppError::NotFound(_)) => {}
+            Err(err) => return Err(err),
         }
     }
 
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if let Some(item) = requests_repo::fetch_overtime_request(&pool, overtime_request_id)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
-        {
-            return Ok(Json(
-                json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
-            ));
+        let overtime_repo = OvertimeRequestRepository::new();
+        match overtime_repo.find_by_id(&pool, overtime_request_id).await {
+            Ok(item) => {
+                return Ok(Json(
+                    json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
+                ));
+            }
+            Err(AppError::NotFound(_)) => {}
+            Err(err) => return Err(err),
         }
     }
 

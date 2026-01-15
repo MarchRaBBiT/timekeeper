@@ -10,4 +10,3 @@ WHERE username = 'admin';
 INSERT INTO users (id, username, password_hash, full_name, role, created_at, updated_at)
 SELECT 'admin-001', 'admin', '$argon2id$v=19$m=19456,t=2,p=1$SHjkBewYpN0AqfNJtz4BCQ$Q6EKet0GGAKSbQ5hQFsXf+6WG+AX8Z91wi5hlimtYew', 'System Administrator', 'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
-

@@ -193,12 +193,14 @@ mod tests {
         assert!(matches!(lt, LeaveType::Annual));
         let vlt = serde_json::to_value(LeaveType::Personal).unwrap();
         assert_eq!(vlt, serde_json::json!("personal"));
+        assert_eq!(LeaveType::Annual.db_value(), "annual");
 
         // RequestStatus
         let rs: RequestStatus = serde_json::from_str("\"rejected\"").unwrap();
         assert!(matches!(rs, RequestStatus::Rejected));
         let vrs = serde_json::to_value(RequestStatus::Cancelled).unwrap();
         assert_eq!(vrs, serde_json::json!("cancelled"));
+        assert_eq!(RequestStatus::Pending.db_value(), "pending");
     }
 
     #[test]
