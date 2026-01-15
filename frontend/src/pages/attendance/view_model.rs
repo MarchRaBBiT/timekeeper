@@ -81,6 +81,7 @@ impl ExportPayload {
 
 #[derive(Clone)]
 pub struct AttendanceViewModel {
+    #[allow(dead_code)]
     pub api: ApiClient,
     pub state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
     pub form_state: AttendanceFormState,
@@ -89,6 +90,7 @@ pub struct AttendanceViewModel {
     pub holiday_query: RwSignal<HolidayQuery>,
     pub holiday_resource:
         Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, ApiError>>,
+    #[allow(dead_code)]
     pub context_resource: Resource<(), Result<(), ApiError>>,
     pub export_action: Action<ExportPayload, Result<Value, ApiError>>,
     pub clock_action: Action<ClockEventPayload, Result<(), ApiError>>,

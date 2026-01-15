@@ -52,6 +52,7 @@ async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, ApiEr
     api_client.get_me().await
 }
 
+#[allow(dead_code)]
 async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, ApiError> {
     let response = api_client.refresh_token().await?;
     Ok(response.user)

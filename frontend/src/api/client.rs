@@ -280,6 +280,7 @@ impl ApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
@@ -566,6 +567,7 @@ impl ApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn export_data(&self) -> Result<serde_json::Value, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self

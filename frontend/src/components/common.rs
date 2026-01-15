@@ -1,5 +1,6 @@
 use leptos::*;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
     #[default]

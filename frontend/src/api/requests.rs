@@ -41,6 +41,7 @@ impl ApiClient {
         self.map_json_response(response).await
     }
 
+    #[allow(dead_code)]
     pub async fn admin_get_request_detail(&self, id: &str) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self

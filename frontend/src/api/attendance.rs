@@ -64,6 +64,7 @@ impl ApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_my_attendance(
         &self,
         year: Option<i32>,

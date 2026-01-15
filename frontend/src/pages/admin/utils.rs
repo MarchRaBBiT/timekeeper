@@ -122,6 +122,7 @@ impl RequestFilterState {
         self.user_id
     }
 
+    #[allow(dead_code)]
     pub fn page_signal(&self) -> RwSignal<u32> {
         self.page
     }

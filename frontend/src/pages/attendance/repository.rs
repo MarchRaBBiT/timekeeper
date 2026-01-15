@@ -9,6 +9,7 @@ pub async fn fetch_monthly_holidays(
     api.get_monthly_holidays(year, month).await
 }
 
+#[allow(dead_code)]
 pub async fn export_attendance_csv(
     api: &ApiClient,
     from: Option<&str>,

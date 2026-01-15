@@ -20,6 +20,7 @@ pub struct RequestsViewModel {
     pub active_form: ReadSignal<RequestFormKind>,
     pub set_active_form: WriteSignal<RequestFormKind>,
     pub requests_resource: Resource<u32, Result<MyRequestsResponse, ApiError>>,
+    #[allow(dead_code)]
     pub reload: RwSignal<u32>,
     pub leave_action: Action<CreateLeaveRequest, Result<(), ApiError>>,
     pub overtime_action: Action<CreateOvertimeRequest, Result<(), ApiError>>,

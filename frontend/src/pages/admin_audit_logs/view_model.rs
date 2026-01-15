@@ -28,6 +28,7 @@ pub struct AuditLogViewModel {
     pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
     pub page: RwSignal<i64>,
     pub filters: RwSignal<AuditLogFilters>,
+    #[allow(dead_code)]
     pub api_client: ApiClient,
     pub export_action: Action<(), Result<(), ApiError>>,
 }

@@ -7,6 +7,7 @@ pub struct MfaRepository {
 }
 
 impl MfaRepository {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             client: Rc::new(ApiClient::new()),
