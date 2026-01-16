@@ -1,133 +1,111 @@
 # リポジトリ ガイドライン
 
-Timekeeper は Rust 製の Axum バックエンド、Leptos/WASM フロントエンド、Playwright のスモークチェックを組み合わせたプロジェクトです。本ドキュメントは「プロジェクト概要」と「開発規約」を分けて記載しています。構造と運用を押さえ、合意された規約に沿って作業してください。
+**Generated:** 2026-01-16
+**Commit:** (not tracked)
+**Project:** Timekeeper - 勤怠管理システム
 
-## 最重要指針
+## OVERVIEW
+Rust/Axum バックエンド + Leptos/WASM フロントエンド + Playwright E2E の勤怠管理システム。小〜中規模チーム向けの認証・勤怠打刻・申請承認ワークフローを提供。
 
-- 英語で考え、日本語でユーザーとやり取りすること。
-- 非 ASCII 文字を出力する際は UTF-8 を使用すること。
-
-## プロジェクト概要
-
-### サービス構成
-- `backend/` が API を動かす。`src/handlers`、`models`、`middleware`、`db` がサービス層に対応し、`migrations/*.sql` が SQLx 用のスキーマ変更を流し込む。
-- `frontend/` は WASM にコンパイルされる Rust クレート。`src/components` が再利用ウィジェット、`src/pages` がルーティングされた画面、`src/api` が HTTP 呼び出しの集約、`config.json` と `src/config.rs` が実行時設定を扱う。
-- `e2e/` には Playwright のシナリオ（`run.mjs`、`guard.mjs`、`logout.mjs`）を置き、`FRONTEND_BASE_URL` 上のフロントエンドを前提とする。
-- `scripts/` には Podman を使ったバックエンド制御、フロントエンドビルド、API スモーク自動化のための PowerShell ヘルパーをまとめる。新しい自動化もここに追加する。
-
-### 実行・ビルド・開発コマンド
-```powershell
-# backend（ネイティブ実行）
-cd backend; cargo run
-# backend（ヘルパー経由の podman compose）
-pwsh -File .\scripts\backend.ps1 start
-# frontend（再ビルド + :8000 で静的サーバ）
-pwsh -File .\scripts\frontend.ps1 start
+## STRUCTURE
 ```
-PID ファイルの取り残しを避けるため、`stop/status/logs` のサブコマンドを優先して使う。
+timekeeper/
+├── backend/          # Axum API + SQLx + PostgreSQL (118 Rust files)
+│   ├── src/
+│   │   ├── handlers/       # API ハンドラー（認証・勤怠・申請）
+│   │   ├── repositories/   # リポジトリ層（Trait-based）
+│   │   ├── models/         # データモデル
+│   │   ├── middleware/     # JWT/認証/ロギング
+│   │   ├── services/       # ビジネスロジック（祝日）
+│   │   └── bin/           # ユーティリティ（token_cleanup）
+│   ├── migrations/     # SQLx マイグレーション
+│   └── tests/          # 統合テスト（pg-embed）
+├── frontend/         # Leptos WASM + TailwindCSS (77 Rust files)
+│   ├── src/
+│   │   ├── pages/         # ルーティング画面（MVVM pattern）
+│   │   ├── components/    # 再利用コンポーネント
+│   │   ├── api/           # API クライアント（reqwest-wasm）
+│   │   └── state/         # グローバル状態管理
+├── e2e/             # Playwright スモークテスト
+├── scripts/          # PowerShell 自動化（起動/ビルド/テスト）
+└── docs/            # コンポーネント/API ドキュメント
+```
 
-### 環境と設定のヒント
-- `env.example` を `.env` にコピーし、`DATABASE_URL`（ローカルは SQLite か手元の Postgres DSN）を設定する。`JWT_SECRET` は一意にし、podman compose は `.env` から直接読み込む点に注意。
-- 設定値は `.env` に置き、生成物（`frontend/pkg/`、`.backend.pid`）はコミットしない。
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| バックエンド API 追加 | `backend/src/handlers/` | 参考: `backend/AGENTS.md` |
+| リポジトリ実装 | `backend/src/repositories/` | Trait-based pattern |
+| マイグレーション | `backend/migrations/` | SQLx, auto-run on start |
+| フロントエンド画面追加 | `frontend/src/pages/` | MVVM: panel/view_model/repository |
+| API 呼び出し | `frontend/src/api/client.rs` | Centralized client |
+| 統合テスト | `backend/tests/` | pg-embed + ctor |
+| E2E スモーク | `e2e/*.mjs`, `scripts/test_backend.ps1` | Playwright + PowerShell |
 
-## 開発ポリシー
+## CONVENTIONS
+### 共通
+- エンコーディング: UTF-8
+- 改行コード: LF
+- 言語: 英語で思考、日本語でコミュニケーション
+- コミット: Conventional Commits (`feat:`, `fix:`, `chore:`)
 
-### コミットと PR の指針
-- Git 履歴は含まれないため、Conventional Commits（`feat:`、`fix:`、`chore:`）に合わせて変更履歴ツールの予測性とスコープの明瞭さを保つ。
-- 各 PR には概要、紐づく issue/Linear チケット、バックエンド/フロントエンドへの影響、環境変数の差分、テストエビデンス（`cargo test`、`wasm-pack test`、Playwright のスモーク結果）を添付する。
-- UI 変更がある場合はスクリーンショットまたはターミナル出力を添付し、後続のマイグレーション手順があればレビュワー向けに記載する。
+### Rust 全般
+- インデント: 4 スペース
+- 命名: モジュールは `snake_case`、型は `PascalCase`
+- 事前確認: `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`
 
-### 追加の開発ポリシー
-- TDD を遵守し、機能実装前にその機能を検証するテストを書く。
-- 要件が矛盾する場合は実装を進めず、矛盾を指摘する。
-- コードやドキュメント内の日本語は UTF-8 エンコードで記述する。
-- コードとドキュメントの改行は LF を使用する。
-- 実装後に返答する前に、該当するテストやビルドを実行し、成功を確認する。
-- 長時間かかると予想されるジョブ（ビルド・テスト等）は、あらかじめ長めのタイムアウトを設定するか、非同期バッチモードで動作させる。
-- 実装案を提示する際は最大 5 個までとし、推薦順に並べてそれぞれの長所と短所を示す。推薦する案がある場合は、その理由を明示する。
-- 機能実装を始める前に専用のトピックブランチを作成し、PR の準備が整うまで関連するコミットをそのブランチにまとめる。
+### バックエンド (Axum)
+- 認証: `Extension<User>` エクストラクター
+- 検証: `validator` crate, `payload.validate()?`
+- エラー: 統一 `AppError` enum (`IntoResponse` 実装)
+- テスト: 統合テストは `pg-embed` で実 DB 使用
 
-## コーディングスタイルとテスト
-- Rust コードはレビュー前に `cargo fmt --all`（4 スペースインデント）と `cargo clippy --all-targets -- -D warnings` を実行する。モジュールは snake_case、型とコンポーネントは PascalCase にする。
-- フロントエンドのリアクティブ状態は `*_signal` または `use_*` のヘルパーで表現し、Leptos コンポーネントは PascalCase を維持する。
-- バックエンド変更時は `cd backend; cargo test` と `cargo clippy` を実行し、`pwsh -File .\scripts\test_backend.ps1` で起動中サーバーに対する主要 API フローを確認する。
-- フロントエンドは Playwright のブラウザをインストールしたうえで、`frontend/` から `wasm-pack test --headless --firefox` を実行する。
-- UI リグレッションは `cd e2e; node run.mjs` を実行（`http://localhost:8080` 以外の場合は `FRONTEND_BASE_URL` を設定）。
+### フロントエンド (Leptos)
+- 状態: `*_signal` または `use_*` ヘルパー
+- コンポーネント: `PascalCase`
+- アーキテクチャ: MVVM pattern (`panel.rs` + `view_model.rs` + `repository.rs`)
 
-## バックエンド設計原則
-- ハンドラーはスリムかつモジュール化を徹底する。DB の重いロジックはヘルパーモジュールやリポジトリ（例: `handlers/admin/requests.rs`、`handlers/requests_repo.rs`）へ移し、各ハンドラーは HTTP の責務に集中させる。
-- 共有される列挙や型（`models::request::RequestStatus` など）は使い回し、モデル間で定義を重複させない。
-- 祝日ロジックは `services::holiday::HolidayService` を経由させ、ハンドラーが生 SQL を発行しないようにする。
-- 勤怠など複雑なハンドラーでは、繰り返しのチェックやエラーハンドリングをヘルパーモジュール（`handlers/attendance_utils.rs` など）に切り出し、各関数の単一責任を保つ。
-- コードベース全体で DRY/SOLID を守り、再利用コードを抽出しつつ抽象化は焦点を絞る。サービスやリポジトリなどの依存性注入を優先し、インフラへの密結合を避ける。
-- 継承より合成を優先し、モジュールを小さく保つ。一つの責務を超え始めたらサブモジュールへ分割し、必要なものだけを再エクスポートする。
+## ANTI-PATTERNS (THIS PROJECT)
+- 型エラー抑制を禁止（`as any`, `@ts-ignore`, `@ts-expect-error`）
+- 空の catch ブロックを禁止
+- 既存ロジックを空関数で置き換えを禁止（必ず実装まで完了）
+- ユーザーの明示的許可なしに挙動/仕様を簡略化または削除を禁止
+- ハンドラーの肥大化を回避（重い DB ロジックは repository/service に委譲）
+- フロントエンドの大幅なリファクタリングは UI/UX 変更を含む場合 `frontend-ui-ux-engineer` に委譲
+- SQLxマイグレーションの変更禁止（必ず新しいファイル追加でDB操作）
 
-## Continuity Ledger (compaction-safe)
-Maintain a single Continuity Ledger for this workspace in `http://CONTINUITY.md`. The ledger is the canonical session briefing designed to survive context compaction; do not rely on earlier chat text unless it’s reflected in the ledger.
+## COMMANDS
+```bash
+# バックエンド起動
+cd backend; cargo run
+# バックエンド（Podman経由）
+pwsh -File .\scripts\backend.ps1 start
 
-### How it works
-- At the start of every assistant turn: read `http://CONTINUITY.md`, update it to reflect the latest goal/constraints/decisions/state, then proceed with the work.
-- Update `http://CONTINUITY.md` again whenever any of these change: goal, constraints/assumptions, key decisions, progress state (Done/Now/Next), or important tool outcomes.
-- Keep it short and stable: facts only, no transcripts. Prefer bullets. Mark uncertainty as `UNCONFIRMED` (never guess).
-- If you notice missing recall or a compaction/summary event: refresh/rebuild the ledger from visible context, mark gaps `UNCONFIRMED`, ask up to 1–3 targeted questions, then continue.
+# フロントエンドビルド＆起動
+pwsh -File .\scripts\frontend.ps1 start
 
-### `functions.update_plan` vs the Ledger
-- `functions.update_plan` is for short-term execution scaffolding while you work (a small 3–7 step plan with pending/in_progress/completed).
-- `http://CONTINUITY.md` is for long-running continuity across compaction (the “what/why/current state”), not a step-by-step task list.
-- Keep them consistent: when the plan or state changes, update the ledger at the intent/progress level (not every micro-step).
+# バックエンドテスト
+cd backend; cargo test
+# API スモークテスト
+pwsh -File .\scripts\test_backend.ps1
 
-### In replies
-- Begin with a brief “Ledger Snapshot” (Goal + Now/Next + Open Questions). Print the full ledger only when it materially changes or when the user asks.
+# フロントエンドテスト（WASM）
+cd frontend; wasm-pack test --headless --firefox
 
-### `http://CONTINUITY.md` format (keep headings)
-- Goal (incl. success criteria):
-- Constraints/Assumptions:
-- Key decisions:
-- State:
-- Done:
-- Now:
-- Next:
-- Open questions (UNCONFIRMED if needed):
-- Working set (files/ids/commands):
+# E2E スモーク
+cd e2e; node run.mjs
+```
 
-## コーディング規約（関数設計・リファクタリング・コード探索）
+## NOTES
+- 環境変数: `.env` に設定（`env.example` をコピー）
+- データベース: `DATABASE_URL` で PostgreSQL or SQLite を指定
+- PID ファイル: `.backend.pid`, `.frontend.pid` でプロセス管理（`.gitignore` に追加済み）
+- マイグレーション: バックエンド起動時に自動実行
+- 詳細ガイド: `CODING_STANDARD.md`（関数設計・リファクタリング）
 
-この節の規約は、すべてのコーディングエージェントが共通して守ること。
-以下に要約版を記載する。全文は `CODING_STANDARD.md` を参照すること。
-
-
-### 1. 関数設計
-
-* 関数は「単一責務」が原則。1つの関数に複数の関心事（I/O、ビジネスロジック、ログなど）を混在させない。
-* すでに過密な関数には新たな責務を追加しない。分解・委譲を優先する。
-* 以下のような関数は分割を検討する：
-
-  * 論理段落が3つ以上ある
-  * ネストが3段以上
-  * 複数の外部コンポーネント（DB、外部API等）に直接アクセスしている
-
-### 2. リファクタリングでの禁止事項
-
-* 既存ロジックを中身のない関数に置き換えることを禁止。
-* ユーザの明示的な許可なく、挙動・仕様を簡略化したり、分岐やエラー処理を削除しない。
-* 「構造だけ分割して実装は空」のような未完成な分割を提案しない。必ず動作する実装まで行う。
-
-### 3. リファクタリング時の手順
-
-* まず対象関数の現状挙動を整理する（入力前提、正常系フロー、エラー処理、副作用）。
-* どの処理をどの新関数に切り出すかを決め、それぞれの責務を明確化する。
-* 新関数を実装し、元関数から呼び出す形に書き換えたあと、元の挙動と1対1で対応づけて確認する。
-* 関連テストがあれば、どのテストが影響を受けるかまで意識してコードを書く。
-
-### 4. コード探索ポリシー
-
-* 大きなファイル/リポジトリを、上から順に読むことをデフォルト戦略にしない。
-* 目的コードの「役割」を1文で定義し、そこからキーワード（関数名候補、ドメイン用語等）を出して探索範囲を絞る。
-* ファイル名・ディレクトリ構造・シンボル名・コメントなどを使って候補を絞り、優先度の高い箇所から読む。
-* ユーザが与えたファイルパス・クラス名・関数名・行番号などのポインタは必ず最優先で利用する。
-
-### 5. ドキュメントとの対応
-
-* ドキュメントも単一責務を守る（概要・入出力・副作用・例外・使用例などを分けて記述）。
-* コードをリファクタリングしたら、関連ドキュメントの内容・関数名・責務の説明を必ず確認・更新する。
-* ドキュメントだけ先に変えて実装が追いついていない状態を作らない。
+## SUBDIRECTORIES
+- `backend/AGENTS.md` - バックエンド詳細（ハンドラー・リポジトリ・テスト）
+- `backend/src/handlers/AGENTS.md` - ハンドラー層のパターンと規約
+- `backend/src/handlers/admin/AGENTS.md` - 管理者機能の実装ガイド
+- `backend/tests/AGENTS.md` - 統合テストの構造と規約
+- `frontend/AGENTS.md` - フロントエンド詳細（MVVM・API・状態管理）
