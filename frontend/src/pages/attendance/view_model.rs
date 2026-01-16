@@ -81,6 +81,9 @@ impl ExportPayload {
 
 #[derive(Clone)]
 pub struct AttendanceViewModel {
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 勤怠画面でのAPI再利用
     #[allow(dead_code)]
     pub api: ApiClient,
     pub state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
@@ -90,6 +93,9 @@ pub struct AttendanceViewModel {
     pub holiday_query: RwSignal<HolidayQuery>,
     pub holiday_resource:
         Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, ApiError>>,
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 勤怠コンテキスト再取得
     #[allow(dead_code)]
     pub context_resource: Resource<(), Result<(), ApiError>>,
     pub export_action: Action<ExportPayload, Result<Value, ApiError>>,

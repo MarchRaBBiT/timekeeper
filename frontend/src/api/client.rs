@@ -280,6 +280,9 @@ impl ApiClient {
         }
     }
 
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 祝日カレンダー表示・勤怠入力補助
     #[allow(dead_code)]
     pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
@@ -567,6 +570,9 @@ impl ApiClient {
         }
     }
 
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 設定/管理画面からのデータエクスポート
     #[allow(dead_code)]
     pub async fn export_data(&self) -> Result<serde_json::Value, ApiError> {
         let base_url = self.resolved_base_url().await;
