@@ -11,7 +11,7 @@ impl ApiClient {
     pub async fn create_subject_request(
         &self,
         payload: CreateDataSubjectRequest,
-    ) -> Result<DataSubjectRequestResponse, String> {
+    ) -> Result<DataSubjectRequestResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -26,7 +26,7 @@ impl ApiClient {
 
     pub async fn list_my_subject_requests(
         &self,
-    ) -> Result<Vec<DataSubjectRequestResponse>, String> {
+    ) -> Result<Vec<DataSubjectRequestResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -38,7 +38,7 @@ impl ApiClient {
         map_typed_response(response).await
     }
 
-    pub async fn cancel_subject_request(&self, id: &str) -> Result<(), String> {
+    pub async fn cancel_subject_request(&self, id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -59,7 +59,7 @@ impl ApiClient {
         to: Option<String>,
         page: i64,
         per_page: i64,
-    ) -> Result<SubjectRequestListResponse, String> {
+    ) -> Result<SubjectRequestListResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params = vec![
             ("page".to_string(), page.to_string()),
@@ -106,7 +106,7 @@ impl ApiClient {
         &self,
         id: &str,
         comment: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiError> {
         self.admin_mutate_subject_request(id, "approve", comment)
             .await
     }
@@ -115,7 +115,7 @@ impl ApiClient {
         &self,
         id: &str,
         comment: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiError> {
         self.admin_mutate_subject_request(id, "reject", comment)
             .await
     }
@@ -125,7 +125,7 @@ impl ApiClient {
         id: &str,
         action: &str,
         comment: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| {
@@ -142,7 +142,7 @@ impl ApiClient {
     }
 }
 
-async fn map_typed_response<T>(response: reqwest::Response) -> Result<T, String>
+async fn map_typed_response<T>(response: reqwest::Response) -> Result<T, ApiError>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -152,17 +152,17 @@ where
         response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse response: {}", e))
+            .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
     } else {
         let error: ApiError = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse error: {}", e))?;
-        Err(error.error)
+            .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+        Err(error)
     }
 }
 
-async fn map_empty_response(response: reqwest::Response) -> Result<(), String> {
+async fn map_empty_response(response: reqwest::Response) -> Result<(), ApiError> {
     let status = response.status();
     ApiClient::handle_unauthorized_status(status);
     if status.is_success() {
@@ -171,7 +171,7 @@ async fn map_empty_response(response: reqwest::Response) -> Result<(), String> {
         let error: ApiError = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse error: {}", e))?;
-        Err(error.error)
+            .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+        Err(error)
     }
 }

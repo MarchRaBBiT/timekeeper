@@ -134,8 +134,12 @@ pub fn SettingsPage() -> impl IntoView {
     let cancel_loading = subject_vm.cancel_action.pending();
     let cancel_action = subject_vm.cancel_action;
     let subject_requests_resource = subject_vm.requests_resource;
-    let subject_requests_error =
-        Signal::derive(move || subject_requests_resource.get().and_then(|res| res.err()));
+    let subject_requests_error = Signal::derive(move || {
+        subject_requests_resource
+            .get()
+            .and_then(|res| res.err())
+            .map(|err| err.to_string())
+    });
     let subject_requests = Signal::derive(move || {
         subject_requests_resource
             .get()
@@ -157,7 +161,7 @@ pub fn SettingsPage() -> impl IntoView {
                         .update(|value| *value = value.wrapping_add(1));
                 }
                 Err(err) => {
-                    set_subject_error_msg.set(Some(err));
+                    set_subject_error_msg.set(Some(err.to_string()));
                     set_subject_success_msg.set(None);
                 }
             }
@@ -175,7 +179,7 @@ pub fn SettingsPage() -> impl IntoView {
                         .update(|value| *value = value.wrapping_add(1));
                 }
                 Err(err) => {
-                    set_subject_error_msg.set(Some(err));
+                    set_subject_error_msg.set(Some(err.to_string()));
                     set_subject_success_msg.set(None);
                 }
             }

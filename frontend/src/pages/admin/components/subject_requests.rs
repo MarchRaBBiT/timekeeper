@@ -10,7 +10,9 @@ use chrono::DateTime;
 use leptos::*;
 use serde_json::to_string_pretty;
 
-use crate::api::{DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse};
+use crate::api::{
+    ApiError, DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse,
+};
 
 #[component]
 pub fn AdminSubjectRequestsSection(
@@ -22,10 +24,10 @@ pub fn AdminSubjectRequestsSection(
             crate::pages::admin::utils::SubjectRequestFilterSnapshot,
             u32,
         ),
-        Result<SubjectRequestListResponse, String>,
+        Result<SubjectRequestListResponse, ApiError>,
     >,
-    action: Action<SubjectRequestActionPayload, Result<(), String>>,
-    action_error: RwSignal<Option<String>>,
+    action: Action<SubjectRequestActionPayload, Result<(), ApiError>>,
+    action_error: RwSignal<Option<ApiError>>,
     reload: RwSignal<u32>,
 ) -> impl IntoView {
     let modal_open = create_rw_signal(false);
@@ -95,11 +97,13 @@ pub fn AdminSubjectRequestsSection(
     let on_action = move |approve: bool| {
         let comment = modal_comment.get();
         if comment.trim().is_empty() {
-            action_error.set(Some("コメントを入力してください。".into()));
+            action_error.set(Some(ApiError::validation("コメントを入力してください。")));
             return;
         }
         let Some(request) = modal_request.get() else {
-            action_error.set(Some("申請情報を取得できませんでした。".into()));
+            action_error.set(Some(ApiError::validation(
+                "申請情報を取得できませんでした。",
+            )));
             return;
         };
         action.dispatch(SubjectRequestActionPayload {
@@ -155,7 +159,7 @@ pub fn AdminSubjectRequestsSection(
                 </button>
             </div>
             <Show when=move || error.get().is_some()>
-                <ErrorMessage message={error.get().unwrap_or_default()} />
+                <ErrorMessage message={error.get().map(|err| err.to_string()).unwrap_or_default()} />
             </Show>
             <Show when=move || loading.get()>
                 <div class="flex items-center gap-2 text-sm text-gray-600">
@@ -230,7 +234,12 @@ pub fn AdminSubjectRequestsSection(
                             ></textarea>
                         </div>
                         <Show when=move || action_error.get().is_some()>
-                            <ErrorMessage message={action_error.get().unwrap_or_default()} />
+                            <ErrorMessage
+                                message={action_error
+                                    .get()
+                                    .map(|err| err.to_string())
+                                    .unwrap_or_default()}
+                            />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
                             <button class="px-3 py-1 rounded border" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>

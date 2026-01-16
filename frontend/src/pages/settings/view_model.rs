@@ -12,10 +12,10 @@ pub struct SettingsViewModel {
 
 #[derive(Clone)]
 pub struct SubjectRequestViewModel {
-    pub requests_resource: Resource<u32, Result<Vec<DataSubjectRequestResponse>, String>>,
+    pub requests_resource: Resource<u32, Result<Vec<DataSubjectRequestResponse>, ApiError>>,
     pub reload: RwSignal<u32>,
-    pub create_action: Action<CreateDataSubjectRequest, Result<DataSubjectRequestResponse, String>>,
-    pub cancel_action: Action<String, Result<(), String>>,
+    pub create_action: Action<CreateDataSubjectRequest, Result<DataSubjectRequestResponse, ApiError>>,
+    pub cancel_action: Action<String, Result<(), ApiError>>,
 }
 
 pub fn use_settings_view_model() -> SettingsViewModel {

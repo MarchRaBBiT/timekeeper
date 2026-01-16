@@ -7,6 +7,10 @@ pub struct LoginRepository {
 }
 
 impl LoginRepository {
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: ログイン画面のRepository生成
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             client: Rc::new(ApiClient::new()),

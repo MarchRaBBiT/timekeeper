@@ -36,10 +36,10 @@ pub struct AdminViewModel {
     pub subject_request_filter: SubjectRequestFilterState,
     pub subject_requests_resource: Resource<
         (bool, super::utils::SubjectRequestFilterSnapshot, u32),
-        Result<SubjectRequestListResponse, String>,
+        Result<SubjectRequestListResponse, ApiError>,
     >,
-    pub subject_request_action: Action<SubjectRequestActionPayload, Result<(), String>>,
-    pub subject_request_action_error: RwSignal<Option<String>>,
+    pub subject_request_action: Action<SubjectRequestActionPayload, Result<(), ApiError>>,
+    pub subject_request_action_error: RwSignal<Option<ApiError>>,
     pub reload_subject_requests: RwSignal<u32>,
     pub repository: AdminRepository,
     // Add other section states here as needed
@@ -183,7 +183,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
                 reload_subject_requests.get(),
             )
         },
-        move |(allowed, snapshot, reload)| {
+        move |(allowed, snapshot, _reload)| {
             let repo = repo_for_subject_requests.clone();
             async move {
                 if !allowed {
@@ -214,7 +214,9 @@ pub fn use_admin_view_model() -> AdminViewModel {
         let payload = payload.clone();
         async move {
             if payload.id.trim().is_empty() {
-                Err("リクエストIDを取得できませんでした。".into())
+                Err(ApiError::validation(
+                    "リクエストIDを取得できませんでした。",
+                ))
             } else if payload.approve {
                 repo.approve_subject_request(&payload.id, &payload.comment)
                     .await

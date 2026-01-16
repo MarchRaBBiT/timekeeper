@@ -52,6 +52,10 @@ async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, ApiEr
     api_client.get_me().await
 }
 
+// TODO: リファクタリング後に使用可否を判断
+// - 使う可能性: あり
+// - 想定機能: セッション更新の手動実行
+#[allow(dead_code)]
 async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, ApiError> {
     let response = api_client.refresh_token().await?;
     Ok(response.user)

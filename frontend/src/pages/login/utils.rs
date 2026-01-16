@@ -43,6 +43,10 @@ impl LoginFormState {
     }
 }
 
+// TODO: リファクタリング後に使用可否を判断
+// - 使う可能性: あり
+// - 想定機能: ログイン入力バリデーション
+#[allow(dead_code)]
 pub fn validate_credentials(username: &str, password: &str) -> Result<(), ApiError> {
     if username.trim().is_empty() {
         return Err(ApiError::validation("ユーザー名を入力してください"));
@@ -53,6 +57,10 @@ pub fn validate_credentials(username: &str, password: &str) -> Result<(), ApiErr
     Ok(())
 }
 
+// TODO: リファクタリング後に使用可否を判断
+// - 使う可能性: あり
+// - 想定機能: TOTPコードの正規化
+#[allow(dead_code)]
 pub fn normalize_totp_code(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

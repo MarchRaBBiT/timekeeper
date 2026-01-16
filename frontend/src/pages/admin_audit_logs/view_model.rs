@@ -28,6 +28,10 @@ pub struct AuditLogViewModel {
     pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
     pub page: RwSignal<i64>,
     pub filters: RwSignal<AuditLogFilters>,
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 監査ログの追加取得/再読込
+    #[allow(dead_code)]
     pub api_client: ApiClient,
     pub export_action: Action<(), Result<(), ApiError>>,
 }

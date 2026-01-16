@@ -300,6 +300,12 @@ impl std::fmt::Display for ApiError {
     }
 }
 
+impl From<ApiError> for String {
+    fn from(error: ApiError) -> Self {
+        error.error
+    }
+}
+
 impl IntoView for ApiError {
     fn into_view(self) -> View {
         self.error.into_view()

@@ -1,5 +1,9 @@
 use leptos::*;
 
+// TODO: リファクタリング後に使用可否を判断
+// - 使う可能性: あり
+// - 想定機能: 共通ボタンのバリアント切替
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
     #[default]

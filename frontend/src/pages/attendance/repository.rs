@@ -9,6 +9,10 @@ pub async fn fetch_monthly_holidays(
     api.get_monthly_holidays(year, month).await
 }
 
+// TODO: リファクタリング後に使用可否を判断
+// - 使う可能性: あり
+// - 想定機能: 勤怠CSVエクスポート
+#[allow(dead_code)]
 pub async fn export_attendance_csv(
     api: &ApiClient,
     from: Option<&str>,

@@ -122,6 +122,10 @@ impl RequestFilterState {
         self.user_id
     }
 
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 管理画面のページング制御
+    #[allow(dead_code)]
     pub fn page_signal(&self) -> RwSignal<u32> {
         self.page
     }

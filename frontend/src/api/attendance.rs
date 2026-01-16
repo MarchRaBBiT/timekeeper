@@ -64,6 +64,10 @@ impl ApiClient {
         }
     }
 
+    // TODO: リファクタリング後に使用可否を判断
+    // - 使う可能性: あり
+    // - 想定機能: 勤怠のマイページ表示での取得
+    #[allow(dead_code)]
     pub async fn get_my_attendance(
         &self,
         year: Option<i32>,

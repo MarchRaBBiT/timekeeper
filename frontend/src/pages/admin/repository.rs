@@ -131,14 +131,12 @@ impl AdminRepository {
         self.client
             .admin_approve_subject_request(id, comment)
             .await
-            .map_err(|e| e.into())
     }
 
     pub async fn reject_subject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
         self.client
             .admin_reject_subject_request(id, comment)
             .await
-            .map_err(|e| e.into())
     }
 
     pub async fn reset_mfa(&self, user_id: &str) -> Result<(), ApiError> {
