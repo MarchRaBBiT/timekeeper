@@ -96,7 +96,7 @@ pub async fn refresh(
         .map_err(|_| unauthorized("Invalid or expired refresh token"))?;
 
     let token_record = fetch_refresh_token_or_unauthorized(&pool, &refresh_token_id).await?;
-    verify_refresh_secret(&refresh_token_secret, &token_record.token_hash)?;
+    verify_refresh_secret(&refresh_token_secret, &token_record.token_hash).await?;
 
     let user = auth_repo::find_user_by_id(&pool, token_record.user_id)
         .await
@@ -312,10 +312,14 @@ pub async fn change_password(
         &payload.current_password,
         &user.password_hash,
         "Current password is incorrect",
-    )?;
+    )
+    .await?;
 
     // Hash and persist the new password.
-    let new_hash = hash_password(&payload.new_password)
+    let password_to_hash = payload.new_password.clone();
+    let new_hash = tokio::task::spawn_blocking(move || hash_password(&password_to_hash))
+        .await
+        .map_err(|_| internal_error("Password hashing task failed"))?
         .map_err(|_| internal_error("Failed to hash password"))?;
 
     if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
@@ -407,7 +411,8 @@ where
         &payload.password,
         &user.password_hash,
         "Invalid username or password",
-    )?;
+    )
+    .await?;
     enforce_mfa(&user, payload.totp_code.as_deref())?;
 
     let (access_token, claims) = create_access_token(
@@ -495,12 +500,16 @@ fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
         .and_then(|value| value.to_str().ok())
 }
 
-pub fn ensure_password_matches(
+pub async fn ensure_password_matches(
     candidate: &str,
     expected_hash: &str,
     unauthorized_message: &'static str,
 ) -> HandlerResult<()> {
-    let matches = verify_password(candidate, expected_hash)
+    let candidate = candidate.to_owned();
+    let expected_hash = expected_hash.to_owned();
+    let matches = tokio::task::spawn_blocking(move || verify_password(&candidate, &expected_hash))
+        .await
+        .map_err(|_| internal_error("Password verification task failed"))?
         .map_err(|_| internal_error("Password verification error"))?;
     if matches {
         Ok(())
@@ -534,8 +543,12 @@ pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
     }
 }
 
-fn verify_refresh_secret(secret: &str, hash: &str) -> HandlerResult<()> {
-    let valid = verify_refresh_token(secret, hash)
+async fn verify_refresh_secret(secret: &str, hash: &str) -> HandlerResult<()> {
+    let secret = secret.to_owned();
+    let hash = hash.to_owned();
+    let valid = tokio::task::spawn_blocking(move || verify_refresh_token(&secret, &hash))
+        .await
+        .map_err(|_| internal_error("Refresh token verification task failed"))?
         .map_err(|_| internal_error("Refresh token verification error"))?;
     if valid {
         Ok(())
