@@ -85,7 +85,7 @@ pwsh -File .\scripts\backend.ps1 start
 pwsh -File .\scripts\frontend.ps1 start
 
 # バックエンドテスト
-cd backend; cargo test
+./scripts/test_backend_integrated.sh
 # API スモークテスト
 pwsh -File .\scripts\test_backend.ps1
 
