@@ -105,7 +105,10 @@ cd e2e; node run.mjs
 
 ## SUBDIRECTORIES
 - `backend/AGENTS.md` - バックエンド詳細（ハンドラー・リポジトリ・テスト）
+- `backend/src/middleware/AGENTS.md` - ミドルウェア層のアーキテクチャ（監査ログ・認証・ロギング）
 - `backend/src/handlers/AGENTS.md` - ハンドラー層のパターンと規約
 - `backend/src/handlers/admin/AGENTS.md` - 管理者機能の実装ガイド
 - `backend/tests/AGENTS.md` - 統合テストの構造と規約
 - `frontend/AGENTS.md` - フロントエンド詳細（MVVM・API・状態管理）
+- `frontend/src/api/AGENTS.md` - API クライアントのアーキテクチャ（トークン管理・自動リフレッシュ）
+- `frontend/src/pages/admin/components/AGENTS.md` - 管理者コンポーネントのアーキテクチャ（祝日管理・UI ロジック）
