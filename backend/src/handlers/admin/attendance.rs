@@ -12,10 +12,10 @@ use utoipa::ToSchema;
 
 use crate::{
     config::Config,
+    handlers::attendance_utils::{get_break_records, get_break_records_map},
     handlers::attendance::recalculate_total_hours,
     models::{
         attendance::{Attendance, AttendanceResponse},
-        break_record::BreakRecordResponse,
         user::User,
     },
     utils::time,
@@ -34,10 +34,12 @@ pub async fn get_all_attendance(
     .fetch_all(&pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
+    let mut break_map = get_break_records_map(&pool, &attendance_ids).await?;
 
     let mut responses = Vec::new();
     for attendance in attendances {
-        let break_records = get_break_records(&pool, attendance.id).await?;
+        let break_records = break_map.remove(&attendance.id).unwrap_or_default();
         let response = AttendanceResponse {
             id: attendance.id,
             user_id: attendance.user_id,
@@ -267,19 +269,3 @@ pub async fn force_end_break(
     ))
 }
 
-pub async fn get_break_records(
-    pool: &PgPool,
-    attendance_id: AttendanceId,
-) -> Result<Vec<BreakRecordResponse>, AppError> {
-    let break_records = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
-    )
-    .bind(attendance_id.to_string())
-    .fetch_all(pool)
-    .await?;
-
-    Ok(break_records
-        .into_iter()
-        .map(BreakRecordResponse::from)
-        .collect())
-}
