@@ -1,4 +1,7 @@
 use crate::types::{AttendanceId, UserId};
+use crate::models::break_record::{BreakRecordResponse};
+use crate::repositories::break_record::BreakRecordRepository;
+use std::collections::HashMap;
 use crate::{error::AppError, models::attendance::Attendance};
 use chrono::NaiveDate;
 use sqlx::PgPool;
@@ -122,4 +125,38 @@ pub async fn update_clock_out(pool: &PgPool, attendance: &Attendance) -> Result<
     .await?;
 
     Ok(())
+}
+
+pub async fn get_break_records(
+    pool: &PgPool,
+    attendance_id: AttendanceId,
+) -> Result<Vec<BreakRecordResponse>, AppError> {
+    let repo = BreakRecordRepository::new();
+    let break_records = repo.find_by_attendance(pool, attendance_id).await?;
+
+    Ok(break_records
+        .into_iter()
+        .map(BreakRecordResponse::from)
+        .collect())
+}
+
+pub async fn get_break_records_map(
+    pool: &PgPool,
+    attendance_ids: &[AttendanceId],
+) -> Result<HashMap<AttendanceId, Vec<BreakRecordResponse>>, AppError> {
+    if attendance_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let repo = BreakRecordRepository::new();
+    let break_records = repo.find_by_attendance_ids(pool, attendance_ids).await?;
+
+    let mut map = HashMap::new();
+    for rec in break_records {
+        let att_id = rec.attendance_id;
+        map.entry(att_id)
+            .or_insert_with(Vec::new)
+            .push(BreakRecordResponse::from(rec));
+    }
+    Ok(map)
 }

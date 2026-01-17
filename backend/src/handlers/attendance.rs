@@ -14,7 +14,7 @@ use crate::error::AppError;
 use crate::handlers::attendance_utils::{
     ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
     ensure_not_clocked_out, fetch_attendance_by_id, fetch_attendance_by_user_date,
-    insert_attendance_record, update_clock_in, update_clock_out,
+    insert_attendance_record, update_clock_in, update_clock_out, get_break_records, get_break_records_map,
 };
 use crate::types::{AttendanceId, UserId};
 use crate::{
@@ -281,9 +281,12 @@ pub async fn get_my_attendance(
         .await?
     };
 
+    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
+    let mut break_map = get_break_records_map(&pool, &attendance_ids).await?;
+
     let mut responses = Vec::new();
     for attendance in attendances {
-        let break_records = get_break_records(&pool, attendance.id).await?;
+        let break_records = break_map.remove(&attendance.id).unwrap_or_default();
         responses.push(build_attendance_response(attendance, break_records));
     }
 
@@ -534,22 +537,6 @@ fn build_attendance_response(
     }
 }
 
-async fn get_break_records(
-    pool: &PgPool,
-    attendance_id: AttendanceId,
-) -> Result<Vec<BreakRecordResponse>, AppError> {
-    let break_records = sqlx::query_as::<_, BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 ORDER BY break_start_time"
-    )
-    .bind(attendance_id.to_string())
-    .fetch_all(pool)
-    .await?;
-
-    Ok(break_records
-        .into_iter()
-        .map(BreakRecordResponse::from)
-        .collect())
-}
 
 pub(crate) async fn total_break_minutes(
     pool: &PgPool,

@@ -37,6 +37,27 @@ impl BreakRecordRepository {
             .await?;
         Ok(rows)
     }
+    pub async fn find_by_attendance_ids(
+        &self,
+        db: &PgPool,
+        attendance_ids: &[AttendanceId],
+    ) -> Result<Vec<BreakRecord>, AppError> {
+        if attendance_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let ids: Vec<String> = attendance_ids.iter().map(|id| id.to_string()).collect();
+
+        let query = format!(
+            "SELECT {} FROM {} WHERE attendance_id = ANY($1) ORDER BY attendance_id, break_start_time ASC",
+            SELECT_COLUMNS, TABLE_NAME
+        );
+        let rows = sqlx::query_as::<_, BreakRecord>(&query)
+            .bind(&ids)
+            .fetch_all(db)
+            .await?;
+        Ok(rows)
+    }
 
     fn base_select_query() -> String {
         format!("SELECT {} FROM {}", SELECT_COLUMNS, TABLE_NAME)
