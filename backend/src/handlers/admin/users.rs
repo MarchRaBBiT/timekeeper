@@ -62,9 +62,15 @@ pub async fn create_user(
         return Err(AppError::BadRequest("Username already exists".into()));
     }
 
-    let password_hash = hash_password(&payload.password).map_err(|e| {
-        AppError::InternalServerError(anyhow::anyhow!("Failed to hash password: {}", e))
-    })?;
+    let password_to_hash = payload.password.clone();
+    let password_hash = tokio::task::spawn_blocking(move || hash_password(&password_to_hash))
+        .await
+        .map_err(|_| {
+            AppError::InternalServerError(anyhow::anyhow!("Password hashing task failed"))
+        })?
+        .map_err(|e| {
+            AppError::InternalServerError(anyhow::anyhow!("Failed to hash password: {}", e))
+        })?;
 
     let user = User::new(
         payload.username,
