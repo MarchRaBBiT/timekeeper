@@ -303,10 +303,14 @@ async fn audit_log_export_returns_json_file() {
         .layer(Extension(permissioned_user))
         .with_state(state);
 
+    let today = Utc::now().format("%Y-%m-%d").to_string();
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/admin/audit-logs/export?event_type=request_update")
+                .uri(format!(
+                    "/api/admin/audit-logs/export?from={}&to={}&event_type=request_update",
+                    today, today
+                ))
                 .body(Body::empty())
                 .expect("build request"),
         )
@@ -337,4 +341,140 @@ async fn audit_log_export_returns_json_file() {
         payload[0].get("id").and_then(|value| value.as_str()),
         Some(log.id.to_string()).as_deref()
     );
+}
+
+#[tokio::test]
+async fn audit_log_export_requires_from_and_to() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config);
+
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+
+    let app = Router::new()
+        .route("/api/admin/audit-logs/export", get(export_audit_logs))
+        .layer(Extension(permissioned_user))
+        .with_state(state);
+
+    // given: no from/to parameters
+    // when: export is called
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/audit-logs/export")
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    // then: 400 Bad Request is returned
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn audit_log_export_rejects_period_exceeding_31_days() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config);
+
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+
+    let app = Router::new()
+        .route("/api/admin/audit-logs/export", get(export_audit_logs))
+        .layer(Extension(permissioned_user))
+        .with_state(state);
+
+    // given: period of 32 days (exceeds 31-day limit)
+    let from_date = (Utc::now() - Duration::days(32))
+        .format("%Y-%m-%d")
+        .to_string();
+    let to_date = Utc::now().format("%Y-%m-%d").to_string();
+
+    // when: export is called
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/admin/audit-logs/export?from={}&to={}",
+                    from_date, to_date
+                ))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    // then: 400 Bad Request is returned with period limit message
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read body");
+    let error_response: serde_json::Value = serde_json::from_slice(&body).expect("parse response");
+    let error_message = error_response
+        .get("error")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    assert!(error_message.contains("31"));
+}
+
+#[tokio::test]
+async fn audit_log_export_allows_exactly_31_days() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let config = support::test_config();
+    let state = (pool.clone(), config);
+
+    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user_id = permissioned_user.id.to_string();
+    support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
+
+    let app = Router::new()
+        .route("/api/admin/audit-logs/export", get(export_audit_logs))
+        .layer(Extension(permissioned_user))
+        .with_state(state);
+
+    // given: period of 31 calendar days (from to to inclusive, within limit)
+    let from_date = (Utc::now() - Duration::days(30))
+        .format("%Y-%m-%d")
+        .to_string();
+    let to_date = Utc::now().format("%Y-%m-%d").to_string();
+
+    // when: export is called
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/admin/audit-logs/export?from={}&to={}",
+                    from_date, to_date
+                ))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    // then: 200 OK is returned
+    assert_eq!(response.status(), StatusCode::OK);
 }

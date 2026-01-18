@@ -711,8 +711,14 @@ GET /api/admin/audit-logs/export
 Authorization: Bearer <token>
 ```
 
-**クエリパラメータ（任意）**
-- `from` / `to` / `actor_id` / `actor_type` / `event_type` / `target_type` / `target_id` / `result`
+**クエリパラメータ**
+- `from` (必須) - 開始日時（RFC3339 または YYYY-MM-DD）
+- `to` (必須) - 終了日時（RFC3339 または YYYY-MM-DD）
+- `actor_id` / `actor_type` / `event_type` / `target_type` / `target_id` / `result` (任意)
+
+**制限事項**
+- `from` と `to` の差は最大31日まで
+- 31日を超える場合は `400 Bad Request` を返却
 
 **レスポンス**
 - `Content-Disposition: attachment; filename="audit_logs_YYYYMMDD_HHMMSS.json"`
