@@ -15,7 +15,7 @@ pub enum RequestKind {
     Overtime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RequestSummary {
     pub id: String,
     pub kind: RequestKind,

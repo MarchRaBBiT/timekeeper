@@ -381,7 +381,7 @@ impl AttendanceViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.get().today_status.clone() else {
+            let Some(status) = state.with(|s| s.today_status.clone()) else {
                 clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };
@@ -408,7 +408,7 @@ impl AttendanceViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.get().today_status.clone() else {
+            let Some(status) = state.with(|s| s.today_status.clone()) else {
                 clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
                 return;
             };

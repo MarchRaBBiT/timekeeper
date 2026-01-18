@@ -194,7 +194,7 @@ impl RequestsViewModel {
 
     pub fn filtered_summaries(&self) -> Signal<Vec<RequestSummary>> {
         let requests_resource = self.requests_resource;
-        let all_summaries = Signal::derive(move || {
+        let all_summaries = create_memo(move |_| {
             requests_resource
                 .get()
                 .and_then(|result| result.ok())
@@ -207,11 +207,13 @@ impl RequestsViewModel {
             if status.is_empty() {
                 return all_summaries.get();
             }
-            all_summaries
-                .get()
-                .into_iter()
-                .filter(|summary| summary.status == status)
-                .collect::<Vec<_>>()
+            all_summaries.with(|summaries| {
+                summaries
+                    .iter()
+                    .filter(|summary| summary.status == status)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
         })
     }
 
