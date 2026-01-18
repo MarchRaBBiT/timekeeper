@@ -38,7 +38,7 @@ pub fn AttendancePanel() -> impl IntoView {
         Signal::derive(move || vm.holiday_query.with(|query| (query.year, query.month)));
 
     let exporting = vm.export_action.pending();
-    let last_refresh_error = Signal::derive(move || state.get().last_refresh_error.clone());
+    let last_refresh_error = Signal::derive(move || state.with(|s| s.last_refresh_error.clone()));
     let history_signal = Signal::derive(move || state.with(|s| s.attendance_history.clone()));
 
     view! {
