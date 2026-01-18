@@ -48,8 +48,10 @@ pub struct AuditLogListQuery {
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
 pub struct AuditLogExportQuery {
-    pub from: Option<String>,
-    pub to: Option<String>,
+    /// Start date (required, RFC3339 or YYYY-MM-DD)
+    pub from: String,
+    /// End date (required, RFC3339 or YYYY-MM-DD)
+    pub to: String,
     pub actor_id: Option<String>,
     pub actor_type: Option<String>,
     pub event_type: Option<String>,
@@ -216,16 +218,55 @@ fn validate_list_query(q: AuditLogListQuery) -> Result<(i64, i64, AuditLogFilter
     Ok((page, per_page, filters))
 }
 
+const MAX_EXPORT_DAYS: i64 = 31;
+
 fn validate_export_query(q: AuditLogExportQuery) -> Result<AuditLogFilters, AppError> {
-    build_filters(AuditLogFilterInput {
-        from: q.from,
-        to: q.to,
-        actor_id: q.actor_id,
-        actor_type: q.actor_type,
-        event_type: q.event_type,
-        target_type: q.target_type,
-        target_id: q.target_id,
-        result: q.result,
+    let from = parse_datetime_value(&q.from, true).ok_or_else(|| {
+        AppError::BadRequest("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)".into())
+    })?;
+    let to = parse_datetime_value(&q.to, false).ok_or_else(|| {
+        AppError::BadRequest("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)".into())
+    })?;
+
+    if from > to {
+        return Err(AppError::BadRequest(
+            "`from` must be before or equal to `to`".into(),
+        ));
+    }
+
+    let calendar_days = (to.date_naive() - from.date_naive()).num_days();
+    if calendar_days > MAX_EXPORT_DAYS {
+        return Err(AppError::BadRequest(format!(
+            "エクスポート期間は最大{}日です",
+            MAX_EXPORT_DAYS
+        )));
+    }
+
+    let result = normalize_filter(q.result).map(|value| value.to_ascii_lowercase());
+    if let Some(ref value) = result {
+        if value != "success" && value != "failure" {
+            return Err(AppError::BadRequest(
+                "`result` must be success or failure".into(),
+            ));
+        }
+    }
+
+    let actor_id = q
+        .actor_id
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| UserId::from_str(&s))
+        .transpose()
+        .map_err(|_| AppError::BadRequest("Invalid actor ID".into()))?;
+
+    Ok(AuditLogFilters {
+        from: Some(from),
+        to: Some(to),
+        actor_id,
+        actor_type: normalize_filter(q.actor_type).map(|value| value.to_ascii_lowercase()),
+        event_type: normalize_filter(q.event_type).map(|value| value.to_ascii_lowercase()),
+        target_type: normalize_filter(q.target_type).map(|value| value.to_ascii_lowercase()),
+        target_id: normalize_filter(q.target_id),
+        result,
     })
 }
 
