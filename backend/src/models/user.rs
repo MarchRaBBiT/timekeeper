@@ -114,13 +114,24 @@ fn validate_password_format(password: &str) -> Result<(), validator::ValidationE
     rules::validate_password_strength(password)
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload for updating portions of an existing user.
 pub struct UpdateUser {
+    #[validate(length(min = 1, max = 100))]
     pub full_name: Option<String>,
+    #[validate(email)]
     pub email: Option<String>,
     pub role: Option<UserRole>,
     pub is_system_admin: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
+/// Payload for users updating their own profile.
+pub struct UpdateProfile {
+    #[validate(length(min = 1, max = 100))]
+    pub full_name: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]

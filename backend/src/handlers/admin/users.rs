@@ -13,7 +13,7 @@ use validator::Validate;
 use crate::{
     config::Config,
     error::AppError,
-    models::user::{CreateUser, User, UserResponse, UserRole},
+    models::user::{CreateUser, UpdateUser, User, UserResponse, UserRole},
     repositories::user as user_repo,
     types::UserId,
     utils::password::hash_password,
@@ -106,6 +106,70 @@ pub async fn create_user(
 
     let response = UserResponse::from(user);
     Ok(Json(response))
+}
+
+pub async fn update_user(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(admin): Extension<User>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<UpdateUser>,
+) -> Result<Json<UserResponse>, AppError> {
+    if !admin.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+    payload.validate()?;
+
+    let user_id =
+        UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
+
+    let existing_user = sqlx::query_as::<_, User>(
+        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?
+    .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+
+    if let Some(ref email) = payload.email {
+        let email_exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
+        )
+        .bind(email)
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+        if email_exists {
+            return Err(AppError::BadRequest("Email already in use".into()));
+        }
+    }
+
+    let full_name = payload.full_name.unwrap_or(existing_user.full_name);
+    let email = payload.email.unwrap_or(existing_user.email);
+    let role = payload.role.unwrap_or(existing_user.role);
+    let is_system_admin = payload
+        .is_system_admin
+        .unwrap_or(existing_user.is_system_admin);
+
+    let updated_user = sqlx::query_as::<_, User>(
+        "UPDATE users SET full_name = $1, email = $2, role = $3, is_system_admin = $4, updated_at = NOW() \
+         WHERE id = $5 \
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    )
+    .bind(&full_name)
+    .bind(&email)
+    .bind(role.as_str())
+    .bind(is_system_admin)
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    Ok(Json(UserResponse::from(updated_user)))
 }
 
 #[derive(Deserialize, ToSchema)]

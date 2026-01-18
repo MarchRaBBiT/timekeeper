@@ -239,6 +239,7 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
         .route("/api/auth/mfa/setup", post(handlers::auth::mfa_setup))
         .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
         .route("/api/auth/me", get(handlers::auth::me))
+        .route("/api/auth/me", put(handlers::auth::update_profile))
         .route(
             "/api/auth/change-password",
             put(handlers::auth::change_password),
@@ -364,6 +365,7 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
             "/api/admin/mfa/reset",
             post(handlers::admin::reset_user_mfa),
         )
+        .route("/api/admin/users/{id}", put(handlers::admin::update_user))
         .route(
             "/api/admin/users/{id}",
             delete(handlers::admin::delete_user),

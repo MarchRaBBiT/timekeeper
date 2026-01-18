@@ -17,7 +17,7 @@ use crate::{
         password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
         user::{
             ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
-            MfaStatusResponse, User, UserResponse,
+            MfaStatusResponse, UpdateProfile, User, UserResponse,
         },
     },
     repositories::password_reset as password_reset_repo,
@@ -165,6 +165,47 @@ pub async fn mfa_status(
 
 pub async fn me(Extension(user): Extension<User>) -> HandlerResult<Json<UserResponse>> {
     Ok(Json(UserResponse::from(user)))
+}
+
+pub async fn update_profile(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<UpdateProfile>,
+) -> HandlerResult<Json<UserResponse>> {
+    payload.validate()?;
+
+    if let Some(ref email) = payload.email {
+        let email_exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
+        )
+        .bind(email)
+        .bind(user.id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|_| internal_error("Database error"))?;
+
+        if email_exists {
+            return Err(bad_request("Email already in use"));
+        }
+    }
+
+    let full_name = payload.full_name.unwrap_or(user.full_name);
+    let email = payload.email.unwrap_or(user.email);
+
+    let updated_user = sqlx::query_as::<_, User>(
+        "UPDATE users SET full_name = $1, email = $2, updated_at = NOW() \
+         WHERE id = $3 \
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    )
+    .bind(&full_name)
+    .bind(&email)
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| internal_error("Failed to update profile"))?;
+
+    Ok(Json(UserResponse::from(updated_user)))
 }
 
 async fn begin_mfa_enrollment(
