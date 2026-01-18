@@ -1,10 +1,10 @@
-use crate::types::{AttendanceId, UserId};
-use crate::models::break_record::{BreakRecordResponse};
+use crate::models::break_record::BreakRecordResponse;
 use crate::repositories::break_record::BreakRecordRepository;
-use std::collections::HashMap;
+use crate::types::{AttendanceId, UserId};
 use crate::{error::AppError, models::attendance::Attendance};
 use chrono::NaiveDate;
 use sqlx::PgPool;
+use std::collections::HashMap;
 
 pub fn ensure_authorized_access(attendance: &Attendance, user_id: UserId) -> Result<(), AppError> {
     if attendance.user_id == user_id {

@@ -12,8 +12,8 @@ use utoipa::ToSchema;
 
 use crate::{
     config::Config,
-    handlers::attendance_utils::{get_break_records, get_break_records_map},
     handlers::attendance::recalculate_total_hours,
+    handlers::attendance_utils::{get_break_records, get_break_records_map},
     models::{
         attendance::{Attendance, AttendanceResponse},
         user::User,
@@ -268,4 +268,3 @@ pub async fn force_end_break(
         crate::models::break_record::BreakRecordResponse::from(rec),
     ))
 }
-

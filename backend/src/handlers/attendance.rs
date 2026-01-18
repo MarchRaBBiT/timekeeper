@@ -14,7 +14,8 @@ use crate::error::AppError;
 use crate::handlers::attendance_utils::{
     ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
     ensure_not_clocked_out, fetch_attendance_by_id, fetch_attendance_by_user_date,
-    insert_attendance_record, update_clock_in, update_clock_out, get_break_records, get_break_records_map,
+    get_break_records, get_break_records_map, insert_attendance_record, update_clock_in,
+    update_clock_out,
 };
 use crate::types::{AttendanceId, UserId};
 use crate::{
@@ -536,7 +537,6 @@ fn build_attendance_response(
         break_records,
     }
 }
-
 
 pub(crate) async fn total_break_minutes(
     pool: &PgPool,

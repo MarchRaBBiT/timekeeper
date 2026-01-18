@@ -128,15 +128,11 @@ impl AdminRepository {
     }
 
     pub async fn approve_subject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
-        self.client
-            .admin_approve_subject_request(id, comment)
-            .await
+        self.client.admin_approve_subject_request(id, comment).await
     }
 
     pub async fn reject_subject_request(&self, id: &str, comment: &str) -> Result<(), ApiError> {
-        self.client
-            .admin_reject_subject_request(id, comment)
-            .await
+        self.client.admin_reject_subject_request(id, comment).await
     }
 
     pub async fn reset_mfa(&self, user_id: &str) -> Result<(), ApiError> {

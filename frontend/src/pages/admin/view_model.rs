@@ -214,9 +214,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
         let payload = payload.clone();
         async move {
             if payload.id.trim().is_empty() {
-                Err(ApiError::validation(
-                    "リクエストIDを取得できませんでした。",
-                ))
+                Err(ApiError::validation("リクエストIDを取得できませんでした。"))
             } else if payload.approve {
                 repo.approve_subject_request(&payload.id, &payload.comment)
                     .await
