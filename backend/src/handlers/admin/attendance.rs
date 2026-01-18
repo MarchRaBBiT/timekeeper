@@ -1,7 +1,8 @@
 use crate::error::AppError;
+use crate::models::{PaginatedResponse, PaginationQuery};
 use crate::types::{AttendanceId, BreakRecordId, UserId};
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Extension, Path, Query, State},
     Json,
 };
 use chrono::Utc;
@@ -24,20 +25,34 @@ use crate::{
 pub async fn get_all_attendance(
     State((pool, _config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
+    Query(pagination): Query<PaginationQuery>,
+) -> Result<Json<PaginatedResponse<AttendanceResponse>>, AppError> {
     if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+
+    let limit = pagination.limit();
+    let offset = pagination.offset();
+
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attendance")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
     let attendances = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance ORDER BY date DESC, user_id"
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at \
+         FROM attendance ORDER BY date DESC, user_id LIMIT $1 OFFSET $2"
     )
+    .bind(limit)
+    .bind(offset)
     .fetch_all(&pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
+
     let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
     let mut break_map = get_break_records_map(&pool, &attendance_ids).await?;
 
-    let mut responses = Vec::new();
+    let mut data = Vec::new();
     for attendance in attendances {
         let break_records = break_map.remove(&attendance.id).unwrap_or_default();
         let response = AttendanceResponse {
@@ -50,10 +65,10 @@ pub async fn get_all_attendance(
             total_work_hours: attendance.total_work_hours,
             break_records,
         };
-        responses.push(response);
+        data.push(response);
     }
 
-    Ok(Json(responses))
+    Ok(Json(PaginatedResponse::new(data, total, limit, offset)))
 }
 
 // Admin: create/replace attendance for a day (basic version)

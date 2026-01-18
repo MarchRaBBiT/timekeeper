@@ -23,6 +23,16 @@ pub struct ExportQuery {
     pub to: Option<String>,   // YYYY-MM-DD
 }
 
+struct ExportRow {
+    username: String,
+    full_name: String,
+    date: String,
+    clock_in: String,
+    clock_out: String,
+    total_hours: String,
+    status: String,
+}
+
 pub async fn export_data(
     State((pool, config)): State<(PgPool, Config)>,
     Extension(user): Extension<User>,
@@ -76,48 +86,33 @@ pub async fn export_data(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    // Convert to CSV format
-    let mut csv_data = String::new();
-    append_csv_row(
-        &mut csv_data,
-        &[
-            "Username".to_string(),
-            "Full Name".to_string(),
-            "Date".to_string(),
-            "Clock In".to_string(),
-            "Clock Out".to_string(),
-            "Total Hours".to_string(),
-            "Status".to_string(),
-        ],
-    );
+    let rows: Vec<ExportRow> = data
+        .into_iter()
+        .map(|record| {
+            let username = record
+                .try_get::<String, &str>("username")
+                .unwrap_or_default();
+            let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let date = record.try_get::<String, _>("date").unwrap_or_default();
+            let clock_in = record
+                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
+                .ok()
+                .flatten()
+                .map(|t| t.format("%H:%M:%S").to_string())
+                .unwrap_or_default();
+            let clock_out = record
+                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_out_time")
+                .ok()
+                .flatten()
+                .map(|t| t.format("%H:%M:%S").to_string())
+                .unwrap_or_default();
+            let total_hours = record
+                .try_get::<f64, _>("total_work_hours")
+                .map(|h| format!("{:.2}", h))
+                .unwrap_or_else(|_| "0.00".to_string());
+            let status = record.try_get::<String, _>("status").unwrap_or_default();
 
-    for record in data {
-        let username = record
-            .try_get::<String, &str>("username")
-            .unwrap_or_default();
-        let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
-        let date = record.try_get::<String, _>("date").unwrap_or_default();
-        let clock_in = record
-            .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
-            .ok()
-            .flatten()
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let clock_out = record
-            .try_get::<Option<chrono::NaiveDateTime>, _>("clock_out_time")
-            .ok()
-            .flatten()
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let total_hours = record
-            .try_get::<f64, _>("total_work_hours")
-            .map(|h| format!("{:.2}", h))
-            .unwrap_or_else(|_| "0.00".to_string());
-        let status = record.try_get::<String, _>("status").unwrap_or_default();
-
-        append_csv_row(
-            &mut csv_data,
-            &[
+            ExportRow {
                 username,
                 full_name,
                 date,
@@ -125,9 +120,43 @@ pub async fn export_data(
                 clock_out,
                 total_hours,
                 status,
+            }
+        })
+        .collect();
+
+    let csv_data = tokio::task::spawn_blocking(move || {
+        let mut csv = String::new();
+        append_csv_row(
+            &mut csv,
+            &[
+                "Username".to_string(),
+                "Full Name".to_string(),
+                "Date".to_string(),
+                "Clock In".to_string(),
+                "Clock Out".to_string(),
+                "Total Hours".to_string(),
+                "Status".to_string(),
             ],
         );
-    }
+
+        for row in rows {
+            append_csv_row(
+                &mut csv,
+                &[
+                    row.username,
+                    row.full_name,
+                    row.date,
+                    row.clock_in,
+                    row.clock_out,
+                    row.total_hours,
+                    row.status,
+                ],
+            );
+        }
+        csv
+    })
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(json!({
         "csv_data": csv_data,
