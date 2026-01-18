@@ -36,6 +36,7 @@ serde_json.workspace = true
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
 
 # Authentication
 jsonwebtoken = "9.2"
@@ -79,6 +80,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 # Async traits
 async-trait = "0.1"
+sha2 = "0.10.9"
 
 [dev-dependencies]
 ctor = "0.6.1"

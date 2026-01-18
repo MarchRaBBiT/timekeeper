@@ -28,7 +28,7 @@ pub async fn get_users(
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
     let users = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users ORDER BY created_at DESC",
     )
     .fetch_all(&pool)
@@ -50,7 +50,7 @@ pub async fn create_user(
     payload.validate()?;
     // Check if username already exists
     let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, \
+        "SELECT id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, \
          mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
     )
     .bind(&payload.username)
@@ -76,20 +76,21 @@ pub async fn create_user(
         payload.username,
         password_hash,
         payload.full_name,
+        payload.email,
         payload.role,
         payload.is_system_admin,
     );
 
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, \
+        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
-    // Store enum as snake_case text to match sqlx mapping
+    .bind(&user.email)
     .bind(match user.role {
         UserRole::Employee => "employee",
         UserRole::Admin => "admin",

@@ -26,7 +26,7 @@ pub async fn find_user_by_username(
     username: &str,
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
     )
     .bind(username)
@@ -36,7 +36,7 @@ pub async fn find_user_by_username(
 
 pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
     )
     .bind(user_id.to_string())
@@ -154,6 +154,44 @@ pub async fn delete_active_access_tokens_for_user(
 
 pub async fn cleanup_expired_access_tokens(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM active_access_tokens WHERE expires_at <= NOW()")
+        .execute(pool)
+        .await
+        .map(|_| ())
+}
+
+pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn update_user_password(
+    pool: &PgPool,
+    user_id: UserId,
+    new_password_hash: &str,
+) -> Result<User, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        "UPDATE users SET password_hash = $1, updated_at = NOW() \
+         WHERE id = $2 \
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    )
+    .bind(new_password_hash)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn delete_all_refresh_tokens_for_user(
+    pool: &PgPool,
+    user_id: UserId,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(user_id.to_string())
         .execute(pool)
         .await
         .map(|_| ())

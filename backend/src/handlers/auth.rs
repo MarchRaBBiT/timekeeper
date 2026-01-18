@@ -13,22 +13,28 @@ use crate::{
     config::Config,
     error::AppError,
     handlers::auth_repo::{self, ActiveAccessToken, StoredRefreshToken},
-    models::user::{
-        ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
-        MfaStatusResponse, User, UserResponse,
+    models::{
+        password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
+        user::{
+            ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
+            MfaStatusResponse, User, UserResponse,
+        },
     },
+    repositories::password_reset as password_reset_repo,
     types::UserId,
     utils::{
         cookies::{
             build_auth_cookie, build_clear_cookie, extract_cookie_value, CookieOptions,
             ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH,
         },
+        email::EmailService,
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
             Claims, RefreshToken,
         },
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
         password::{hash_password, verify_password},
+        security::generate_token,
     },
     validation::Validate,
 };
@@ -652,4 +658,80 @@ async fn revoke_active_tokens_for_user(pool: &PgPool, user_id: UserId) -> Handle
 fn claims_expiration_datetime(claims: &Claims) -> HandlerResult<DateTime<Utc>> {
     DateTime::<Utc>::from_timestamp(claims.exp, 0)
         .ok_or_else(|| internal_error("Token expiration overflow"))
+}
+
+pub async fn request_password_reset(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Json(payload): Json<RequestPasswordResetPayload>,
+) -> HandlerResult<impl axum::response::IntoResponse> {
+    payload.validate()?;
+
+    let user_opt = auth_repo::find_user_by_email(&pool, &payload.email)
+        .await
+        .map_err(|_| internal_error("Database error"))?;
+
+    if let Some(user) = user_opt {
+        let token = generate_token(32);
+        password_reset_repo::create_password_reset(&pool, user.id, &token)
+            .await
+            .map_err(|_| internal_error("Failed to create password reset"))?;
+
+        let email_service = EmailService::new()
+            .map_err(|_| internal_error("Email service initialization failed"))?;
+
+        if let Err(e) = email_service.send_password_reset_email(&user.email, &token) {
+            tracing::error!("Failed to send password reset email: {:?}", e);
+        }
+    }
+
+    Ok(Json(json!({
+        "message": "If the email exists, a password reset link has been sent"
+    })))
+}
+
+pub async fn reset_password(
+    State((pool, _config)): State<(PgPool, Config)>,
+    Json(payload): Json<ResetPasswordPayload>,
+) -> HandlerResult<impl axum::response::IntoResponse> {
+    payload.validate()?;
+
+    let reset_record = password_reset_repo::find_valid_reset_by_token(&pool, &payload.token)
+        .await
+        .map_err(|_| internal_error("Database error"))?
+        .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
+
+    let new_password_hash = tokio::task::spawn_blocking({
+        let password = payload.new_password.clone();
+        move || hash_password(&password)
+    })
+    .await
+    .map_err(|_| internal_error("Task join error"))?
+    .map_err(|_| internal_error("Failed to hash password"))?;
+
+    let user = auth_repo::update_user_password(&pool, reset_record.user_id, &new_password_hash)
+        .await
+        .map_err(|_| internal_error("Failed to update password"))?;
+
+    password_reset_repo::mark_token_as_used(&pool, reset_record.id)
+        .await
+        .map_err(|_| internal_error("Failed to mark token as used"))?;
+
+    auth_repo::delete_all_refresh_tokens_for_user(&pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
+
+    auth_repo::delete_active_access_tokens_for_user(&pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+    let email_service =
+        EmailService::new().map_err(|_| internal_error("Email service initialization failed"))?;
+
+    if let Err(e) = email_service.send_password_changed_notification(&user.email, &user.username) {
+        tracing::error!("Failed to send password changed notification: {:?}", e);
+    }
+
+    Ok(Json(json!({
+        "message": "Password has been reset successfully"
+    })))
 }

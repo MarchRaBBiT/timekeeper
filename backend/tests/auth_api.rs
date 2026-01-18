@@ -55,6 +55,7 @@ fn user_with_mfa_secret(secret: String, enabled: bool) -> User {
         "tester".into(),
         hash_password(TEST_PASSWORD).expect("hash test password"),
         "Tester".into(),
+        "tester@example.com".into(),
         UserRole::Employee,
         false,
     );

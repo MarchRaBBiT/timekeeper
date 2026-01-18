@@ -196,18 +196,20 @@ async fn insert_user_with_password_hash(
         format!("user_{}", Uuid::new_v4()),
         password_hash,
         "Test User".into(),
+        format!("user_{}@example.com", Uuid::new_v4()),
         role,
         is_system_admin,
     );
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, \
+        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
+    .bind(&user.email)
     .bind(user.role.as_str())
     .bind(user.is_system_admin)
     .bind(&user.mfa_secret)

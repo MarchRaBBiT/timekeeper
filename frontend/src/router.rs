@@ -6,7 +6,8 @@ use crate::{
     pages::{
         admin::AdminPage, admin_audit_logs::AdminAuditLogsPage, admin_export::AdminExportPage,
         admin_users::AdminUsersPage, attendance::AttendancePage, dashboard::DashboardPage,
-        home::HomePage, login::LoginPage, mfa::MfaRegisterPage, requests::RequestsPage,
+        forgot_password::ForgotPasswordPage, home::HomePage, login::LoginPage,
+        mfa::MfaRegisterPage, requests::RequestsPage, reset_password::ResetPasswordPage,
         settings::SettingsPage,
     },
     state::auth::AuthProvider,
@@ -15,6 +16,8 @@ use crate::{
 pub const ROUTE_PATHS: &[&str] = &[
     "/",
     "/login",
+    "/forgot-password",
+    "/reset-password",
     "/dashboard",
     "/attendance",
     "/requests",
@@ -37,7 +40,13 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/admin/audit-logs",
 ];
 
-pub const PUBLIC_ROUTE_PATHS: &[&str] = &["/", "/login", "/mfa/register"];
+pub const PUBLIC_ROUTE_PATHS: &[&str] = &[
+    "/",
+    "/login",
+    "/mfa/register",
+    "/forgot-password",
+    "/reset-password",
+];
 
 pub fn mount_app() {
     mount_to_body(app_root);
@@ -51,6 +60,8 @@ pub fn app_root() -> impl IntoView {
                 <Routes>
                     <Route path="/" view=HomePage/>
                     <Route path="/login" view=LoginPage/>
+                    <Route path="/forgot-password" view=ForgotPasswordPage/>
+                    <Route path="/reset-password" view=ResetPasswordPage/>
                     <Route path="/dashboard" view=ProtectedDashboard/>
                     <Route path="/attendance" view=ProtectedAttendance/>
                     <Route path="/requests" view=ProtectedRequests/>

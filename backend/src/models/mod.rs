@@ -71,6 +71,7 @@ pub mod holiday;
 pub mod holiday_exception;
 pub mod leave_request;
 pub mod overtime_request;
+pub mod password_reset;
 pub mod request;
 pub mod subject_request;
 pub mod user;

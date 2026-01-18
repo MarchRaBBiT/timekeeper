@@ -148,6 +148,14 @@ fn public_routes(state: AuthState) -> Router<AuthState> {
     Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
+        .route(
+            "/api/auth/request-password-reset",
+            post(handlers::auth::request_password_reset),
+        )
+        .route(
+            "/api/auth/reset-password",
+            post(handlers::auth::reset_password),
+        )
         .route("/api/config/timezone", get(handlers::config::get_time_zone))
         .route_layer(rate_limiter)
         .route_layer(axum_middleware::from_fn_with_state(

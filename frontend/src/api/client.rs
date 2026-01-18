@@ -645,6 +645,65 @@ impl ApiClient {
             Err(error)
         }
     }
+
+    pub async fn request_password_reset(&self, email: String) -> Result<MessageResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let request = RequestPasswordResetRequest { email };
+        let response = self
+            .client
+            .post(format!("{}/auth/request-password-reset", base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+
+        let status = response.status();
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
+        }
+    }
+
+    pub async fn reset_password(
+        &self,
+        token: String,
+        new_password: String,
+    ) -> Result<MessageResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let request = ResetPasswordRequest {
+            token,
+            new_password,
+        };
+        let response = self
+            .client
+            .post(format!("{}/auth/reset-password", base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+
+        let status = response.status();
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
+        }
+    }
 }
 
 pub(super) fn ensure_device_label(storage: &Storage) -> Result<String, ApiError> {
