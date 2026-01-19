@@ -13,18 +13,18 @@ backend/src/
 ├── lib.rs            # ライブラリ（bin/token_cleanup.rs で共有）
 ├── handlers/         # API ハンドラー（詳細: handlers/AGENTS.md）
 │   ├── admin/        # 管理者機能（詳細: handlers/admin/AGENTS.md）
-│   ├── auth.rs       # 認証・MFA (642 lines - 監視要)
+│   ├── auth.rs       # 認証・MFA・パスワードリセット (642 lines - 監視要)
 │   └── attendance.rs # 勤怠打刻・CSV エクスポート (610 lines)
-├── repositories/     # Trait-based リポジトリ層
+├── repositories/     # Trait-based リポジトリ層 (password_reset.rs 含む)
 ├── models/           # データモデル（sqlx::FromRow + validator）
 ├── middleware/       # JWT認証・監査ログ・ロギング
 │   ├── auth.rs       # Extension<User> 抽出、トークン検証
 │   └── audit_log.rs # 監査ログ分類・メタデータ構築 (848 lines - 監視要)
 ├── services/         # ビジネスロジック（祝日計算など）
-├── utils/            # JWT 生成、CSV エクスポート、セキュリティ
+├── utils/            # JWT 生成、CSV エクスポート、セキュリティ、email
 └── error/mod.rs      # 統一 AppError enum + IntoResponse
 
-migrations/           # SQLx マイグレーション（001-023）
+migrations/           # SQLx マイグレーション（001-024）
 tests/               # pg-embed 統合テスト（詳細: tests/AGENTS.md）
 ```
 
@@ -35,6 +35,7 @@ tests/               # pg-embed 統合テスト（詳細: tests/AGENTS.md）
 | ハンドラー規約 | `handlers/AGENTS.md` | 認証・検証・エラーハンドリング |
 | 管理者機能 | `handlers/admin/` + `handlers/admin/AGENTS.md` | 権限・監査ログ |
 | リポジトリ実装 | `repositories/*.rs` | Repository<T> トレイト |
+| パスワードリセット | `models/password_reset.rs` + `repositories/password_reset.rs` | トークン管理・有効期限 |
 | マイグレーション追加 | `migrations/` | NNN_description.sql |
 | 統合テスト | `tests/*.rs` + `tests/support/mod.rs` | pg-embed + シードヘルパー |
 

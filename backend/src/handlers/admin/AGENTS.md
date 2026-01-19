@@ -45,7 +45,7 @@ admin/
 
 ### Users (`users.rs`)
 - 新規登録: ユーザー情報 + ロール指定（`role` enum）
-- 編集: パスワード更新（`update_password`）・ロール変更
+- 編集: ユーザー情報更新（`update_user`）: 名前・Email・ロール・権限
 - アーカイブ: `is_active` フラグ（論理削除）
 - 権限: System Admin のみ `is_system_admin` 変更可
 
