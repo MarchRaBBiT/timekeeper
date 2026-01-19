@@ -64,6 +64,16 @@ pub fn InviteForm(
                     />
                 </div>
                 <div>
+                    <label class="block text-sm font-medium text-gray-700">{"メールアドレス"}</label>
+                    <input
+                        type="email"
+                        class="mt-1 w-full border rounded px-2 py-1"
+                        placeholder="user@example.com"
+                        prop:value=form_state.email
+                        on:input=move |ev| form_state.email.set(event_target_value(&ev))
+                    />
+                </div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700">{"パスワード"}</label>
                     <input
                         type="password"
@@ -83,7 +93,7 @@ pub fn InviteForm(
                         <option value="admin">{"admin"}</option>
                     </select>
                 </div>
-                <div class="flex items-center space-x-2 lg:col-span-2">
+                <div class="flex items-center space-x-2 h-full pt-6">
                     <input
                         type="checkbox"
                         class="h-4 w-4 text-blue-600 border-gray-300 rounded"

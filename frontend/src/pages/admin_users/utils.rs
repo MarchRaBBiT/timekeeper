@@ -5,6 +5,7 @@ use leptos::*;
 pub struct InviteFormState {
     pub username: RwSignal<String>,
     pub full_name: RwSignal<String>,
+    pub email: RwSignal<String>,
     pub password: RwSignal<String>,
     pub role: RwSignal<String>,
     pub is_system_admin: RwSignal<bool>,
@@ -15,6 +16,7 @@ impl Default for InviteFormState {
         Self {
             username: create_rw_signal(String::new()),
             full_name: create_rw_signal(String::new()),
+            email: create_rw_signal(String::new()),
             password: create_rw_signal(String::new()),
             role: create_rw_signal("employee".to_string()),
             is_system_admin: create_rw_signal(false),
@@ -26,12 +28,14 @@ impl InviteFormState {
     pub fn is_valid(&self) -> bool {
         !(self.username.get().trim().is_empty()
             || self.full_name.get().trim().is_empty()
+            || self.email.get().trim().is_empty()
             || self.password.get().trim().is_empty())
     }
 
     pub fn reset(&self) {
         self.username.set(String::new());
         self.full_name.set(String::new());
+        self.email.set(String::new());
         self.password.set(String::new());
         self.role.set("employee".to_string());
         self.is_system_admin.set(false);
@@ -42,6 +46,7 @@ impl InviteFormState {
             username: self.username.get(),
             password: self.password.get(),
             full_name: self.full_name.get(),
+            email: self.email.get(),
             role: self.role.get(),
             is_system_admin: self.is_system_admin.get(),
         }
@@ -103,6 +108,7 @@ mod tests {
 
             state.username.set("admin".into());
             state.full_name.set("System 管理者".into());
+            state.email.set("admin@example.com".into());
             state.password.set("Password123!".into());
 
             assert!(state.is_valid());
@@ -110,6 +116,7 @@ mod tests {
             let request = state.to_request();
             assert_eq!(request.username, "admin");
             assert_eq!(request.full_name, "System 管理者");
+            assert_eq!(request.email, "admin@example.com");
             assert_eq!(request.role, "employee");
             assert!(!request.is_system_admin);
         });

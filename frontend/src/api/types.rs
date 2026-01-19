@@ -279,6 +279,7 @@ pub struct CreateUser {
     pub username: String,
     pub password: String,
     pub full_name: String,
+    pub email: String,
     pub role: String,
     #[serde(default)]
     pub is_system_admin: bool,
