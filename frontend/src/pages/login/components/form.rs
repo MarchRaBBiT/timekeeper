@@ -4,6 +4,7 @@ use crate::{
     pages::login::utils::LoginFormState,
 };
 use leptos::{ev::SubmitEvent, *};
+use leptos_router::A;
 use web_sys::HtmlInputElement;
 
 #[component]
@@ -96,6 +97,14 @@ pub fn LoginForm(
                                     form.totp_code.set(target.value());
                                 }
                             />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <div class="text-sm">
+                            <A href="/forgot-password" class="font-medium text-blue-600 hover:text-blue-500">
+                                "Forgot your password?"
+                            </A>
                         </div>
                     </div>
 

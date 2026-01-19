@@ -279,6 +279,7 @@ pub struct CreateUser {
     pub username: String,
     pub password: String,
     pub full_name: String,
+    pub email: String,
     pub role: String,
     #[serde(default)]
     pub is_system_admin: bool,
@@ -373,6 +374,22 @@ pub struct ArchivedUserResponse {
     pub is_system_admin: bool,
     pub archived_at: String,
     pub archived_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestPasswordResetRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageResponse {
+    pub message: String,
 }
 
 #[cfg(test)]

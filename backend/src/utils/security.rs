@@ -1,6 +1,18 @@
 use crate::config::Config;
 use crate::error::AppError;
 use axum::http::HeaderMap;
+use rand::Rng;
+
+pub fn generate_token(length: usize) -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = rand::thread_rng();
+    (0..length)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
+}
 
 pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
     let origin = headers

@@ -25,6 +25,8 @@ frontend/src/
 │   ├── dashboard/   # ダッシュボード
 │   ├── login/       # ログイン画面
 │   ├── mfa/        # MFA 設定
+│   ├── forgot_password/ # パスワードリセット要求
+│   ├── reset_password/  # パスワード再設定
 │   ├── requests/    # 申請画面
 │   ├── admin/       # 管理者画面
 │   └── admin_users/ # ユーザー管理

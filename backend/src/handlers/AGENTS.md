@@ -68,6 +68,8 @@ handlers/
 - トークン: JWT (access) + DB ハッシュ (refresh)
 - MFA: TOTP (`totp-rs`)
 - クッキー: HttpOnly `access_token`/`refresh_token`
+- パスワードリセット: `password_resets` テーブル + メール通知
+- セルフサービス更新: プロフィール (email/name) 更新エンドポイント (`PUT /api/auth/me`)
 
 ### Attendance (`attendance.rs`)
 - ステートマシン: 打刻前 → 出勤中 → 休憩中 → 退勤済

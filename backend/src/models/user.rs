@@ -20,6 +20,8 @@ pub struct User {
     pub password_hash: String,
     /// Human-readable full name.
     pub full_name: String,
+    /// Email address for notifications and password reset.
+    pub email: String,
     /// Role describing the user's privileges.
     pub role: UserRole,
     /// Flag promoting the user to the highest administrative tier.
@@ -97,6 +99,8 @@ pub struct CreateUser {
     pub password: String,
     #[validate(length(min = 1, max = 100))]
     pub full_name: String,
+    #[validate(email)]
+    pub email: String,
     pub role: UserRole,
     #[serde(default)]
     pub is_system_admin: bool,
@@ -110,12 +114,24 @@ fn validate_password_format(password: &str) -> Result<(), validator::ValidationE
     rules::validate_password_strength(password)
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
 /// Payload for updating portions of an existing user.
 pub struct UpdateUser {
+    #[validate(length(min = 1, max = 100))]
     pub full_name: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
     pub role: Option<UserRole>,
     pub is_system_admin: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
+/// Payload for users updating their own profile.
+pub struct UpdateProfile {
+    #[validate(length(min = 1, max = 100))]
+    pub full_name: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
@@ -180,6 +196,7 @@ pub struct UserResponse {
     pub id: UserId,
     pub username: String,
     pub full_name: String,
+    pub email: String,
     pub role: String,
     pub is_system_admin: bool,
     pub mfa_enabled: bool,
@@ -193,6 +210,7 @@ impl From<User> for UserResponse {
             id: user.id,
             username: user.username,
             full_name: user.full_name,
+            email: user.email,
             role: user.role.as_str().to_string(),
             is_system_admin: user.is_system_admin,
             mfa_enabled,
@@ -206,6 +224,7 @@ impl User {
         username: String,
         password_hash: String,
         full_name: String,
+        email: String,
         role: UserRole,
         is_system_admin: bool,
     ) -> Self {
@@ -215,6 +234,7 @@ impl User {
             username,
             password_hash,
             full_name,
+            email,
             role,
             is_system_admin,
             mfa_secret: None,
@@ -277,11 +297,13 @@ mod tests {
             "alice".to_string(),
             "hash".to_string(),
             "Alice Example".to_string(),
+            "alice@example.com".to_string(),
             UserRole::Admin,
             true,
         );
         let resp: UserResponse = user.into();
         assert_eq!(resp.role, "admin");
+        assert_eq!(resp.email, "alice@example.com");
         assert!(resp.is_system_admin);
         assert!(!resp.mfa_enabled);
     }
@@ -290,10 +312,12 @@ mod tests {
     fn update_user_payload_supports_optional_fields() {
         let update = UpdateUser {
             full_name: Some("Alice Example".into()),
+            email: Some("alice@example.com".into()),
             role: Some(UserRole::Admin),
             is_system_admin: Some(true),
         };
         assert_eq!(update.full_name.as_deref(), Some("Alice Example"));
+        assert_eq!(update.email.as_deref(), Some("alice@example.com"));
         assert!(matches!(update.role, Some(UserRole::Admin)));
         assert_eq!(update.is_system_admin, Some(true));
     }
