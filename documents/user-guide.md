@@ -62,6 +62,7 @@ System administrators have **User Management** added to navigation and can use t
 ### 5.1 User Management (`/admin/users`)
 
 - Create employees/admins with `POST /api/admin/users`. Initial password is set here.
+- **Edit User**: Update full name, email, role, and system admin status via the "Edit" button in the user detail drawer (`PUT /api/admin/users/:id`).
 - **System Administrator** checkbox grants highest tier privileges.
 - View username/full name/role/system admin flag in the user table.
 
@@ -85,10 +86,12 @@ System administrators have **User Management** added to navigation and can use t
 - (Common to admins/system admins) `/admin/export` allows downloading attendance CSV filtered by username and date range (`GET /api/admin/export`).
 - The beginning of the downloaded file is also previewed on screen.
 
-## 6. Logout and Password
+## 6. Profile & Password Management
 
-- Call `POST /api/auth/logout` from the **Logout** button in the header. Sending `{"all": true}` invalidates refresh tokens on all devices at once.
-- Password change is executed via `/api/auth/change-password` (minimum 8 characters, must differ from current password).
+- **Logout**: Call `POST /api/auth/logout` from the header.
+- **Profile Update**: Update your full name and email from the Settings page (`/settings`) via `PUT /api/auth/me`.
+- **Password Change**: Execute via `/api/auth/change-password` (minimum 8 characters).
+- **Password Reset**: Use the "Forgot Password?" link on the login page to request a reset link via email.
 
 ## 7. Troubleshooting
 
