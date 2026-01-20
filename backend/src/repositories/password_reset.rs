@@ -73,6 +73,7 @@ pub async fn mark_token_as_used(pool: &PgPool, reset_id: Uuid) -> Result<(), App
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn delete_expired_tokens(pool: &PgPool) -> Result<u64, AppError> {
     let now = Utc::now();
 

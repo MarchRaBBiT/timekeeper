@@ -54,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
     let (write_pool, read_pool) =
         create_pools(&config.database_url, config.read_database_url.as_deref()).await?;
 
+    let redis_pool = crate::db::redis::create_redis_pool(&config).await?;
     sqlx::migrate!("./migrations").run(&write_pool).await?;
 
     let audit_log_service: Arc<dyn AuditLogServiceTrait> =
@@ -64,7 +65,21 @@ async fn main() -> anyhow::Result<()> {
     let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
         Arc::new(HolidayExceptionService::new(write_pool.clone()));
 
-    let shared_state = AppState::new(write_pool, read_pool, config.clone());
+    let token_cache: Option<Arc<dyn crate::services::token_cache::TokenCacheServiceTrait>> =
+        redis_pool.as_ref().map(|pool| {
+            let service: Arc<dyn crate::services::token_cache::TokenCacheServiceTrait> = Arc::new(
+                crate::services::token_cache::TokenCacheService::new(pool.clone()),
+            );
+            service
+        });
+
+    let shared_state = AppState::new(
+        write_pool,
+        read_pool,
+        redis_pool,
+        token_cache,
+        config.clone(),
+    );
 
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
@@ -376,6 +391,7 @@ fn init_tracing() {
 fn log_config(config: &Config) {
     tracing::info!("Database URL: {}", config.database_url);
     tracing::info!("Read Database URL: {:?}", config.read_database_url);
+    tracing::info!("Redis URL: {:?}", config.redis_url);
     tracing::info!("JWT Expiration: {} hours", config.jwt_expiration_hours);
     tracing::info!("Time Zone: {}", config.time_zone);
     tracing::info!("CORS Allowed Origins: {:?}", config.cors_allow_origins);
@@ -486,6 +502,10 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            redis_url: None,
+            redis_pool_size: 10,
+            redis_connect_timeout: 5,
+            feature_redis_cache_enabled: true,
             feature_read_replica_enabled: true,
         }
     }
@@ -494,7 +514,7 @@ mod tests {
     async fn test_app_router_builds() {
         let config = test_config(vec!["*".to_string()]);
         let (pool, _) = create_pools("sqlite::memory:", None).await.unwrap();
-        let state = AppState::new(pool, None, config);
+        let state = AppState::new(pool, None, None, None, config);
 
         let mut app = Router::new()
             .merge(public_routes(state.clone()))
