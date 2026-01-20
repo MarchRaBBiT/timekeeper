@@ -441,11 +441,14 @@ fn spawn_consent_log_cleanup(
     if !retention_policy.is_recording_enabled() {
         return;
     }
+<<<<<<< HEAD
 
     tracing::info!(
         retention_days = retention_policy.retention_days(),
         "Starting daily consent log cleanup task"
     );
+=======
+>>>>>>> 71ecf3c (feat: add read-replica aware state)
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));

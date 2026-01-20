@@ -153,7 +153,11 @@ pub async fn list_weekly_holidays(
         "SELECT id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at \
          FROM weekly_holidays ORDER BY enforced_from, weekday",
     )
+<<<<<<< HEAD
     .fetch_all(state.read_pool())
+=======
+    .fetch_all(&state.write_pool)
+>>>>>>> 71ecf3c (feat: add read-replica aware state)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
