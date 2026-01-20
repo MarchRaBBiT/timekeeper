@@ -5,17 +5,16 @@ use axum::{
 use chrono::{Datelike, NaiveDate};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
         user::User,
     },
     services::holiday::HolidayServiceTrait,
+    state::AppState,
 };
 
 const GOOGLE_JP_HOLIDAY_ICS: &str =
@@ -23,14 +22,14 @@ const GOOGLE_JP_HOLIDAY_ICS: &str =
 const HOLIDAY_DESCRIPTION_PREFIX: &str = "\u{795d}\u{65e5}"; // Japanese word for "holiday"
 
 pub async fn list_public_holidays(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(_user): Extension<User>,
 ) -> Result<Json<Vec<HolidayResponse>>, AppError> {
     let holidays = sqlx::query_as::<_, Holiday>(
         "SELECT id, holiday_date, name, description, created_at, updated_at \
          FROM holidays ORDER BY holiday_date",
     )
-    .fetch_all(&pool)
+    .fetch_all(state.read_pool())
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -71,7 +70,7 @@ pub struct HolidayMonthEntry {
 }
 
 pub async fn fetch_google_holidays(
-    State((_pool, _config)): State<(PgPool, Config)>,
+    State(_state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<GoogleHolidayQuery>,
 ) -> Result<Json<Vec<CreateHolidayPayload>>, AppError> {

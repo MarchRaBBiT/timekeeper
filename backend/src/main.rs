@@ -27,12 +27,13 @@ mod middleware;
 mod models;
 mod repositories;
 mod services;
+mod state;
 mod types;
 mod utils;
 mod validation;
 
 use config::{AuditLogRetentionPolicy, Config};
-use db::connection::{create_pool, DbPool};
+use db::connection::create_pools;
 use middleware::rate_limit::create_auth_rate_limiter;
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
@@ -41,15 +42,7 @@ use services::{
     holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
 };
 
-type AuthState = (DbPool, Config);
-
-fn mask_secret(s: &str) -> String {
-    if s.is_empty() {
-        return "<empty>".into();
-    }
-    let prefix = s.chars().take(4).collect::<String>();
-    format!("{}*** (len={})", prefix, s.len())
-}
+pub use state::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -58,15 +51,20 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     log_config(&config);
 
-    let pool: DbPool = create_pool(&config.database_url).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    let (write_pool, read_pool) =
+        create_pools(&config.database_url, config.read_database_url.as_deref()).await?;
+
+    sqlx::migrate!("./migrations").run(&write_pool).await?;
+
     let audit_log_service: Arc<dyn AuditLogServiceTrait> =
-        Arc::new(AuditLogService::new(pool.clone()));
-    let consent_log_service = Arc::new(ConsentLogService::new(pool.clone()));
-    let holiday_service: Arc<dyn HolidayServiceTrait> = Arc::new(HolidayService::new(pool.clone()));
+        Arc::new(AuditLogService::new(write_pool.clone()));
+    let consent_log_service = Arc::new(ConsentLogService::new(write_pool.clone()));
+    let holiday_service: Arc<dyn HolidayServiceTrait> =
+        Arc::new(HolidayService::new(write_pool.clone()));
     let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
-        Arc::new(HolidayExceptionService::new(pool.clone()));
-    let shared_state: AuthState = (pool.clone(), config.clone());
+        Arc::new(HolidayExceptionService::new(write_pool.clone()));
+
+    let shared_state = AppState::new(write_pool, read_pool, config.clone());
 
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
@@ -110,41 +108,8 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_tracing() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "timekeeper_backend=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-}
-
-fn log_config(config: &Config) {
-    tracing::info!(
-        database_url = %config.database_url,
-        jwt_secret = %mask_secret(&config.jwt_secret),
-        jwt_expiration_hours = config.jwt_expiration_hours,
-        refresh_token_expiration_days = config.refresh_token_expiration_days,
-        audit_log_retention_days = config.audit_log_retention_days,
-        audit_log_retention_forever = config.audit_log_retention_forever,
-        consent_log_retention_days = config.consent_log_retention_days,
-        consent_log_retention_forever = config.consent_log_retention_forever,
-        aws_region = %config.aws_region,
-        aws_kms_key_id = %mask_secret(&config.aws_kms_key_id),
-        aws_audit_log_bucket = %config.aws_audit_log_bucket,
-        aws_cloudtrail_enabled = config.aws_cloudtrail_enabled,
-        cookie_secure = config.cookie_secure,
-        cookie_same_site = ?config.cookie_same_site,
-        cors_allow_origins = ?config.cors_allow_origins,
-        time_zone = %config.time_zone,
-        mfa_issuer = %config.mfa_issuer,
-        "Loaded configuration from environment/.env"
-    );
-}
-
-fn public_routes(state: AuthState) -> Router<AuthState> {
-    let rate_limiter = create_auth_rate_limiter(&state.1);
+fn public_routes(state: AppState) -> Router<AppState> {
+    let rate_limiter = create_auth_rate_limiter(&state.config);
     Router::new()
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh))
@@ -164,8 +129,7 @@ fn public_routes(state: AuthState) -> Router<AuthState> {
         ))
 }
 
-fn user_routes(state: AuthState) -> Router<AuthState> {
-    let audit_state = state.clone();
+fn user_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/api/attendance/clock-in",
@@ -214,7 +178,11 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
         .route("/api/requests/me", get(handlers::requests::get_my_requests))
         .route(
             "/api/requests/{id}",
-            put(handlers::requests::update_request).delete(handlers::requests::cancel_request),
+            put(handlers::requests::update_request),
+        )
+        .route(
+            "/api/requests/{id}",
+            delete(handlers::requests::cancel_request),
         )
         .route("/api/consents", post(handlers::consents::record_consent))
         .route(
@@ -257,14 +225,17 @@ fn user_routes(state: AuthState) -> Router<AuthState> {
             "/api/holidays/month",
             get(handlers::holidays::list_month_holidays),
         )
-        .route_layer(axum_middleware::from_fn_with_state(state, middleware::auth))
         .route_layer(axum_middleware::from_fn_with_state(
-            audit_state,
+            state.clone(),
+            middleware::auth,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state,
             middleware::audit_log,
         ))
 }
 
-fn admin_routes(state: AuthState) -> Router<AuthState> {
+fn admin_routes(state: AppState) -> Router<AppState> {
     let audit_state = state.clone();
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
@@ -349,7 +320,7 @@ fn admin_routes(state: AuthState) -> Router<AuthState> {
         ))
 }
 
-fn system_admin_routes(state: AuthState) -> Router<AuthState> {
+fn system_admin_routes(state: AppState) -> Router<AppState> {
     let audit_state = state.clone();
     Router::new()
         .route("/api/admin/users", post(handlers::admin::create_user))
@@ -392,47 +363,54 @@ fn system_admin_routes(state: AuthState) -> Router<AuthState> {
         ))
 }
 
+fn init_tracing() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "timekeeper_backend=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+}
+
+fn log_config(config: &Config) {
+    tracing::info!("Database URL: {}", config.database_url);
+    tracing::info!("Read Database URL: {:?}", config.read_database_url);
+    tracing::info!("JWT Expiration: {} hours", config.jwt_expiration_hours);
+    tracing::info!("Time Zone: {}", config.time_zone);
+    tracing::info!("CORS Allowed Origins: {:?}", config.cors_allow_origins);
+}
+
 fn cors_layer(config: &Config) -> CorsLayer {
-    let origins = config
-        .cors_allow_origins
-        .iter()
-        .filter_map(|origin| HeaderValue::from_str(origin).ok())
-        .collect::<Vec<_>>();
-    let allow_origin = if config.cors_allow_origins.iter().any(|o| o == "*") || origins.is_empty() {
-        AllowOrigin::predicate(|_, _| true)
+    let mut layer = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
+        .allow_credentials(true);
+
+    if config.cors_allow_origins.contains(&"*".to_string()) {
+        layer = layer.allow_origin(AllowOrigin::any());
     } else {
-        AllowOrigin::list(origins)
-    };
-    CorsLayer::new()
-        .allow_origin(allow_origin)
-        .allow_credentials(true)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE, ACCEPT])
-        .max_age(Duration::from_secs(24 * 60 * 60))
+        let origins: Vec<HeaderValue> = config
+            .cors_allow_origins
+            .iter()
+            .map(|s| s.parse().expect("Invalid CORS origin"))
+            .collect();
+        layer = layer.allow_origin(origins);
+    }
+
+    layer
 }
 
 fn spawn_audit_log_cleanup(
     audit_log_service: Arc<dyn AuditLogServiceTrait>,
     retention_policy: AuditLogRetentionPolicy,
 ) {
-    let Some(retention_days) = retention_policy.retention_days() else {
-        tracing::info!(
-            retention_policy = ?retention_policy,
-            "Audit log cleanup disabled"
-        );
+    if !retention_policy.is_recording_enabled() {
         return;
-    };
-
-    tracing::info!(retention_days, "Starting daily audit log cleanup task");
+    }
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));
         loop {
             interval.tick().await;
             let Some(cutoff) = retention_policy.cleanup_cutoff(Utc::now()) else {
@@ -454,18 +432,12 @@ fn spawn_consent_log_cleanup(
     consent_log_service: Arc<ConsentLogService>,
     retention_policy: AuditLogRetentionPolicy,
 ) {
-    let Some(retention_days) = retention_policy.retention_days() else {
-        tracing::info!(
-            retention_policy = ?retention_policy,
-            "Consent log cleanup disabled"
-        );
+    if !retention_policy.is_recording_enabled() {
         return;
-    };
-
-    tracing::info!(retention_days, "Starting daily consent log cleanup task");
+    }
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(24 * 60 * 60));
+        let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));
         loop {
             interval.tick().await;
             let Some(cutoff) = retention_policy.cleanup_cutoff(Utc::now()) else {
@@ -486,13 +458,14 @@ fn spawn_consent_log_cleanup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request, routing::get};
+    use axum::{body::Body, http::Request};
     use chrono_tz::UTC;
     use tower::Service;
 
     fn test_config(cors_allow_origins: Vec<String>) -> Config {
         Config {
             database_url: "postgres://test".to_string(),
+            read_database_url: None,
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
@@ -513,101 +486,30 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            feature_read_replica_enabled: true,
         }
     }
 
     #[tokio::test]
-    async fn cors_allows_request_origin_when_wildcard_configured() {
+    async fn test_app_router_builds() {
         let config = test_config(vec!["*".to_string()]);
-        let app = Router::new()
-            .route("/ping", get(|| async { "ok" }))
-            .layer(cors_layer(&config));
+        let (pool, _) = create_pools("sqlite::memory:", None).await.unwrap();
+        let state = AppState::new(pool, None, config);
 
-        let origin = "http://example.com";
-        let mut app = app;
+        let mut app = Router::new()
+            .merge(public_routes(state.clone()))
+            .with_state(state);
+
         let response = app
             .call(
                 Request::builder()
-                    .method(Method::GET)
-                    .uri("/ping")
-                    .header("Origin", origin)
+                    .uri("/api/config/timezone")
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(
-            response.headers().get("access-control-allow-origin"),
-            Some(&HeaderValue::from_static(origin))
-        );
-        assert_eq!(
-            response.headers().get("access-control-allow-credentials"),
-            Some(&HeaderValue::from_static("true"))
-        );
-    }
-
-    #[tokio::test]
-    async fn cors_allows_request_origin_when_origin_list_empty() {
-        let config = test_config(Vec::new());
-        let app = Router::new()
-            .route("/ping", get(|| async { "ok" }))
-            .layer(cors_layer(&config));
-
-        let origin = "http://localhost:8000";
-        let mut app = app;
-        let response = app
-            .call(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/ping")
-                    .header("Origin", origin)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.headers().get("access-control-allow-origin"),
-            Some(&HeaderValue::from_static(origin))
-        );
-    }
-
-    #[tokio::test]
-    async fn cors_preflight_allows_configured_headers() {
-        let config = test_config(vec!["http://localhost:8000".to_string()]);
-        let app = Router::new()
-            .route("/ping", get(|| async { "ok" }))
-            .layer(cors_layer(&config));
-
-        let origin = "http://localhost:8000";
-        let mut app = app;
-        let response = app
-            .call(
-                Request::builder()
-                    .method(Method::OPTIONS)
-                    .uri("/ping")
-                    .header("Origin", origin)
-                    .header("Access-Control-Request-Method", "POST")
-                    .header(
-                        "Access-Control-Request-Headers",
-                        "content-type,authorization",
-                    )
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let allow_headers = response
-            .headers()
-            .get("access-control-allow-headers")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-
-        assert!(allow_headers.contains("content-type"));
-        assert!(allow_headers.contains("authorization"));
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
     }
 }

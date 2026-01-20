@@ -5,12 +5,11 @@ use axum::{
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Error as SqlxError, FromRow, PgPool, Postgres, QueryBuilder};
+use sqlx::{Error as SqlxError, FromRow, Postgres, QueryBuilder};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         holiday::{
@@ -19,6 +18,7 @@ use crate::{
         },
         user::User,
     },
+    state::AppState,
     utils::time,
 };
 
@@ -30,7 +30,7 @@ const MAX_PER_PAGE: i64 = 100;
 const MAX_PAGE: i64 = 1_000;
 
 pub async fn list_holidays(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<AdminHolidayListQuery>,
 ) -> Result<Json<AdminHolidayListResponse>, AppError> {
@@ -47,7 +47,7 @@ pub async fn list_holidays(
     } = validate_admin_holiday_query(q)?;
     let offset = (page - 1) * per_page;
 
-    let (items, total) = fetch_admin_holidays(&pool, kind, from, to, per_page, offset)
+    let (items, total) = fetch_admin_holidays(&state.write_pool, kind, from, to, per_page, offset)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -60,7 +60,7 @@ pub async fn list_holidays(
 }
 
 pub async fn create_holiday(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateHolidayPayload>,
 ) -> Result<Json<HolidayResponse>, AppError> {
@@ -103,7 +103,7 @@ pub async fn create_holiday(
     .bind(&holiday.description)
     .bind(holiday.created_at)
     .bind(holiday.updated_at)
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await;
 
     match insert_result {
@@ -120,7 +120,7 @@ pub async fn create_holiday(
 }
 
 pub async fn delete_holiday(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(holiday_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -130,7 +130,7 @@ pub async fn delete_holiday(
 
     let result = sqlx::query("DELETE FROM holidays WHERE id = $1")
         .bind(&holiday_id)
-        .execute(&pool)
+        .execute(&state.write_pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -142,7 +142,7 @@ pub async fn delete_holiday(
 }
 
 pub async fn list_weekly_holidays(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<WeeklyHolidayResponse>>, AppError> {
     if !user.is_admin() {
@@ -153,7 +153,7 @@ pub async fn list_weekly_holidays(
         "SELECT id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at \
          FROM weekly_holidays ORDER BY enforced_from, weekday",
     )
-    .fetch_all(&pool)
+    .fetch_all(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -166,7 +166,7 @@ pub async fn list_weekly_holidays(
 }
 
 pub async fn create_weekly_holiday(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateWeeklyHolidayPayload>,
 ) -> Result<Json<WeeklyHolidayResponse>, AppError> {
@@ -188,7 +188,7 @@ pub async fn create_weekly_holiday(
         }
     }
 
-    let today = time::today_local(&config.time_zone);
+    let today = time::today_local(&state.config.time_zone);
     let tomorrow = today + Duration::days(1);
     if !user.is_system_admin() && payload.starts_on < tomorrow {
         return Err(AppError::BadRequest(
@@ -212,14 +212,14 @@ pub async fn create_weekly_holiday(
     .bind(weekly.created_by)
     .bind(weekly.created_at)
     .bind(weekly.updated_at)
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await?;
 
     Ok(Json(WeeklyHolidayResponse::from(weekly)))
 }
 
 pub async fn delete_weekly_holiday(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -229,7 +229,7 @@ pub async fn delete_weekly_holiday(
 
     let result = sqlx::query("DELETE FROM weekly_holidays WHERE id = $1")
         .bind(&id)
-        .execute(&pool)
+        .execute(&state.write_pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -317,7 +317,7 @@ fn apply_holiday_filters(
 }
 
 async fn fetch_admin_holidays(
-    pool: &PgPool,
+    pool: &sqlx::PgPool,
     kind: Option<AdminHolidayKind>,
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,

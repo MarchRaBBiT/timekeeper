@@ -7,13 +7,13 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::{
-    config::Config,
     middleware::request_id::RequestId,
     models::{
         consent_log::{ConsentLog, ConsentLogResponse, RecordConsentPayload},
         user::User,
     },
     repositories::consent_log,
+    state::AppState,
     utils::time,
 };
 
@@ -21,7 +21,7 @@ const MAX_PURPOSE_LENGTH: usize = 200;
 const MAX_POLICY_VERSION_LENGTH: usize = 100;
 
 pub async fn record_consent(
-    State((pool, config)): State<(crate::db::connection::DbPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(request_id): Extension<RequestId>,
     headers: HeaderMap,
@@ -33,7 +33,7 @@ pub async fn record_consent(
         "policy_version",
         MAX_POLICY_VERSION_LENGTH,
     )?;
-    let now = time::now_utc(&config.time_zone);
+    let now = time::now_utc(&state.config.time_zone);
 
     let log = ConsentLog {
         id: Uuid::new_v4().to_string(),
@@ -47,7 +47,7 @@ pub async fn record_consent(
         created_at: now,
     };
 
-    consent_log::insert_consent_log(&pool, &log)
+    consent_log::insert_consent_log(&state.write_pool, &log)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to insert consent log");
@@ -61,11 +61,11 @@ pub async fn record_consent(
 }
 
 pub async fn list_my_consents(
-    State((pool, _config)): State<(crate::db::connection::DbPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<ConsentLogResponse>>, (StatusCode, Json<Value>)> {
     let user_id = user.id.to_string();
-    let logs = consent_log::list_consent_logs_for_user(&pool, &user_id)
+    let logs = consent_log::list_consent_logs_for_user(&state.write_pool, &user_id)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list consent logs");

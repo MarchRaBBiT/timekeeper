@@ -17,6 +17,7 @@ use timekeeper_backend::{
     },
     models::{audit_log::AuditLog, user::UserRole},
     repositories::{audit_log, permissions},
+    state::AppState,
     types::{AuditLogId, UserId},
 };
 use tokio::sync::Mutex;
@@ -79,7 +80,7 @@ async fn audit_log_list_requires_permission() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let app = Router::new()
@@ -110,7 +111,7 @@ async fn audit_log_list_filters_and_paginates() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
@@ -214,7 +215,7 @@ async fn audit_log_detail_returns_log() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
@@ -274,7 +275,7 @@ async fn audit_log_export_returns_json_file() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
@@ -353,7 +354,7 @@ async fn audit_log_export_requires_from_and_to() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
@@ -390,7 +391,7 @@ async fn audit_log_export_rejects_period_exceeding_31_days() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
@@ -444,7 +445,7 @@ async fn audit_log_export_allows_exactly_31_days() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = (pool.clone(), config);
+    let state = AppState::new(pool.clone(), None, config);
 
     let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();

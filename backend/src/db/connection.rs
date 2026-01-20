@@ -67,8 +67,12 @@ impl PoolConfig {
     }
 }
 
+#[allow(dead_code)]
 pub async fn create_pool(database_url: &str) -> anyhow::Result<DbPool> {
-    create_pool_with_config(database_url, PoolConfig::from_env()).await
+    let config: PoolConfig = PoolConfig::from_env();
+    let pool = create_pool_with_config(database_url, config).await?;
+
+    Ok(pool)
 }
 
 pub async fn create_pool_with_config(
@@ -76,6 +80,9 @@ pub async fn create_pool_with_config(
     config: PoolConfig,
 ) -> anyhow::Result<DbPool> {
     config.log();
+
+    let span = tracing::info_span!("db_pool_connect");
+    let _enter = span.enter();
 
     let pool = PgPoolOptions::new()
         .max_connections(config.max_connections)
@@ -87,4 +94,30 @@ pub async fn create_pool_with_config(
         .await?;
 
     Ok(pool)
+}
+
+pub async fn create_pools(
+    write_url: &str,
+    read_url: Option<&str>,
+) -> anyhow::Result<(DbPool, Option<DbPool>)> {
+    create_pools_with_config(write_url, read_url, PoolConfig::from_env()).await
+}
+
+pub async fn create_pools_with_config(
+    write_url: &str,
+    read_url: Option<&str>,
+    config: PoolConfig,
+) -> anyhow::Result<(DbPool, Option<DbPool>)> {
+    tracing::info!("Creating write pool");
+    let write_pool = create_pool_with_config(write_url, config.clone()).await?;
+
+    let read_pool = if let Some(read_url) = read_url {
+        tracing::info!("Creating read replica pool");
+        Some(create_pool_with_config(read_url, config).await?)
+    } else {
+        tracing::info!("No read replica configured, using write pool for reads");
+        None
+    };
+
+    Ok((write_pool, read_pool))
 }

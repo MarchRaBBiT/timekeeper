@@ -12,16 +12,15 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    config::Config,
     models::{audit_log::AuditLog, user::User},
     repositories::{
         audit_log::{self, AuditLogFilters},
         permissions,
     },
+    state::AppState,
     types::{AuditLogId, UserId},
     utils::time,
 };
@@ -48,9 +47,7 @@ pub struct AuditLogListQuery {
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
 pub struct AuditLogExportQuery {
-    /// Start date (required, RFC3339 or YYYY-MM-DD)
     pub from: String,
-    /// End date (required, RFC3339 or YYYY-MM-DD)
     pub to: String,
     pub actor_id: Option<String>,
     pub actor_type: Option<String>,
@@ -106,16 +103,16 @@ pub struct AuditLogListResponse {
 }
 
 pub async fn list_audit_logs(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogListQuery>,
 ) -> Result<Json<AuditLogListResponse>, AppError> {
-    ensure_audit_log_access(&pool, &user).await?;
+    ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
     let (items, total): (Vec<crate::models::audit_log::AuditLog>, i64) =
-        audit_log::list_audit_logs(&pool, &filters, per_page, offset)
+        audit_log::list_audit_logs(state.read_pool(), &filters, per_page, offset)
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -131,16 +128,16 @@ pub async fn list_audit_logs(
 }
 
 pub async fn get_audit_log_detail(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<AuditLogResponse>, AppError> {
-    ensure_audit_log_access(&pool, &user).await?;
+    ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let audit_log_id = AuditLogId::from_str(&id)
         .map_err(|_| AppError::BadRequest("Invalid audit log ID".into()))?;
 
-    let log = audit_log::fetch_audit_log(&pool, audit_log_id)
+    let log = audit_log::fetch_audit_log(state.read_pool(), audit_log_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("Not found".into()))?;
@@ -149,14 +146,14 @@ pub async fn get_audit_log_detail(
 }
 
 pub async fn export_audit_logs(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogExportQuery>,
 ) -> Result<Response, AppError> {
-    ensure_audit_log_access(&pool, &user).await?;
+    ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let filters = validate_export_query(q)?;
-    let logs = audit_log::export_audit_logs(&pool, &filters)
+    let logs = audit_log::export_audit_logs(state.read_pool(), &filters)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -165,7 +162,7 @@ pub async fn export_audit_logs(
 
     let filename = format!(
         "audit_logs_{}.json",
-        time::now_in_timezone(&config.time_zone).format("%Y%m%d_%H%M%S")
+        time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
     );
     let mut response = Response::new(Body::from(body));
     response
@@ -179,7 +176,7 @@ pub async fn export_audit_logs(
     Ok(response)
 }
 
-async fn ensure_audit_log_access(pool: &PgPool, user: &User) -> Result<(), AppError> {
+async fn ensure_audit_log_access(pool: &sqlx::PgPool, user: &User) -> Result<(), AppError> {
     if user.is_system_admin() {
         return Ok(());
     }

@@ -7,12 +7,12 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{Postgres, Transaction};
 use std::str::FromStr;
 use utoipa::ToSchema;
 
+use crate::state::AppState;
 use crate::{
-    config::Config,
     handlers::attendance::recalculate_total_hours,
     handlers::attendance_utils::{get_break_records, get_break_records_map},
     models::{
@@ -23,7 +23,7 @@ use crate::{
 };
 
 pub async fn get_all_attendance(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResponse<AttendanceResponse>>, AppError> {
@@ -35,7 +35,7 @@ pub async fn get_all_attendance(
     let offset = pagination.offset();
 
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attendance")
-        .fetch_one(&pool)
+        .fetch_one(state.read_pool())
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -45,12 +45,12 @@ pub async fn get_all_attendance(
     )
     .bind(limit)
     .bind(offset)
-    .fetch_all(&pool)
+    .fetch_all(state.read_pool())
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(&pool, &attendance_ids).await?;
+    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
 
     let mut data = Vec::new();
     for attendance in attendances {
@@ -88,7 +88,7 @@ pub struct AdminBreakItem {
 }
 
 pub async fn upsert_attendance(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(body): Json<AdminAttendanceUpsert>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
@@ -120,7 +120,8 @@ pub async fn upsert_attendance(
         None => None,
     };
 
-    let mut tx: Transaction<'_, Postgres> = pool
+    let mut tx: Transaction<'_, Postgres> = state
+        .write_pool
         .begin()
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
@@ -140,7 +141,7 @@ pub async fn upsert_attendance(
     let mut att = crate::models::attendance::Attendance::new(
         user_id_typed,
         date,
-        time::now_utc(&config.time_zone),
+        time::now_utc(&state.config.time_zone),
     );
     att.clock_in_time = Some(cin);
     att.clock_out_time = cout;
@@ -164,7 +165,7 @@ pub async fn upsert_attendance(
                     .ok()
                     .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
             });
-            let now_utc = time::now_utc(&config.time_zone);
+            let now_utc = time::now_utc(&state.config.time_zone);
             let mut br = crate::models::break_record::BreakRecord::new(att.id, bs, now_utc);
             if let Some(bev) = be {
                 br.break_end_time = Some(bev);
@@ -213,7 +214,7 @@ pub async fn upsert_attendance(
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
 
-    let breaks = get_break_records(&pool, att.id).await?;
+    let breaks = get_break_records(&state.write_pool, att.id).await?;
     Ok(Json(AttendanceResponse {
         id: att.id,
         user_id: att.user_id,
@@ -229,7 +230,7 @@ pub async fn upsert_attendance(
 // Admin: force end a break
 // Admin: force end a break
 pub async fn force_end_break(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(break_id): Path<String>,
 ) -> Result<Json<crate::models::break_record::BreakRecordResponse>, AppError> {
@@ -238,14 +239,14 @@ pub async fn force_end_break(
     }
     let break_record_id = BreakRecordId::from_str(&break_id)
         .map_err(|_| AppError::BadRequest("Invalid break record ID format".into()))?;
-    let now_local = time::now_in_timezone(&config.time_zone);
+    let now_local = time::now_in_timezone(&state.config.time_zone);
     let now_utc = now_local.with_timezone(&Utc);
     let now = now_local.naive_local();
     let mut rec = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
     .bind(break_record_id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?
     .ok_or_else(|| AppError::NotFound("Break not found".into()))?;
@@ -263,7 +264,7 @@ pub async fn force_end_break(
         .bind(rec.duration_minutes)
         .bind(rec.updated_at)
         .bind(rec.id.to_string())
-        .execute(&pool)
+        .execute(&state.write_pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -271,11 +272,11 @@ pub async fn force_end_break(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
     )
     .bind(rec.attendance_id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))? {
         if attendance.clock_out_time.is_some() {
-            recalculate_total_hours(&pool, attendance, now_utc).await?;
+            recalculate_total_hours(&state.write_pool, attendance, now_utc).await?;
         }
     }
 

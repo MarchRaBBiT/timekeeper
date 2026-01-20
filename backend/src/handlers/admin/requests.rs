@@ -5,12 +5,11 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{Postgres, QueryBuilder};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         leave_request::{LeaveRequest, LeaveRequestResponse},
@@ -18,6 +17,7 @@ use crate::{
         user::User,
     },
     repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
+    state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
 };
@@ -30,7 +30,7 @@ pub struct ApprovePayload {
 }
 
 pub async fn approve_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<ApprovePayload>,
@@ -41,14 +41,20 @@ pub async fn approve_request(
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
-    let now_utc = time::now_utc(&config.time_zone);
+    let now_utc = time::now_utc(&state.config.time_zone);
     let leave_repo = LeaveRequestRepository::new();
     let overtime_repo = OvertimeRequestRepository::new();
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
         if leave_repo
-            .approve(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .approve(
+                &state.write_pool,
+                leave_request_id,
+                approver_id,
+                &comment,
+                now_utc,
+            )
             .await?
             > 0
         {
@@ -59,7 +65,13 @@ pub async fn approve_request(
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
         if overtime_repo
-            .approve(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .approve(
+                &state.write_pool,
+                overtime_request_id,
+                approver_id,
+                &comment,
+                now_utc,
+            )
             .await?
             > 0
         {
@@ -78,7 +90,7 @@ pub struct RejectPayload {
 }
 
 pub async fn reject_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<RejectPayload>,
@@ -89,14 +101,20 @@ pub async fn reject_request(
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
-    let now_utc = time::now_utc(&config.time_zone);
+    let now_utc = time::now_utc(&state.config.time_zone);
     let leave_repo = LeaveRequestRepository::new();
     let overtime_repo = OvertimeRequestRepository::new();
 
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
         if leave_repo
-            .reject(&pool, leave_request_id, approver_id, &comment, now_utc)
+            .reject(
+                &state.write_pool,
+                leave_request_id,
+                approver_id,
+                &comment,
+                now_utc,
+            )
             .await?
             > 0
         {
@@ -107,7 +125,13 @@ pub async fn reject_request(
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
         if overtime_repo
-            .reject(&pool, overtime_request_id, approver_id, &comment, now_utc)
+            .reject(
+                &state.write_pool,
+                overtime_request_id,
+                approver_id,
+                &comment,
+                now_utc,
+            )
             .await?
             > 0
         {
@@ -147,7 +171,7 @@ pub struct AdminRequestListPageInfo {
 }
 
 pub async fn list_requests(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<RequestListQuery>,
 ) -> Result<Json<AdminRequestListResponse>, AppError> {
@@ -176,7 +200,7 @@ pub async fn list_requests(
             .push_bind(offset);
         builder
             .build_query_as::<LeaveRequest>()
-            .fetch_all(&pool)
+            .fetch_all(state.read_pool())
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?
     } else {
@@ -195,7 +219,7 @@ pub async fn list_requests(
             .push_bind(offset);
         builder
             .build_query_as::<OvertimeRequest>()
-            .fetch_all(&pool)
+            .fetch_all(state.read_pool())
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?
     } else {
@@ -241,7 +265,7 @@ pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
 }
 
 pub async fn get_request_detail(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -252,7 +276,10 @@ pub async fn get_request_detail(
     // Try as leave request
     if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
         let leave_repo = LeaveRequestRepository::new();
-        match leave_repo.find_by_id(&pool, leave_request_id).await {
+        match leave_repo
+            .find_by_id(state.read_pool(), leave_request_id)
+            .await
+        {
             Ok(item) => {
                 return Ok(Json(
                     json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
@@ -266,7 +293,10 @@ pub async fn get_request_detail(
     // Try as overtime request
     if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
         let overtime_repo = OvertimeRequestRepository::new();
-        match overtime_repo.find_by_id(&pool, overtime_request_id).await {
+        match overtime_repo
+            .find_by_id(state.read_pool(), overtime_request_id)
+            .await
+        {
             Ok(item) => {
                 return Ok(Json(
                     json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),

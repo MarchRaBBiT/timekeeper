@@ -6,12 +6,10 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use utoipa::{IntoParams, ToSchema};
 
 use super::requests::validate_decision_comment;
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         request::RequestStatus,
@@ -19,6 +17,7 @@ use crate::{
         user::User,
     },
     repositories::subject_request::{self, SubjectRequestFilters},
+    state::AppState,
     utils::time,
 };
 
@@ -53,7 +52,7 @@ pub struct DecisionPayload {
 }
 
 pub async fn list_subject_requests(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<SubjectRequestListQuery>,
 ) -> Result<Json<SubjectRequestListResponse>, (StatusCode, Json<Value>)> {
@@ -63,15 +62,16 @@ pub async fn list_subject_requests(
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
-    let (items, total) = subject_request::list_subject_requests(&pool, &filters, per_page, offset)
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to list subject requests");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+    let (items, total) =
+        subject_request::list_subject_requests(&state.write_pool, &filters, per_page, offset)
+            .await
+            .map_err(|err| {
+                tracing::error!(error = %err, "failed to list subject requests");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Database error"})),
+                )
+            })?;
 
     Ok(Json(SubjectRequestListResponse {
         page,
@@ -85,7 +85,7 @@ pub async fn list_subject_requests(
 }
 
 pub async fn approve_subject_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
@@ -94,12 +94,12 @@ pub async fn approve_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&pool, &request_id).await?;
-    let now = time::now_utc(&config.time_zone);
+    ensure_pending_request(&state.write_pool, &request_id).await?;
+    let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
 
     let rows = subject_request::approve_subject_request(
-        &pool,
+        &state.write_pool,
         &request_id,
         &approver_id,
         &body.comment,
@@ -125,7 +125,7 @@ pub async fn approve_subject_request(
 }
 
 pub async fn reject_subject_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
@@ -134,12 +134,12 @@ pub async fn reject_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&pool, &request_id).await?;
-    let now = time::now_utc(&config.time_zone);
+    ensure_pending_request(&state.write_pool, &request_id).await?;
+    let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
 
     let rows = subject_request::reject_subject_request(
-        &pool,
+        &state.write_pool,
         &request_id,
         &approver_id,
         &body.comment,
@@ -165,7 +165,7 @@ pub async fn reject_subject_request(
 }
 
 async fn ensure_pending_request(
-    pool: &PgPool,
+    pool: &sqlx::PgPool,
     request_id: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     let existing = subject_request::fetch_subject_request(pool, request_id)
@@ -196,12 +196,12 @@ fn validate_list_query(
         .unwrap_or(DEFAULT_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
 
-    let from = parse_from_datetime(q.from.as_deref()).map_err(bad_request)?;
-    let to = parse_to_datetime(q.to.as_deref()).map_err(bad_request)?;
+    let from = parse_from_datetime(q.from.as_deref()).map_err(bad_request_helper)?;
+    let to = parse_to_datetime(q.to.as_deref()).map_err(bad_request_helper)?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(bad_request("`from` must be before or equal to `to`"));
+            return Err(bad_request_helper("`from` must be before or equal to `to`"));
         }
     }
 
@@ -235,7 +235,7 @@ fn parse_request_status(value: &str) -> Result<RequestStatus, (StatusCode, Json<
         "approved" => Ok(RequestStatus::Approved),
         "rejected" => Ok(RequestStatus::Rejected),
         "cancelled" => Ok(RequestStatus::Cancelled),
-        _ => Err(bad_request(
+        _ => Err(bad_request_helper(
             "`status` must be pending, approved, rejected, or cancelled",
         )),
     }
@@ -247,7 +247,7 @@ fn parse_request_type(value: &str) -> Result<DataSubjectRequestType, (StatusCode
         "rectify" => Ok(DataSubjectRequestType::Rectify),
         "delete" => Ok(DataSubjectRequestType::Delete),
         "stop" => Ok(DataSubjectRequestType::Stop),
-        _ => Err(bad_request(
+        _ => Err(bad_request_helper(
             "`type` must be access, rectify, delete, or stop",
         )),
     }
@@ -297,7 +297,7 @@ fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
 
 fn map_app_error(err: AppError) -> (StatusCode, Json<Value>) {
     match err {
-        AppError::BadRequest(message) => bad_request(&message),
+        AppError::BadRequest(message) => bad_request_helper(&message),
         AppError::Forbidden(message) => (StatusCode::FORBIDDEN, Json(json!({ "error": message }))),
         AppError::Unauthorized(message) => {
             (StatusCode::UNAUTHORIZED, Json(json!({ "error": message })))
@@ -318,6 +318,6 @@ fn map_app_error(err: AppError) -> (StatusCode, Json<Value>) {
     }
 }
 
-fn bad_request(message: &str) -> (StatusCode, Json<Value>) {
+fn bad_request_helper(message: &str) -> (StatusCode, Json<Value>) {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
 }
