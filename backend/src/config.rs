@@ -30,6 +30,10 @@ pub struct Config {
     pub rate_limit_ip_window_seconds: u64,
     pub rate_limit_user_max_requests: u32,
     pub rate_limit_user_window_seconds: u64,
+    pub redis_url: Option<String>,
+    pub redis_pool_size: u32,
+    pub redis_connect_timeout: u64,
+    pub feature_redis_cache_enabled: bool,
     pub feature_read_replica_enabled: bool,
 }
 
@@ -159,6 +163,21 @@ impl Config {
             .parse()
             .unwrap_or(3600);
 
+        let redis_url = env::var("REDIS_URL").ok();
+        let redis_pool_size = env::var("REDIS_POOL_SIZE")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse()
+            .unwrap_or(10);
+        let redis_connect_timeout = env::var("REDIS_CONNECT_TIMEOUT")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse()
+            .unwrap_or(5);
+
+        let feature_redis_cache_enabled = env::var("FEATURE_REDIS_CACHE_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
         let feature_read_replica_enabled = env::var("FEATURE_READ_REPLICA_ENABLED")
             .unwrap_or_else(|_| "true".to_string())
             .parse()
@@ -187,6 +206,10 @@ impl Config {
             rate_limit_ip_window_seconds,
             rate_limit_user_max_requests,
             rate_limit_user_window_seconds,
+            redis_url,
+            redis_pool_size,
+            redis_connect_timeout,
+            feature_redis_cache_enabled,
             feature_read_replica_enabled,
         })
     }
@@ -277,6 +300,10 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            redis_url: None,
+            redis_pool_size: 10,
+            redis_connect_timeout: 5,
+            feature_redis_cache_enabled: true,
             feature_read_replica_enabled: true,
         }
     }

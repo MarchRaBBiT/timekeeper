@@ -36,6 +36,9 @@ serde_json.workspace = true
 
 # Validation
 validator = { version = "0.20", features = ["derive"] }
+bb8 = "0.8"
+bb8-redis = "0.15"
+# redis dependency removed to avoid version conflict with bb8-redis
 lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
 
 # Authentication
