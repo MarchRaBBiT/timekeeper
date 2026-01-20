@@ -1,17 +1,31 @@
-use crate::{config::Config, db::connection::DbPool};
+use crate::{
+    config::Config, db::connection::DbPool, db::redis::RedisPool,
+    services::token_cache::TokenCacheServiceTrait,
+};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub write_pool: DbPool,
     pub read_pool: Option<DbPool>,
+    pub redis_pool: Option<RedisPool>,
+    pub token_cache: Option<Arc<dyn TokenCacheServiceTrait>>,
     pub config: Config,
 }
 
 impl AppState {
-    pub fn new(write_pool: DbPool, read_pool: Option<DbPool>, config: Config) -> Self {
+    pub fn new(
+        write_pool: DbPool,
+        read_pool: Option<DbPool>,
+        redis_pool: Option<RedisPool>,
+        token_cache: Option<Arc<dyn TokenCacheServiceTrait>>,
+        config: Config,
+    ) -> Self {
         Self {
             write_pool,
             read_pool,
+            redis_pool,
+            token_cache,
             config,
         }
     }
@@ -23,6 +37,15 @@ impl AppState {
             self.read_pool.as_ref().unwrap_or(&self.write_pool)
         } else {
             &self.write_pool
+        }
+    }
+
+    /// Returns the Redis pool if configured and enabled.
+    pub fn redis(&self) -> Option<&RedisPool> {
+        if self.config.feature_redis_cache_enabled {
+            self.redis_pool.as_ref()
+        } else {
+            None
         }
     }
 
@@ -47,6 +70,6 @@ impl From<AppState> for (DbPool, Config) {
 
 impl From<(DbPool, Config)> for AppState {
     fn from((db_pool, config): (DbPool, Config)) -> Self {
-        Self::new(db_pool, None, config)
+        Self::new(db_pool, None, None, None, config)
     }
 }
