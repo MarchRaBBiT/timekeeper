@@ -385,7 +385,8 @@ fn cors_layer(config: &Config) -> CorsLayer {
     let mut layer = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
-        .allow_credentials(true);
+        .allow_credentials(true)
+        .max_age(Duration::from_secs(24 * 60 * 60));
 
     if config.cors_allow_origins.contains(&"*".to_string()) {
         layer = layer.allow_origin(AllowOrigin::predicate(|_, _| true));
@@ -408,6 +409,11 @@ fn spawn_audit_log_cleanup(
     if !retention_policy.is_recording_enabled() {
         return;
     }
+
+    tracing::info!(
+        retention_days = retention_policy.retention_days(),
+        "Starting daily audit log cleanup task"
+    );
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));
@@ -435,6 +441,11 @@ fn spawn_consent_log_cleanup(
     if !retention_policy.is_recording_enabled() {
         return;
     }
+
+    tracing::info!(
+        retention_days = retention_policy.retention_days(),
+        "Starting daily consent log cleanup task"
+    );
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));
