@@ -43,7 +43,7 @@ async fn test_password_reset_full_flow() {
 
     assert_ne!(updated_user.password_hash, user.password_hash);
 
-    password_reset_repo::mark_token_as_used(&pool, reset_record.id)
+    password_reset_repo::mark_token_as_used(&pool, &reset_record.id)
         .await
         .expect("mark token used");
 
@@ -71,9 +71,12 @@ async fn test_expired_token_cleanup() {
 
     let user = create_test_user(&pool, "cleanup@example.com", "Pass123!").await;
 
+    let reset_id = uuid::Uuid::new_v4();
+
     sqlx::query(
-        "INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        "INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
+    .bind(reset_id)
     .bind(user.id)
     .bind("expired_token_hash")
     .bind(Utc::now() - chrono::Duration::hours(2))
@@ -111,15 +114,21 @@ async fn test_invalid_token_returns_none() {
 async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
     let password_hash = hash_password(password).expect("hash password");
 
+    let user_id = timekeeper_backend::types::UserId::new();
+
+    let email = format!("{}_{}", email, uuid::Uuid::new_v4());
+    let username = format!("user_{}", email);
+
     sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, password_hash, full_name, email, role, is_system_admin)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
+        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin,
         mfa_secret, mfa_enabled_at, created_at, updated_at
         "#,
     )
-    .bind(format!("user_{}", email))
+    .bind(user_id.to_string())
+    .bind(username)
     .bind(password_hash)
     .bind("Test User")
     .bind(email)

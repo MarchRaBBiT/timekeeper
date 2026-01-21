@@ -15,13 +15,16 @@ pub async fn create_password_reset(
     let token_hash = hash_token(token);
     let expires_at = Utc::now() + Duration::hours(1);
 
+    let reset_id = Uuid::new_v4();
+
     let record = sqlx::query_as::<_, PasswordReset>(
         r#"
-        INSERT INTO password_resets (user_id, token_hash, expires_at)
-        VALUES ($1, $2, $3)
+        INSERT INTO password_resets (id, user_id, token_hash, expires_at)
+        VALUES ($1, $2, $3, $4)
         RETURNING id, user_id, token_hash, expires_at, created_at, used_at
         "#,
     )
+    .bind(reset_id.to_string())
     .bind(user_id)
     .bind(&token_hash)
     .bind(expires_at)
@@ -55,7 +58,7 @@ pub async fn find_valid_reset_by_token(
     Ok(record)
 }
 
-pub async fn mark_token_as_used(pool: &PgPool, reset_id: Uuid) -> Result<(), AppError> {
+pub async fn mark_token_as_used(pool: &PgPool, reset_id: &str) -> Result<(), AppError> {
     let now = Utc::now();
 
     sqlx::query(
