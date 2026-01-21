@@ -5,6 +5,7 @@ fn loads_time_zone_string_without_db() {
     // Ensure Config struct stays default-constructible via explicit values.
     let cfg = Config {
         database_url: "postgres://example".into(),
+        read_database_url: None,
         jwt_secret: "secret".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 1,
@@ -25,6 +26,7 @@ fn loads_time_zone_string_without_db() {
         rate_limit_ip_window_seconds: 900,
         rate_limit_user_max_requests: 20,
         rate_limit_user_window_seconds: 3600,
+        feature_read_replica_enabled: true,
     };
     assert_eq!(cfg.time_zone, chrono_tz::Asia::Tokyo);
 }

@@ -16,7 +16,7 @@ pub use holidays::*;
 pub use requests::*;
 pub use users::*;
 
-mod subject_requests;
+pub mod subject_requests;
 pub use subject_requests::*;
 
 #[cfg(any(test, feature = "test-utils"))]

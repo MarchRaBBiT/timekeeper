@@ -17,9 +17,9 @@ use crate::handlers::attendance_utils::{
     get_break_records, get_break_records_map, insert_attendance_record, update_clock_in,
     update_clock_out,
 };
+use crate::state::AppState;
 use crate::types::{AttendanceId, UserId};
 use crate::{
-    config::Config,
     models::{
         attendance::{
             Attendance, AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest,
@@ -55,14 +55,14 @@ pub struct AttendanceStatusResponse {
 }
 
 pub async fn clock_in(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockInRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id;
 
-    let tz = &config.time_zone;
+    let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
@@ -70,37 +70,38 @@ pub async fn clock_in(
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
-    let attendance: Attendance = match fetch_attendance_by_user_date(&pool, user_id, date).await? {
-        Some(mut attendance) => {
-            ensure_not_clocked_in(&attendance)?;
-            attendance.clock_in_time = Some(clock_in_time);
-            attendance.updated_at = now_utc;
-            update_clock_in(&pool, &attendance).await?;
-            attendance
-        }
-        None => {
-            let mut attendance = Attendance::new(user_id, date, now_utc);
-            attendance.clock_in_time = Some(clock_in_time);
-            insert_attendance_record(&pool, &attendance).await?;
-            attendance
-        }
-    };
+    let attendance: Attendance =
+        match fetch_attendance_by_user_date(&state.write_pool, user_id, date).await? {
+            Some(mut attendance) => {
+                ensure_not_clocked_in(&attendance)?;
+                attendance.clock_in_time = Some(clock_in_time);
+                attendance.updated_at = now_utc;
+                update_clock_in(&state.write_pool, &attendance).await?;
+                attendance
+            }
+            None => {
+                let mut attendance = Attendance::new(user_id, date, now_utc);
+                attendance.clock_in_time = Some(clock_in_time);
+                insert_attendance_record(&state.write_pool, &attendance).await?;
+                attendance
+            }
+        };
 
-    let break_records = get_break_records(&pool, attendance.id).await?;
+    let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
 }
 
 pub async fn clock_out(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockOutRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id;
 
-    let tz = &config.time_zone;
+    let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
@@ -109,7 +110,7 @@ pub async fn clock_out(
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
 
     let attendance_opt: Option<Attendance> =
-        fetch_attendance_by_user_date(&pool, user_id, date).await?;
+        fetch_attendance_by_user_date(&state.write_pool, user_id, date).await?;
     let mut attendance: Attendance = attendance_opt
         .ok_or_else(|| AppError::NotFound("No attendance record found for today".into()))?;
 
@@ -120,7 +121,7 @@ pub async fn clock_out(
         "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL LIMIT 1",
     )
     .bind(attendance.id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await?;
 
     if active_break.is_some() {
@@ -130,30 +131,30 @@ pub async fn clock_out(
     }
 
     attendance.clock_out_time = Some(clock_out_time);
-    let break_minutes = total_break_minutes(&pool, attendance.id).await?;
+    let break_minutes = total_break_minutes(&state.write_pool, attendance.id).await?;
     attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = now_utc;
 
-    update_clock_out(&pool, &attendance).await?;
+    update_clock_out(&state.write_pool, &attendance).await?;
 
-    let break_records = get_break_records(&pool, attendance.id).await?;
+    let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
 }
 
 pub async fn break_start(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakStartRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
-    let tz = &config.time_zone;
+    let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_start_time = now_local.naive_local();
 
     // Check if attendance record exists and user is clocked in
-    let attendance = fetch_attendance_by_id(&pool, payload.attendance_id).await?;
+    let attendance = fetch_attendance_by_id(&state.write_pool, payload.attendance_id).await?;
     ensure_authorized_access(&attendance, user.id)?;
     ensure_clocked_in(&attendance)?;
 
@@ -162,7 +163,7 @@ pub async fn break_start(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL"
     )
     .bind(payload.attendance_id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await?;
 
     if active_break.is_some() {
@@ -181,7 +182,7 @@ pub async fn break_start(
     .bind(break_record.duration_minutes)
     .bind(break_record.created_at)
     .bind(break_record.updated_at)
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await?;
 
     let response = BreakRecordResponse::from(break_record);
@@ -189,11 +190,11 @@ pub async fn break_start(
 }
 
 pub async fn break_end(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakEndRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
-    let tz = &config.time_zone;
+    let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_end_time = now_local.naive_local();
@@ -203,7 +204,7 @@ pub async fn break_end(
         "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
     )
     .bind(payload.break_record_id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await?
     .ok_or_else(|| {
         AppError::NotFound("Break record not found".into())
@@ -212,7 +213,7 @@ pub async fn break_end(
     if !break_record.is_active() {
         return Err(AppError::BadRequest("Break already ended".into()));
     }
-    let att = fetch_attendance_by_id(&pool, break_record.attendance_id).await?;
+    let att = fetch_attendance_by_id(&state.write_pool, break_record.attendance_id).await?;
     ensure_authorized_access(&att, user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
@@ -224,11 +225,11 @@ pub async fn break_end(
     .bind(break_record.duration_minutes)
     .bind(break_record.updated_at)
     .bind(break_record.id.to_string())
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await?;
 
     if att.clock_out_time.is_some() {
-        recalculate_total_hours(&pool, att, now_utc).await?;
+        recalculate_total_hours(&state.write_pool, att, now_utc).await?;
     }
 
     let response = BreakRecordResponse::from(break_record);
@@ -236,7 +237,7 @@ pub async fn break_end(
 }
 
 pub async fn get_my_attendance(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
 ) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
@@ -244,7 +245,7 @@ pub async fn get_my_attendance(
 
     // from/to range takes precedence over year/month
     let attendances = if params.from.is_some() || params.to.is_some() {
-        let tz = &config.time_zone;
+        let tz = &state.config.time_zone;
         let from = params.from.unwrap_or_else(|| time::today_local(tz));
         let to = params.to.unwrap_or_else(|| time::today_local(tz));
         if from > to {
@@ -256,10 +257,10 @@ pub async fn get_my_attendance(
         .bind(user_id.to_string())
         .bind(from)
         .bind(to)
-        .fetch_all(&pool)
+        .fetch_all(state.read_pool())
         .await?
     } else {
-        let tz = &config.time_zone;
+        let tz = &state.config.time_zone;
         let now_local = time::now_in_timezone(tz);
         let year = params.year.unwrap_or_else(|| now_local.year());
         let month = params.month.unwrap_or_else(|| now_local.month());
@@ -278,12 +279,12 @@ pub async fn get_my_attendance(
         .bind(user_id.to_string())
         .bind(first_day)
         .bind(last_day)
-        .fetch_all(&pool)
+        .fetch_all(state.read_pool())
         .await?
     };
 
     let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(&pool, &attendance_ids).await?;
+    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
 
     let mut responses = Vec::new();
     for attendance in attendances {
@@ -295,7 +296,7 @@ pub async fn get_my_attendance(
 }
 
 pub async fn get_attendance_status(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<AttendanceStatusResponse>, AppError> {
@@ -303,14 +304,14 @@ pub async fn get_attendance_status(
     let date = params
         .get("date")
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-        .unwrap_or_else(|| time::today_local(&config.time_zone));
+        .unwrap_or_else(|| time::today_local(&state.config.time_zone));
 
     let attendance: Option<Attendance> = sqlx::query_as::<_, Attendance>(
         "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE user_id = $1 AND date = $2"
     )
     .bind(user_id.to_string())
     .bind(date)
-    .fetch_optional(&pool)
+    .fetch_optional(state.read_pool())
     .await?;
 
     if let Some(att) = attendance {
@@ -319,7 +320,7 @@ pub async fn get_attendance_status(
             "SELECT id FROM break_records WHERE attendance_id = $1 AND break_end_time IS NULL ORDER BY break_start_time DESC LIMIT 1"
         )
         .bind(att.id.to_string())
-        .fetch_optional(&pool)
+        .fetch_optional(state.read_pool())
         .await?;
 
         let resp = if att.clock_in_time.is_none() {
@@ -369,23 +370,23 @@ pub async fn get_attendance_status(
 }
 
 pub async fn get_breaks_by_attendance(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Path(attendance_id): Path<String>,
 ) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
     let attendance_id = AttendanceId::from_str(&attendance_id)
         .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
-    let records = get_break_records(&pool, attendance_id).await?;
+    let records = get_break_records(state.read_pool(), attendance_id).await?;
     Ok(Json(records))
 }
 
 pub async fn get_my_summary(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceQuery>,
 ) -> Result<Json<AttendanceSummary>, AppError> {
     let user_id = user.id;
 
-    let now_local = time::now_in_timezone(&config.time_zone);
+    let now_local = time::now_in_timezone(&state.config.time_zone);
     let year = params.year.unwrap_or_else(|| now_local.year());
     let month = params.month.unwrap_or_else(|| now_local.month());
 
@@ -407,7 +408,7 @@ pub async fn get_my_summary(
     .bind(user_id.to_string())
     .bind(first_day)
     .bind(last_day)
-    .fetch_one(&pool)
+    .fetch_one(state.read_pool())
     .await?;
 
     let total_work_hours: f64 = row.try_get::<f64, _>("total_hours").unwrap_or(0.0);
@@ -430,7 +431,7 @@ pub async fn get_my_summary(
 }
 
 pub async fn export_my_attendance(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceExportQuery>,
 ) -> Result<Json<Value>, AppError> {
@@ -459,7 +460,7 @@ pub async fn export_my_attendance(
     }
     builder.push(" ORDER BY a.date DESC");
 
-    let rows = builder.build().fetch_all(&pool).await?;
+    let rows = builder.build().fetch_all(state.read_pool()).await?;
 
     let mut csv_data = String::new();
     append_csv_row(
@@ -517,7 +518,7 @@ pub async fn export_my_attendance(
         "csv_data": csv_data,
         "filename": format!(
             "my_attendance_export_{}.csv",
-            time::now_in_timezone(&config.time_zone).format("%Y%m%d_%H%M%S")
+            time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
         )
     })))
 }

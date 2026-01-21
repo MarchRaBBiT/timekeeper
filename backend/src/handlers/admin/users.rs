@@ -5,22 +5,21 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 use crate::{
-    config::Config,
     error::AppError,
     models::user::{CreateUser, UpdateUser, User, UserResponse, UserRole},
     repositories::user as user_repo,
+    state::AppState,
     types::UserId,
     utils::password::hash_password,
 };
 
 pub async fn get_users(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<UserResponse>>, AppError> {
     if !(user.is_admin() || user.is_system_admin()) {
@@ -31,7 +30,7 @@ pub async fn get_users(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users ORDER BY created_at DESC",
     )
-    .fetch_all(&pool)
+    .fetch_all(state.read_pool())
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -40,7 +39,7 @@ pub async fn get_users(
 }
 
 pub async fn create_user(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateUser>,
 ) -> Result<Json<UserResponse>, AppError> {
@@ -54,7 +53,7 @@ pub async fn create_user(
          mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
     )
     .bind(&payload.username)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -100,7 +99,7 @@ pub async fn create_user(
     .bind(user.mfa_enabled_at)
     .bind(user.created_at)
     .bind(user.updated_at)
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -109,7 +108,7 @@ pub async fn create_user(
 }
 
 pub async fn update_user(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(admin): Extension<User>,
     Path(user_id): Path<String>,
     Json(payload): Json<UpdateUser>,
@@ -127,7 +126,7 @@ pub async fn update_user(
          mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
     )
     .bind(user_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?
     .ok_or_else(|| AppError::NotFound("User not found".into()))?;
@@ -138,7 +137,7 @@ pub async fn update_user(
         )
         .bind(email)
         .bind(user_id)
-        .fetch_one(&pool)
+        .fetch_one(&state.write_pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -165,7 +164,7 @@ pub async fn update_user(
     .bind(role.as_str())
     .bind(is_system_admin)
     .bind(user_id)
-    .fetch_one(&pool)
+    .fetch_one(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -178,7 +177,7 @@ pub struct ResetMfaPayload {
 }
 
 pub async fn reset_user_mfa(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Json(payload): Json<ResetMfaPayload>,
 ) -> Result<Json<Value>, AppError> {
@@ -193,7 +192,7 @@ pub async fn reset_user_mfa(
     )
     .bind(now)
     .bind(&payload.user_id)
-    .execute(&pool)
+    .execute(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -202,9 +201,9 @@ pub async fn reset_user_mfa(
     }
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(&payload.user_id)
-        .execute(&pool)
+        .execute(&state.write_pool)
         .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?; // Keeping map_err here or using ? if simplified globally, but let's stick to simple ? if possible. Wait, map_err fixes type inference? No, removing it does.
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(Json(json!({
         "message": "MFA reset and refresh tokens revoked",
@@ -212,42 +211,30 @@ pub async fn reset_user_mfa(
     })))
 }
 
-// ============================================================================
-// User deletion
-// ============================================================================
-
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DeleteUserParams {
-    /// If true, permanently delete user and all data. If false, archive (soft delete).
     #[serde(default)]
     pub hard: bool,
 }
 
-/// Delete a user (soft or hard delete).
-/// Soft delete: Archives user and related data (except session tokens).
-/// Hard delete: Permanently removes user and all related data.
 pub async fn delete_user(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
     Query(params): Query<DeleteUserParams>,
 ) -> Result<Json<Value>, AppError> {
-    // Only system admins can delete users
     if !requester.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    // Parse and validate user_id
     let parsed_user_id = UserId::from_str(&user_id)
         .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
 
-    // Cannot delete self
     if requester.id == parsed_user_id {
         return Err(AppError::BadRequest("Cannot delete yourself".into()));
     }
 
-    // Check if user exists
-    let exists = user_repo::user_exists(&pool, &user_id)
+    let exists = user_repo::user_exists(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -255,15 +242,13 @@ pub async fn delete_user(
         return Err(AppError::NotFound("User not found".into()));
     }
 
-    // Get username for audit log
-    let username = user_repo::fetch_username(&pool, &user_id)
+    let username = user_repo::fetch_username(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
     if params.hard {
-        // Hard delete - CASCADE will remove all related data
-        user_repo::hard_delete_user(&pool, &user_id)
+        user_repo::hard_delete_user(&state.write_pool, &user_id)
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -280,8 +265,7 @@ pub async fn delete_user(
             "deletion_type": "hard"
         })))
     } else {
-        // Soft delete - move to archive tables
-        user_repo::soft_delete_user(&pool, &user_id, &requester.id.to_string())
+        user_repo::soft_delete_user(&state.write_pool, &user_id, &requester.id.to_string())
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -300,11 +284,6 @@ pub async fn delete_user(
     }
 }
 
-// ============================================================================
-// Archived user management
-// ============================================================================
-
-/// Response type for archived user list.
 #[derive(Debug, Serialize)]
 pub struct ArchivedUserResponse {
     pub id: String,
@@ -316,17 +295,15 @@ pub struct ArchivedUserResponse {
     pub archived_by: Option<String>,
 }
 
-/// Get all archived users.
 pub async fn get_archived_users(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(requester): Extension<User>,
 ) -> Result<Json<Vec<ArchivedUserResponse>>, AppError> {
-    // Only system admins can view archived users
     if !requester.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    let rows = user_repo::get_archived_users(&pool)
+    let rows = user_repo::get_archived_users(state.read_pool())
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -346,19 +323,16 @@ pub async fn get_archived_users(
     Ok(Json(response))
 }
 
-/// Restore an archived user.
 pub async fn restore_archived_user(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    // Only system admins can restore users
     if !requester.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    // Check if archived user exists
-    let exists = user_repo::archived_user_exists(&pool, &user_id)
+    let exists = user_repo::archived_user_exists(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -366,17 +340,15 @@ pub async fn restore_archived_user(
         return Err(AppError::NotFound("Archived user not found".into()));
     }
 
-    // Check if username already exists in active users
-    let username = user_repo::fetch_archived_username(&pool, &user_id)
+    let username = user_repo::fetch_archived_username(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
-    // Check for username conflict
     let conflict_check: Option<(String,)> =
         sqlx::query_as("SELECT id FROM users WHERE username = $1")
             .bind(&username)
-            .fetch_optional(&pool)
+            .fetch_optional(&state.write_pool)
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -386,8 +358,7 @@ pub async fn restore_archived_user(
         ));
     }
 
-    // Restore user
-    user_repo::restore_user(&pool, &user_id)
+    user_repo::restore_user(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -404,19 +375,16 @@ pub async fn restore_archived_user(
     })))
 }
 
-/// Permanently delete an archived user.
 pub async fn delete_archived_user(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    // Only system admins can delete archived users
     if !requester.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    // Check if archived user exists
-    let exists = user_repo::archived_user_exists(&pool, &user_id)
+    let exists = user_repo::archived_user_exists(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -424,14 +392,12 @@ pub async fn delete_archived_user(
         return Err(AppError::NotFound("Archived user not found".into()));
     }
 
-    // Get username for logging
-    let username = user_repo::fetch_archived_username(&pool, &user_id)
+    let username = user_repo::fetch_archived_username(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
-    // Delete archived user
-    user_repo::hard_delete_archived_user(&pool, &user_id)
+    user_repo::hard_delete_archived_user(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 

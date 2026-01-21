@@ -3,17 +3,16 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use validator::Validate;
 
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
+    state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
 };
 
@@ -22,7 +21,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 pub async fn create_leave_request(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateLeaveRequest>,
 ) -> Result<Json<LeaveRequestResponse>, AppError> {
@@ -39,13 +38,13 @@ pub async fn create_leave_request(
     );
 
     let repo = LeaveRequestRepository::new();
-    let saved = repo.create(&pool, &leave_request).await?;
+    let saved = repo.create(&state.write_pool, &leave_request).await?;
     let response = LeaveRequestResponse::from(saved);
     Ok(Json(response))
 }
 
 pub async fn create_overtime_request(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
     Json(payload): Json<CreateOvertimeRequest>,
 ) -> Result<Json<OvertimeRequestResponse>, AppError> {
@@ -57,22 +56,24 @@ pub async fn create_overtime_request(
         OvertimeRequest::new(user_id, payload.date, payload.planned_hours, payload.reason);
 
     let repo = OvertimeRequestRepository::new();
-    let saved = repo.create(&pool, &overtime_request).await?;
+    let saved = repo.create(&state.write_pool, &overtime_request).await?;
     let response = OvertimeRequestResponse::from(saved);
     Ok(Json(response))
 }
 
 pub async fn get_my_requests(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = user.id;
 
     let leave_repo = LeaveRequestRepository::new();
-    let leave_requests = leave_repo.find_by_user(&pool, user_id).await?;
+    let leave_requests = leave_repo.find_by_user(state.read_pool(), user_id).await?;
 
     let overtime_repo = OvertimeRequestRepository::new();
-    let overtime_requests = overtime_repo.find_by_user(&pool, user_id).await?;
+    let overtime_requests = overtime_repo
+        .find_by_user(state.read_pool(), user_id)
+        .await?;
 
     let response = json!({
         "leave_requests": leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
@@ -98,7 +99,7 @@ pub struct UpdateOvertimePayload {
 }
 
 pub async fn update_request(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
     Json(payload): Json<serde_json::Value>,
@@ -111,7 +112,7 @@ pub async fn update_request(
 
     let leave_repo = LeaveRequestRepository::new();
     if let Some(req) = leave_repo
-        .find_by_id_for_user(&pool, leave_request_id, user_id)
+        .find_by_id_for_user(&state.write_pool, leave_request_id, user_id)
         .await?
     {
         if !req.is_pending() {
@@ -137,7 +138,7 @@ pub async fn update_request(
         updated.end_date = new_end;
         updated.reason = new_reason;
         updated.updated_at = now;
-        leave_repo.update(&pool, &updated).await?;
+        leave_repo.update(&state.write_pool, &updated).await?;
         return Ok(Json(json!({"message":"Leave request updated"})));
     }
 
@@ -147,7 +148,7 @@ pub async fn update_request(
 
     let overtime_repo = OvertimeRequestRepository::new();
     if let Some(req) = overtime_repo
-        .find_by_id_for_user(&pool, overtime_request_id, user_id)
+        .find_by_id_for_user(&state.write_pool, overtime_request_id, user_id)
         .await?
     {
         if !req.is_pending() {
@@ -169,7 +170,7 @@ pub async fn update_request(
         updated.planned_hours = new_hours;
         updated.reason = new_reason;
         updated.updated_at = now;
-        overtime_repo.update(&pool, &updated).await?;
+        overtime_repo.update(&state.write_pool, &updated).await?;
         return Ok(Json(json!({"message":"Overtime request updated"})));
     }
 
@@ -177,7 +178,7 @@ pub async fn update_request(
 }
 
 pub async fn cancel_request(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -189,7 +190,7 @@ pub async fn cancel_request(
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
     let leave_repo = LeaveRequestRepository::new();
     let result = leave_repo
-        .cancel(&pool, leave_request_id, user_id, now)
+        .cancel(&state.write_pool, leave_request_id, user_id, now)
         .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
@@ -200,7 +201,7 @@ pub async fn cancel_request(
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
     let overtime_repo = OvertimeRequestRepository::new();
     let result = overtime_repo
-        .cancel(&pool, overtime_request_id, user_id, Utc::now())
+        .cancel(&state.write_pool, overtime_request_id, user_id, Utc::now())
         .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));

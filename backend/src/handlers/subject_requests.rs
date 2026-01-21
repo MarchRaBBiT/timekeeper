@@ -4,10 +4,8 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
 
 use crate::{
-    config::Config,
     models::{
         subject_request::{
             CreateDataSubjectRequest, DataSubjectRequest, DataSubjectRequestResponse,
@@ -15,22 +13,23 @@ use crate::{
         user::User,
     },
     repositories::subject_request,
+    state::AppState,
     utils::time,
 };
 
 const MAX_DETAILS_LENGTH: usize = 2000;
 
 pub async fn create_subject_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateDataSubjectRequest>,
 ) -> Result<Json<DataSubjectRequestResponse>, (StatusCode, Json<Value>)> {
     let details = validate_details(payload.details)?;
-    let now = time::now_utc(&config.time_zone);
+    let now = time::now_utc(&state.config.time_zone);
     let user_id = user.id.to_string();
     let request = DataSubjectRequest::new(user_id, payload.request_type, details, now);
 
-    subject_request::insert_subject_request(&pool, &request)
+    subject_request::insert_subject_request(&state.write_pool, &request)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to create subject request");
@@ -44,11 +43,11 @@ pub async fn create_subject_request(
 }
 
 pub async fn list_my_subject_requests(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<DataSubjectRequestResponse>>, (StatusCode, Json<Value>)> {
     let user_id = user.id.to_string();
-    let requests = subject_request::list_subject_requests_by_user(&pool, &user_id)
+    let requests = subject_request::list_subject_requests_by_user(state.read_pool(), &user_id)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list subject requests");
@@ -67,21 +66,22 @@ pub async fn list_my_subject_requests(
 }
 
 pub async fn cancel_subject_request(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let now = time::now_utc(&config.time_zone);
+    let now = time::now_utc(&state.config.time_zone);
     let user_id = user.id.to_string();
-    let rows = subject_request::cancel_subject_request(&pool, &request_id, &user_id, now)
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to cancel subject request");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+    let rows =
+        subject_request::cancel_subject_request(&state.write_pool, &request_id, &user_id, now)
+            .await
+            .map_err(|err| {
+                tracing::error!(error = %err, "failed to cancel subject request");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Database error"})),
+                )
+            })?;
 
     if rows == 0 {
         return Err((

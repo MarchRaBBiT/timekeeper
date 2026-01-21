@@ -7,6 +7,7 @@ use timekeeper_backend::{config::Config, middleware::rate_limit::create_auth_rat
 fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u64) -> Config {
     Config {
         database_url: "test://".to_string(),
+        read_database_url: None,
         jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
@@ -27,6 +28,7 @@ fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u6
         rate_limit_ip_window_seconds,
         rate_limit_user_max_requests: 5,
         rate_limit_user_window_seconds: 300,
+        feature_read_replica_enabled: true,
     }
 }
 

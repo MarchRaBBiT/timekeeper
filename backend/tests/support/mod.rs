@@ -127,6 +127,7 @@ pub fn test_config() -> Config {
 
     Config {
         database_url,
+        read_database_url: None,
         jwt_secret: "a_secure_token_that_is_long_enough_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
@@ -147,6 +148,7 @@ pub fn test_config() -> Config {
         rate_limit_ip_window_seconds: 900,
         rate_limit_user_max_requests: 20,
         rate_limit_user_window_seconds: 3600,
+        feature_read_replica_enabled: true,
     }
 }
 

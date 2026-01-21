@@ -17,6 +17,7 @@ use timekeeper_backend::{
         user::UserRole,
     },
     repositories::subject_request,
+    state::AppState,
 };
 use tokio::sync::Mutex;
 use tower::ServiceExt;
@@ -53,7 +54,7 @@ async fn create_and_list_subject_requests_for_user() {
     reset_subject_requests(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let state = (pool.clone(), support::test_config());
+    let state = AppState::new(pool.clone(), None, support::test_config());
 
     let app = Router::new()
         .route(
@@ -129,7 +130,7 @@ async fn cancel_subject_request_marks_status() {
     reset_subject_requests(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let state = (pool.clone(), support::test_config());
+    let state = AppState::new(pool.clone(), None, support::test_config());
     let now = Utc::now();
 
     let request = DataSubjectRequest::new(
@@ -183,7 +184,7 @@ async fn admin_can_list_and_decide_subject_requests() {
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let admin_user = support::seed_user(&pool, UserRole::Admin, false).await;
-    let state = (pool.clone(), support::test_config());
+    let state = AppState::new(pool.clone(), None, support::test_config());
     let now = Utc::now();
 
     let pending = DataSubjectRequest::new(
