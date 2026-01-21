@@ -4,13 +4,13 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{Postgres, QueryBuilder, Row};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    config::Config,
     error::AppError,
     models::user::User,
+    state::AppState,
     utils::{csv::append_csv_row, time},
 };
 
@@ -34,7 +34,7 @@ struct ExportRow {
 }
 
 pub async fn export_data(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<ExportQuery>,
 ) -> Result<Json<Value>, AppError> {
@@ -82,7 +82,7 @@ pub async fn export_data(
     builder.push(" ORDER BY a.date DESC, u.username");
     let data: Vec<sqlx::postgres::PgRow> = builder
         .build()
-        .fetch_all(&pool)
+        .fetch_all(state.read_pool())
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -162,7 +162,7 @@ pub async fn export_data(
         "csv_data": csv_data,
         "filename": format!(
             "attendance_export_{}.csv",
-            time::now_in_timezone(&config.time_zone).format("%Y%m%d_%H%M%S")
+            time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
         )
     })))
 }

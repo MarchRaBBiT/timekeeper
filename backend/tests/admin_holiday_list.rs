@@ -10,11 +10,12 @@ use std::time::Duration;
 use timekeeper_backend::{
     config::Config,
     error::AppError,
-    handlers::admin::{
+    handlers::admin::holidays::{
         list_holidays, AdminHolidayKind, AdminHolidayListItem, AdminHolidayListQuery,
         AdminHolidayListResponse,
     },
     models::user::{User, UserRole},
+    state::AppState,
     utils::cookies::SameSite,
 };
 
@@ -146,6 +147,7 @@ fn test_admin() -> User {
 fn dummy_config() -> Config {
     Config {
         database_url: "postgres://invalid:invalid@localhost:5432/invalid".into(),
+        read_database_url: None,
         jwt_secret: "this_is_a_long_enough_jwt_secret_string_123".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
@@ -166,6 +168,7 @@ fn dummy_config() -> Config {
         rate_limit_ip_window_seconds: 900,
         rate_limit_user_max_requests: 20,
         rate_limit_user_window_seconds: 3600,
+        feature_read_replica_enabled: true,
     }
 }
 
@@ -261,7 +264,7 @@ async fn admin_holiday_list_rejects_unknown_type() {
     };
 
     let result = list_holidays(
-        State((pool, dummy_config())),
+        State(AppState::new(pool, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )
@@ -291,7 +294,7 @@ async fn admin_holiday_list_rejects_invalid_date_format() {
     };
 
     let result = list_holidays(
-        State((pool, dummy_config())),
+        State(AppState::new(pool, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )
@@ -324,7 +327,7 @@ async fn admin_holiday_list_rejects_from_after_to() {
     };
 
     let result = list_holidays(
-        State((pool, dummy_config())),
+        State(AppState::new(pool, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )

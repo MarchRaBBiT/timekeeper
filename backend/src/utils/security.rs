@@ -49,6 +49,7 @@ mod tests {
     fn test_config(allowed: Vec<String>) -> Config {
         Config {
             database_url: "".into(),
+            read_database_url: None,
             jwt_secret: "".into(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 1,
@@ -69,6 +70,7 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            feature_read_replica_enabled: true,
         }
     }
 
@@ -107,19 +109,6 @@ mod tests {
     fn verify_referer_fallback() {
         let config = test_config(vec!["http://localhost:3000".into()]);
         let mut headers = HeaderMap::new();
-        headers.insert("Referer", "http://localhost:3000/settings".parse().unwrap());
-        // Simple logic checks if ref starts with origin or contains it in allowed list
-        // In our impl: strict match against trim_end_matches('/')
-        // So Referer must be exact base URL or logic needs adjustment if we want to allow subpaths.
-        // The implementation does: `o == origin_str.trim_end_matches('/')`
-        // If Referer is full path, it won't match "http://localhost:3000".
-        // Let's adjust the test to match strict implementation,
-        // OR distinct implementation if we want to support Referer paths.
-        // Current impl is strict equality. So Referer matching "http://localhost:3000" works.
-        // If Referer is "http://localhost:3000/foo", it fails.
-        // This is acceptable for strict checks if the client sends Origin (browsers do for POST/PUT).
-        // If Origin is missing, and Referer is used, we might want to parse origin from Referer.
-        // For now, let's test exact match behaviour.
         headers.insert("Referer", "http://localhost:3000".parse().unwrap());
         assert!(verify_request_origin(&headers, &config).is_ok());
     }

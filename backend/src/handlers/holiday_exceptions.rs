@@ -7,16 +7,15 @@ use axum::{
     Json,
 };
 use chrono::NaiveDate;
-use sqlx::PgPool;
 
 use crate::{
-    config::Config,
     error::AppError,
     models::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         user::User,
     },
     services::holiday_exception::{HolidayExceptionError, HolidayExceptionServiceTrait},
+    state::AppState,
     types::{HolidayExceptionId, UserId},
 };
 
@@ -27,7 +26,7 @@ pub struct HolidayExceptionQuery {
 }
 
 pub async fn create_holiday_exception(
-    State((_pool, _config)): State<(PgPool, Config)>,
+    State(_state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
@@ -50,7 +49,7 @@ pub async fn create_holiday_exception(
 }
 
 pub async fn list_holiday_exceptions(
-    State((_pool, _config)): State<(PgPool, Config)>,
+    State(_state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path(target_user_id): Path<String>,
@@ -75,7 +74,7 @@ pub async fn list_holiday_exceptions(
 }
 
 pub async fn delete_holiday_exception(
-    State((_pool, _config)): State<(PgPool, Config)>,
+    State(_state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(service): Extension<Arc<dyn HolidayExceptionServiceTrait>>,
     Path((target_user_id, id)): Path<(String, String)>,

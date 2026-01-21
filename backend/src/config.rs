@@ -9,6 +9,7 @@ use crate::utils::cookies::SameSite;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub database_url: String,
+    pub read_database_url: Option<String>,
     pub jwt_secret: String,
     pub jwt_expiration_hours: u64,
     pub refresh_token_expiration_days: u64,
@@ -29,6 +30,7 @@ pub struct Config {
     pub rate_limit_ip_window_seconds: u64,
     pub rate_limit_user_max_requests: u32,
     pub rate_limit_user_window_seconds: u64,
+    pub feature_read_replica_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +65,8 @@ impl Config {
         let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgres://timekeeper:timekeeper@localhost:5432/timekeeper".to_string()
         });
+
+        let read_database_url = env::var("READ_DATABASE_URL").ok();
 
         let jwt_secret = env::var("JWT_SECRET")
             .map_err(|_| anyhow!("JWT_SECRET must be set and at least 32 characters long"))?;
@@ -155,8 +159,14 @@ impl Config {
             .parse()
             .unwrap_or(3600);
 
-        Ok(Config {
+        let feature_read_replica_enabled = env::var("FEATURE_READ_REPLICA_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
+        Ok(Self {
             database_url,
+            read_database_url,
             jwt_secret,
             jwt_expiration_hours,
             refresh_token_expiration_days,
@@ -171,12 +181,13 @@ impl Config {
             cookie_secure,
             cookie_same_site,
             cors_allow_origins,
+            time_zone,
+            mfa_issuer,
             rate_limit_ip_max_requests,
             rate_limit_ip_window_seconds,
             rate_limit_user_max_requests,
             rate_limit_user_window_seconds,
-            time_zone,
-            mfa_issuer,
+            feature_read_replica_enabled,
         })
     }
 
@@ -245,6 +256,7 @@ mod tests {
     fn base_config() -> Config {
         Config {
             database_url: "postgres://test".to_string(),
+            read_database_url: None,
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
@@ -265,6 +277,7 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            feature_read_replica_enabled: true,
         }
     }
 

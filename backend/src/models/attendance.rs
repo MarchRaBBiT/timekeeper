@@ -104,6 +104,21 @@ pub struct AttendanceSummary {
     pub average_daily_hours: f64,
 }
 
+impl From<Attendance> for AttendanceResponse {
+    fn from(a: Attendance) -> Self {
+        Self {
+            id: a.id,
+            user_id: a.user_id,
+            date: a.date,
+            clock_in_time: a.clock_in_time,
+            clock_out_time: a.clock_out_time,
+            status: a.status,
+            total_work_hours: a.total_work_hours,
+            break_records: Vec::new(),
+        }
+    }
+}
+
 impl Attendance {
     /// Builds a new attendance record with default status and timestamps.
     pub fn new(user_id: UserId, date: NaiveDate, now: DateTime<Utc>) -> Self {

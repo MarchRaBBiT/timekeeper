@@ -13,6 +13,7 @@ use timekeeper_backend::{
         holiday::{HolidayReason, HolidayService},
         holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
     },
+    state::AppState,
 };
 
 use {
@@ -124,15 +125,15 @@ async fn handler_creates_and_lists_personal_workday_override() {
 
     let app = Router::new()
         .route(
-            "/api/admin/users/:user_id/holiday-exceptions",
+            "/api/admin/users/{user_id}/holiday-exceptions",
             post(holiday_exceptions::create_holiday_exception)
                 .get(holiday_exceptions::list_holiday_exceptions),
         )
         .route(
-            "/api/admin/users/:user_id/holiday-exceptions/:id",
+            "/api/admin/users/{user_id}/holiday-exceptions/{id}",
             delete(holiday_exceptions::delete_holiday_exception),
         )
-        .with_state((pool.clone(), config.clone()))
+        .with_state(AppState::new(pool.clone(), None, config.clone()))
         .layer(Extension(admin.clone()))
         .layer(Extension(exception_service.clone()));
 
