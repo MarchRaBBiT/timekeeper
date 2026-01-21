@@ -65,7 +65,7 @@ pub async fn list_my_consents(
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<ConsentLogResponse>>, (StatusCode, Json<Value>)> {
     let user_id = user.id.to_string();
-    let logs = consent_log::list_consent_logs_for_user(&state.write_pool, &user_id)
+    let logs = consent_log::list_consent_logs_for_user(state.read_pool(), &user_id)
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list consent logs");

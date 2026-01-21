@@ -388,7 +388,7 @@ fn cors_layer(config: &Config) -> CorsLayer {
         .allow_credentials(true);
 
     if config.cors_allow_origins.contains(&"*".to_string()) {
-        layer = layer.allow_origin(AllowOrigin::any());
+        layer = layer.allow_origin(AllowOrigin::predicate(|_, _| true));
     } else {
         let origins: Vec<HeaderValue> = config
             .cors_allow_origins

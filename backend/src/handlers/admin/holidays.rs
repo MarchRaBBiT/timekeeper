@@ -47,7 +47,7 @@ pub async fn list_holidays(
     } = validate_admin_holiday_query(q)?;
     let offset = (page - 1) * per_page;
 
-    let (items, total) = fetch_admin_holidays(&state.write_pool, kind, from, to, per_page, offset)
+    let (items, total) = fetch_admin_holidays(state.read_pool(), kind, from, to, per_page, offset)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -153,7 +153,7 @@ pub async fn list_weekly_holidays(
         "SELECT id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at \
          FROM weekly_holidays ORDER BY enforced_from, weekday",
     )
-    .fetch_all(&state.write_pool)
+    .fetch_all(state.read_pool())
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 

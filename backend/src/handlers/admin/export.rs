@@ -82,7 +82,7 @@ pub async fn export_data(
     builder.push(" ORDER BY a.date DESC, u.username");
     let data: Vec<sqlx::postgres::PgRow> = builder
         .build()
-        .fetch_all(&state.write_pool)
+        .fetch_all(state.read_pool())
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
