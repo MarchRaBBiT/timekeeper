@@ -10,7 +10,7 @@ async fn test_admin_update_user_email() {
     let _admin = create_test_user(&pool, "admin@test.com", "admin", true).await;
     let user = create_test_user(&pool, "user@test.com", "user1", false).await;
 
-    let new_email = "newemail@test.com";
+    let new_email = format!("newemail_{}@test.com", uuid::Uuid::new_v4());
 
     let update_payload = UpdateUser {
         full_name: None,
@@ -45,7 +45,7 @@ async fn test_user_update_own_profile() {
 
     let user = create_test_user(&pool, "original@test.com", "testuser", false).await;
 
-    let new_email = "updated@test.com";
+    let new_email = format!("updated_{}@test.com", uuid::Uuid::new_v4());
     let new_full_name = "Updated Name";
 
     let update_payload = UpdateProfile {
@@ -93,14 +93,19 @@ async fn create_test_user(pool: &PgPool, email: &str, username: &str, is_admin: 
     let password_hash =
         timekeeper_backend::utils::password::hash_password("TestPass123!").expect("hash password");
 
+    let user_id = timekeeper_backend::types::UserId::new();
+    let username = format!("{}_{}", username, uuid::Uuid::new_v4());
+    let email = format!("{}_{}", email, uuid::Uuid::new_v4());
+
     sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, password_hash, full_name, email, role, is_system_admin)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
+        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin,
         mfa_secret, mfa_enabled_at, created_at, updated_at
         "#,
     )
+    .bind(user_id.to_string())
     .bind(username)
     .bind(password_hash)
     .bind("Test User")

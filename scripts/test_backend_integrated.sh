@@ -6,8 +6,12 @@ set -e
 # Change to project root
 cd "$(dirname "$0")/.."
 
-echo "Starting test database..."
-podman-compose -f docker-compose.test-db.yml up -d
+if podman ps --format '{{.Names}}' | grep -q '^timekeeper_test-db_1$'; then
+    echo "Test database already running."
+else
+    echo "Starting test database..."
+    podman-compose -f docker-compose.test-db.yml up -d
+fi
 
 # Wait for healthy state
 echo "Waiting for database to be healthy..."

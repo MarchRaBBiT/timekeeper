@@ -26,6 +26,10 @@ fn loads_time_zone_string_without_db() {
         rate_limit_ip_window_seconds: 900,
         rate_limit_user_max_requests: 20,
         rate_limit_user_window_seconds: 3600,
+        redis_url: None,
+        redis_pool_size: 10,
+        redis_connect_timeout: 5,
+        feature_redis_cache_enabled: true,
         feature_read_replica_enabled: true,
     };
     assert_eq!(cfg.time_zone, chrono_tz::Asia::Tokyo);

@@ -33,7 +33,7 @@ struct AuditEventDescriptor {
 }
 
 pub async fn audit_log(
-    State((_, config)): State<(crate::db::connection::DbPool, Config)>,
+    State(state): State<crate::state::AppState>,
     request: Request,
     next: Next,
 ) -> Response {
@@ -72,7 +72,11 @@ pub async fn audit_log(
 
     let response = next.run(request).await;
 
-    if !config.audit_log_retention_policy().is_recording_enabled() {
+    if !state
+        .config
+        .audit_log_retention_policy()
+        .is_recording_enabled()
+    {
         return response;
     }
 
@@ -115,7 +119,7 @@ pub async fn audit_log(
         metadata: build_metadata(
             descriptor.event_type,
             &headers,
-            &config,
+            &state.config,
             actor.as_ref(),
             body_bytes.as_ref(),
         ),

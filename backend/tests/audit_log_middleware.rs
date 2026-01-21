@@ -73,7 +73,7 @@ async fn audit_log_middleware_records_event() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 365;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -135,7 +135,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 0;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -182,7 +182,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -241,7 +241,7 @@ async fn audit_log_middleware_records_auth_failure() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 365;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
@@ -292,7 +292,7 @@ async fn audit_log_middleware_records_request_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -357,7 +357,7 @@ async fn audit_log_middleware_records_consent_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -414,7 +414,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -473,7 +473,7 @@ async fn audit_log_middleware_records_approval_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -530,7 +530,7 @@ async fn audit_log_middleware_records_password_change_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
