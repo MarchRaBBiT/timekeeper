@@ -5,18 +5,22 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Postgres, QueryBuilder};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
     models::{
-        leave_request::{LeaveRequest, LeaveRequestResponse},
-        overtime_request::{OvertimeRequest, OvertimeRequestResponse},
+        leave_request::LeaveRequestResponse,
+        overtime_request::OvertimeRequestResponse,
         user::User,
     },
-    repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
+    repositories::{
+        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
+        repository::Repository,
+        LeaveRequestRepository,
+        OvertimeRequestRepository,
+    },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
@@ -42,41 +46,20 @@ pub async fn approve_request(
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&state.config.time_zone);
-    let leave_repo = LeaveRequestRepository::new();
-    let overtime_repo = OvertimeRequestRepository::new();
-
-    // Try as leave request
-    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if leave_repo
-            .approve(
-                &state.write_pool,
-                leave_request_id,
+    let request_repo = RequestRepository::new();
+    if request_repo
+        .update_request_status(
+            &state.write_pool,
+            &request_id,
+            RequestStatusUpdate::Approve {
                 approver_id,
-                &comment,
-                now_utc,
-            )
-            .await?
-            > 0
-        {
-            return Ok(Json(json!({"message": "Leave request approved"})));
-        }
-    }
-
-    // Try as overtime request
-    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if overtime_repo
-            .approve(
-                &state.write_pool,
-                overtime_request_id,
-                approver_id,
-                &comment,
-                now_utc,
-            )
-            .await?
-            > 0
-        {
-            return Ok(Json(json!({"message": "Overtime request approved"})));
-        }
+                comment: &comment,
+                timestamp: now_utc,
+            },
+        )
+        .await?
+    {
+        return Ok(Json(json!({"message": "Request approved"})));
     }
 
     Err(AppError::NotFound(
@@ -102,41 +85,20 @@ pub async fn reject_request(
     let approver_id = user.id;
     let comment = body.comment;
     let now_utc = time::now_utc(&state.config.time_zone);
-    let leave_repo = LeaveRequestRepository::new();
-    let overtime_repo = OvertimeRequestRepository::new();
-
-    // Try as leave request
-    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        if leave_repo
-            .reject(
-                &state.write_pool,
-                leave_request_id,
+    let request_repo = RequestRepository::new();
+    if request_repo
+        .update_request_status(
+            &state.write_pool,
+            &request_id,
+            RequestStatusUpdate::Reject {
                 approver_id,
-                &comment,
-                now_utc,
-            )
-            .await?
-            > 0
-        {
-            return Ok(Json(json!({"message": "Leave request rejected"})));
-        }
-    }
-
-    // Try as overtime request
-    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        if overtime_repo
-            .reject(
-                &state.write_pool,
-                overtime_request_id,
-                approver_id,
-                &comment,
-                now_utc,
-            )
-            .await?
-            > 0
-        {
-            return Ok(Json(json!({"message": "Overtime request rejected"})));
-        }
+                comment: &comment,
+                timestamp: now_utc,
+            },
+        )
+        .await?
+    {
+        return Ok(Json(json!({"message": "Request rejected"})));
     }
 
     Err(AppError::NotFound(
@@ -188,50 +150,39 @@ pub async fn list_requests(
         _ => (true, true),
     };
 
-    let leave_items = if include_leave {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests",
-        );
-        apply_request_filters(&mut builder, &q);
-        builder
-            .push(" ORDER BY created_at DESC LIMIT ")
-            .push_bind(per_page)
-            .push(" OFFSET ")
-            .push_bind(offset);
-        builder
-            .build_query_as::<LeaveRequest>()
-            .fetch_all(state.read_pool())
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
-    } else {
-        Vec::new()
+    let filters = RequestListFilters {
+        status: q.status,
+        user_id: q.user_id,
+        from: q
+            .from
+            .as_deref()
+            .and_then(|value| parse_filter_datetime(value, false)),
+        to: q
+            .to
+            .as_deref()
+            .and_then(|value| parse_filter_datetime(value, true)),
     };
 
-    let ot_items = if include_overtime {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM overtime_requests",
-        );
-        apply_request_filters(&mut builder, &q);
-        builder
-            .push(" ORDER BY created_at DESC LIMIT ")
-            .push_bind(per_page)
-            .push(" OFFSET ")
-            .push_bind(offset);
-        builder
-            .build_query_as::<OvertimeRequest>()
-            .fetch_all(state.read_pool())
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?
-    } else {
-        Vec::new()
-    };
+    let request_repo = RequestRepository::new();
+    let result = request_repo
+        .get_requests_with_relations(
+            state.read_pool(),
+            &filters,
+            per_page,
+            offset,
+            include_leave,
+            include_overtime,
+        )
+        .await?;
 
     Ok(Json(AdminRequestListResponse {
-        leave_requests: leave_items
+        leave_requests: result
+            .leave_requests
             .into_iter()
             .map(LeaveRequestResponse::from)
             .collect::<Vec<_>>(),
-        overtime_requests: ot_items
+        overtime_requests: result
+            .overtime_requests
             .into_iter()
             .map(OvertimeRequestResponse::from)
             .collect::<Vec<_>>(),
@@ -308,42 +259,6 @@ pub async fn get_request_detail(
     }
 
     Err(AppError::NotFound("Request not found".into()))
-}
-
-fn apply_request_filters<'a>(
-    builder: &mut QueryBuilder<'a, Postgres>,
-    filters: &'a RequestListQuery,
-) {
-    let mut has_clause = false;
-    if let Some(ref uid) = filters.user_id {
-        push_clause(builder, &mut has_clause);
-        builder.push("user_id = ").push_bind(uid);
-    }
-    if let Some(ref status) = filters.status {
-        push_clause(builder, &mut has_clause);
-        builder.push("status = ").push_bind(status);
-    }
-    if let Some(ref from) = filters.from {
-        if let Some(from_dt) = parse_filter_datetime(from, false) {
-            push_clause(builder, &mut has_clause);
-            builder.push("created_at >= ").push_bind(from_dt);
-        }
-    }
-    if let Some(ref to) = filters.to {
-        if let Some(to_dt) = parse_filter_datetime(to, true) {
-            push_clause(builder, &mut has_clause);
-            builder.push("created_at <= ").push_bind(to_dt);
-        }
-    }
-}
-
-fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {
-    if *has_clause {
-        builder.push(" AND ");
-    } else {
-        builder.push(" WHERE ");
-        *has_clause = true;
-    }
 }
 
 fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {

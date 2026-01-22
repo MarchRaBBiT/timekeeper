@@ -11,7 +11,12 @@ use crate::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
-    repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
+    repositories::{
+        request::{RequestCreate, RequestRecord, RequestRepository},
+        repository::Repository,
+        LeaveRequestRepository,
+        OvertimeRequestRepository,
+    },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
 };
@@ -37,9 +42,18 @@ pub async fn create_leave_request(
         payload.reason,
     );
 
-    let repo = LeaveRequestRepository::new();
-    let saved = repo.create(&state.write_pool, &leave_request).await?;
-    let response = LeaveRequestResponse::from(saved);
+    let repo = RequestRepository::new();
+    let saved = repo
+        .create_request_with_history(&state.write_pool, RequestCreate::Leave(&leave_request))
+        .await?;
+    let response = match saved {
+        RequestRecord::Leave(item) => LeaveRequestResponse::from(item),
+        RequestRecord::Overtime(_) => {
+            return Err(AppError::InternalServerError(anyhow::anyhow!(
+                "Repository returned OvertimeRequest when LeaveRequest was expected"
+            )))
+        }
+    };
     Ok(Json(response))
 }
 
@@ -55,9 +69,21 @@ pub async fn create_overtime_request(
     let overtime_request =
         OvertimeRequest::new(user_id, payload.date, payload.planned_hours, payload.reason);
 
-    let repo = OvertimeRequestRepository::new();
-    let saved = repo.create(&state.write_pool, &overtime_request).await?;
-    let response = OvertimeRequestResponse::from(saved);
+    let repo = RequestRepository::new();
+    let saved = repo
+        .create_request_with_history(
+            &state.write_pool,
+            RequestCreate::Overtime(&overtime_request),
+        )
+        .await?;
+    let response = match saved {
+        RequestRecord::Overtime(item) => OvertimeRequestResponse::from(item),
+        RequestRecord::Leave(_) => {
+            return Err(AppError::InternalServerError(anyhow::anyhow!(
+                "Repository returned LeaveRequest when OvertimeRequest was expected"
+            )))
+        }
+    };
     Ok(Json(response))
 }
 
@@ -67,17 +93,12 @@ pub async fn get_my_requests(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = user.id;
 
-    let leave_repo = LeaveRequestRepository::new();
-    let leave_requests = leave_repo.find_by_user(state.read_pool(), user_id).await?;
-
-    let overtime_repo = OvertimeRequestRepository::new();
-    let overtime_requests = overtime_repo
-        .find_by_user(state.read_pool(), user_id)
-        .await?;
+    let repo = RequestRepository::new();
+    let requests = repo.get_user_requests(state.read_pool(), user_id).await?;
 
     let response = json!({
-        "leave_requests": leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
-        "overtime_requests": overtime_requests.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>()
+        "leave_requests": requests.leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
+        "overtime_requests": requests.overtime_requests.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>()
     });
 
     Ok(Json(response))
