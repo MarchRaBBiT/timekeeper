@@ -2,9 +2,8 @@ use chrono::Utc;
 use uuid::Uuid;
 use sqlx::PgPool;
 use timekeeper_backend::{
-    handlers::auth_repo,
     models::user::{User, UserRole},
-    repositories::password_reset as password_reset_repo,
+    repositories::{auth as auth_repo, password_reset as password_reset_repo},
     utils::{password::hash_password, security::generate_token},
 };
 

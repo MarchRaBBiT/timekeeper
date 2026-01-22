@@ -23,6 +23,7 @@ pub use subject_requests::*;
 #[allow(dead_code)]
 mod query_validation {
     use super::*;
+    use crate::models::holiday::AdminHolidayKind;
     use axum::http::StatusCode;
     use axum::Json;
     use chrono::NaiveDate;

@@ -2,7 +2,39 @@ use crate::types::{HolidayId, UserId, WeeklyHolidayId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::str::FromStr;
 use utoipa::ToSchema;
+
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminHolidayKind {
+    Public,
+    Weekly,
+    Exception,
+}
+
+impl AdminHolidayKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AdminHolidayKind::Public => "public",
+            AdminHolidayKind::Weekly => "weekly",
+            AdminHolidayKind::Exception => "exception",
+        }
+    }
+}
+
+impl FromStr for AdminHolidayKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "public" => Ok(AdminHolidayKind::Public),
+            "weekly" => Ok(AdminHolidayKind::Weekly),
+            "exception" => Ok(AdminHolidayKind::Exception),
+            _ => Err(()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Holiday {
@@ -119,4 +151,23 @@ impl From<WeeklyHoliday> for WeeklyHolidayResponse {
             enforced_to: value.enforced_to,
         }
     }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminHolidayListItem {
+    pub id: String,
+    pub kind: AdminHolidayKind,
+    pub applies_from: NaiveDate,
+    pub applies_to: Option<NaiveDate>,
+    pub date: Option<NaiveDate>,
+    pub weekday: Option<i16>,
+    pub starts_on: Option<NaiveDate>,
+    pub ends_on: Option<NaiveDate>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub user_id: Option<String>,
+    pub reason: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub is_override: Option<bool>,
 }
