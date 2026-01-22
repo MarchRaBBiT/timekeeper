@@ -8,7 +8,7 @@ use crate::error::AppError;
 use crate::models::break_record::BreakRecord;
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, BreakRecordId};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 const TABLE_NAME: &str = "break_records";
 const SELECT_COLUMNS: &str =
@@ -57,6 +57,38 @@ impl BreakRecordRepository {
             .fetch_all(db)
             .await?;
         Ok(rows)
+    }
+
+    pub async fn find_active_break(
+        &self,
+        db: &PgPool,
+        attendance_id: AttendanceId,
+    ) -> Result<Option<BreakRecord>, AppError> {
+        let query = format!(
+            "SELECT {} FROM {} WHERE attendance_id = $1 AND break_end_time IS NULL ORDER BY break_start_time DESC LIMIT 1",
+            SELECT_COLUMNS, TABLE_NAME
+        );
+        let row = sqlx::query_as::<_, BreakRecord>(&query)
+            .bind(attendance_id)
+            .fetch_optional(db)
+            .await?;
+        Ok(row)
+    }
+
+    pub async fn get_total_duration(
+        &self,
+        db: &PgPool,
+        attendance_id: AttendanceId,
+    ) -> Result<i64, AppError> {
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(duration_minutes), 0) AS minutes FROM break_records WHERE attendance_id = $1 AND duration_minutes IS NOT NULL",
+        )
+        .bind(attendance_id)
+        .fetch_one(db)
+        .await?;
+
+        let minutes: i64 = row.try_get("minutes").unwrap_or(0);
+        Ok(minutes)
     }
 
     fn base_select_query() -> String {
