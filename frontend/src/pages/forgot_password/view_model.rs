@@ -22,11 +22,9 @@ pub fn use_forgot_password_view_model() -> ForgotPasswordViewModel {
     let repo_for_submit = repository.clone();
     let submit_action = create_action(move |value: &String| {
         let repo = repo_for_submit.clone();
-        let email = value.trim().to_string();
+        let value = value.clone();
         async move {
-            if email.is_empty() {
-                return Err(ApiError::validation("Email is required"));
-            }
+            let email = normalize_email(&value)?;
             repo.request_reset(email).await
         }
     });
@@ -51,5 +49,31 @@ pub fn use_forgot_password_view_model() -> ForgotPasswordViewModel {
         error,
         success,
         submit_action,
+    }
+}
+
+fn normalize_email(value: &str) -> Result<String, ApiError> {
+    let email = value.trim();
+    if email.is_empty() {
+        return Err(ApiError::validation("Email is required"));
+    }
+    Ok(email.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn normalize_email_rejects_empty() {
+        let err = normalize_email("").expect_err("should fail");
+        assert_eq!(err.code, "VALIDATION_ERROR");
+    }
+
+    #[wasm_bindgen_test]
+    fn normalize_email_trims_whitespace() {
+        let email = normalize_email("  test@example.com  ").expect("valid");
+        assert_eq!(email, "test@example.com");
     }
 }

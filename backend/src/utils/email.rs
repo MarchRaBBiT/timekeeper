@@ -40,6 +40,9 @@ impl EmailService {
     }
 
     pub fn send_password_reset_email(&self, to_email: &str, reset_token: &str) -> Result<()> {
+        if env::var("SMTP_SKIP_SEND").unwrap_or_default() == "true" {
+            return Ok(());
+        }
         let reset_url = format!(
             "{}/reset-password?token={}",
             env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:8000".to_string()),
@@ -76,6 +79,9 @@ Timekeeper 勤怠管理システム
     }
 
     pub fn send_password_changed_notification(&self, to_email: &str, username: &str) -> Result<()> {
+        if env::var("SMTP_SKIP_SEND").unwrap_or_default() == "true" {
+            return Ok(());
+        }
         let body = format!(
             r#"
 {}さんのパスワードが変更されました。

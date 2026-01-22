@@ -1,10 +1,25 @@
+use axum::{
+    body::{to_bytes, Body},
+    http::{Request, StatusCode},
+    routing::post,
+    Router,
+};
 use chrono::Utc;
-use uuid::Uuid;
+use serde_json::json;
 use sqlx::PgPool;
+use std::{env, sync::OnceLock};
+use tokio::sync::Mutex;
+use tower::ServiceExt;
+use uuid::Uuid;
 use timekeeper_backend::{
+    handlers,
     models::user::{User, UserRole},
     repositories::{auth as auth_repo, password_reset as password_reset_repo},
-    utils::{password::hash_password, security::generate_token},
+    state::AppState,
+    utils::{
+        password::{hash_password, verify_password},
+        security::generate_token,
+    },
 };
 
 mod support;
@@ -16,10 +31,32 @@ async fn migrate_db(pool: &PgPool) {
         .expect("run migrations");
 }
 
+async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(())).lock().await
+}
+
+fn configure_email_skip() {
+    static EMAIL_SKIP: OnceLock<()> = OnceLock::new();
+    EMAIL_SKIP.get_or_init(|| {
+        env::set_var("SMTP_SKIP_SEND", "true");
+    });
+}
+
+async fn reset_password_resets(pool: &PgPool) {
+    sqlx::query("TRUNCATE password_resets")
+        .execute(pool)
+        .await
+        .expect("truncate password_resets");
+}
+
 #[tokio::test]
 async fn test_password_reset_full_flow() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
 
     let email = "test@example.com";
     let initial_password = "OldPassword123!";
@@ -75,8 +112,11 @@ async fn test_password_reset_full_flow() {
 
 #[tokio::test]
 async fn test_expired_token_cleanup() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
 
     let user = create_test_user(&pool, "cleanup@example.com", "Pass123!").await;
 
@@ -109,8 +149,11 @@ async fn test_expired_token_cleanup() {
 
 #[tokio::test]
 async fn test_invalid_token_returns_none() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
 
     let result = password_reset_repo::find_valid_reset_by_token(&pool, "invalid_token")
         .await
@@ -146,4 +189,126 @@ async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
     .fetch_one(pool)
     .await
     .expect("create test user")
+}
+
+#[tokio::test]
+async fn request_password_reset_creates_token_record() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
+
+    let user = create_test_user(&pool, "reset-request@example.com", "Pass123!").await;
+    let state = AppState::new(pool.clone(), None, None, None, support::test_config());
+
+    let app = Router::new()
+        .route(
+            "/api/auth/request-password-reset",
+            post(handlers::auth::request_password_reset),
+        )
+        .with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/request-password-reset")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "email": user.email }).to_string(),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read body");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("parse response");
+    assert!(payload.get("message").and_then(|v| v.as_str()).is_some());
+
+    let token_hash: String = sqlx::query_scalar(
+        "SELECT token_hash FROM password_resets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch token hash");
+
+    assert_eq!(token_hash.len(), 64);
+}
+
+#[tokio::test]
+async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
+
+    let user = create_test_user(&pool, "reset-endpoint@example.com", "Pass123!").await;
+    let token = generate_token(32);
+    let reset_record = password_reset_repo::create_password_reset(&pool, user.id, &token)
+        .await
+        .expect("create reset record");
+
+    let state = AppState::new(pool.clone(), None, None, None, support::test_config());
+    let app = Router::new()
+        .route(
+            "/api/auth/reset-password",
+            post(handlers::auth::reset_password),
+        )
+        .with_state(state);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/reset-password")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "token": token, "new_password": "NewPassword123!" }).to_string(),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let used_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT used_at FROM password_resets WHERE id = $1")
+            .bind(&reset_record.id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch used_at");
+    assert!(used_at.is_some());
+
+    let updated_user = auth_repo::find_user_by_id(&pool, user.id)
+        .await
+        .expect("fetch user")
+        .expect("user exists");
+    let matches = verify_password("NewPassword123!", &updated_user.password_hash)
+        .expect("verify password");
+    assert!(matches);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/reset-password")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "token": token, "new_password": "OtherPassword123!" }).to_string(),
+                ))
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
