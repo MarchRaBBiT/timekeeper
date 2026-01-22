@@ -9,7 +9,7 @@ use crate::models::attendance::Attendance;
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, UserId};
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 const TABLE_NAME: &str = "attendance";
 const SELECT_COLUMNS: &str =
@@ -39,6 +39,78 @@ impl AttendanceRepository {
             .fetch_optional(db)
             .await?;
         Ok(row)
+    }
+
+    pub async fn find_by_user_and_range(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<Attendance>, AppError> {
+        let query = format!(
+            "SELECT {} FROM {} WHERE user_id = $1 AND date BETWEEN $2 AND $3 ORDER BY date DESC",
+            SELECT_COLUMNS, TABLE_NAME
+        );
+        let rows = sqlx::query_as::<_, Attendance>(&query)
+            .bind(user_id)
+            .bind(from)
+            .bind(to)
+            .fetch_all(db)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn find_by_user_with_range_options(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<Vec<Attendance>, AppError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(format!(
+            "SELECT {} FROM {} WHERE user_id = ",
+            SELECT_COLUMNS, TABLE_NAME
+        ));
+        builder.push_bind(user_id);
+
+        if let Some(f) = from {
+            builder.push(" AND date >= ").push_bind(f);
+        }
+        if let Some(t) = to {
+            builder.push(" AND date <= ").push_bind(t);
+        }
+        builder.push(" ORDER BY date DESC");
+
+        let rows = builder
+            .build_query_as::<Attendance>()
+            .fetch_all(db)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_summary_stats(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<(f64, i64), AppError> {
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(total_work_hours), 0) as total_hours, COUNT(*) as total_days \
+             FROM attendance \
+             WHERE user_id = $1 AND date BETWEEN $2 AND $3 AND total_work_hours IS NOT NULL",
+        )
+        .bind(user_id)
+        .bind(from)
+        .bind(to)
+        .fetch_one(db)
+        .await?;
+
+        let total_work_hours: f64 = row.try_get("total_hours").unwrap_or(0.0);
+        let total_work_days: i64 = row.try_get("total_days").unwrap_or(0);
+
+        Ok((total_work_hours, total_work_days))
     }
 
     fn base_select_query() -> String {
