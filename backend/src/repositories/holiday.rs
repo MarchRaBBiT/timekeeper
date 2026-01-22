@@ -14,6 +14,60 @@ use std::str::FromStr;
 
 const TABLE_NAME: &str = "holidays";
 const SELECT_COLUMNS: &str = "id, holiday_date, name, description, created_at, updated_at";
+const ADMIN_HOLIDAY_UNION_CTE: &str = r#"
+WITH unioned AS (
+    SELECT id,
+           'public'::text AS kind,
+           holiday_date AS applies_from,
+           holiday_date AS applies_to,
+           holiday_date AS date,
+           NULL::smallint AS weekday,
+           NULL::date AS starts_on,
+           NULL::date AS ends_on,
+           name,
+           description,
+           NULL::text AS user_id,
+           description AS reason,
+           NULL::text AS created_by,
+           created_at,
+           NULL::boolean AS is_override
+    FROM holidays
+    UNION ALL
+    SELECT id,
+           'weekly'::text AS kind,
+           enforced_from AS applies_from,
+           enforced_to AS applies_to,
+           NULL::date AS date,
+           weekday,
+           starts_on,
+           ends_on,
+           NULL::text AS name,
+           NULL::text AS description,
+           NULL::text AS user_id,
+           NULL::text AS reason,
+           created_by,
+           created_at,
+           NULL::boolean AS is_override
+    FROM weekly_holidays
+    UNION ALL
+    SELECT id,
+           'exception'::text AS kind,
+           exception_date AS applies_from,
+           exception_date AS applies_to,
+           exception_date AS date,
+           NULL::smallint AS weekday,
+           NULL::date AS starts_on,
+           NULL::date AS ends_on,
+           NULL::text AS name,
+           NULL::text AS description,
+           user_id,
+           reason,
+           created_by,
+           created_at,
+           override AS is_override
+    FROM holiday_exceptions
+)
+"#;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HolidayRepository;
@@ -106,6 +160,25 @@ impl HolidayRepository {
         Ok(row)
     }
 
+    pub async fn create_unique(&self, db: &PgPool, item: &Holiday) -> Result<Holiday, AppError> {
+        match self.create(db, item).await {
+            Ok(row) => Ok(row),
+            Err(AppError::InternalServerError(err)) => {
+                if let Some(sqlx_err) = err.downcast_ref::<sqlx::Error>() {
+                    if let sqlx::Error::Database(db_err) = sqlx_err {
+                        if db_err.constraint() == Some("holidays_holiday_date_key") {
+                            return Err(AppError::BadRequest(
+                                "Holiday already exists for that date".into(),
+                            ));
+                        }
+                    }
+                }
+                Err(AppError::InternalServerError(err))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub async fn list_paginated_admin(
         &self,
         pool: &PgPool,
@@ -115,65 +188,10 @@ impl HolidayRepository {
         per_page: i64,
         offset: i64,
     ) -> Result<(Vec<AdminHolidayListItem>, i64), AppError> {
-        let mut data_builder = QueryBuilder::new(
-            r#"
-        WITH unioned AS (
-            SELECT id,
-                   'public'::text AS kind,
-                   holiday_date AS applies_from,
-                   holiday_date AS applies_to,
-                   holiday_date AS date,
-                   NULL::smallint AS weekday,
-                   NULL::date AS starts_on,
-                   NULL::date AS ends_on,
-                   name,
-                   description,
-                   NULL::text AS user_id,
-                   description AS reason,
-                   NULL::text AS created_by,
-                   created_at,
-                   NULL::boolean AS is_override
-            FROM holidays
-            UNION ALL
-            SELECT id,
-                   'weekly'::text AS kind,
-                   enforced_from AS applies_from,
-                   enforced_to AS applies_to,
-                   NULL::date AS date,
-                   weekday,
-                   starts_on,
-                   ends_on,
-                   NULL::text AS name,
-                   NULL::text AS description,
-                   NULL::text AS user_id,
-                   NULL::text AS reason,
-                   created_by,
-                   created_at,
-                   NULL::boolean AS is_override
-            FROM weekly_holidays
-            UNION ALL
-            SELECT id,
-                   'exception'::text AS kind,
-                   exception_date AS applies_from,
-                   exception_date AS applies_to,
-                   exception_date AS date,
-                   NULL::smallint AS weekday,
-                   NULL::date AS starts_on,
-                   NULL::date AS ends_on,
-                   NULL::text AS name,
-                   NULL::text AS description,
-                   user_id,
-                   reason,
-                   created_by,
-                   created_at,
-                   override AS is_override
-            FROM holiday_exceptions
-        )
-        SELECT id, kind, applies_from, applies_to, date, weekday, starts_on, ends_on,
-               name, description, user_id, reason, created_by, created_at, is_override
-        FROM unioned
-        "#,
-        );
+        let mut data_builder = QueryBuilder::new(format!(
+            "{}\nSELECT id, kind, applies_from, applies_to, date, weekday, starts_on, ends_on,\n       name, description, user_id, reason, created_by, created_at, is_override\nFROM unioned",
+            ADMIN_HOLIDAY_UNION_CTE
+        ));
 
         let mut data_has_clause = false;
         apply_holiday_filters(&mut data_builder, &mut data_has_clause, kind, from, to);
@@ -185,29 +203,10 @@ impl HolidayRepository {
             .push(" OFFSET ")
             .push_bind(offset);
 
-        let mut count_builder = QueryBuilder::new(
-            r#"
-        SELECT COUNT(*) FROM (
-            WITH unioned AS (
-                SELECT id,
-                       'public'::text AS kind,
-                       holiday_date AS applies_from
-                FROM holidays
-            UNION ALL
-                SELECT id,
-                       'weekly'::text AS kind,
-                       enforced_from AS applies_from
-                FROM weekly_holidays
-            UNION ALL
-                SELECT id,
-                       'exception'::text AS kind,
-                       exception_date AS applies_from
-                FROM holiday_exceptions
-            )
-            SELECT 1
-            FROM unioned
-        "#,
-        );
+        let mut count_builder = QueryBuilder::new(format!(
+            "SELECT COUNT(*) FROM (\n{}\nSELECT 1 FROM unioned",
+            ADMIN_HOLIDAY_UNION_CTE
+        ));
 
         let mut count_has_clause = false;
         apply_holiday_filters(&mut count_builder, &mut count_has_clause, kind, from, to);

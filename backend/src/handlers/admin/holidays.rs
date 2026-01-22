@@ -98,22 +98,8 @@ pub async fn create_holiday(
     );
 
     let repo = HolidayRepository::new();
-    match repo.create(&state.write_pool, &holiday).await {
-        Ok(_) => Ok(Json(HolidayResponse::from(holiday))),
-        Err(AppError::InternalServerError(err)) => {
-            if let Some(sqlx_err) = err.downcast_ref::<sqlx::Error>() {
-                if let sqlx::Error::Database(db_err) = sqlx_err {
-                    if db_err.constraint() == Some("holidays_holiday_date_key") {
-                        return Err(AppError::BadRequest(
-                            "Holiday already exists for that date".into(),
-                        ));
-                    }
-                }
-            }
-            Err(AppError::InternalServerError(err))
-        }
-        Err(e) => Err(e),
-    }
+    let created = repo.create_unique(&state.write_pool, &holiday).await?;
+    Ok(Json(HolidayResponse::from(created)))
 }
 
 pub async fn delete_holiday(
@@ -282,4 +268,3 @@ fn parse_type_filter(raw: Option<&str>) -> Result<Option<AdminHolidayKind>, &'st
         None => Ok(None),
     }
 }
-
