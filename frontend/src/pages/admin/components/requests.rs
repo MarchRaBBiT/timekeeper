@@ -1,6 +1,6 @@
 use crate::{
     api::ApiError,
-    components::{error::InlineErrorMessage, layout::LoadingSpinner},
+    components::{empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         utils::RequestFilterState,
@@ -156,8 +156,20 @@ pub fn AdminRequestsSection(
                                         rows.push(json!({"kind":"overtime","data": r}));
                                     }
                                 }
-                                view! { <>
-                                    {rows.into_iter().map(|row| {
+                                if rows.is_empty() {
+                                    view! {
+                                        <tr>
+                                            <td colspan="5" class="p-4">
+                                                <EmptyState
+                                                    title="申請がありません"
+                                                    description="表示できる申請データが見つかりませんでした。"
+                                                />
+                                            </td>
+                                        </tr>
+                                    }.into_view()
+                                } else {
+                                    view! { <>
+                                        {rows.into_iter().map(|row| {
                                         let kind = row.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                         let data = row.get("data").cloned().unwrap_or(json!({}));
                                         let statusv = data.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -191,8 +203,9 @@ pub fn AdminRequestsSection(
                                                 </td>
                                             </tr>
                                         }
-                                    }).collect::<Vec<_>>()}
-                                </> }
+                                        }).collect::<Vec<_>>()}
+                                    </> }.into_view()
+                                }
                             }
                         </Show>
                     </tbody>
