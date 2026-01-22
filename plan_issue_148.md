@@ -46,7 +46,7 @@ Implement a secure, self-service password reset flow to reduce administrative ov
 
 ### Phase 5: Testing & Verification
 - [ ] **Backend Tests**:
-- Integration tests for the full flow using `testcontainers` and mocked email service.
+  - Integration tests for the full flow using `testcontainers` and mocked email service.
   - Verify token expiration and invalidation logic.
 - [ ] **Frontend Tests**: WASM tests for new pages.
 - [ ] **Security Review**: Ensure raw tokens are never stored and rate limiting is applied.

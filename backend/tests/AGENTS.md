@@ -67,6 +67,6 @@ async fn test_feature() {
 
 ## NOTES
 - testcontainers は PostgreSQL v15 を一時起動
-- Podman 利用時は `DOCKER_HOST=unix:///run/podman/podman.sock` を設定
+- Podman 利用時は `DOCKER_HOST=unix:///run/podman/podman.sock` または `unix:///run/user/$UID/podman/podman.sock` を設定
 - テスト終了後に DB 自動破棄
 - 大規模テストファイル（例: `admin_holiday_list.rs`）は複数テストケースを含む
