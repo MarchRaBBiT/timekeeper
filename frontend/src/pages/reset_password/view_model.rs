@@ -27,14 +27,9 @@ pub fn use_reset_password_view_model() -> ResetPasswordViewModel {
     let submit_action = create_action(move |value: &String| {
         let repo = repo_for_submit.clone();
         let token = token_for_submit.get();
-        let new_password = value.to_string();
+        let value = value.clone();
         async move {
-            if token.trim().is_empty() {
-                return Err(ApiError::validation("Invalid token"));
-            }
-            if new_password.trim().is_empty() {
-                return Err(ApiError::validation("Password is required"));
-            }
+            let (token, new_password) = validate_reset_input(&token, &value)?;
             repo.reset_password(token, new_password).await
         }
     });
@@ -59,5 +54,43 @@ pub fn use_reset_password_view_model() -> ResetPasswordViewModel {
         error,
         success,
         submit_action,
+    }
+}
+
+fn validate_reset_input(token: &str, new_password: &str) -> Result<(String, String), ApiError> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(ApiError::validation("Invalid token"));
+    }
+    let new_password = new_password.trim();
+    if new_password.is_empty() {
+        return Err(ApiError::validation("Password is required"));
+    }
+    Ok((token.to_string(), new_password.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn validate_reset_input_rejects_empty_token() {
+        let err = validate_reset_input("", "password").expect_err("should fail");
+        assert_eq!(err.code, "VALIDATION_ERROR");
+    }
+
+    #[wasm_bindgen_test]
+    fn validate_reset_input_rejects_empty_password() {
+        let err = validate_reset_input("token", " ").expect_err("should fail");
+        assert_eq!(err.code, "VALIDATION_ERROR");
+    }
+
+    #[wasm_bindgen_test]
+    fn validate_reset_input_trims_values() {
+        let (token, password) =
+            validate_reset_input("  token  ", "  NewPass123!  ").expect("valid");
+        assert_eq!(token, "token");
+        assert_eq!(password, "NewPass123!");
     }
 }
