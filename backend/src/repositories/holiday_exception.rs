@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use crate::models::holiday_exception::HolidayException;
 use crate::types::{HolidayExceptionId, UserId};
 
+/// Inserts a new holiday exception into the database.
 pub async fn insert_holiday_exception(
     pool: &PgPool,
     exception: &HolidayException,
@@ -26,6 +27,7 @@ pub async fn insert_holiday_exception(
     .map(|_| ())
 }
 
+/// Lists holiday exceptions for a user within a given date range.
 pub async fn list_holiday_exceptions_for_user(
     pool: &PgPool,
     user_id: UserId,
@@ -49,6 +51,7 @@ pub async fn list_holiday_exceptions_for_user(
     .await
 }
 
+/// Deletes a holiday exception by ID and User ID.
 pub async fn delete_holiday_exception(
     pool: &PgPool,
     id: HolidayExceptionId,
