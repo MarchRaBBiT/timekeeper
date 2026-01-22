@@ -405,12 +405,7 @@ pub async fn export_my_attendance(
 
     let repo = AttendanceRepository::new();
     let rows = repo
-        .find_by_user_and_range(
-            state.read_pool(),
-            user.id,
-            from.unwrap_or(NaiveDate::MIN),
-            to.unwrap_or(NaiveDate::MAX),
-        )
+        .find_by_user_with_range_options(state.read_pool(), user.id, from, to)
         .await?;
 
     let mut csv_data = String::new();

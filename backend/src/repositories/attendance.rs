@@ -9,7 +9,7 @@ use crate::models::attendance::Attendance;
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, UserId};
 use chrono::NaiveDate;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 const TABLE_NAME: &str = "attendance";
 const SELECT_COLUMNS: &str =
@@ -56,6 +56,34 @@ impl AttendanceRepository {
             .bind(user_id)
             .bind(from)
             .bind(to)
+            .fetch_all(db)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn find_by_user_with_range_options(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<Vec<Attendance>, AppError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(format!(
+            "SELECT {} FROM {} WHERE user_id = ",
+            SELECT_COLUMNS, TABLE_NAME
+        ));
+        builder.push_bind(user_id);
+
+        if let Some(f) = from {
+            builder.push(" AND date >= ").push_bind(f);
+        }
+        if let Some(t) = to {
+            builder.push(" AND date <= ").push_bind(t);
+        }
+        builder.push(" ORDER BY date DESC");
+
+        let rows = builder
+            .build_query_as::<Attendance>()
             .fetch_all(db)
             .await?;
         Ok(rows)
