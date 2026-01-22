@@ -4,7 +4,9 @@ use std::str::FromStr;
 
 use crate::error::AppError;
 use crate::models::{leave_request::LeaveRequest, overtime_request::OvertimeRequest};
-use crate::repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository};
+use crate::repositories::{
+    common::push_clause, repository::Repository, LeaveRequestRepository, OvertimeRequestRepository,
+};
 use crate::types::{LeaveRequestId, OvertimeRequestId, UserId};
 
 /// Filters for querying request lists.
@@ -368,14 +370,5 @@ fn apply_request_filters<'a>(
     if let Some(to) = filters.to.as_ref() {
         push_clause(builder, &mut has_clause);
         builder.push("created_at <= ").push_bind(*to);
-    }
-}
-
-fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {
-    if *has_clause {
-        builder.push(" AND ");
-    } else {
-        builder.push(" WHERE ");
-        *has_clause = true;
     }
 }

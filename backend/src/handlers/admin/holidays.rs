@@ -1,11 +1,14 @@
+use crate::models::holiday::{AdminHolidayKind, AdminHolidayListItem};
+use crate::repositories::holiday::HolidayRepository;
+use crate::repositories::repository::Repository;
+use crate::repositories::weekly_holiday::WeeklyHolidayRepository;
 use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Error as SqlxError, FromRow, Postgres, QueryBuilder};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
@@ -22,7 +25,7 @@ use crate::{
     utils::time,
 };
 
-use super::common::{parse_optional_date, push_clause};
+use super::common::parse_optional_date;
 
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
@@ -47,9 +50,10 @@ pub async fn list_holidays(
     } = validate_admin_holiday_query(q)?;
     let offset = (page - 1) * per_page;
 
-    let (items, total) = fetch_admin_holidays(state.read_pool(), kind, from, to, per_page, offset)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let repo = HolidayRepository::new();
+    let (items, total) = repo
+        .list_paginated_admin(state.read_pool(), kind, from, to, per_page, offset)
+        .await?;
 
     Ok(Json(AdminHolidayListResponse {
         page,
@@ -93,30 +97,9 @@ pub async fn create_holiday(
         normalized_description,
     );
 
-    let insert_result = sqlx::query(
-        "INSERT INTO holidays (id, holiday_date, name, description, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
-    )
-    .bind(holiday.id)
-    .bind(holiday.holiday_date)
-    .bind(&holiday.name)
-    .bind(&holiday.description)
-    .bind(holiday.created_at)
-    .bind(holiday.updated_at)
-    .execute(&state.write_pool)
-    .await;
-
-    match insert_result {
-        Ok(_) => Ok(Json(HolidayResponse::from(holiday))),
-        Err(SqlxError::Database(db_err))
-            if db_err.constraint() == Some("holidays_holiday_date_key") =>
-        {
-            Err(AppError::BadRequest(
-                "Holiday already exists for that date".into(),
-            ))
-        }
-        Err(e) => Err(AppError::InternalServerError(e.into())),
-    }
+    let repo = HolidayRepository::new();
+    let created = repo.create_unique(&state.write_pool, &holiday).await?;
+    Ok(Json(HolidayResponse::from(created)))
 }
 
 pub async fn delete_holiday(
@@ -128,15 +111,11 @@ pub async fn delete_holiday(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    let result = sqlx::query("DELETE FROM holidays WHERE id = $1")
-        .bind(&holiday_id)
-        .execute(&state.write_pool)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let id = crate::types::HolidayId::from_str(&holiday_id)
+        .map_err(|_| AppError::BadRequest("Invalid holiday ID".into()))?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Holiday not found".into()));
-    }
+    let repo = HolidayRepository::new();
+    repo.delete(&state.write_pool, id).await?;
 
     Ok(Json(json!({"message":"Holiday deleted","id": holiday_id})))
 }
@@ -149,13 +128,8 @@ pub async fn list_weekly_holidays(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    let holidays = sqlx::query_as::<_, WeeklyHoliday>(
-        "SELECT id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at \
-         FROM weekly_holidays ORDER BY enforced_from, weekday",
-    )
-    .fetch_all(state.read_pool())
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let repo = WeeklyHolidayRepository::new();
+    let holidays = repo.find_all(state.read_pool()).await?;
 
     Ok(Json(
         holidays
@@ -198,22 +172,8 @@ pub async fn create_weekly_holiday(
 
     let weekly = WeeklyHoliday::new(payload.weekday, payload.starts_on, payload.ends_on, user.id);
 
-    sqlx::query(
-        "INSERT INTO weekly_holidays \
-            (id, weekday, starts_on, ends_on, enforced_from, enforced_to, created_by, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-    )
-    .bind(weekly.id)
-    .bind(weekly.weekday)
-    .bind(weekly.starts_on)
-    .bind(weekly.ends_on)
-    .bind(weekly.enforced_from)
-    .bind(weekly.enforced_to)
-    .bind(weekly.created_by)
-    .bind(weekly.created_at)
-    .bind(weekly.updated_at)
-    .execute(&state.write_pool)
-    .await?;
+    let repo = WeeklyHolidayRepository::new();
+    repo.create(&state.write_pool, &weekly).await?;
 
     Ok(Json(WeeklyHolidayResponse::from(weekly)))
 }
@@ -227,15 +187,11 @@ pub async fn delete_weekly_holiday(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    let result = sqlx::query("DELETE FROM weekly_holidays WHERE id = $1")
-        .bind(&id)
-        .execute(&state.write_pool)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let id = crate::types::WeeklyHolidayId::from_str(&id)
+        .map_err(|_| AppError::BadRequest("Invalid weekly holiday ID".into()))?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Weekly holiday not found".into()));
-    }
+    let repo = WeeklyHolidayRepository::new();
+    repo.delete(&state.write_pool, id).await?;
 
     Ok(Json(json!({"message":"Weekly holiday deleted","id": id})))
 }
@@ -243,6 +199,24 @@ pub async fn delete_weekly_holiday(
 // ============================================================================
 // Internal helpers and types
 // ============================================================================
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct AdminHolidayListQuery {
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+    #[serde(rename = "type")]
+    pub r#type: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminHolidayListResponse {
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
+    pub items: Vec<AdminHolidayListItem>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminHolidayQueryParams {
@@ -292,299 +266,5 @@ fn parse_type_filter(raw: Option<&str>) -> Result<Option<AdminHolidayKind>, &'st
             .map(Some)
             .map_err(|_| "`type` must be one of public, weekly, exception, all"),
         None => Ok(None),
-    }
-}
-
-fn apply_holiday_filters(
-    builder: &mut QueryBuilder<'_, Postgres>,
-    has_clause: &mut bool,
-    kind: Option<AdminHolidayKind>,
-    from: Option<NaiveDate>,
-    to: Option<NaiveDate>,
-) {
-    if let Some(kind) = kind {
-        push_clause(builder, has_clause);
-        builder.push("kind = ").push_bind(kind.as_str());
-    }
-    if let Some(from) = from {
-        push_clause(builder, has_clause);
-        builder.push("applies_from >= ").push_bind(from);
-    }
-    if let Some(to) = to {
-        push_clause(builder, has_clause);
-        builder.push("applies_from <= ").push_bind(to);
-    }
-}
-
-async fn fetch_admin_holidays(
-    pool: &sqlx::PgPool,
-    kind: Option<AdminHolidayKind>,
-    from: Option<NaiveDate>,
-    to: Option<NaiveDate>,
-    per_page: i64,
-    offset: i64,
-) -> Result<(Vec<AdminHolidayListItem>, i64), SqlxError> {
-    let mut data_builder = QueryBuilder::new(
-        r#"
-        WITH unioned AS (
-            SELECT id,
-                   'public'::text AS kind,
-                   holiday_date AS applies_from,
-                   holiday_date AS applies_to,
-                   holiday_date AS date,
-                   NULL::smallint AS weekday,
-                   NULL::date AS starts_on,
-                   NULL::date AS ends_on,
-                   name,
-                   description,
-                   NULL::text AS user_id,
-                   description AS reason,
-                   NULL::text AS created_by,
-                   created_at,
-                   NULL::boolean AS is_override
-            FROM holidays
-            UNION ALL
-            SELECT id,
-                   'weekly'::text AS kind,
-                   enforced_from AS applies_from,
-                   enforced_to AS applies_to,
-                   NULL::date AS date,
-                   weekday,
-                   starts_on,
-                   ends_on,
-                   NULL::text AS name,
-                   NULL::text AS description,
-                   NULL::text AS user_id,
-                   NULL::text AS reason,
-                   created_by,
-                   created_at,
-                   NULL::boolean AS is_override
-            FROM weekly_holidays
-            UNION ALL
-            SELECT id,
-                   'exception'::text AS kind,
-                   exception_date AS applies_from,
-                   exception_date AS applies_to,
-                   exception_date AS date,
-                   NULL::smallint AS weekday,
-                   NULL::date AS starts_on,
-                   NULL::date AS ends_on,
-                   NULL::text AS name,
-                   NULL::text AS description,
-                   user_id,
-                   reason,
-                   created_by,
-                   created_at,
-                   override AS is_override
-            FROM holiday_exceptions
-        )
-        SELECT id, kind, applies_from, applies_to, date, weekday, starts_on, ends_on,
-               name, description, user_id, reason, created_by, created_at, is_override
-        FROM unioned
-        "#,
-    );
-
-    let mut data_has_clause = false;
-    apply_holiday_filters(&mut data_builder, &mut data_has_clause, kind, from, to);
-
-    data_builder
-        .push(" ORDER BY applies_from DESC, kind ASC, created_at DESC")
-        .push(" LIMIT ")
-        .push_bind(per_page)
-        .push(" OFFSET ")
-        .push_bind(offset);
-
-    let mut count_builder = QueryBuilder::new(
-        r#"
-        SELECT COUNT(*) FROM (
-            WITH unioned AS (
-                SELECT id,
-                       'public'::text AS kind,
-                       holiday_date AS applies_from,
-                       holiday_date AS applies_to,
-                       holiday_date AS date,
-                       NULL::smallint AS weekday,
-                       NULL::date AS starts_on,
-                       NULL::date AS ends_on,
-                       name,
-                       description,
-                       NULL::text AS user_id,
-                       description AS reason,
-                       NULL::text AS created_by,
-                       created_at,
-                       NULL::boolean AS is_override
-                FROM holidays
-            UNION ALL
-                SELECT id,
-                       'weekly'::text AS kind,
-                       enforced_from AS applies_from,
-                       enforced_to AS applies_to,
-                       NULL::date AS date,
-                       weekday,
-                       starts_on,
-                       ends_on,
-                       NULL::text AS name,
-                       NULL::text AS description,
-                       NULL::text AS user_id,
-                       NULL::text AS reason,
-                       created_by,
-                       created_at,
-                       NULL::boolean AS is_override
-                FROM weekly_holidays
-            UNION ALL
-                SELECT id,
-                       'exception'::text AS kind,
-                       exception_date AS applies_from,
-                       exception_date AS applies_to,
-                       exception_date AS date,
-                       NULL::smallint AS weekday,
-                       NULL::date AS starts_on,
-                       NULL::date AS ends_on,
-                       NULL::text AS name,
-                       NULL::text AS description,
-                       user_id,
-                       reason,
-                       created_by,
-                       created_at,
-                       override AS is_override
-                FROM holiday_exceptions
-            )
-            SELECT 1
-            FROM unioned
-        "#,
-    );
-
-    let mut count_has_clause = false;
-    apply_holiday_filters(&mut count_builder, &mut count_has_clause, kind, from, to);
-    count_builder.push(") AS counted");
-
-    let rows = data_builder
-        .build_query_as::<AdminHolidayRow>()
-        .fetch_all(pool)
-        .await?;
-
-    let total = count_builder
-        .build_query_scalar::<i64>()
-        .fetch_one(pool)
-        .await?;
-
-    let items = rows
-        .into_iter()
-        .map(AdminHolidayListItem::try_from)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| SqlxError::Protocol("invalid holiday kind".into()))?;
-
-    Ok((items, total))
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct AdminHolidayListQuery {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
-    #[serde(rename = "type")]
-    pub r#type: Option<String>,
-    pub from: Option<String>,
-    pub to: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminHolidayListResponse {
-    pub page: i64,
-    pub per_page: i64,
-    pub total: i64,
-    pub items: Vec<AdminHolidayListItem>,
-}
-
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AdminHolidayKind {
-    Public,
-    Weekly,
-    Exception,
-}
-
-impl AdminHolidayKind {
-    fn as_str(&self) -> &'static str {
-        match self {
-            AdminHolidayKind::Public => "public",
-            AdminHolidayKind::Weekly => "weekly",
-            AdminHolidayKind::Exception => "exception",
-        }
-    }
-}
-
-impl FromStr for AdminHolidayKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "public" => Ok(AdminHolidayKind::Public),
-            "weekly" => Ok(AdminHolidayKind::Weekly),
-            "exception" => Ok(AdminHolidayKind::Exception),
-            _ => Err(()),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminHolidayListItem {
-    pub id: String,
-    pub kind: AdminHolidayKind,
-    pub applies_from: NaiveDate,
-    pub applies_to: Option<NaiveDate>,
-    pub date: Option<NaiveDate>,
-    pub weekday: Option<i16>,
-    pub starts_on: Option<NaiveDate>,
-    pub ends_on: Option<NaiveDate>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub user_id: Option<String>,
-    pub reason: Option<String>,
-    pub created_by: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub is_override: Option<bool>,
-}
-
-#[derive(Debug, FromRow)]
-struct AdminHolidayRow {
-    id: String,
-    kind: String,
-    applies_from: NaiveDate,
-    applies_to: Option<NaiveDate>,
-    date: Option<NaiveDate>,
-    weekday: Option<i16>,
-    starts_on: Option<NaiveDate>,
-    ends_on: Option<NaiveDate>,
-    name: Option<String>,
-    description: Option<String>,
-    user_id: Option<String>,
-    reason: Option<String>,
-    created_by: Option<String>,
-    created_at: DateTime<Utc>,
-    is_override: Option<bool>,
-}
-
-impl TryFrom<AdminHolidayRow> for AdminHolidayListItem {
-    type Error = ();
-
-    fn try_from(row: AdminHolidayRow) -> Result<Self, Self::Error> {
-        let kind = AdminHolidayKind::from_str(&row.kind)?;
-        Ok(Self {
-            id: row.id,
-            kind,
-            applies_from: row.applies_from,
-            applies_to: row.applies_to,
-            date: row.date,
-            weekday: row.weekday,
-            starts_on: row.starts_on,
-            ends_on: row.ends_on,
-            name: row.name,
-            description: row.description,
-            user_id: row.user_id,
-            reason: row.reason,
-            created_by: row.created_by,
-            created_at: row.created_at,
-            is_override: row.is_override,
-        })
     }
 }
