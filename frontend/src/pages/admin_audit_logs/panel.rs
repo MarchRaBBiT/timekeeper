@@ -1,4 +1,4 @@
-use super::view_model::use_audit_log_view_model;
+use super::view_model::{use_audit_log_view_model, AuditLogFilters};
 use crate::components::common::{Button, ButtonVariant};
 use crate::components::empty_state::EmptyState;
 use crate::components::layout::Layout;
@@ -84,7 +84,16 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 </select>
                             </div>
                         </div>
-                        <div class="flex justify-end">
+                        <div class="flex justify-end items-center gap-4">
+                            <button
+                                class="text-sm text-gray-500 hover:text-gray-700"
+                                on:click=move |_| {
+                                    vm.filters.set(AuditLogFilters::default());
+                                    vm.page.set(1);
+                                }
+                            >
+                                "フィルタをクリア"
+                            </button>
                             <Button
                                 variant=ButtonVariant::Primary
                                 on:click=move |_| vm.export_action.dispatch(())
