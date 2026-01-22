@@ -159,7 +159,7 @@ pub fn AdminRequestsSection(
                                 if rows.is_empty() {
                                     view! {
                                         <tr>
-                                            <td colspan="5" class="p-4">
+                                            <td colspan="5" class="p-4 bg-gray-50">
                                                 <EmptyState
                                                     title="申請がありません"
                                                     description="表示できる申請データが見つかりませんでした。"
