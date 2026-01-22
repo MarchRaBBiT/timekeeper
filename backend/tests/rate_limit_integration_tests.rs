@@ -28,6 +28,10 @@ fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u6
         rate_limit_ip_window_seconds,
         rate_limit_user_max_requests: 5,
         rate_limit_user_window_seconds: 300,
+        redis_url: None,
+        redis_pool_size: 10,
+        redis_connect_timeout: 5,
+        feature_redis_cache_enabled: true,
         feature_read_replica_enabled: true,
     }
 }

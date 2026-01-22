@@ -5,14 +5,13 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use std::future::Future;
 use std::str::FromStr;
 
 use crate::{
     config::Config,
     error::AppError,
-    handlers::auth_repo::{self, ActiveAccessToken, StoredRefreshToken},
+    handlers::auth_repo::{self, ActiveAccessToken},
     models::{
         password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
         user::{
@@ -21,6 +20,7 @@ use crate::{
         },
     },
     repositories::password_reset as password_reset_repo,
+    state::AppState,
     types::UserId,
     utils::{
         cookies::{
@@ -29,8 +29,8 @@ use crate::{
         },
         email::EmailService,
         jwt::{
-            create_access_token, create_refresh_token, decode_refresh_token, verify_refresh_token,
-            Claims, RefreshToken,
+            create_access_token, create_refresh_token, decode_refresh_token, hash_refresh_token,
+            verify_access_token, verify_refresh_token, Claims, RefreshToken,
         },
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
         password::{hash_password, verify_password},
@@ -49,12 +49,12 @@ pub struct AuthSession {
 }
 
 pub async fn login(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let user = auth_repo::find_user_by_username(&pool, &payload.username)
+    let user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
@@ -62,34 +62,42 @@ pub async fn login(
     let session = process_login_for_user(
         user,
         payload,
-        &config,
+        &state.config,
         {
-            let pool = pool.clone();
+            let pool = state.write_pool.clone();
             move |token| async move {
                 persist_refresh_token(&pool, &token, "Failed to store refresh token").await
             }
         },
         {
-            let pool = pool.clone();
+            let pool = state.write_pool.clone();
+            let cache = state.token_cache.clone();
             move |claims, context| async move {
-                persist_active_access_token(&pool, &claims, context).await
+                persist_active_access_token(&pool, &claims, context.clone()).await?;
+                if let Some(cache) = cache {
+                    let user_id = UserId::from_str(&claims.sub)
+                        .map_err(|_| internal_error("Invalid user ID"))?;
+                    let ttl = (claims.exp - Utc::now().timestamp()).max(0) as u64;
+                    let _ = cache.cache_token(&claims.jti, user_id, ttl).await;
+                }
+                Ok(())
             }
         },
     )
     .await?;
 
     let mut headers = HeaderMap::new();
-    set_auth_cookies(&mut headers, &session, &config);
+    set_auth_cookies(&mut headers, &session, &state.config);
     Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
 pub async fn refresh(
-    State((pool, config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     let cookie_header = cookie_header_value(&headers);
-    let refresh_token =
+    let refresh_token_str =
         extract_cookie_value(cookie_header.unwrap_or_default(), REFRESH_COOKIE_NAME)
             .or_else(|| {
                 payload
@@ -98,60 +106,120 @@ pub async fn refresh(
                     .map(|v| v.to_string())
             })
             .ok_or_else(|| bad_request("Refresh token is required"))?;
-    let (refresh_token_id, refresh_token_secret) = decode_refresh_token(&refresh_token)
-        .map_err(|_| unauthorized("Invalid or expired refresh token"))?;
 
-    let token_record = fetch_refresh_token_or_unauthorized(&pool, &refresh_token_id).await?;
-    verify_refresh_secret(&refresh_token_secret, &token_record.token_hash).await?;
+    let (token_id, secret) = decode_refresh_token(&refresh_token_str)
+        .map_err(|_| unauthorized("Invalid refresh token format"))?;
 
-    let user = auth_repo::find_user_by_id(&pool, token_record.user_id)
+    let stored = auth_repo::fetch_valid_refresh_token(&state.write_pool, &token_id, Utc::now())
+        .await
+        .map_err(|_| internal_error("Database error"))?
+        .ok_or_else(|| unauthorized("Invalid or expired refresh token"))?;
+
+    if !verify_refresh_token(&secret, &stored.token_hash)
+        .map_err(|_| internal_error("Verification error"))?
+    {
+        return Err(unauthorized("Invalid refresh token secret"));
+    }
+
+    let user = auth_repo::find_user_by_id(&state.write_pool, stored.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
 
-    let (access_token, claims) = create_access_token(
-        user.id.to_string(),
-        user.username.clone(),
-        user.role.as_str().to_string(),
-        &config.jwt_secret,
-        config.jwt_expiration_hours,
-    )
-    .map_err(|_| internal_error("Token creation error"))?;
+    let session = create_auth_session(&user, &state.config).await?;
 
-    let new_refresh_token_data =
-        create_refresh_token(user.id.to_string(), config.refresh_token_expiration_days)
-            .map_err(|_| internal_error("Refresh token creation error"))?;
+    auth_repo::delete_refresh_token_by_id(&state.write_pool, &stored.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
 
-    revoke_refresh_token_by_id(
-        &pool,
-        &refresh_token_id,
-        "Failed to delete old refresh token",
-    )
-    .await?;
+    let rt_data = session.refresh_token_data(state.config.refresh_token_expiration_days)?;
     persist_refresh_token(
-        &pool,
-        &new_refresh_token_data,
+        &state.write_pool,
+        &rt_data,
         "Failed to store new refresh token",
     )
     .await?;
-    let device_context = payload
-        .get("device_label")
-        .and_then(|v| v.as_str())
-        .or(Some("refresh"));
-    persist_active_access_token(&pool, &claims, device_context.map(|s| s.to_string())).await?;
-    if let Some(old_jti) = payload.get("previous_jti").and_then(|v| v.as_str()) {
-        let _ = revoke_active_access_token(&pool, old_jti).await;
+
+    let claims = session.access_claims(&state.config.jwt_secret)?;
+    persist_active_access_token(
+        &state.write_pool,
+        &claims,
+        Some(format!("refresh_{}", stored.id)),
+    )
+    .await?;
+
+    if let Some(cache) = &state.token_cache {
+        let user_id =
+            UserId::from_str(&claims.sub).map_err(|_| internal_error("Invalid user ID"))?;
+        let ttl = (claims.exp - Utc::now().timestamp()).max(0) as u64;
+        let _ = cache.cache_token(&claims.jti, user_id, ttl).await;
     }
 
-    let session = AuthSession {
-        access_token,
-        refresh_token: new_refresh_token_data.encoded(),
-        user: UserResponse::from(user),
-    };
+    let mut headers = HeaderMap::new();
+    set_auth_cookies(&mut headers, &session, &state.config);
+    Ok((headers, Json(LoginResponse { user: session.user })))
+}
 
+pub async fn logout(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> HandlerResult<impl axum::response::IntoResponse> {
+    let all = payload
+        .get("all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if all {
+        auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
+            .await
+            .map_err(|_| internal_error("Failed to revoke tokens"))?;
+        auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
+            .await
+            .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+        if let Some(cache) = &state.token_cache {
+            let _ = cache.invalidate_user_tokens(user.id).await;
+        }
+        let mut response_headers = HeaderMap::new();
+        clear_auth_cookies(&mut response_headers, &state.config);
+        return Ok((
+            response_headers,
+            Json(json!({"message":"Logged out from all devices"})),
+        ));
+    }
+
+    if let Some(rt_str) = payload
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .or_else(|| {
+            cookie_header_value(&headers)
+                .and_then(|value| extract_cookie_value(value, REFRESH_COOKIE_NAME))
+        })
+    {
+        if let Ok((token_id, _)) = decode_refresh_token(&rt_str) {
+            auth_repo::delete_refresh_token_by_id(&state.write_pool, &token_id)
+                .await
+                .map_err(|_| internal_error("Failed to revoke token"))?;
+        }
+    }
+
+    auth_repo::delete_active_access_token_by_jti(&state.write_pool, &claims.jti)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access token"))?;
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_token(&claims.jti).await;
+    }
     let mut response_headers = HeaderMap::new();
-    set_auth_cookies(&mut response_headers, &session, &config);
-    Ok((response_headers, Json(LoginResponse { user: session.user })))
+    clear_auth_cookies(&mut response_headers, &state.config);
+    Ok((response_headers, Json(json!({"message":"Logged out"}))))
+}
+
+pub async fn me(Extension(user): Extension<User>) -> HandlerResult<Json<UserResponse>> {
+    Ok(Json(UserResponse::from(user)))
 }
 
 pub async fn mfa_status(
@@ -163,12 +231,8 @@ pub async fn mfa_status(
     }))
 }
 
-pub async fn me(Extension(user): Extension<User>) -> HandlerResult<Json<UserResponse>> {
-    Ok(Json(UserResponse::from(user)))
-}
-
 pub async fn update_profile(
-    State((pool, _config)): State<(PgPool, Config)>,
+    State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<UpdateProfile>,
 ) -> HandlerResult<Json<UserResponse>> {
@@ -180,7 +244,7 @@ pub async fn update_profile(
         )
         .bind(email)
         .bind(user.id)
-        .fetch_one(&pool)
+        .fetch_one(&state.write_pool)
         .await
         .map_err(|_| internal_error("Database error"))?;
 
@@ -201,15 +265,277 @@ pub async fn update_profile(
     .bind(&full_name)
     .bind(&email)
     .bind(user.id)
-    .fetch_one(&pool)
+    .fetch_one(&state.write_pool)
     .await
     .map_err(|_| internal_error("Failed to update profile"))?;
 
     Ok(Json(UserResponse::from(updated_user)))
 }
 
+pub async fn mfa_register(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Extension(user): Extension<User>,
+) -> HandlerResult<Json<MfaSetupResponse>> {
+    crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    let response = begin_mfa_enrollment(&state.write_pool, &state.config, &user).await?;
+    Ok(Json(response))
+}
+
+pub async fn mfa_setup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Extension(user): Extension<User>,
+) -> HandlerResult<Json<MfaSetupResponse>> {
+    crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    let response = begin_mfa_enrollment(&state.write_pool, &state.config, &user).await?;
+    Ok(Json(response))
+}
+
+pub async fn mfa_activate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Extension(user): Extension<User>,
+    Json(payload): Json<MfaCodeRequest>,
+) -> HandlerResult<Json<Value>> {
+    crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    let secret = user
+        .mfa_secret
+        .as_ref()
+        .ok_or_else(|| bad_request("MFA setup not initiated"))?;
+
+    let code = payload.code.trim().to_string();
+    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+        return Err(unauthorized("Invalid MFA code"));
+    }
+
+    let now = Utc::now();
+    if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(user.id.to_string())
+        .execute(&state.write_pool)
+        .await
+        .is_err()
+    {
+        return Err(internal_error("Failed to enable MFA"));
+    }
+
+    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
+    auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(user.id).await;
+    }
+
+    Ok(Json(json!({"message": "MFA enabled"})))
+}
+
+pub async fn mfa_disable(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Extension(user): Extension<User>,
+    Json(payload): Json<MfaCodeRequest>,
+) -> HandlerResult<Json<Value>> {
+    crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    if !user.is_mfa_enabled() {
+        return Err(bad_request("MFA is not enabled"));
+    }
+
+    let secret = user
+        .mfa_secret
+        .as_ref()
+        .ok_or_else(|| internal_error("MFA secret missing"))?;
+
+    let code = payload.code.trim().to_string();
+    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+        return Err(unauthorized("Invalid MFA code"));
+    }
+
+    if sqlx::query(
+        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
+    )
+    .bind(Utc::now())
+    .bind(user.id.to_string())
+    .execute(&state.write_pool)
+    .await
+    .is_err()
+    {
+        return Err(internal_error("Failed to disable MFA"));
+    }
+
+    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
+    auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(user.id).await;
+    }
+
+    Ok(Json(json!({"message": "MFA disabled"})))
+}
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Extension(user): Extension<User>,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> HandlerResult<Json<Value>> {
+    crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    payload.validate()?;
+    if payload.new_password == payload.current_password {
+        return Err(bad_request(
+            "New password must differ from current password",
+        ));
+    }
+
+    ensure_password_matches(
+        &payload.current_password,
+        &user.password_hash,
+        "Current password is incorrect",
+    )
+    .await?;
+
+    let new_hash = tokio::task::spawn_blocking({
+        let password = payload.new_password.clone();
+        move || hash_password(&password)
+    })
+    .await
+    .map_err(|_| internal_error("Hashing task failed"))?
+    .map_err(|_| internal_error("Failed to hash password"))?;
+
+    auth_repo::update_user_password(&state.write_pool, user.id, &new_hash)
+        .await
+        .map_err(|_| internal_error("Failed to update password"))?;
+
+    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke sessions after password change"))?;
+    auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(user.id).await;
+    }
+
+    Ok(Json(json!({"message": "Password changed successfully"})))
+}
+
+pub async fn request_password_reset(
+    State(state): State<AppState>,
+    Json(payload): Json<RequestPasswordResetPayload>,
+) -> HandlerResult<impl axum::response::IntoResponse> {
+    payload.validate()?;
+
+    let user_opt = auth_repo::find_user_by_email(&state.write_pool, &payload.email)
+        .await
+        .map_err(|_| internal_error("Database error"))?;
+
+    if let Some(user) = user_opt {
+        let token = generate_token(32);
+        password_reset_repo::create_password_reset(&state.write_pool, user.id, &token)
+            .await
+            .map_err(|_| internal_error("Failed to create password reset"))?;
+
+        let email_service =
+            EmailService::new().map_err(|_| internal_error("Email service error"))?;
+        if let Err(e) = email_service.send_password_reset_email(&user.email, &token) {
+            tracing::error!("Failed to send password reset email: {:?}", e);
+        }
+    }
+
+    Ok(Json(json!({
+        "message": "If the email exists, a password reset link has been sent"
+    })))
+}
+
+pub async fn reset_password(
+    State(state): State<AppState>,
+    Json(payload): Json<ResetPasswordPayload>,
+) -> HandlerResult<impl axum::response::IntoResponse> {
+    payload.validate()?;
+
+    let reset_record =
+        password_reset_repo::find_valid_reset_by_token(&state.write_pool, &payload.token)
+            .await
+            .map_err(|_| internal_error("Database error"))?
+            .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
+
+    let new_password_hash = tokio::task::spawn_blocking({
+        let password = payload.new_password.clone();
+        move || hash_password(&password)
+    })
+    .await
+    .map_err(|_| internal_error("Task join error"))?
+    .map_err(|_| internal_error("Failed to hash password"))?;
+
+    let user = auth_repo::update_user_password(
+        &state.write_pool,
+        reset_record.user_id,
+        &new_password_hash,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to update password"))?;
+
+    password_reset_repo::mark_token_as_used(&state.write_pool, &reset_record.id)
+        .await
+        .map_err(|_| internal_error("Failed to mark token as used"))?;
+
+    auth_repo::delete_all_refresh_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
+
+    auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(user.id).await;
+    }
+
+    let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
+    if let Err(e) = email_service.send_password_changed_notification(&user.email, &user.username) {
+        tracing::error!("Failed to send password changed notification: {:?}", e);
+    }
+
+    Ok(Json(json!({
+        "message": "Password has been reset successfully"
+    })))
+}
+
+// Helper methods
+
+async fn create_auth_session(user: &User, config: &Config) -> HandlerResult<AuthSession> {
+    let (access_token, _) = create_access_token(
+        user.id.to_string(),
+        user.username.clone(),
+        user.role.as_str().to_string(),
+        &config.jwt_secret,
+        config.jwt_expiration_hours,
+    )
+    .map_err(|_| internal_error("Failed to create access token"))?;
+
+    let refresh_token =
+        create_refresh_token(user.id.to_string(), config.refresh_token_expiration_days)
+            .map_err(|_| internal_error("Failed to create refresh token"))?
+            .encoded();
+
+    Ok(AuthSession {
+        access_token,
+        refresh_token,
+        user: UserResponse::from(user.clone()),
+    })
+}
+
 async fn begin_mfa_enrollment(
-    pool: &PgPool,
+    pool: &sqlx::PgPool,
     config: &Config,
     user: &User,
 ) -> HandlerResult<MfaSetupResponse> {
@@ -238,207 +564,6 @@ async fn begin_mfa_enrollment(
         secret,
         otpauth_url,
     })
-}
-
-pub async fn mfa_setup(
-    State((pool, config)): State<(PgPool, Config)>,
-    headers: HeaderMap,
-    Extension(user): Extension<User>,
-) -> HandlerResult<Json<MfaSetupResponse>> {
-    crate::utils::security::verify_request_origin(&headers, &config)?;
-    let response = begin_mfa_enrollment(&pool, &config, &user).await?;
-    Ok(Json(response))
-}
-
-pub async fn mfa_register(
-    State((pool, config)): State<(PgPool, Config)>,
-    headers: HeaderMap,
-    Extension(user): Extension<User>,
-) -> HandlerResult<Json<MfaSetupResponse>> {
-    crate::utils::security::verify_request_origin(&headers, &config)?;
-    let response = begin_mfa_enrollment(&pool, &config, &user).await?;
-    Ok(Json(response))
-}
-
-pub async fn mfa_activate(
-    State((pool, config)): State<(PgPool, Config)>,
-    headers: HeaderMap,
-    Extension(user): Extension<User>,
-    Json(payload): Json<MfaCodeRequest>,
-) -> HandlerResult<Json<Value>> {
-    crate::utils::security::verify_request_origin(&headers, &config)?;
-    let secret = user
-        .mfa_secret
-        .as_ref()
-        .ok_or_else(|| bad_request("MFA setup not initiated"))?;
-
-    let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
-        return Err(unauthorized("Invalid MFA code"));
-    }
-
-    let now = Utc::now();
-    if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
-        .bind(now)
-        .bind(user.id.to_string())
-        .execute(&pool)
-        .await
-        .is_err()
-    {
-        return Err(internal_error("Failed to enable MFA"));
-    }
-
-    revoke_tokens_for_user(&pool, user.id, "Failed to revoke refresh tokens").await?;
-    revoke_active_tokens_for_user(&pool, user.id).await?;
-
-    Ok(Json(json!({"message": "MFA enabled"})))
-}
-
-pub async fn mfa_disable(
-    State((pool, config)): State<(PgPool, Config)>,
-    headers: HeaderMap,
-    Extension(user): Extension<User>,
-    Json(payload): Json<MfaCodeRequest>,
-) -> HandlerResult<Json<Value>> {
-    crate::utils::security::verify_request_origin(&headers, &config)?;
-    if !user.is_mfa_enabled() {
-        return Err(bad_request("MFA is not enabled"));
-    }
-
-    let secret = user
-        .mfa_secret
-        .as_ref()
-        .ok_or_else(|| internal_error("MFA secret missing"))?;
-
-    let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
-        return Err(unauthorized("Invalid MFA code"));
-    }
-
-    if sqlx::query(
-        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
-    )
-    .bind(Utc::now())
-    .bind(user.id.to_string())
-    .execute(&pool)
-    .await
-    .is_err()
-    {
-        return Err(internal_error("Failed to disable MFA"));
-    }
-
-    if sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(user.id.to_string())
-        .execute(&pool)
-        .await
-        .is_err()
-    {
-        return Err(internal_error("Failed to revoke refresh tokens"));
-    }
-
-    revoke_active_tokens_for_user(&pool, user.id).await?;
-
-    Ok(Json(json!({"message": "MFA disabled"})))
-}
-
-pub async fn change_password(
-    State((pool, config)): State<(PgPool, Config)>,
-    headers: HeaderMap,
-    Extension(user): Extension<User>,
-    Json(payload): Json<ChangePasswordRequest>,
-) -> HandlerResult<Json<Value>> {
-    crate::utils::security::verify_request_origin(&headers, &config)?;
-    payload.validate()?;
-    if payload.new_password == payload.current_password {
-        return Err(bad_request(
-            "New password must differ from current password",
-        ));
-    }
-
-    ensure_password_matches(
-        &payload.current_password,
-        &user.password_hash,
-        "Current password is incorrect",
-    )
-    .await?;
-
-    // Hash and persist the new password.
-    let password_to_hash = payload.new_password.clone();
-    let new_hash = tokio::task::spawn_blocking(move || hash_password(&password_to_hash))
-        .await
-        .map_err(|_| internal_error("Password hashing task failed"))?
-        .map_err(|_| internal_error("Failed to hash password"))?;
-
-    if sqlx::query("UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3")
-        .bind(&new_hash)
-        .bind(Utc::now())
-        .bind(user.id.to_string())
-        .execute(&pool)
-        .await
-        .is_err()
-    {
-        return Err(internal_error("Failed to update password"));
-    }
-
-    revoke_tokens_for_user(&pool, user.id, "Failed to revoke refresh tokens").await?;
-    revoke_active_tokens_for_user(&pool, user.id).await?;
-
-    Ok(Json(json!({"message": "Password updated successfully"})))
-}
-
-pub async fn logout(
-    State((pool, config)): State<(PgPool, Config)>,
-    Extension(user): Extension<User>,
-    Extension(claims): Extension<Claims>,
-    headers: HeaderMap,
-    Json(payload): Json<serde_json::Value>,
-) -> HandlerResult<impl axum::response::IntoResponse> {
-    let all = payload
-        .get("all")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if all {
-        revoke_tokens_for_user(&pool, user.id, "Failed to revoke tokens").await?;
-        revoke_active_tokens_for_user(&pool, user.id).await?;
-        let mut response_headers = HeaderMap::new();
-        clear_auth_cookies(&mut response_headers, &config);
-        return Ok((response_headers, Json(json!({"message":"Logged out"}))));
-    }
-
-    if let Some(rt) = payload
-        .get("refresh_token")
-        .and_then(|v| v.as_str())
-        .map(|v| v.to_string())
-        .or_else(|| {
-            cookie_header_value(&headers)
-                .and_then(|value| extract_cookie_value(value, REFRESH_COOKIE_NAME))
-        })
-    {
-        let (token_id, _) =
-            decode_refresh_token(&rt).map_err(|_| bad_request("Invalid refresh token"))?;
-        revoke_refresh_token_for_user(&pool, &token_id, user.id).await?;
-        revoke_active_access_token(&pool, &claims.jti).await?;
-        let mut response_headers = HeaderMap::new();
-        clear_auth_cookies(&mut response_headers, &config);
-        return Ok((response_headers, Json(json!({"message":"Logged out"}))));
-    }
-
-    revoke_active_access_token(&pool, &claims.jti).await?;
-    let mut response_headers = HeaderMap::new();
-    clear_auth_cookies(&mut response_headers, &config);
-    Ok((response_headers, Json(json!({"message":"Logged out"}))))
-}
-
-fn bad_request(message: impl Into<String>) -> AppError {
-    AppError::BadRequest(message.into())
-}
-
-fn unauthorized(message: impl Into<String>) -> AppError {
-    AppError::Unauthorized(message.into())
-}
-
-fn internal_error(message: impl Into<String>) -> AppError {
-    AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }
 
 pub async fn process_login_for_user<PF, AF, PFut, AFut>(
@@ -481,7 +606,7 @@ where
         .device_label
         .clone()
         .map(|label| label.trim().to_string());
-    persist_active_access_token(claims.clone(), context).await?;
+    persist_active_access_token(claims, context).await?;
 
     let response = AuthSession {
         access_token,
@@ -490,6 +615,73 @@ where
     };
 
     Ok(response)
+}
+
+async fn persist_refresh_token(
+    pool: &sqlx::PgPool,
+    token: &RefreshToken,
+    error_message: &'static str,
+) -> HandlerResult<()> {
+    auth_repo::insert_refresh_token(pool, token)
+        .await
+        .map_err(|_| internal_error(error_message))
+}
+
+async fn persist_active_access_token(
+    pool: &sqlx::PgPool,
+    claims: &Claims,
+    context: Option<String>,
+) -> HandlerResult<()> {
+    let expires_at = DateTime::<Utc>::from_timestamp(claims.exp, 0)
+        .ok_or_else(|| internal_error("Token expiration overflow"))?;
+
+    auth_repo::cleanup_expired_access_tokens(pool)
+        .await
+        .map_err(|_| internal_error("Failed to cleanup expired tokens"))?;
+
+    let sanitized_context = context.and_then(|ctx| {
+        let trimmed = ctx.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.chars().take(128).collect::<String>())
+        }
+    });
+    let user_id =
+        UserId::from_str(&claims.sub).map_err(|_| internal_error("Invalid user ID in claims"))?;
+    let token = ActiveAccessToken {
+        jti: &claims.jti,
+        user_id,
+        expires_at,
+        context: sanitized_context.as_deref(),
+    };
+    auth_repo::insert_active_access_token(pool, &token)
+        .await
+        .map_err(|_| internal_error("Failed to register access token"))
+}
+
+impl AuthSession {
+    pub fn access_claims(&self, secret: &str) -> HandlerResult<Claims> {
+        verify_access_token(&self.access_token, secret)
+            .map_err(|_| internal_error("Failed to decode access token"))
+    }
+
+    pub fn refresh_token_data(&self, expiration_days: u64) -> HandlerResult<RefreshToken> {
+        let (token_id, secret) = decode_refresh_token(&self.refresh_token)
+            .map_err(|_| internal_error("Invalid refresh token format"))?;
+        let token_hash = hash_refresh_token(&secret)
+            .map_err(|_| internal_error("Failed to hash refresh token"))?;
+        let expires_at = Utc::now()
+            .checked_add_signed(chrono::Duration::days(expiration_days as i64))
+            .ok_or_else(|| internal_error("Refresh token expiration overflow"))?;
+        Ok(RefreshToken {
+            id: token_id,
+            user_id: self.user.id.to_string(),
+            secret,
+            token_hash,
+            expires_at,
+        })
+    }
 }
 
 fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Config) {
@@ -514,14 +706,8 @@ fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Con
         REFRESH_COOKIE_PATH,
         options,
     );
-    let access_value = access_cookie
-        .parse()
-        .expect("valid Set-Cookie header for access token");
-    let refresh_value = refresh_cookie
-        .parse()
-        .expect("valid Set-Cookie header for refresh token");
-    headers.append(header::SET_COOKIE, access_value);
-    headers.append(header::SET_COOKIE, refresh_value);
+    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
+    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
 }
 
 fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
@@ -531,20 +717,12 @@ fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
     };
     let access_cookie = build_clear_cookie(ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, options);
     let refresh_cookie = build_clear_cookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH, options);
-    let access_value = access_cookie
-        .parse()
-        .expect("valid Set-Cookie header for access token");
-    let refresh_value = refresh_cookie
-        .parse()
-        .expect("valid Set-Cookie header for refresh token");
-    headers.append(header::SET_COOKIE, access_value);
-    headers.append(header::SET_COOKIE, refresh_value);
+    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
+    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
 }
 
 fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get(header::COOKIE)
-        .and_then(|value| value.to_str().ok())
+    headers.get(header::COOKIE).and_then(|v| v.to_str().ok())
 }
 
 pub async fn ensure_password_matches(
@@ -581,198 +759,21 @@ pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
         .mfa_secret
         .as_ref()
         .ok_or_else(|| internal_error("MFA secret missing"))?;
-    let valid = verify_totp_code(secret, &totp_code)
-        .map_err(|_| internal_error("MFA verification error"))?;
-    if valid {
+    if verify_totp_code(secret, &totp_code).map_err(|_| internal_error("MFA verification error"))? {
         Ok(())
     } else {
         Err(unauthorized("Invalid MFA code"))
     }
 }
 
-async fn verify_refresh_secret(secret: &str, hash: &str) -> HandlerResult<()> {
-    let secret = secret.to_owned();
-    let hash = hash.to_owned();
-    let valid = tokio::task::spawn_blocking(move || verify_refresh_token(&secret, &hash))
-        .await
-        .map_err(|_| internal_error("Refresh token verification task failed"))?
-        .map_err(|_| internal_error("Refresh token verification error"))?;
-    if valid {
-        Ok(())
-    } else {
-        Err(unauthorized("Invalid or expired refresh token"))
-    }
+fn bad_request(message: impl Into<String>) -> AppError {
+    AppError::BadRequest(message.into())
 }
 
-async fn persist_refresh_token(
-    pool: &PgPool,
-    token: &RefreshToken,
-    error_message: &'static str,
-) -> HandlerResult<()> {
-    auth_repo::insert_refresh_token(pool, token)
-        .await
-        .map_err(|_| internal_error(error_message))
+fn unauthorized(message: impl Into<String>) -> AppError {
+    AppError::Unauthorized(message.into())
 }
 
-async fn fetch_refresh_token_or_unauthorized(
-    pool: &PgPool,
-    token_id: &str,
-) -> HandlerResult<StoredRefreshToken> {
-    auth_repo::fetch_valid_refresh_token(pool, token_id, Utc::now())
-        .await
-        .map_err(|_| internal_error("Database error"))?
-        .ok_or_else(|| unauthorized("Invalid or expired refresh token"))
-}
-
-async fn revoke_refresh_token_by_id(
-    pool: &PgPool,
-    token_id: &str,
-    error_message: &'static str,
-) -> HandlerResult<()> {
-    auth_repo::delete_refresh_token_by_id(pool, token_id)
-        .await
-        .map_err(|_| internal_error(error_message))
-}
-
-async fn revoke_refresh_token_for_user(
-    pool: &PgPool,
-    token_id: &str,
-    user_id: UserId,
-) -> HandlerResult<()> {
-    auth_repo::delete_refresh_token_for_user(pool, token_id, user_id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke token"))
-}
-
-async fn revoke_tokens_for_user(
-    pool: &PgPool,
-    user_id: UserId,
-    error_message: &'static str,
-) -> HandlerResult<()> {
-    auth_repo::delete_refresh_tokens_for_user(pool, user_id)
-        .await
-        .map_err(|_| internal_error(error_message))
-}
-
-async fn persist_active_access_token(
-    pool: &PgPool,
-    claims: &Claims,
-    context: Option<String>,
-) -> HandlerResult<()> {
-    let expires_at = claims_expiration_datetime(claims)?;
-    auth_repo::cleanup_expired_access_tokens(pool)
-        .await
-        .map_err(|_| internal_error("Failed to cleanup expired tokens"))?;
-    let sanitized_context = context.and_then(|ctx| {
-        let trimmed = ctx.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.chars().take(128).collect::<String>())
-        }
-    });
-    let user_id =
-        UserId::from_str(&claims.sub).map_err(|_| internal_error("Invalid user ID in claims"))?;
-    let token = ActiveAccessToken {
-        jti: &claims.jti,
-        user_id,
-        expires_at,
-        context: sanitized_context.as_deref(),
-    };
-    auth_repo::insert_active_access_token(pool, &token)
-        .await
-        .map_err(|_| internal_error("Failed to register access token"))
-}
-
-async fn revoke_active_access_token(pool: &PgPool, jti: &str) -> HandlerResult<()> {
-    auth_repo::delete_active_access_token_by_jti(pool, jti)
-        .await
-        .map_err(|_| internal_error("Failed to revoke access token"))
-}
-
-async fn revoke_active_tokens_for_user(pool: &PgPool, user_id: UserId) -> HandlerResult<()> {
-    auth_repo::delete_active_access_tokens_for_user(pool, user_id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke access tokens"))
-}
-
-fn claims_expiration_datetime(claims: &Claims) -> HandlerResult<DateTime<Utc>> {
-    DateTime::<Utc>::from_timestamp(claims.exp, 0)
-        .ok_or_else(|| internal_error("Token expiration overflow"))
-}
-
-pub async fn request_password_reset(
-    State((pool, _config)): State<(PgPool, Config)>,
-    Json(payload): Json<RequestPasswordResetPayload>,
-) -> HandlerResult<impl axum::response::IntoResponse> {
-    payload.validate()?;
-
-    let user_opt = auth_repo::find_user_by_email(&pool, &payload.email)
-        .await
-        .map_err(|_| internal_error("Database error"))?;
-
-    if let Some(user) = user_opt {
-        let token = generate_token(32);
-        password_reset_repo::create_password_reset(&pool, user.id, &token)
-            .await
-            .map_err(|_| internal_error("Failed to create password reset"))?;
-
-        let email_service = EmailService::new()
-            .map_err(|_| internal_error("Email service initialization failed"))?;
-
-        if let Err(e) = email_service.send_password_reset_email(&user.email, &token) {
-            tracing::error!("Failed to send password reset email: {:?}", e);
-        }
-    }
-
-    Ok(Json(json!({
-        "message": "If the email exists, a password reset link has been sent"
-    })))
-}
-
-pub async fn reset_password(
-    State((pool, _config)): State<(PgPool, Config)>,
-    Json(payload): Json<ResetPasswordPayload>,
-) -> HandlerResult<impl axum::response::IntoResponse> {
-    payload.validate()?;
-
-    let reset_record = password_reset_repo::find_valid_reset_by_token(&pool, &payload.token)
-        .await
-        .map_err(|_| internal_error("Database error"))?
-        .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
-
-    let new_password_hash = tokio::task::spawn_blocking({
-        let password = payload.new_password.clone();
-        move || hash_password(&password)
-    })
-    .await
-    .map_err(|_| internal_error("Task join error"))?
-    .map_err(|_| internal_error("Failed to hash password"))?;
-
-    let user = auth_repo::update_user_password(&pool, reset_record.user_id, &new_password_hash)
-        .await
-        .map_err(|_| internal_error("Failed to update password"))?;
-
-    password_reset_repo::mark_token_as_used(&pool, reset_record.id)
-        .await
-        .map_err(|_| internal_error("Failed to mark token as used"))?;
-
-    auth_repo::delete_all_refresh_tokens_for_user(&pool, user.id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
-
-    auth_repo::delete_active_access_tokens_for_user(&pool, user.id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke access tokens"))?;
-
-    let email_service =
-        EmailService::new().map_err(|_| internal_error("Email service initialization failed"))?;
-
-    if let Err(e) = email_service.send_password_changed_notification(&user.email, &user.username) {
-        tracing::error!("Failed to send password changed notification: {:?}", e);
-    }
-
-    Ok(Json(json!({
-        "message": "Password has been reset successfully"
-    })))
+fn internal_error(message: impl Into<String>) -> AppError {
+    AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }

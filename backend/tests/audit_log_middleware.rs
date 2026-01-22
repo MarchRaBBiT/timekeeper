@@ -73,7 +73,7 @@ async fn audit_log_middleware_records_event() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 365;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -81,7 +81,7 @@ async fn audit_log_middleware_records_event() {
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -135,7 +135,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 0;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -143,7 +143,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -182,7 +182,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -193,7 +193,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
             post(|| async { (StatusCode::BAD_REQUEST, "bad") }),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -241,7 +241,7 @@ async fn audit_log_middleware_records_auth_failure() {
     let mut config = support::test_config();
     config.audit_log_retention_days = 365;
     config.audit_log_retention_forever = false;
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
@@ -252,7 +252,7 @@ async fn audit_log_middleware_records_auth_failure() {
             timekeeper_backend::middleware::auth,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(audit_service))
@@ -292,7 +292,7 @@ async fn audit_log_middleware_records_request_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -300,7 +300,7 @@ async fn audit_log_middleware_records_request_metadata() {
     let app = Router::new()
         .route("/api/requests/leave", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -357,7 +357,7 @@ async fn audit_log_middleware_records_consent_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -365,7 +365,7 @@ async fn audit_log_middleware_records_consent_metadata() {
     let app = Router::new()
         .route("/api/consents", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -414,7 +414,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -425,7 +425,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
             post(|| async { (StatusCode::BAD_REQUEST, "bad") }),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -473,7 +473,7 @@ async fn audit_log_middleware_records_approval_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Admin, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -484,7 +484,7 @@ async fn audit_log_middleware_records_approval_metadata() {
             axum::routing::put(ok_handler),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -530,7 +530,7 @@ async fn audit_log_middleware_records_password_change_metadata() {
         .expect("run migrations");
     reset_audit_logs(&pool).await;
     let config = support::test_config();
-    let state = AppState::new(pool.clone(), None, config.clone());
+    let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
@@ -538,7 +538,7 @@ async fn audit_log_middleware_records_password_change_metadata() {
     let app = Router::new()
         .route("/api/auth/change-password", axum::routing::put(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            state.as_tuple(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))

@@ -133,7 +133,7 @@ async fn handler_creates_and_lists_personal_workday_override() {
             "/api/admin/users/{user_id}/holiday-exceptions/{id}",
             delete(holiday_exceptions::delete_holiday_exception),
         )
-        .with_state(AppState::new(pool.clone(), None, config.clone()))
+        .with_state(AppState::new(pool.clone(), None, None, None, config.clone()))
         .layer(Extension(admin.clone()))
         .layer(Extension(exception_service.clone()));
 
