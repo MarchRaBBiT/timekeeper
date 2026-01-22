@@ -2,6 +2,24 @@ use crate::api::{ApiClient, ApiError, AuditLogListResponse};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
+pub const AUDIT_EVENT_TYPES: &[(&str, &str)] = &[
+    ("auth_login", "ログイン"),
+    ("auth_logout", "ログアウト"),
+    ("attendance_clock_in", "出勤打刻"),
+    ("attendance_clock_out", "退勤打刻"),
+    ("attendance_break_start", "休憩開始"),
+    ("attendance_break_end", "休憩終了"),
+    ("request_leave_create", "休暇申請作成"),
+    ("request_overtime_create", "残業申請作成"),
+    ("request_update", "申請更新"),
+    ("request_cancel", "申請取消"),
+    ("admin_request_approve", "申請承認"),
+    ("admin_request_reject", "申請却下"),
+    ("admin_attendance_upsert", "勤怠修正(管理者)"),
+    ("admin_user_create", "ユーザー作成"),
+    ("admin_mfa_reset", "MFAリセット"),
+];
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AuditLogFilters {
     pub from: String,

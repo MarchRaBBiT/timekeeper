@@ -1,4 +1,4 @@
-use super::view_model::{use_audit_log_view_model, AuditLogFilters};
+use super::view_model::{use_audit_log_view_model, AuditLogFilters, AUDIT_EVENT_TYPES};
 use crate::components::common::{Button, ButtonVariant};
 use crate::components::empty_state::EmptyState;
 use crate::components::layout::Layout;
@@ -69,10 +69,15 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">"イベントタイプ"</label>
-                                <input type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
+                                <select class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().event_type
-                                    on:input=move |ev| on_filter_change(ev, "event_type")
-                                />
+                                    on:change=move |ev| on_filter_change(ev, "event_type")
+                                >
+                                    <option value="">"すべて"</option>
+                                    {AUDIT_EVENT_TYPES.iter().map(|(val, label)| view! {
+                                        <option value=*val>{*label}</option>
+                                    }).collect_view()}
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">"結果"</label>
