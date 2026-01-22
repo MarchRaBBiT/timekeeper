@@ -11,6 +11,7 @@ pub mod password_reset;
 pub mod permissions;
 pub mod repository;
 pub mod subject_request;
+pub mod transaction;
 pub mod user;
 
 pub use attendance::*;
@@ -24,4 +25,5 @@ pub use password_reset::*;
 pub use permissions::*;
 pub use repository::*;
 pub use subject_request::*;
+pub use transaction::*;
 pub use user::*;

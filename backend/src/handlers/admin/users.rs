@@ -248,9 +248,7 @@ pub async fn delete_user(
         .unwrap_or_default();
 
     if params.hard {
-        user_repo::hard_delete_user(&state.write_pool, &user_id)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?;
+        user_repo::hard_delete_user(&state.write_pool, &user_id).await?;
 
         tracing::info!(
             user_id = %user_id,
@@ -265,9 +263,7 @@ pub async fn delete_user(
             "deletion_type": "hard"
         })))
     } else {
-        user_repo::soft_delete_user(&state.write_pool, &user_id, &requester.id.to_string())
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?;
+        user_repo::soft_delete_user(&state.write_pool, &user_id, &requester.id.to_string()).await?;
 
         tracing::info!(
             user_id = %user_id,
@@ -358,9 +354,7 @@ pub async fn restore_archived_user(
         ));
     }
 
-    user_repo::restore_user(&state.write_pool, &user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    user_repo::restore_user(&state.write_pool, &user_id).await?;
 
     tracing::info!(
         user_id = %user_id,
@@ -397,9 +391,7 @@ pub async fn delete_archived_user(
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
-    user_repo::hard_delete_archived_user(&state.write_pool, &user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    user_repo::hard_delete_archived_user(&state.write_pool, &user_id).await?;
 
     tracing::info!(
         user_id = %user_id,

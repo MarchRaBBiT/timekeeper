@@ -3,6 +3,9 @@
 use chrono::Utc;
 use sqlx::PgPool;
 
+use crate::error::AppError;
+use crate::repositories::transaction;
+
 /// Archives a user and all related data (soft delete).
 /// - Moves user to archived_users
 /// - Moves attendance, break_records, leave_requests, overtime_requests, holiday_exceptions to archived tables
@@ -11,8 +14,8 @@ pub async fn soft_delete_user(
     pool: &PgPool,
     user_id: &str,
     archived_by: &str,
-) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+) -> Result<(), AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
     let now = Utc::now();
 
     // 1. Archive break records (via attendance)
@@ -107,13 +110,13 @@ pub async fn soft_delete_user(
         .execute(&mut *tx)
         .await?;
 
-    tx.commit().await?;
+    transaction::commit_transaction(tx).await?;
     Ok(())
 }
 
 /// Permanently deletes a user and all related data (hard delete).
 /// Uses CASCADE delete to remove all related records.
-pub async fn hard_delete_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
+pub async fn hard_delete_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> {
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(user_id)
         .execute(pool)
@@ -122,8 +125,8 @@ pub async fn hard_delete_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::
 }
 
 /// Restores a user from the archive.
-pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
 
     // 1. Restore user
     sqlx::query(
@@ -235,7 +238,7 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Erro
         .execute(&mut *tx)
         .await?;
 
-    tx.commit().await?;
+    transaction::commit_transaction(tx).await?;
     Ok(())
 }
 
@@ -262,8 +265,8 @@ pub async fn fetch_username(pool: &PgPool, user_id: &str) -> Result<Option<Strin
 // ============================================================================
 
 /// Permanently deletes an archived user and all related archived data.
-pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
 
     // Delete in reverse order of dependencies
     sqlx::query(
@@ -301,7 +304,7 @@ pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(
         .execute(&mut *tx)
         .await?;
 
-    tx.commit().await?;
+    transaction::commit_transaction(tx).await?;
     Ok(())
 }
 
