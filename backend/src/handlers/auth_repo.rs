@@ -65,19 +65,6 @@ pub async fn delete_refresh_token_by_id(pool: &PgPool, token_id: &str) -> Result
         .map(|_| ())
 }
 
-pub async fn delete_refresh_token_for_user(
-    pool: &PgPool,
-    token_id: &str,
-    user_id: UserId,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2")
-        .bind(token_id)
-        .bind(user_id.to_string())
-        .execute(pool)
-        .await
-        .map(|_| ())
-}
-
 pub async fn delete_refresh_tokens_for_user(
     pool: &PgPool,
     user_id: UserId,

@@ -16,10 +16,10 @@ use std::task::{Context, Poll};
 use uuid::Uuid;
 
 use crate::{
-    config::Config,
     middleware::request_id::RequestId,
     models::user::User,
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
+    state::AppState,
 };
 
 const DEFAULT_CLOCK_SOURCE: &str = "api";
@@ -33,11 +33,10 @@ struct AuditEventDescriptor {
 }
 
 pub async fn audit_log(
-    State((_, config)): State<(crate::db::connection::DbPool, Config)>,
-    request: Request,
+    State(state): State<AppState>,
+    mut request: Request,
     next: Next,
 ) -> Response {
-    let mut request = request;
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let descriptor = classify_event(&method, &path);
@@ -72,7 +71,11 @@ pub async fn audit_log(
 
     let response = next.run(request).await;
 
-    if !config.audit_log_retention_policy().is_recording_enabled() {
+    if !state
+        .config
+        .audit_log_retention_policy()
+        .is_recording_enabled()
+    {
         return response;
     }
 
@@ -115,7 +118,7 @@ pub async fn audit_log(
         metadata: build_metadata(
             descriptor.event_type,
             &headers,
-            &config,
+            &state,
             actor.as_ref(),
             body_bytes.as_ref(),
         ),
@@ -262,7 +265,7 @@ fn needs_body_for_metadata(event_type: &str) -> bool {
 fn build_metadata(
     event_type: &str,
     headers: &HeaderMap,
-    config: &Config,
+    state: &AppState,
     actor: Option<&User>,
     body_bytes: Option<&Bytes>,
 ) -> Option<Value> {
@@ -270,7 +273,7 @@ fn build_metadata(
         "attendance_clock_in"
         | "attendance_clock_out"
         | "attendance_break_start"
-        | "attendance_break_end" => Some(build_attendance_metadata(event_type, headers, config)),
+        | "attendance_break_end" => Some(build_attendance_metadata(event_type, headers, state)),
         "request_leave_create"
         | "request_overtime_create"
         | "request_update"
@@ -297,7 +300,7 @@ fn build_metadata(
     }
 }
 
-fn build_attendance_metadata(event_type: &str, headers: &HeaderMap, config: &Config) -> Value {
+fn build_attendance_metadata(event_type: &str, headers: &HeaderMap, state: &AppState) -> Value {
     let clock_type = match event_type {
         "attendance_clock_in" => "clock_in",
         "attendance_clock_out" => "clock_out",
@@ -308,7 +311,7 @@ fn build_attendance_metadata(event_type: &str, headers: &HeaderMap, config: &Con
     let source = extract_source(headers);
     json!({
         "clock_type": clock_type,
-        "timezone": config.time_zone.to_string(),
+        "timezone": state.config.time_zone.to_string(),
         "source": source,
     })
 }
