@@ -1,5 +1,7 @@
 use crate::api::ApiError;
-use crate::components::{error::InlineErrorMessage, layout::LoadingSpinner};
+use crate::components::{
+    empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner,
+};
 use crate::pages::requests::types::{RequestKind, RequestSummary};
 use leptos::*;
 
@@ -44,13 +46,11 @@ pub fn RequestsList(
             </Show>
 
             <Show when=move || !loading.get() && summaries.get().is_empty() && error.get().is_none()>
-                <div class="p-16 text-center">
-                    <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                        <i class="fas fa-inbox text-2xl"></i>
-                    </div>
-                    <p class="text-slate-500 font-medium font-sans">{"表示できる申請がありません"} </p>
-                    <p class="text-xs text-slate-400 mt-1">{"左または上のフォームから新しい申請を送信できます"}</p>
-                </div>
+                <EmptyState
+                    title="表示できる申請がありません"
+                    description="左または上のフォームから新しい申請を送信できます"
+                    icon=view! { <i class="fas fa-inbox text-4xl text-slate-300"></i> }.into_view()
+                />
             </Show>
 
             <Show when=move || !summaries.get().is_empty()>

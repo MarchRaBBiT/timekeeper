@@ -1,5 +1,6 @@
 use super::view_model::use_audit_log_view_model;
 use crate::components::common::{Button, ButtonVariant};
+use crate::components::empty_state::EmptyState;
 use crate::components::layout::Layout;
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -112,7 +113,16 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                     {move || vm.logs_resource.get().map(|res| match res {
                                         Ok(response) => {
                                             if response.items.is_empty() {
-                                                view! { <tr><td colspan="6" class="p-4 text-center">"ログがありません"</td></tr> }.into_view()
+                                                view! {
+                                                    <tr>
+                                                        <td colspan="6" class="p-4">
+                                                            <EmptyState
+                                                                title="ログがありません"
+                                                                description="検索条件に一致する監査ログは見つかりませんでした。"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                }.into_view()
                                             } else {
                                                 response.items.into_iter().map(|log| {
                                                     view! {
