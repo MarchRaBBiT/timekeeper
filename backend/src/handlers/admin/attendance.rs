@@ -7,10 +7,10 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
-use sqlx::{Postgres, Transaction};
 use std::str::FromStr;
 use utoipa::ToSchema;
 
+use crate::repositories::transaction;
 use crate::state::AppState;
 use crate::{
     handlers::attendance::recalculate_total_hours,
@@ -120,11 +120,7 @@ pub async fn upsert_attendance(
         None => None,
     };
 
-    let mut tx: Transaction<'_, Postgres> = state
-        .write_pool
-        .begin()
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let mut tx = transaction::begin_transaction(&state.write_pool).await?;
 
     // Parse and validate user_id
     let user_id_typed = UserId::from_str(&user_id)
@@ -210,9 +206,7 @@ pub async fn upsert_attendance(
             .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
+    transaction::commit_transaction(tx).await?;
 
     let breaks = get_break_records(&state.write_pool, att.id).await?;
     Ok(Json(AttendanceResponse {
