@@ -363,11 +363,11 @@ fn apply_request_filters<'a>(
     }
     if let Some(from) = filters.from.as_ref() {
         push_clause(builder, &mut has_clause);
-        builder.push("created_at >= ").push_bind(from.to_owned());
+        builder.push("created_at >= ").push_bind(*from);
     }
     if let Some(to) = filters.to.as_ref() {
         push_clause(builder, &mut has_clause);
-        builder.push("created_at <= ").push_bind(to.to_owned());
+        builder.push("created_at <= ").push_bind(*to);
     }
 }
 
