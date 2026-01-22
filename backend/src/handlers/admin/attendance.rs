@@ -10,13 +10,16 @@ use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
 
+use crate::repositories::attendance::AttendanceRepository;
+use crate::repositories::break_record::BreakRecordRepository;
+use crate::repositories::repository::Repository;
 use crate::repositories::transaction;
 use crate::state::AppState;
 use crate::{
     handlers::attendance::recalculate_total_hours,
     handlers::attendance_utils::{get_break_records, get_break_records_map},
     models::{
-        attendance::{Attendance, AttendanceResponse},
+        attendance::AttendanceResponse,
         user::User,
     },
     utils::time,
@@ -34,20 +37,10 @@ pub async fn get_all_attendance(
     let limit = pagination.limit();
     let offset = pagination.offset();
 
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attendance")
-        .fetch_one(state.read_pool())
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let repo = AttendanceRepository::new();
+    let total = repo.count_all(state.read_pool()).await?;
 
-    let attendances = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at \
-         FROM attendance ORDER BY date DESC, user_id LIMIT $1 OFFSET $2"
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(state.read_pool())
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let attendances = repo.list_paginated(state.read_pool(), limit, offset).await?;
 
     let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
     let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
@@ -126,13 +119,13 @@ pub async fn upsert_attendance(
     let user_id_typed = UserId::from_str(&user_id)
         .map_err(|_| AppError::BadRequest("Invalid user_id format".into()))?;
 
+    let attendance_repo = AttendanceRepository::new();
+    let break_repo = BreakRecordRepository::new();
+
     // ensure unique per user/date: delete existing and reinsert (basic upsert)
-    sqlx::query::<sqlx::Postgres>("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
-        .bind(user_id_typed.to_string())
-        .bind(date)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
+    attendance_repo
+        .delete_by_user_and_date(&mut tx, user_id_typed, date)
+        .await?;
 
     let mut att = crate::models::attendance::Attendance::new(
         user_id_typed,
@@ -177,33 +170,11 @@ pub async fn upsert_attendance(
 
     att.calculate_work_hours(total_break_minutes);
 
-    sqlx::query::<sqlx::Postgres>("INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)" )
-        .bind(att.id.to_string())
-        .bind(att.user_id.to_string())
-        .bind(att.date)
-        .bind(att.clock_in_time)
-        .bind(att.clock_out_time)
-        .bind(att.status.db_value())
-        .bind(att.total_work_hours)
-        .bind(att.created_at)
-        .bind(att.updated_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
+    attendance_repo.create_in_transaction(&mut tx, &att).await?;
 
     // insert breaks
     for br in pending_breaks {
-        sqlx::query::<sqlx::Postgres>("INSERT INTO break_records (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)")
-            .bind(br.id.to_string())
-            .bind(br.attendance_id.to_string())
-            .bind(br.break_start_time)
-            .bind(br.break_end_time)
-            .bind(br.duration_minutes)
-            .bind(br.created_at)
-            .bind(br.updated_at)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e: sqlx::Error| AppError::InternalServerError(e.into()))?;
+        break_repo.create_in_transaction(&mut tx, &br).await?;
     }
 
     transaction::commit_transaction(tx).await?;
@@ -236,14 +207,10 @@ pub async fn force_end_break(
     let now_local = time::now_in_timezone(&state.config.time_zone);
     let now_utc = now_local.with_timezone(&Utc);
     let now = now_local.naive_local();
-    let mut rec = sqlx::query_as::<_, crate::models::break_record::BreakRecord>(
-        "SELECT id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at FROM break_records WHERE id = $1"
-    )
-    .bind(break_record_id.to_string())
-    .fetch_optional(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?
-    .ok_or_else(|| AppError::NotFound("Break not found".into()))?;
+    let break_repo = BreakRecordRepository::new();
+    let mut rec = break_repo
+        .find_by_id(&state.write_pool, break_record_id)
+        .await?;
 
     if rec.break_end_time.is_some() {
         return Err(AppError::BadRequest("Break already ended".into()));
@@ -253,22 +220,13 @@ pub async fn force_end_break(
     rec.duration_minutes = Some(duration.num_minutes() as i32);
     rec.updated_at = now_utc;
 
-    sqlx::query("UPDATE break_records SET break_end_time = $1, duration_minutes = $2, updated_at = $3 WHERE id = $4")
-        .bind(rec.break_end_time)
-        .bind(rec.duration_minutes)
-        .bind(rec.updated_at)
-        .bind(rec.id.to_string())
-        .execute(&state.write_pool)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    break_repo.update(&state.write_pool, &rec).await?;
 
-    if let Some(attendance) = sqlx::query_as::<_, Attendance>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at FROM attendance WHERE id = $1"
-    )
-    .bind(rec.attendance_id.to_string())
-    .fetch_optional(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))? {
+    let attendance_repo = AttendanceRepository::new();
+    if let Some(attendance) = attendance_repo
+        .find_optional_by_id(&state.write_pool, rec.attendance_id)
+        .await?
+    {
         if attendance.clock_out_time.is_some() {
             recalculate_total_hours(&state.write_pool, attendance, now_utc).await?;
         }
