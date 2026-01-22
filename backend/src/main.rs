@@ -131,7 +131,7 @@ fn public_routes(state: AppState) -> Router<AppState> {
         .route("/api/config/timezone", get(handlers::config::get_time_zone))
         .route_layer(rate_limiter)
         .route_layer(axum_middleware::from_fn_with_state(
-            state.as_tuple(),
+            state.clone(),
             middleware::audit_log,
         ))
 }
@@ -237,13 +237,12 @@ fn user_routes(state: AppState) -> Router<AppState> {
             middleware::auth,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.as_tuple(),
+            state.clone(),
             middleware::audit_log,
         ))
 }
 
 fn admin_routes(state: AppState) -> Router<AppState> {
-    let audit_state = state.as_tuple();
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
@@ -318,17 +317,16 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
-            state,
+            state.clone(),
             middleware::auth_admin,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
-            audit_state,
+            state.clone(),
             middleware::audit_log,
         ))
 }
 
 fn system_admin_routes(state: AppState) -> Router<AppState> {
-    let audit_state = state.as_tuple();
     Router::new()
         .route("/api/admin/users", post(handlers::admin::create_user))
         .route(
@@ -361,11 +359,11 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             post(handlers::admin::restore_archived_user),
         )
         .route_layer(axum_middleware::from_fn_with_state(
-            state,
+            state.clone(),
             middleware::auth_system_admin,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
-            audit_state,
+            state,
             middleware::audit_log,
         ))
 }
