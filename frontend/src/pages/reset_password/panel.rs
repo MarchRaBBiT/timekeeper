@@ -1,45 +1,16 @@
-use crate::api::ApiClient;
+use super::view_model::use_reset_password_view_model;
 use leptos::*;
 use leptos_router::*;
 
 #[component]
 pub fn ResetPasswordPanel() -> impl IntoView {
-    let api = expect_context::<ApiClient>();
-    let query = use_query_map();
-    let token = move || query.get().get("token").cloned().unwrap_or_default();
-
-    let password = create_rw_signal(String::new());
-    let error = create_rw_signal(Option::<String>::None);
-    let success = create_rw_signal(Option::<String>::None);
-
-    let submit_action = create_action(move |p: &String| {
-        let password = p.clone();
-        let token_val = token();
-        let api = api.clone();
-        async move {
-            if token_val.is_empty() {
-                return Err(crate::api::ApiError::validation("Invalid token"));
-            }
-            api.reset_password(token_val, password).await
-        }
-    });
+    let vm = use_reset_password_view_model();
+    let password = vm.password;
+    let error = vm.error;
+    let success = vm.success;
+    let submit_action = vm.submit_action;
 
     let pending = submit_action.pending();
-
-    create_effect(move |_| {
-        if let Some(result) = submit_action.value().get() {
-            match result {
-                Ok(resp) => {
-                    success.set(Some(resp.message));
-                    error.set(None);
-                }
-                Err(e) => {
-                    error.set(Some(e.to_string()));
-                    success.set(None);
-                }
-            }
-        }
-    });
 
     view! {
         <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
