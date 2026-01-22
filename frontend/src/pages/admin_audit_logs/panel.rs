@@ -9,6 +9,7 @@ use leptos::*;
 pub fn AdminAuditLogsPage() -> impl IntoView {
     let vm = use_audit_log_view_model();
     let (auth, _) = use_auth();
+    let selected_metadata = create_rw_signal::<Option<serde_json::Value>>(None);
     let is_system_admin = create_memo(move |_| {
         auth.get()
             .user
@@ -163,16 +164,27 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                                                 </span>
                                                                 {log.error_code.clone().map(|c| view! { <span class="block text-xs text-red-500">{c}</span> })}
                                                             </td>
-                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                                // Simple metadata display
-                                                                {log.metadata.map(|m| {
-                                                                    let s = m.to_string();
-                                                                    if s.len() > 50 {
-                                                                        format!("{}...", &s[0..50])
-                                                                    } else {
-                                                                        s
-                                                                    }
-                                                                }).unwrap_or_default()}
+                                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                                 {
+                                                                    let m = log.metadata.clone();
+                                                                    m.map(|val| {
+                                                                        let s = val.to_string();
+                                                                        let display = if s.len() > 50 {
+                                                                            format!("{}...", &s[0..50])
+                                                                        } else {
+                                                                            s
+                                                                        };
+                                                                        let val_clone = val.clone();
+                                                                        view! {
+                                                                            <button
+                                                                                class="text-blue-600 hover:underline text-left font-mono text-xs"
+                                                                                on:click=move |_| selected_metadata.set(Some(val_clone.clone()))
+                                                                            >
+                                                                                {display}
+                                                                            </button>
+                                                                        }
+                                                                    })
+                                                                }
                                                             </td>
                                                         </tr>
                                                     }
@@ -212,6 +224,30 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                             "次へ"
                         </button>
                     </div>
+
+                    <Show when=move || selected_metadata.get().is_some()>
+                        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                                <div class="p-4 border-b flex justify-between items-center">
+                                    <h3 class="text-lg font-bold">"メタデータ詳細"</h3>
+                                    <button class="text-gray-500 hover:text-gray-700" on:click=move |_| selected_metadata.set(None)>
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="p-4 overflow-auto flex-1 bg-gray-50 font-mono text-xs sm:text-sm">
+                                    <pre>{move || selected_metadata.get().map(|m| serde_json::to_string_pretty(&m).unwrap_or_default()).unwrap_or_default()}</pre>
+                                </div>
+                                <div class="p-4 border-t flex justify-end">
+                                    <button
+                                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium"
+                                        on:click=move |_| selected_metadata.set(None)
+                                    >
+                                        "閉じる"
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </Show>
                 </div>
             </Show>
         </Layout>
