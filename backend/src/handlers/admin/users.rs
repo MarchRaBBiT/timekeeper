@@ -2,7 +2,6 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -11,8 +10,8 @@ use validator::Validate;
 
 use crate::{
     error::AppError,
-    models::user::{CreateUser, UpdateUser, User, UserResponse, UserRole},
-    repositories::user as user_repo,
+    models::user::{CreateUser, UpdateUser, User, UserResponse},
+    repositories::{auth as auth_repo, user as user_repo},
     state::AppState,
     types::UserId,
     utils::password::hash_password,
@@ -26,13 +25,9 @@ pub async fn get_users(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
-    let users = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users ORDER BY created_at DESC",
-    )
-    .fetch_all(state.read_pool())
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let users = user_repo::list_users(state.read_pool())
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let responses = users.into_iter().map(UserResponse::from).collect();
     Ok(Json(responses))
@@ -48,16 +43,10 @@ pub async fn create_user(
     }
     payload.validate()?;
     // Check if username already exists
-    let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, \
-         mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
-    )
-    .bind(&payload.username)
-    .fetch_optional(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    if existing_user.is_some() {
+    if let Some(_) = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
+    {
         return Err(AppError::BadRequest("Username already exists".into()));
     }
 
@@ -80,28 +69,9 @@ pub async fn create_user(
         payload.is_system_admin,
     );
 
-    sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
-    )
-    .bind(user.id.to_string())
-    .bind(&user.username)
-    .bind(&user.password_hash)
-    .bind(&user.full_name)
-    .bind(&user.email)
-    .bind(match user.role {
-        UserRole::Employee => "employee",
-        UserRole::Admin => "admin",
-    })
-    .bind(user.is_system_admin)
-    .bind(&user.mfa_secret)
-    .bind(user.mfa_enabled_at)
-    .bind(user.created_at)
-    .bind(user.updated_at)
-    .execute(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    user_repo::create_user(&state.write_pool, &user)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let response = UserResponse::from(user);
     Ok(Json(response))
@@ -118,26 +88,20 @@ pub async fn update_user(
     }
     payload.validate()?;
 
-    let user_id =
+    let user_id_obj =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
 
-    let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?
-    .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    let existing_user = auth_repo::find_user_by_id(&state.write_pool, user_id_obj)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
     if let Some(ref email) = payload.email {
-        let email_exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
+        let email_exists = user_repo::email_exists_for_other_user(
+            &state.write_pool,
+            email,
+            &existing_user.id.to_string(),
         )
-        .bind(email)
-        .bind(user_id)
-        .fetch_one(&state.write_pool)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -153,18 +117,14 @@ pub async fn update_user(
         .is_system_admin
         .unwrap_or(existing_user.is_system_admin);
 
-    let updated_user = sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = $1, email = $2, role = $3, is_system_admin = $4, updated_at = NOW() \
-         WHERE id = $5 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    let updated_user = user_repo::update_user(
+        &state.write_pool,
+        &user_id,
+        &full_name,
+        &email,
+        role,
+        is_system_admin,
     )
-    .bind(&full_name)
-    .bind(&email)
-    .bind(role.as_str())
-    .bind(is_system_admin)
-    .bind(user_id)
-    .fetch_one(&state.write_pool)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -186,22 +146,18 @@ pub async fn reset_user_mfa(
             "Only system administrators can reset MFA".into(),
         ));
     }
-    let now = Utc::now();
-    let result = sqlx::query(
-        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
-    )
-    .bind(now)
-    .bind(&payload.user_id)
-    .execute(&state.write_pool)
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let success = user_repo::reset_mfa(&state.write_pool, &payload.user_id)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    if result.rows_affected() == 0 {
+    if !success {
         return Err(AppError::NotFound("User not found".into()));
     }
-    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(&payload.user_id)
-        .execute(&state.write_pool)
+
+    let user_id = UserId::from_str(&payload.user_id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
+
+    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
@@ -341,14 +297,11 @@ pub async fn restore_archived_user(
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
 
-    let conflict_check: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM users WHERE username = $1")
-            .bind(&username)
-            .fetch_optional(&state.write_pool)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let conflict_check = user_repo::username_exists(&state.write_pool, &username)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    if conflict_check.is_some() {
+    if conflict_check {
         return Err(AppError::BadRequest(
             "Username already in use by another user".into(),
         ));

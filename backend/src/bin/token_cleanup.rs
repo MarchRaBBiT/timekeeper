@@ -1,5 +1,5 @@
 use timekeeper_backend::{
-    config::Config, db::connection::create_pool, handlers::auth_repo,
+    config::Config, db::connection::create_pool, repositories::auth as auth_repo,
     repositories::password_reset as password_reset_repo,
 };
 

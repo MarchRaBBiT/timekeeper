@@ -3,8 +3,8 @@ use sqlx::PgPool;
 
 use crate::types::{HolidayExceptionId, UserId};
 use crate::{
-    handlers::holiday_exception_repo,
     models::holiday_exception::{CreateHolidayExceptionPayload, HolidayException},
+    repositories::holiday_exception as holiday_exception_repo,
 };
 
 #[derive(Debug)]

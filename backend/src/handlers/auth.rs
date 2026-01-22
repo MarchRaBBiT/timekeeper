@@ -11,7 +11,11 @@ use std::str::FromStr;
 use crate::{
     config::Config,
     error::AppError,
-    handlers::auth_repo::{self, ActiveAccessToken},
+    repositories::{
+        auth::{self as auth_repo, ActiveAccessToken},
+        password_reset as password_reset_repo,
+        user as user_repo,
+    },
     models::{
         password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
         user::{
@@ -19,7 +23,6 @@ use crate::{
             MfaStatusResponse, UpdateProfile, User, UserResponse,
         },
     },
-    repositories::password_reset as password_reset_repo,
     state::AppState,
     types::UserId,
     utils::{
@@ -239,12 +242,11 @@ pub async fn update_profile(
     payload.validate()?;
 
     if let Some(ref email) = payload.email {
-        let email_exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
+        let email_exists = user_repo::email_exists_for_other_user(
+            &state.write_pool,
+            email,
+            &user.id.to_string(),
         )
-        .bind(email)
-        .bind(user.id)
-        .fetch_one(&state.write_pool)
         .await
         .map_err(|_| internal_error("Database error"))?;
 
@@ -256,16 +258,12 @@ pub async fn update_profile(
     let full_name = payload.full_name.unwrap_or(user.full_name);
     let email = payload.email.unwrap_or(user.email);
 
-    let updated_user = sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = $1, email = $2, updated_at = NOW() \
-         WHERE id = $3 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    let updated_user = user_repo::update_profile(
+        &state.write_pool,
+        &user.id.to_string(),
+        &full_name,
+        &email,
     )
-    .bind(&full_name)
-    .bind(&email)
-    .bind(user.id)
-    .fetch_one(&state.write_pool)
     .await
     .map_err(|_| internal_error("Failed to update profile"))?;
 
@@ -310,12 +308,9 @@ pub async fn mfa_activate(
     }
 
     let now = Utc::now();
-    if sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
-        .bind(now)
-        .bind(user.id.to_string())
-        .execute(&state.write_pool)
+    if !user_repo::enable_mfa(&state.write_pool, &user.id.to_string(), now)
         .await
-        .is_err()
+        .map_err(|_| internal_error("Failed to enable MFA"))?
     {
         return Err(internal_error("Failed to enable MFA"));
     }
@@ -355,14 +350,9 @@ pub async fn mfa_disable(
         return Err(unauthorized("Invalid MFA code"));
     }
 
-    if sqlx::query(
-        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = $1 WHERE id = $2",
-    )
-    .bind(Utc::now())
-    .bind(user.id.to_string())
-    .execute(&state.write_pool)
-    .await
-    .is_err()
+    if !user_repo::disable_mfa(&state.write_pool, &user.id.to_string())
+        .await
+        .map_err(|_| internal_error("Failed to disable MFA"))?
     {
         return Err(internal_error("Failed to disable MFA"));
     }
@@ -547,15 +537,9 @@ async fn begin_mfa_enrollment(
     let otpauth_url = generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret)
         .map_err(|_| internal_error("Failed to issue MFA secret"))?;
 
-    if sqlx::query(
-        "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
-    )
-    .bind(&secret)
-    .bind(Utc::now())
-    .bind(user.id.to_string())
-    .execute(pool)
-    .await
-    .is_err()
+    if !user_repo::set_mfa_secret(pool, &user.id.to_string(), &secret, Utc::now())
+        .await
+        .map_err(|_| internal_error("Failed to persist MFA secret"))?
     {
         return Err(internal_error("Failed to persist MFA secret"));
     }
