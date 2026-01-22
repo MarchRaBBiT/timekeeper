@@ -9,9 +9,17 @@ use timekeeper_backend::{
 
 mod support;
 
+async fn migrate_db(pool: &PgPool) {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .expect("run migrations");
+}
+
 #[tokio::test]
 async fn test_password_reset_full_flow() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let email = "test@example.com";
     let initial_password = "OldPassword123!";
@@ -68,6 +76,7 @@ async fn test_password_reset_full_flow() {
 #[tokio::test]
 async fn test_expired_token_cleanup() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let user = create_test_user(&pool, "cleanup@example.com", "Pass123!").await;
 
@@ -101,6 +110,7 @@ async fn test_expired_token_cleanup() {
 #[tokio::test]
 async fn test_invalid_token_returns_none() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let result = password_reset_repo::find_valid_reset_by_token(&pool, "invalid_token")
         .await

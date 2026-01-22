@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
     middleware as axum_middleware,
     response::IntoResponse,
-    routing::post,
+    routing::{post, put},
     Extension, Router,
 };
 use chrono::Utc;
@@ -24,6 +24,10 @@ mod support;
 
 async fn ok_handler() -> impl IntoResponse {
     StatusCode::OK
+}
+
+async fn unauthorized_handler() -> impl IntoResponse {
+    StatusCode::UNAUTHORIZED
 }
 
 async fn fetch_audit_log_by_request_id(pool: &PgPool, request_id: &str) -> Option<AuditLog> {
@@ -247,6 +251,7 @@ async fn audit_log_middleware_records_auth_failure() {
 
     let app = Router::new()
         .route("/api/consents", post(ok_handler))
+        .route("/api/attendance/clock-in", post(unauthorized_handler))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             timekeeper_backend::middleware::audit_log,
@@ -424,6 +429,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
             "/api/requests/leave",
             post(|| async { (StatusCode::BAD_REQUEST, "bad") }),
         )
+        .route("/api/auth/change-password", put(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             timekeeper_backend::middleware::audit_log,
@@ -540,6 +546,7 @@ async fn audit_log_middleware_records_password_change_metadata() {
             "/api/requests/leave",
             post(|| async { (StatusCode::BAD_REQUEST, "bad") }),
         )
+        .route("/api/auth/change-password", put(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             timekeeper_backend::middleware::audit_log,

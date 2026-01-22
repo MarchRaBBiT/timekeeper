@@ -19,7 +19,7 @@ timekeeper/
 │   │   ├── services/       # ビジネスロジック（祝日）
 │   │   └── bin/           # ユーティリティ（token_cleanup）
 │   ├── migrations/     # SQLx マイグレーション
-│   └── tests/          # 統合テスト（pg-embed）
+│   └── tests/          # 統合テスト（testcontainers）
 ├── frontend/         # Leptos WASM + TailwindCSS (77 Rust files)
 │   ├── src/
 │   │   ├── pages/         # ルーティング画面（MVVM pattern）
@@ -39,7 +39,7 @@ timekeeper/
 | マイグレーション | `backend/migrations/` | SQLx, auto-run on start |
 | フロントエンド画面追加 | `frontend/src/pages/` | MVVM: panel/view_model/repository |
 | API 呼び出し | `frontend/src/api/client.rs` | Centralized client |
-| 統合テスト | `backend/tests/` | pg-embed + ctor |
+| 統合テスト | `backend/tests/` | testcontainers + ctor |
 | E2E スモーク | `e2e/*.mjs`, `scripts/test_backend.ps1` | Playwright + PowerShell |
 
 ## CONVENTIONS
@@ -58,7 +58,7 @@ timekeeper/
 - 認証: `Extension<User>` エクストラクター
 - 検証: `validator` crate, `payload.validate()?`
 - エラー: 統一 `AppError` enum (`IntoResponse` 実装)
-- テスト: 統合テストは `pg-embed` で実 DB 使用
+- テスト: 統合テストは `testcontainers` で実 DB 使用
 
 ### フロントエンド (Leptos)
 - 状態: `*_signal` または `use_*` ヘルパー

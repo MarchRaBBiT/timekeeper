@@ -4,7 +4,7 @@
 **Commit:** (not tracked)
 
 ## OVERVIEW
-pg-embed を使用した PostgreSQL 統合テスト環境。ctor による自動セットアップ、integration_guard による並列テスト制御。
+testcontainers を使用した PostgreSQL 統合テスト環境。ctor による自動セットアップ、integration_guard による並列テスト制御。
 
 ## STRUCTURE
 ```
@@ -29,7 +29,7 @@ tests/
 ## CONVENTIONS
 ### DB セットアップ
 - `ctor` 使用: テスト実行前に `support/mod.rs` 初期化
-- 環境変数: `TEST_DATABASE_URL` 自動設定（pg-embed 生成）
+- 環境変数: `TEST_DATABASE_URL` 自動設定（testcontainers 起動）
 - マイグレーション: `sqlx::migrate!` 自動実行
 
 ### 並列制御
@@ -66,6 +66,7 @@ async fn test_feature() {
 - シードヘルパーを再実装禁止（必ず `support::` 使用）
 
 ## NOTES
-- pg-embed は PostgreSQL v15 を一時起動
+- testcontainers は PostgreSQL v15 を一時起動
+- Podman 利用時は `DOCKER_HOST=unix:///run/podman/podman.sock` または `unix:///run/user/$UID/podman/podman.sock` を設定
 - テスト終了後に DB 自動破棄
 - 大規模テストファイル（例: `admin_holiday_list.rs`）は複数テストケースを含む
