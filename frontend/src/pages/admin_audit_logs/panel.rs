@@ -1,4 +1,4 @@
-use super::view_model::use_audit_log_view_model;
+use super::view_model::{use_audit_log_view_model, AuditLogFilters};
 use crate::components::common::{Button, ButtonVariant};
 use crate::components::empty_state::EmptyState;
 use crate::components::layout::Layout;
@@ -16,6 +16,8 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
             .map(|u| u.is_system_admin)
             .unwrap_or(false)
     });
+
+    let is_filters_default = create_memo(move |_| vm.filters.get() == AuditLogFilters::default());
 
     let on_filter_change = move |ev: web_sys::Event, field: &str| {
         let val = event_target_value(&ev);
@@ -84,7 +86,17 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 </select>
                             </div>
                         </div>
-                        <div class="flex justify-end">
+                        <div class="flex justify-end items-center gap-4">
+                            <button
+                                class="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled=move || is_filters_default.get()
+                                on:click=move |_| {
+                                    vm.filters.set(AuditLogFilters::default());
+                                    vm.page.set(1);
+                                }
+                            >
+                                "フィルタをクリア"
+                            </button>
                             <Button
                                 variant=ButtonVariant::Primary
                                 on:click=move |_| vm.export_action.dispatch(())
