@@ -35,6 +35,11 @@ pub struct Config {
     pub redis_connect_timeout: u64,
     pub feature_redis_cache_enabled: bool,
     pub feature_read_replica_enabled: bool,
+    pub password_min_length: usize,
+    pub password_require_uppercase: bool,
+    pub password_require_lowercase: bool,
+    pub password_require_numbers: bool,
+    pub password_require_symbols: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,6 +188,31 @@ impl Config {
             .parse()
             .unwrap_or(true);
 
+        let password_min_length = env::var("PASSWORD_MIN_LENGTH")
+            .unwrap_or_else(|_| "12".to_string())
+            .parse()
+            .unwrap_or(12);
+
+        let password_require_uppercase = env::var("PASSWORD_REQUIRE_UPPERCASE")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
+        let password_require_lowercase = env::var("PASSWORD_REQUIRE_LOWERCASE")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
+        let password_require_numbers = env::var("PASSWORD_REQUIRE_NUMBERS")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
+        let password_require_symbols = env::var("PASSWORD_REQUIRE_SYMBOLS")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
         Ok(Self {
             database_url,
             read_database_url,
@@ -211,6 +241,11 @@ impl Config {
             redis_connect_timeout,
             feature_redis_cache_enabled,
             feature_read_replica_enabled,
+            password_min_length,
+            password_require_uppercase,
+            password_require_lowercase,
+            password_require_numbers,
+            password_require_symbols,
         })
     }
 
@@ -305,6 +340,11 @@ mod tests {
             redis_connect_timeout: 5,
             feature_redis_cache_enabled: true,
             feature_read_replica_enabled: true,
+            password_min_length: 12,
+            password_require_uppercase: true,
+            password_require_lowercase: true,
+            password_require_numbers: true,
+            password_require_symbols: true,
         }
     }
 

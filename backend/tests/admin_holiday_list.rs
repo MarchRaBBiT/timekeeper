@@ -11,10 +11,12 @@ use timekeeper_backend::{
     config::Config,
     error::AppError,
     handlers::admin::holidays::{
-        list_holidays, AdminHolidayKind, AdminHolidayListItem, AdminHolidayListQuery,
-        AdminHolidayListResponse,
+        list_holidays, AdminHolidayListQuery, AdminHolidayListResponse,
     },
-    models::user::{User, UserRole},
+    models::{
+        holiday::{AdminHolidayKind, AdminHolidayListItem},
+        user::{User, UserRole},
+    },
     state::AppState,
     utils::cookies::SameSite,
 };
@@ -173,6 +175,11 @@ fn dummy_config() -> Config {
         redis_connect_timeout: 5,
         feature_redis_cache_enabled: true,
         feature_read_replica_enabled: true,
+        password_min_length: 12,
+        password_require_uppercase: true,
+        password_require_lowercase: true,
+        password_require_numbers: true,
+        password_require_symbols: true,
     }
 }
 

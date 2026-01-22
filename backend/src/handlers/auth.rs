@@ -36,7 +36,7 @@ use crate::{
             verify_access_token, verify_refresh_token, Claims, RefreshToken,
         },
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
-        password::{hash_password, verify_password},
+        password::{hash_password, validate_password_complexity, verify_password},
         security::generate_token,
     },
     validation::Validate,
@@ -379,6 +379,8 @@ pub async fn change_password(
 ) -> HandlerResult<Json<Value>> {
     crate::utils::security::verify_request_origin(&headers, &state.config)?;
     payload.validate()?;
+    validate_password_complexity(&payload.new_password, &state.config)
+        .map_err(|e| bad_request(e.to_string()))?;
     if payload.new_password == payload.current_password {
         return Err(bad_request(
             "New password must differ from current password",
@@ -451,6 +453,8 @@ pub async fn reset_password(
     Json(payload): Json<ResetPasswordPayload>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
+    validate_password_complexity(&payload.new_password, &state.config)
+        .map_err(|e| bad_request(e.to_string()))?;
 
     let reset_record =
         password_reset_repo::find_valid_reset_by_token(&state.write_pool, &payload.token)

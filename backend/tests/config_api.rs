@@ -31,6 +31,11 @@ fn loads_time_zone_string_without_db() {
         redis_connect_timeout: 5,
         feature_redis_cache_enabled: true,
         feature_read_replica_enabled: true,
+        password_min_length: 12,
+        password_require_uppercase: true,
+        password_require_lowercase: true,
+        password_require_numbers: true,
+        password_require_symbols: true,
     };
     assert_eq!(cfg.time_zone, chrono_tz::Asia::Tokyo);
 }

@@ -14,7 +14,7 @@ use crate::{
     repositories::{auth as auth_repo, user as user_repo},
     state::AppState,
     types::UserId,
-    utils::password::hash_password,
+    utils::password::{hash_password, validate_password_complexity},
 };
 
 pub async fn get_users(
@@ -42,6 +42,9 @@ pub async fn create_user(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     payload.validate()?;
+    validate_password_complexity(&payload.password, &state.config)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+
     // Check if username already exists
     if let Some(_) = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
