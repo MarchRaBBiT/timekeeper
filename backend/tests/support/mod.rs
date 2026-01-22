@@ -176,6 +176,8 @@ pub fn test_config() -> Config {
         password_require_lowercase: true,
         password_require_numbers: true,
         password_require_symbols: true,
+        password_expiration_days: 90,
+        password_history_count: 5,
     }
 }
 
@@ -231,8 +233,8 @@ async fn insert_user_with_password_hash(
     );
     sqlx::query(
         "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
@@ -243,6 +245,7 @@ async fn insert_user_with_password_hash(
     .bind(user.is_system_admin)
     .bind(&user.mfa_secret)
     .bind(user.mfa_enabled_at)
+    .bind(user.password_changed_at)
     .bind(user.created_at)
     .bind(user.updated_at)
     .execute(pool)

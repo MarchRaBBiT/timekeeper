@@ -30,7 +30,7 @@ pub async fn find_user_by_username(
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE username = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE username = $1",
     )
     .bind(username)
     .fetch_optional(pool)
@@ -41,7 +41,7 @@ pub async fn find_user_by_username(
 pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE id = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE id = $1",
     )
     .bind(user_id.to_string())
     .fetch_optional(pool)
@@ -163,7 +163,7 @@ pub async fn cleanup_expired_access_tokens(pool: &PgPool) -> Result<(), sqlx::Er
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users WHERE email = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -175,16 +175,76 @@ pub async fn update_user_password(
     pool: &PgPool,
     user_id: UserId,
     new_password_hash: &str,
+    previous_password_hash: &str,
+    history_limit: u32,
 ) -> Result<User, sqlx::Error> {
-    sqlx::query_as::<_, User>(
-        "UPDATE users SET password_hash = $1, updated_at = NOW() \
-         WHERE id = $2 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+    if history_limit > 0 {
+        let mut tx = pool.begin().await?;
+
+        sqlx::query(
+            "INSERT INTO password_histories (id, user_id, password_hash, changed_at) \
+             VALUES ($1, $2, $3, NOW())",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(user_id.to_string())
+        .bind(previous_password_hash)
+        .execute(&mut *tx)
+        .await?;
+
+        let history_limit = history_limit as i64;
+        sqlx::query(
+            "DELETE FROM password_histories WHERE id IN (\
+             SELECT id FROM password_histories WHERE user_id = $1\
+             ORDER BY changed_at DESC OFFSET $2)",
+        )
+        .bind(user_id.to_string())
+        .bind(history_limit)
+        .execute(&mut *tx)
+        .await?;
+
+        let user = sqlx::query_as::<_, User>(
+            "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
+             WHERE id = $2 \
+             RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+             mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
+        )
+        .bind(new_password_hash)
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(user)
+    } else {
+        sqlx::query_as::<_, User>(
+            "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
+             WHERE id = $2 \
+             RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+             mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
+        )
+        .bind(new_password_hash)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+    }
+}
+
+/// Fetches recent password hashes for history enforcement.
+pub async fn fetch_recent_password_hashes(
+    pool: &PgPool,
+    user_id: UserId,
+    limit: u32,
+) -> Result<Vec<String>, sqlx::Error> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    sqlx::query_scalar::<_, String>(
+        "SELECT password_hash FROM password_histories WHERE user_id = $1 \
+         ORDER BY changed_at DESC LIMIT $2",
     )
-    .bind(new_password_hash)
-    .bind(user_id)
-    .fetch_one(pool)
+    .bind(user_id.to_string())
+    .bind(limit as i64)
+    .fetch_all(pool)
     .await
 }
 

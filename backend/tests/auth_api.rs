@@ -49,6 +49,8 @@ fn test_config() -> Config {
         password_require_lowercase: true,
         password_require_numbers: true,
         password_require_symbols: true,
+        password_expiration_days: 90,
+        password_history_count: 5,
     }
 }
 
