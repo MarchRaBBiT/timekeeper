@@ -10,9 +10,10 @@ use std::sync::Arc;
 use crate::{
     error::AppError,
     models::{
-        holiday::{CreateHolidayPayload, Holiday, HolidayResponse},
+        holiday::{CreateHolidayPayload, HolidayResponse},
         user::User,
     },
+    repositories::{repository::Repository, HolidayRepository},
     services::holiday::HolidayServiceTrait,
     state::AppState,
 };
@@ -25,13 +26,8 @@ pub async fn list_public_holidays(
     State(state): State<AppState>,
     Extension(_user): Extension<User>,
 ) -> Result<Json<Vec<HolidayResponse>>, AppError> {
-    let holidays = sqlx::query_as::<_, Holiday>(
-        "SELECT id, holiday_date, name, description, created_at, updated_at \
-         FROM holidays ORDER BY holiday_date",
-    )
-    .fetch_all(state.read_pool())
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let repo = HolidayRepository::new();
+    let holidays = repo.find_all(state.read_pool()).await?;
 
     Ok(Json(
         holidays

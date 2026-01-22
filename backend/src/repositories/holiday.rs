@@ -48,7 +48,7 @@ impl Repository<Holiday> for HolidayRepository {
     type Id = HolidayId;
 
     async fn find_all(&self, db: &PgPool) -> Result<Vec<Holiday>, AppError> {
-        let query = format!("{} ORDER BY holiday_date DESC", Self::base_select_query());
+        let query = format!("{} ORDER BY holiday_date ASC", Self::base_select_query());
         let rows = sqlx::query_as::<_, Holiday>(&query).fetch_all(db).await?;
         Ok(rows)
     }
