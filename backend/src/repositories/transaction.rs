@@ -27,6 +27,7 @@ pub async fn commit_transaction(tx: PgTransaction<'_>) -> Result<(), AppError> {
 /// Rollback a transaction.
 ///
 /// Undoes all changes made within the transaction since it began.
+#[allow(dead_code)]
 pub async fn rollback_transaction(tx: PgTransaction<'_>) -> Result<(), AppError> {
     tx.rollback()
         .await
