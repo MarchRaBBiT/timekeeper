@@ -9,8 +9,8 @@ use sqlx::PgPool;
 
 use crate::types::UserId;
 use crate::{
-    handlers::auth_repo,
     models::user::User,
+    repositories::auth as auth_repo,
     state::AppState,
     utils::{
         cookies::{extract_cookie_value, ACCESS_COOKIE_NAME},
