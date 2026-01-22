@@ -17,6 +17,8 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
             .unwrap_or(false)
     });
 
+    let is_filters_default = create_memo(move |_| vm.filters.get() == AuditLogFilters::default());
+
     let on_filter_change = move |ev: web_sys::Event, field: &str| {
         let val = event_target_value(&ev);
         vm.filters.update(|f| match field {
@@ -86,7 +88,8 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         </div>
                         <div class="flex justify-end items-center gap-4">
                             <button
-                                class="text-sm text-gray-500 hover:text-gray-700"
+                                class="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled=move || is_filters_default.get()
                                 on:click=move |_| {
                                     vm.filters.set(AuditLogFilters::default());
                                     vm.page.set(1);
