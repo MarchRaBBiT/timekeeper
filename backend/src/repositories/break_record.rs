@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::models::break_record::BreakRecord;
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, BreakRecordId};
+use sqlx::postgres::PgTransaction;
 use sqlx::{PgPool, Row};
 
 const TABLE_NAME: &str = "break_records";
@@ -89,6 +90,30 @@ impl BreakRecordRepository {
 
         let minutes: i64 = row.try_get("minutes").unwrap_or(0);
         Ok(minutes)
+    }
+
+    pub async fn create_in_transaction(
+        &self,
+        tx: &mut PgTransaction<'_>,
+        item: &BreakRecord,
+    ) -> Result<BreakRecord, AppError> {
+        let query = format!(
+            "INSERT INTO {} (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             RETURNING {}",
+            TABLE_NAME, SELECT_COLUMNS
+        );
+        let row = sqlx::query_as::<_, BreakRecord>(&query)
+            .bind(item.id)
+            .bind(item.attendance_id)
+            .bind(item.break_start_time)
+            .bind(item.break_end_time)
+            .bind(item.duration_minutes)
+            .bind(item.created_at)
+            .bind(item.updated_at)
+            .fetch_one(tx.as_mut())
+            .await?;
+        Ok(row)
     }
 
     fn base_select_query() -> String {

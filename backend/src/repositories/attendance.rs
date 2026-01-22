@@ -9,6 +9,7 @@ use crate::models::attendance::Attendance;
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, UserId};
 use chrono::NaiveDate;
+use sqlx::postgres::PgTransaction;
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 const TABLE_NAME: &str = "attendance";
@@ -21,6 +22,31 @@ pub struct AttendanceRepository;
 impl AttendanceRepository {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn count_all(&self, db: &PgPool) -> Result<i64, AppError> {
+        let total = sqlx::query_scalar("SELECT COUNT(*) FROM attendance")
+            .fetch_one(db)
+            .await?;
+        Ok(total)
+    }
+
+    pub async fn list_paginated(
+        &self,
+        db: &PgPool,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Attendance>, AppError> {
+        let query = format!(
+            "SELECT {} FROM {} ORDER BY date DESC, user_id LIMIT $1 OFFSET $2",
+            SELECT_COLUMNS, TABLE_NAME
+        );
+        let rows = sqlx::query_as::<_, Attendance>(&query)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(db)
+            .await?;
+        Ok(rows)
     }
 
     pub async fn find_by_user_and_date(
@@ -37,6 +63,59 @@ impl AttendanceRepository {
             .bind(user_id)
             .bind(date)
             .fetch_optional(db)
+            .await?;
+        Ok(row)
+    }
+
+    pub async fn find_optional_by_id(
+        &self,
+        db: &PgPool,
+        id: AttendanceId,
+    ) -> Result<Option<Attendance>, AppError> {
+        let query = format!("{} WHERE id = $1", Self::base_select_query());
+        let result = sqlx::query_as::<_, Attendance>(&query)
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn delete_by_user_and_date(
+        &self,
+        tx: &mut PgTransaction<'_>,
+        user_id: UserId,
+        date: NaiveDate,
+    ) -> Result<(), AppError> {
+        sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
+            .bind(user_id)
+            .bind(date)
+            .execute(tx.as_mut())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn create_in_transaction(
+        &self,
+        tx: &mut PgTransaction<'_>,
+        item: &Attendance,
+    ) -> Result<Attendance, AppError> {
+        let query = format!(
+            "INSERT INTO {} (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             RETURNING {}",
+            TABLE_NAME, SELECT_COLUMNS
+        );
+        let row = sqlx::query_as::<_, Attendance>(&query)
+            .bind(item.id)
+            .bind(item.user_id)
+            .bind(item.date)
+            .bind(item.clock_in_time)
+            .bind(item.clock_out_time)
+            .bind(item.status.db_value())
+            .bind(item.total_work_hours)
+            .bind(item.created_at)
+            .bind(item.updated_at)
+            .fetch_one(tx.as_mut())
             .await?;
         Ok(row)
     }
