@@ -20,10 +20,12 @@ pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
 
 /// Creates a new user.
 pub async fn create_user(pool: &PgPool, user: &User) -> Result<User, sqlx::Error> {
-    sqlx::query(
+    sqlx::query_as::<_, User>(
         "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
          mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, created_at, updated_at",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
@@ -39,10 +41,8 @@ pub async fn create_user(pool: &PgPool, user: &User) -> Result<User, sqlx::Error
     .bind(user.mfa_enabled_at)
     .bind(user.created_at)
     .bind(user.updated_at)
-    .execute(pool)
-    .await?;
-
-    Ok(user.clone())
+    .fetch_one(pool)
+    .await
 }
 
 /// Updates an existing user's profile.

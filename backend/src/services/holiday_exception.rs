@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use crate::types::{HolidayExceptionId, UserId};
 use crate::{
     models::holiday_exception::{CreateHolidayExceptionPayload, HolidayException},
-    repositories::holiday_exception as holiday_exception_repo,
+    repositories::{holiday_exception as holiday_exception_repo, user as user_repo},
 };
 
 #[derive(Debug)]
@@ -104,13 +104,7 @@ impl HolidayExceptionServiceTrait for HolidayExceptionService {
 
 impl HolidayExceptionService {
     async fn user_exists(&self, user_id: UserId) -> Result<bool, HolidayExceptionError> {
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 LIMIT 1)",
-        )
-        .bind(user_id.to_string())
-        .fetch_one(&self.pool)
-        .await?;
-
+        let exists = user_repo::user_exists(&self.pool, &user_id.to_string()).await?;
         Ok(exists)
     }
 }
