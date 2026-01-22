@@ -3,21 +3,55 @@ use leptos::*;
 use wasm_bindgen::JsCast;
 
 pub const AUDIT_EVENT_TYPES: &[(&str, &str)] = &[
+    // 認証・アカウント
     ("auth_login", "ログイン"),
     ("auth_logout", "ログアウト"),
+    ("auth_refresh", "トークン更新"),
+    ("mfa_activate", "MFA有効化"),
+    ("mfa_disable", "MFA無効化"),
+    ("mfa_register", "MFA登録"),
+    ("mfa_setup", "MFAセットアップ"),
+    ("password_change", "パスワード変更"),
+    // 勤怠
+    ("attendance_break_end", "休憩終了"),
+    ("attendance_break_start", "休憩開始"),
     ("attendance_clock_in", "出勤打刻"),
     ("attendance_clock_out", "退勤打刻"),
-    ("attendance_break_start", "休憩開始"),
-    ("attendance_break_end", "休憩終了"),
+    ("attendance_export", "勤怠データ出力"),
+    // 申請
+    ("request_cancel", "申請取消"),
     ("request_leave_create", "休暇申請作成"),
     ("request_overtime_create", "残業申請作成"),
     ("request_update", "申請更新"),
-    ("request_cancel", "申請取消"),
-    ("admin_request_approve", "申請承認"),
-    ("admin_request_reject", "申請却下"),
+    // 本人確認・データ要求
+    ("subject_request_cancel", "本人確認申請取消"),
+    ("subject_request_create", "本人確認申請作成"),
+    // 同意
+    ("consent_record", "同意記録"),
+    // 管理者操作
+    ("admin_attendance_list", "勤怠一覧参照(管理者)"),
     ("admin_attendance_upsert", "勤怠修正(管理者)"),
-    ("admin_user_create", "ユーザー作成"),
-    ("admin_mfa_reset", "MFAリセット"),
+    ("admin_audit_log_detail", "監査ログ詳細参照(管理者)"),
+    ("admin_audit_log_export", "監査ログ出力(管理者)"),
+    ("admin_audit_log_list", "監査ログ一覧参照(管理者)"),
+    ("admin_break_force_end", "休憩強制終了(管理者)"),
+    ("admin_export", "データ一括出力(管理者)"),
+    ("admin_holiday_create", "祝日作成(管理者)"),
+    ("admin_holiday_delete", "祝日削除(管理者)"),
+    ("admin_holiday_google_fetch", "Googleカレンダー連携(管理者)"),
+    ("admin_holiday_list", "祝日一覧参照(管理者)"),
+    ("admin_mfa_reset", "MFAリセット(管理者)"),
+    ("admin_request_approve", "申請承認(管理者)"),
+    ("admin_request_detail", "申請詳細参照(管理者)"),
+    ("admin_request_list", "申請一覧参照(管理者)"),
+    ("admin_request_reject", "申請却下(管理者)"),
+    ("admin_subject_request_approve", "本人確認承認(管理者)"),
+    ("admin_subject_request_list", "本人確認一覧参照(管理者)"),
+    ("admin_subject_request_reject", "本人確認却下(管理者)"),
+    ("admin_user_create", "ユーザー作成(管理者)"),
+    ("admin_user_list", "ユーザー一覧参照(管理者)"),
+    ("admin_weekly_holiday_create", "週間祝日作成(管理者)"),
+    ("admin_weekly_holiday_list", "週間祝日一覧参照(管理者)"),
 ];
 
 #[derive(Clone, Debug, PartialEq)]
