@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
-use uuid::Uuid;
 use validator::Validate;
 
 use crate::types::UserId;
@@ -14,7 +13,7 @@ use crate::validation::rules;
 /// Database representation of a password reset token.
 pub struct PasswordReset {
     /// Unique identifier for the password reset record.
-    pub id: Uuid,
+    pub id: String,
     /// User ID associated with this reset token.
     pub user_id: UserId,
     /// SHA-256 hash of the reset token (for security).

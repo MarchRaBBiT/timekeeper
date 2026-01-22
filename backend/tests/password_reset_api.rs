@@ -1,4 +1,5 @@
 use chrono::Utc;
+use uuid::Uuid;
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::auth_repo,
@@ -43,7 +44,7 @@ async fn test_password_reset_full_flow() {
 
     assert_ne!(updated_user.password_hash, user.password_hash);
 
-    password_reset_repo::mark_token_as_used(&pool, reset_record.id)
+    password_reset_repo::mark_token_as_used(&pool, &reset_record.id)
         .await
         .expect("mark token used");
 
@@ -51,7 +52,7 @@ async fn test_password_reset_full_flow() {
         sqlx::query_as::<_, timekeeper_backend::models::password_reset::PasswordReset>(
             "SELECT * FROM password_resets WHERE id = $1",
         )
-        .bind(reset_record.id)
+        .bind(&reset_record.id)
         .fetch_one(&pool)
         .await
         .expect("fetch used reset");
@@ -72,8 +73,9 @@ async fn test_expired_token_cleanup() {
     let user = create_test_user(&pool, "cleanup@example.com", "Pass123!").await;
 
     sqlx::query(
-        "INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        "INSERT INTO password_resets (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
+    .bind(Uuid::new_v4().to_string())
     .bind(user.id)
     .bind("expired_token_hash")
     .bind(Utc::now() - chrono::Duration::hours(2))
@@ -111,18 +113,25 @@ async fn test_invalid_token_returns_none() {
 async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
     let password_hash = hash_password(password).expect("hash password");
 
+    let user_id = Uuid::new_v4();
+    let (local, domain) = email
+        .split_once('@')
+        .unwrap_or((email, "example.com"));
+    let unique_email = format!("{}+{}@{}", local, user_id, domain);
+    let username = format!("user_{}", unique_email);
     sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, password_hash, full_name, email, role, is_system_admin)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
         mfa_secret, mfa_enabled_at, created_at, updated_at
         "#,
     )
-    .bind(format!("user_{}", email))
+    .bind(user_id)
+    .bind(username)
     .bind(password_hash)
     .bind("Test User")
-    .bind(email)
+    .bind(unique_email)
     .bind(UserRole::Employee.as_str())
     .bind(false)
     .fetch_one(pool)

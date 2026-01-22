@@ -168,6 +168,10 @@ fn dummy_config() -> Config {
         rate_limit_ip_window_seconds: 900,
         rate_limit_user_max_requests: 20,
         rate_limit_user_window_seconds: 3600,
+        redis_url: None,
+        redis_pool_size: 10,
+        redis_connect_timeout: 5,
+        feature_redis_cache_enabled: true,
         feature_read_replica_enabled: true,
     }
 }
@@ -264,7 +268,7 @@ async fn admin_holiday_list_rejects_unknown_type() {
     };
 
     let result = list_holidays(
-        State(AppState::new(pool, None, dummy_config())),
+        State(AppState::new(pool, None, None, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )
@@ -294,7 +298,7 @@ async fn admin_holiday_list_rejects_invalid_date_format() {
     };
 
     let result = list_holidays(
-        State(AppState::new(pool, None, dummy_config())),
+        State(AppState::new(pool, None, None, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )
@@ -327,7 +331,7 @@ async fn admin_holiday_list_rejects_from_after_to() {
     };
 
     let result = list_holidays(
-        State(AppState::new(pool, None, dummy_config())),
+        State(AppState::new(pool, None, None, None, dummy_config())),
         Extension(test_admin()),
         Query(query),
     )

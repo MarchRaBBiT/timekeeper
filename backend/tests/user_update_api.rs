@@ -1,20 +1,30 @@
 use sqlx::PgPool;
 use timekeeper_backend::models::user::{UpdateProfile, UpdateUser, User};
+use uuid::Uuid;
 
 mod support;
+
+fn unique_email(base: &str) -> String {
+    let (local, domain) = base
+        .split_once('@')
+        .unwrap_or((base, "example.com"));
+    format!("{}+{}@{}", local, Uuid::new_v4(), domain)
+}
 
 #[tokio::test]
 async fn test_admin_update_user_email() {
     let pool = support::test_pool().await;
 
-    let _admin = create_test_user(&pool, "admin@test.com", "admin", true).await;
-    let user = create_test_user(&pool, "user@test.com", "user1", false).await;
+    let admin_email = unique_email("admin@test.com");
+    let user_email = unique_email("user@test.com");
+    let _admin = create_test_user(&pool, &admin_email, "admin", true).await;
+    let user = create_test_user(&pool, &user_email, "user1", false).await;
 
-    let new_email = "newemail@test.com";
+    let new_email = unique_email("newemail@test.com");
 
     let update_payload = UpdateUser {
         full_name: None,
-        email: Some(new_email.to_string()),
+        email: Some(new_email.clone()),
         role: None,
         is_system_admin: None,
     };
@@ -43,14 +53,15 @@ async fn test_admin_update_user_email() {
 async fn test_user_update_own_profile() {
     let pool = support::test_pool().await;
 
-    let user = create_test_user(&pool, "original@test.com", "testuser", false).await;
+    let original_email = unique_email("original@test.com");
+    let user = create_test_user(&pool, &original_email, "testuser", false).await;
 
-    let new_email = "updated@test.com";
+    let new_email = unique_email("updated@test.com");
     let new_full_name = "Updated Name";
 
     let update_payload = UpdateProfile {
         full_name: Some(new_full_name.to_string()),
-        email: Some(new_email.to_string()),
+        email: Some(new_email.clone()),
     };
 
     let updated = sqlx::query_as::<_, User>(
@@ -74,13 +85,15 @@ async fn test_user_update_own_profile() {
 async fn test_email_uniqueness_check() {
     let pool = support::test_pool().await;
 
-    let _user1 = create_test_user(&pool, "user1@test.com", "user1", false).await;
-    let user2 = create_test_user(&pool, "user2@test.com", "user2", false).await;
+    let user1_email = unique_email("user1@test.com");
+    let user2_email = unique_email("user2@test.com");
+    let _user1 = create_test_user(&pool, &user1_email, "user1", false).await;
+    let user2 = create_test_user(&pool, &user2_email, "user2", false).await;
 
     let email_exists = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
     )
-    .bind("user1@test.com")
+    .bind(user1_email)
     .bind(user2.id)
     .fetch_one(&pool)
     .await
@@ -93,15 +106,18 @@ async fn create_test_user(pool: &PgPool, email: &str, username: &str, is_admin: 
     let password_hash =
         timekeeper_backend::utils::password::hash_password("TestPass123!").expect("hash password");
 
+    let user_id = Uuid::new_v4();
+    let unique_username = format!("{}_{}", username, user_id);
     sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, password_hash, full_name, email, role, is_system_admin)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
         mfa_secret, mfa_enabled_at, created_at, updated_at
         "#,
     )
-    .bind(username)
+    .bind(user_id)
+    .bind(unique_username)
     .bind(password_hash)
     .bind("Test User")
     .bind(email)

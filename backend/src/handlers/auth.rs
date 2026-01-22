@@ -484,7 +484,7 @@ pub async fn reset_password(
     .await
     .map_err(|_| internal_error("Failed to update password"))?;
 
-    password_reset_repo::mark_token_as_used(&state.write_pool, reset_record.id)
+    password_reset_repo::mark_token_as_used(&state.write_pool, &reset_record.id)
         .await
         .map_err(|_| internal_error("Failed to mark token as used"))?;
 

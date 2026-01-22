@@ -34,12 +34,14 @@ mod validation;
 
 use config::{AuditLogRetentionPolicy, Config};
 use db::connection::create_pools;
+use db::redis::create_redis_pool;
 use middleware::rate_limit::create_auth_rate_limiter;
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
     consent_log::ConsentLogService,
     holiday::{HolidayService, HolidayServiceTrait},
     holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
+    token_cache::{TokenCacheService, TokenCacheServiceTrait},
 };
 
 pub use state::AppState;
@@ -64,7 +66,12 @@ async fn main() -> anyhow::Result<()> {
     let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
         Arc::new(HolidayExceptionService::new(write_pool.clone()));
 
-    let shared_state = AppState::new(write_pool, read_pool, config.clone());
+    let redis_pool = create_redis_pool(&config).await?;
+    let token_cache: Option<Arc<dyn TokenCacheServiceTrait>> = redis_pool
+        .as_ref()
+        .map(|pool| Arc::new(TokenCacheService::new(pool.clone())) as Arc<dyn TokenCacheServiceTrait>);
+
+    let shared_state = AppState::new(write_pool, read_pool, redis_pool, token_cache, config.clone());
 
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
@@ -124,7 +131,7 @@ fn public_routes(state: AppState) -> Router<AppState> {
         .route("/api/config/timezone", get(handlers::config::get_time_zone))
         .route_layer(rate_limiter)
         .route_layer(axum_middleware::from_fn_with_state(
-            state,
+            state.as_tuple(),
             middleware::audit_log,
         ))
 }
@@ -230,13 +237,13 @@ fn user_routes(state: AppState) -> Router<AppState> {
             middleware::auth,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
-            state,
+            state.as_tuple(),
             middleware::audit_log,
         ))
 }
 
 fn admin_routes(state: AppState) -> Router<AppState> {
-    let audit_state = state.clone();
+    let audit_state = state.as_tuple();
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
@@ -321,7 +328,7 @@ fn admin_routes(state: AppState) -> Router<AppState> {
 }
 
 fn system_admin_routes(state: AppState) -> Router<AppState> {
-    let audit_state = state.clone();
+    let audit_state = state.as_tuple();
     Router::new()
         .route("/api/admin/users", post(handlers::admin::create_user))
         .route(
@@ -441,14 +448,10 @@ fn spawn_consent_log_cleanup(
     if !retention_policy.is_recording_enabled() {
         return;
     }
-<<<<<<< HEAD
-
     tracing::info!(
         retention_days = retention_policy.retention_days(),
         "Starting daily consent log cleanup task"
     );
-=======
->>>>>>> 71ecf3c (feat: add read-replica aware state)
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(24 * 3600));
@@ -472,8 +475,10 @@ fn spawn_consent_log_cleanup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request};
+    use axum::{body::Body, extract::ConnectInfo, http::Request};
     use chrono_tz::UTC;
+    use sqlx::postgres::PgPoolOptions;
+    use std::net::SocketAddr;
     use tower::Service;
 
     fn test_config(cors_allow_origins: Vec<String>) -> Config {
@@ -500,6 +505,10 @@ mod tests {
             rate_limit_ip_window_seconds: 900,
             rate_limit_user_max_requests: 20,
             rate_limit_user_window_seconds: 3600,
+            redis_url: None,
+            redis_pool_size: 10,
+            redis_connect_timeout: 5,
+            feature_redis_cache_enabled: true,
             feature_read_replica_enabled: true,
         }
     }
@@ -507,22 +516,24 @@ mod tests {
     #[tokio::test]
     async fn test_app_router_builds() {
         let config = test_config(vec!["*".to_string()]);
-        let (pool, _) = create_pools("sqlite::memory:", None).await.unwrap();
-        let state = AppState::new(pool, None, config);
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url)
+            .expect("create lazy pool");
+        let state = AppState::new(pool, None, None, None, config);
 
         let mut app = Router::new()
             .merge(public_routes(state.clone()))
             .with_state(state);
 
-        let response = app
-            .call(
-                Request::builder()
-                    .uri("/api/config/timezone")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
+        let mut request = Request::builder()
+            .uri("/api/config/timezone")
+            .body(Body::empty())
             .unwrap();
+        request
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 3000))));
+        let response = app.call(request).await.unwrap();
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
     }
