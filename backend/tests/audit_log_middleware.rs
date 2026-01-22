@@ -81,7 +81,7 @@ async fn audit_log_middleware_records_event() {
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.as_tuple(),
+            state.clone(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -143,7 +143,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     let app = Router::new()
         .route("/api/attendance/clock-in", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.as_tuple(),
+            state.clone(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
@@ -298,9 +298,9 @@ async fn audit_log_middleware_records_request_metadata() {
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
-        .route("/api/requests/leave", post(ok_handler))
+        .route("/api/attendance/clock-in", post(ok_handler))
         .route_layer(axum_middleware::from_fn_with_state(
-            state.as_tuple(),
+            state.clone(),
             timekeeper_backend::middleware::audit_log,
         ))
         .layer(Extension(user))
