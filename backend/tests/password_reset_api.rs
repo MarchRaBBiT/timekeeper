@@ -82,7 +82,8 @@ async fn test_password_reset_full_flow() {
     assert_eq!(found_reset.user_id, user.id);
 
     let new_hash = hash_password(new_password).expect("hash new password");
-    let updated_user = auth_repo::update_user_password(&pool, user.id, &new_hash)
+    let updated_user =
+        auth_repo::update_user_password(&pool, user.id, &new_hash, &user.password_hash, 5)
         .await
         .expect("update password");
 
@@ -176,7 +177,7 @@ async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
         INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
-        mfa_secret, mfa_enabled_at, created_at, updated_at
+        mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at
         "#,
     )
     .bind(user_id)

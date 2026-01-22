@@ -40,6 +40,8 @@ pub struct Config {
     pub password_require_lowercase: bool,
     pub password_require_numbers: bool,
     pub password_require_symbols: bool,
+    pub password_expiration_days: u64,
+    pub password_history_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,6 +215,16 @@ impl Config {
             .parse()
             .unwrap_or(true);
 
+        let password_expiration_days = env::var("PASSWORD_EXPIRATION_DAYS")
+            .unwrap_or_else(|_| "90".to_string())
+            .parse()
+            .unwrap_or(90);
+
+        let password_history_count = env::var("PASSWORD_HISTORY_COUNT")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse()
+            .unwrap_or(5);
+
         Ok(Self {
             database_url,
             read_database_url,
@@ -246,6 +258,8 @@ impl Config {
             password_require_lowercase,
             password_require_numbers,
             password_require_symbols,
+            password_expiration_days,
+            password_history_count,
         })
     }
 
@@ -345,6 +359,8 @@ mod tests {
             password_require_lowercase: true,
             password_require_numbers: true,
             password_require_symbols: true,
+            password_expiration_days: 90,
+            password_history_count: 5,
         }
     }
 

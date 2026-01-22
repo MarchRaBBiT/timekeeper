@@ -36,7 +36,9 @@ use crate::{
             verify_access_token, verify_refresh_token, Claims, RefreshToken,
         },
         mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
-        password::{hash_password, validate_password_complexity, verify_password},
+        password::{
+            hash_password, password_matches_any, validate_password_complexity, verify_password,
+        },
         security::generate_token,
     },
     validation::Validate,
@@ -128,6 +130,8 @@ pub async fn refresh(
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
+
+    enforce_password_expiration(&user, &state.config)?;
 
     let session = create_auth_session(&user, &state.config).await?;
 
@@ -394,6 +398,15 @@ pub async fn change_password(
     )
     .await?;
 
+    ensure_password_not_reused(
+        &state.write_pool,
+        user.id,
+        &payload.new_password,
+        &user.password_hash,
+        state.config.password_history_count,
+    )
+    .await?;
+
     let new_hash = tokio::task::spawn_blocking({
         let password = payload.new_password.clone();
         move || hash_password(&password)
@@ -402,9 +415,15 @@ pub async fn change_password(
     .map_err(|_| internal_error("Hashing task failed"))?
     .map_err(|_| internal_error("Failed to hash password"))?;
 
-    auth_repo::update_user_password(&state.write_pool, user.id, &new_hash)
-        .await
-        .map_err(|_| internal_error("Failed to update password"))?;
+    auth_repo::update_user_password(
+        &state.write_pool,
+        user.id,
+        &new_hash,
+        &user.password_hash,
+        state.config.password_history_count,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to update password"))?;
 
     auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
         .await
@@ -462,6 +481,20 @@ pub async fn reset_password(
             .map_err(|_| internal_error("Database error"))?
             .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
 
+    let user = auth_repo::find_user_by_id(&state.write_pool, reset_record.user_id)
+        .await
+        .map_err(|_| internal_error("Database error"))?
+        .ok_or_else(|| bad_request("User not found"))?;
+
+    ensure_password_not_reused(
+        &state.write_pool,
+        user.id,
+        &payload.new_password,
+        &user.password_hash,
+        state.config.password_history_count,
+    )
+    .await?;
+
     let new_password_hash = tokio::task::spawn_blocking({
         let password = payload.new_password.clone();
         move || hash_password(&password)
@@ -472,8 +505,10 @@ pub async fn reset_password(
 
     let user = auth_repo::update_user_password(
         &state.write_pool,
-        reset_record.user_id,
+        user.id,
         &new_password_hash,
+        &user.password_hash,
+        state.config.password_history_count,
     )
     .await
     .map_err(|_| internal_error("Failed to update password"))?;
@@ -574,6 +609,7 @@ where
     )
     .await?;
     enforce_mfa(&user, payload.totp_code.as_deref())?;
+    enforce_password_expiration(&user, config)?;
 
     let (access_token, claims) = create_access_token(
         user.id.to_string(),
@@ -751,6 +787,54 @@ pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
         Ok(())
     } else {
         Err(unauthorized("Invalid MFA code"))
+    }
+}
+
+fn enforce_password_expiration(user: &User, config: &Config) -> HandlerResult<()> {
+    if config.password_expiration_days == 0 {
+        return Ok(());
+    }
+    let expiry = user
+        .password_changed_at
+        .checked_add_signed(chrono::Duration::days(
+            config.password_expiration_days as i64,
+        ))
+        .ok_or_else(|| internal_error("Password expiration overflow"))?;
+    if Utc::now() > expiry {
+        Err(unauthorized("Password expired"))
+    } else {
+        Ok(())
+    }
+}
+
+async fn ensure_password_not_reused(
+    pool: &sqlx::PgPool,
+    user_id: UserId,
+    candidate: &str,
+    current_hash: &str,
+    history_limit: u32,
+) -> HandlerResult<()> {
+    if history_limit == 0 {
+        return Ok(());
+    }
+    let history_hashes = auth_repo::fetch_recent_password_hashes(pool, user_id, history_limit)
+        .await
+        .map_err(|_| internal_error("Failed to load password history"))?;
+    let candidate = candidate.to_owned();
+    let current_hash = current_hash.to_owned();
+    let reused = tokio::task::spawn_blocking(move || {
+        let mut hashes = history_hashes;
+        hashes.push(current_hash);
+        password_matches_any(&candidate, &hashes)
+    })
+    .await
+    .map_err(|_| internal_error("Password reuse check failed"))?
+    .map_err(|_| internal_error("Password reuse check error"))?;
+
+    if reused {
+        Err(bad_request("Password was used recently"))
+    } else {
+        Ok(())
     }
 }
 

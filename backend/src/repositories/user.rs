@@ -12,7 +12,7 @@ use crate::models::user::{User, UserRole};
 pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at FROM users ORDER BY created_at DESC",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users ORDER BY created_at DESC",
     )
     .fetch_all(pool)
     .await
@@ -22,10 +22,10 @@ pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
 pub async fn create_user(pool: &PgPool, user: &User) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
@@ -39,6 +39,7 @@ pub async fn create_user(pool: &PgPool, user: &User) -> Result<User, sqlx::Error
     .bind(user.is_system_admin)
     .bind(&user.mfa_secret)
     .bind(user.mfa_enabled_at)
+    .bind(user.password_changed_at)
     .bind(user.created_at)
     .bind(user.updated_at)
     .fetch_one(pool)
@@ -58,7 +59,7 @@ pub async fn update_user(
         "UPDATE users SET full_name = $1, email = $2, role = $3, is_system_admin = $4, updated_at = NOW() \
          WHERE id = $5 \
          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
@@ -116,7 +117,7 @@ pub async fn update_profile(
         "UPDATE users SET full_name = $1, email = $2, updated_at = NOW() \
          WHERE id = $3 \
          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
@@ -250,8 +251,8 @@ pub async fn soft_delete_user(
     // 6. Archive user
     sqlx::query(
         r#"
-        INSERT INTO archived_users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at, archived_at, archived_by)
-        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at, $2, $3
+        INSERT INTO archived_users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, archived_at, archived_by)
+        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, $2, $3
         FROM users
         WHERE id = $1
         "#,
@@ -289,8 +290,8 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     // 1. Restore user
     sqlx::query(
         r#"
-        INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at)
-        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, created_at, updated_at
+        INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at)
+        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at
         FROM archived_users
         WHERE id = $1
         "#,

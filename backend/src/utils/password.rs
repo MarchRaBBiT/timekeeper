@@ -28,6 +28,15 @@ pub fn verify_password(password: &str, hash: &str) -> anyhow::Result<bool> {
     }
 }
 
+pub fn password_matches_any(password: &str, hashes: &[String]) -> anyhow::Result<bool> {
+    for hash in hashes {
+        if verify_password(password, hash)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub fn validate_password_complexity(password: &str, config: &Config) -> anyhow::Result<()> {
     if password.len() < config.password_min_length {
         return Err(anyhow::anyhow!(
@@ -99,6 +108,8 @@ mod tests {
             password_require_lowercase: true,
             password_require_numbers: true,
             password_require_symbols: true,
+            password_expiration_days: 90,
+            password_history_count: 5,
         }
     }
 

@@ -38,12 +38,11 @@ async fn test_admin_update_user_email() {
     };
 
     let updated = sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), \
+         "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), \
          role = COALESCE($3, role), is_system_admin = COALESCE($4, is_system_admin), updated_at = NOW() \
          WHERE id = $5 \
-          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-          mfa_secret, mfa_enabled_at, created_at, updated_at",
-
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
     )
     .bind(update_payload.full_name)
     .bind(update_payload.email)
@@ -75,11 +74,10 @@ async fn test_user_update_own_profile() {
     };
 
     let updated = sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), updated_at = NOW() \
+         "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), updated_at = NOW() \
          WHERE id = $3 \
-          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-          mfa_secret, mfa_enabled_at, created_at, updated_at",
-
+         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
     )
     .bind(update_payload.full_name)
     .bind(update_payload.email)
@@ -125,7 +123,7 @@ async fn create_test_user(pool: &PgPool, email: &str, username: &str, is_admin: 
         INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
-        mfa_secret, mfa_enabled_at, created_at, updated_at
+        mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at
         "#,
     )
     .bind(user_id)

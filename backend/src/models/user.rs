@@ -30,6 +30,8 @@ pub struct User {
     pub mfa_secret: Option<String>,
     /// Timestamp marking when the user completed MFA enrollment.
     pub mfa_enabled_at: Option<DateTime<Utc>>,
+    /// Timestamp marking when the password was last changed.
+    pub password_changed_at: DateTime<Utc>,
     /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
     /// Last update timestamp for auditing.
@@ -239,6 +241,7 @@ impl User {
             is_system_admin,
             mfa_secret: None,
             mfa_enabled_at: None,
+            password_changed_at: now,
             created_at: now,
             updated_at: now,
         }
