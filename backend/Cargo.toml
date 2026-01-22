@@ -88,8 +88,7 @@ sha2 = "0.10.9"
 [dev-dependencies]
 ctor = "0.6.1"
 mockall = "0.12"
-pg-embed = { version = "0.7.1", default-features = false, features = ["rt_tokio"] }
-tempfile = "3"
+testcontainers = "0.15"
 
 [features]
 default = []

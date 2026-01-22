@@ -4,6 +4,13 @@ use uuid::Uuid;
 
 mod support;
 
+async fn migrate_db(pool: &PgPool) {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .expect("run migrations");
+}
+
 fn unique_email(base: &str) -> String {
     let (local, domain) = base
         .split_once('@')
@@ -14,6 +21,7 @@ fn unique_email(base: &str) -> String {
 #[tokio::test]
 async fn test_admin_update_user_email() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let admin_email = unique_email("admin@test.com");
     let user_email = unique_email("user@test.com");
@@ -33,8 +41,9 @@ async fn test_admin_update_user_email() {
         "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), \
          role = COALESCE($3, role), is_system_admin = COALESCE($4, is_system_admin), updated_at = NOW() \
          WHERE id = $5 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+          mfa_secret, mfa_enabled_at, created_at, updated_at",
+
     )
     .bind(update_payload.full_name)
     .bind(update_payload.email)
@@ -52,6 +61,7 @@ async fn test_admin_update_user_email() {
 #[tokio::test]
 async fn test_user_update_own_profile() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let original_email = unique_email("original@test.com");
     let user = create_test_user(&pool, &original_email, "testuser", false).await;
@@ -67,8 +77,9 @@ async fn test_user_update_own_profile() {
     let updated = sqlx::query_as::<_, User>(
         "UPDATE users SET full_name = COALESCE($1, full_name), email = COALESCE($2, email), updated_at = NOW() \
          WHERE id = $3 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, created_at, updated_at",
+          RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
+          mfa_secret, mfa_enabled_at, created_at, updated_at",
+
     )
     .bind(update_payload.full_name)
     .bind(update_payload.email)
@@ -84,6 +95,7 @@ async fn test_user_update_own_profile() {
 #[tokio::test]
 async fn test_email_uniqueness_check() {
     let pool = support::test_pool().await;
+    migrate_db(&pool).await;
 
     let user1_email = unique_email("user1@test.com");
     let user2_email = unique_email("user2@test.com");

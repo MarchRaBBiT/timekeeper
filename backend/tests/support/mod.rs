@@ -2,20 +2,18 @@
 use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
 use ctor::ctor;
-use pg_embed::{
-    pg_enums::PgAuthMethod,
-    pg_fetch::{PgFetchSettings, PG_V15},
-    postgres::{PgEmbed, PgSettings},
-};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{
     env,
-    net::TcpListener,
+    fs,
+    path::Path,
     path::PathBuf,
+    process::Command,
+    net::TcpListener,
     sync::{Mutex, OnceLock},
     time::Duration as StdDuration,
 };
-use tempfile::TempDir;
+use testcontainers::{clients::Cli, core::WaitFor, Container, GenericImage, RunnableImage};
 use timekeeper_backend::{
     config::Config,
     models::user::{User, UserRole},
@@ -29,21 +27,10 @@ use timekeeper_backend::{
 };
 use uuid::Uuid;
 
-struct EmbeddedPostgres {
-    #[allow(dead_code)]
-    instance: PgEmbed,
-    #[allow(dead_code)]
-    data_dir: TempDir,
-}
-
-impl std::fmt::Debug for EmbeddedPostgres {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EmbeddedPostgres").finish()
-    }
-}
-
-static EMBEDDED_PG: OnceLock<EmbeddedPostgres> = OnceLock::new();
-static EMBEDDED_DB_URL: OnceLock<String> = OnceLock::new();
+static TESTCONTAINERS_DOCKER: OnceLock<&'static Cli> = OnceLock::new();
+static TESTCONTAINERS_PG: OnceLock<Container<'static, GenericImage>> = OnceLock::new();
+static TESTCONTAINERS_DB_URL: OnceLock<String> = OnceLock::new();
+static DOCKER_WRAPPER_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[ctor]
@@ -52,7 +39,7 @@ fn init_test_database_url() {
         return;
     }
 
-    let url = start_embedded_postgres();
+    let url = start_testcontainer_postgres();
     env::set_var("TEST_DATABASE_URL", url);
 }
 
@@ -63,50 +50,37 @@ fn env_guard() -> std::sync::MutexGuard<'static, ()> {
         .expect("lock env")
 }
 
-fn start_embedded_postgres() -> String {
-    let url = EMBEDDED_DB_URL.get().cloned().unwrap_or_else(|| {
-        let data_dir = tempfile::tempdir().expect("create temp dir for embedded postgres");
-        let db_path: PathBuf = data_dir.path().join("data");
-        let pg_settings = PgSettings {
-            database_dir: db_path,
-            port: allocate_ephemeral_port(),
-            user: "timekeeper_test".into(),
-            password: "timekeeper_test".into(),
-            auth_method: PgAuthMethod::Plain,
-            persistent: false,
-            timeout: Some(StdDuration::from_secs(60)),
-            migration_dir: None,
-        };
-        let fetch_settings = PgFetchSettings {
-            version: PG_V15,
-            ..Default::default()
-        };
-
-        let runtime = tokio::runtime::Runtime::new().expect("create tokio runtime");
-        let mut pg_embed: Option<PgEmbed> = None;
-        runtime.block_on(async {
-            let mut pg = PgEmbed::new(pg_settings, fetch_settings)
-                .await
-                .expect("init embedded postgres");
-            pg.setup().await.expect("setup embedded postgres");
-            pg.start_db().await.expect("start embedded postgres");
-            pg_embed = Some(pg);
-        });
-        let pg = pg_embed.expect("embedded postgres initialized");
+fn start_testcontainer_postgres() -> String {
+    let url = TESTCONTAINERS_DB_URL.get().cloned().unwrap_or_else(|| {
+        ensure_docker_cli();
+        let docker = TESTCONTAINERS_DOCKER
+            .get_or_init(|| Box::leak(Box::new(Cli::default())));
+        let image_ref = env::var("TESTCONTAINERS_POSTGRES_IMAGE")
+            .unwrap_or_else(|_| "postgres:15-alpine".to_string());
+        let (image_name, image_tag) = image_ref
+            .split_once(':')
+            .unwrap_or((image_ref.as_str(), "latest"));
+        let host_port = allocate_ephemeral_port();
+        let image = GenericImage::new(image_name, image_tag)
+            .with_env_var("POSTGRES_USER", "timekeeper_test")
+            .with_env_var("POSTGRES_PASSWORD", "timekeeper_test")
+            .with_env_var("POSTGRES_DB", "postgres")
+            .with_wait_for(WaitFor::message_on_stdout(
+                "database system is ready to accept connections",
+            ));
+        let image = RunnableImage::from(image).with_mapped_port((host_port, 5432));
+        let container = docker.run(image);
+        TESTCONTAINERS_PG
+            .set(container)
+            .expect("set testcontainers postgres");
         let url = format!(
-            "postgres://{}:{}@127.0.0.1:{}/postgres",
-            pg.pg_settings.user, pg.pg_settings.password, pg.pg_settings.port
+            "postgres://timekeeper_test:timekeeper_test@127.0.0.1:{}/postgres",
+            host_port
         );
-        eprintln!("--- Embedded Postgres started at {} ---", url);
-        EMBEDDED_PG
-            .set(EmbeddedPostgres {
-                instance: pg,
-                data_dir,
-            })
-            .expect("set embedded postgres instance");
-        EMBEDDED_DB_URL
+        eprintln!("--- Testcontainers Postgres started at {} ---", url);
+        TESTCONTAINERS_DB_URL
             .set(url.clone())
-            .expect("set embedded postgres url");
+            .expect("set test database url");
         url
     });
     env::set_var("DATABASE_URL", url.clone());
@@ -120,6 +94,50 @@ fn allocate_ephemeral_port() -> u16 {
         .local_addr()
         .expect("read socket addr")
         .port()
+}
+
+fn ensure_docker_cli() {
+    if env::var("DOCKER_HOST").is_err() {
+        let podman_socket = Path::new("/run/podman/podman.sock");
+        if podman_socket.exists() {
+            env::set_var("DOCKER_HOST", "unix:///run/podman/podman.sock");
+        } else if let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") {
+            let path = Path::new(&runtime_dir).join("podman/podman.sock");
+            if path.exists() {
+                if let Some(path_str) = path.to_str() {
+                    env::set_var("DOCKER_HOST", format!("unix://{}", path_str));
+                }
+            }
+        }
+    }
+    if Command::new("docker").arg("--version").output().is_ok() {
+        return;
+    }
+    if Command::new("podman").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = DOCKER_WRAPPER_DIR.get_or_init(|| {
+        let dir = env::temp_dir().join("timekeeper-testcontainers-docker");
+        let _ = fs::create_dir_all(&dir);
+        dir
+    });
+    let docker_path = dir.join("docker");
+    if !docker_path.exists() {
+        let script = "#!/usr/bin/env sh\nexec podman \"$@\"\n";
+        let _ = fs::write(&docker_path, script);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = fs::metadata(&docker_path) {
+                let mut perms = metadata.permissions();
+                perms.set_mode(0o755);
+                let _ = fs::set_permissions(&docker_path, perms);
+            }
+        }
+    }
+    let path = env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", dir.display(), path);
+    env::set_var("PATH", new_path);
 }
 
 pub fn test_config() -> Config {
@@ -194,7 +212,7 @@ fn test_database_url() -> String {
     let _guard = ENV_MUTEX.get_or_init(|| Mutex::new(())).try_lock().ok();
     env::var("TEST_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
-        .unwrap_or_else(|_| start_embedded_postgres())
+        .unwrap_or_else(|_| start_testcontainer_postgres())
 }
 
 async fn insert_user_with_password_hash(

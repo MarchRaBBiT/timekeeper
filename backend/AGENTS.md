@@ -4,7 +4,7 @@
 **Commit:** (not tracked)
 
 ## OVERVIEW
-Axum + SQLx + PostgreSQL の API サーバー。JWT 認証、勤怠打刻、申請承認、管理者機能を提供。pg-embed を使用した統合テスト環境完備。
+Axum + SQLx + PostgreSQL の API サーバー。JWT 認証、勤怠打刻、申請承認、管理者機能を提供。testcontainers を使用した統合テスト環境完備。
 
 ## STRUCTURE
 ```
@@ -25,7 +25,7 @@ backend/src/
 └── error/mod.rs      # 統一 AppError enum + IntoResponse
 
 migrations/           # SQLx マイグレーション（001-024）
-tests/               # pg-embed 統合テスト（詳細: tests/AGENTS.md）
+tests/               # testcontainers 統合テスト（詳細: tests/AGENTS.md）
 ```
 
 ## WHERE TO LOOK
@@ -37,7 +37,7 @@ tests/               # pg-embed 統合テスト（詳細: tests/AGENTS.md）
 | リポジトリ実装 | `repositories/*.rs` | Repository<T> トレイト |
 | パスワードリセット | `models/password_reset.rs` + `repositories/password_reset.rs` | トークン管理・有効期限 |
 | マイグレーション追加 | `migrations/` | NNN_description.sql |
-| 統合テスト | `tests/*.rs` + `tests/support/mod.rs` | pg-embed + シードヘルパー |
+| 統合テスト | `tests/*.rs` + `tests/support/mod.rs` | testcontainers + シードヘルパー |
 
 ## CONVENTIONS
 ### ハンドラー
