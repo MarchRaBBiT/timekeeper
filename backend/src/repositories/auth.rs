@@ -194,7 +194,7 @@ pub async fn update_user_password(
         let history_limit = history_limit as i64;
         sqlx::query(
             "DELETE FROM password_histories WHERE id IN (\
-             SELECT id FROM password_histories WHERE user_id = $1\
+             SELECT id FROM password_histories WHERE user_id = $1 \
              ORDER BY changed_at DESC OFFSET $2)",
         )
         .bind(user_id.to_string())
