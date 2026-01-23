@@ -16,9 +16,9 @@ pub fn RequestsList(
     message: RwSignal<crate::pages::requests::utils::MessageState>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-white shadow-premium rounded-3xl overflow-hidden border border-gray-100/50">
-            <div class="px-8 py-6 border-b border-gray-100">
-                <h3 class="text-xl font-display font-bold text-slate-900">{"申請一覧"}</h3>
+        <div class="bg-white dark:bg-gray-800 shadow-premium rounded-3xl overflow-hidden border border-gray-100/50 dark:border-gray-700/50">
+            <div class="px-8 py-6 border-b border-gray-100 dark:border-gray-700">
+                <h3 class="text-xl font-display font-bold text-slate-900 dark:text-slate-100">{"申請一覧"}</h3>
                 <Show when=move || message.get().error.is_some()>
                     <div class="mt-4">
                         <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
@@ -55,18 +55,18 @@ pub fn RequestsList(
 
             <Show when=move || !summaries.get().is_empty()>
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-100">
+                    <table class="min-w-full divide-y divide-gray-100 dark:divide-gray-700">
                         <thead>
-                            <tr class="bg-slate-50/50">
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"種類"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"期間 / 日付"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"補足"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"ステータス"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"提出日"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-widest">{"操作"}</th>
+                            <tr class="bg-slate-50/50 dark:bg-gray-700/50">
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"種類"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"期間 / 日付"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"補足"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"ステータス"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"提出日"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"操作"}</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-50 bg-white">
+                        <tbody class="divide-y divide-gray-50 bg-white dark:bg-gray-800 dark:divide-gray-700">
                             <For
                                 each=move || summaries.get()
                                 key=|summary| summary.id.clone()
@@ -91,7 +91,7 @@ pub fn RequestsList(
                                     };
 
                                     view! {
-                                        <tr class="hover:bg-slate-50/80 transition-colors group cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
+                                        <tr class="hover:bg-slate-50/80 dark:hover:bg-gray-700/80 transition-colors group cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
                                             <td class="px-8 py-5 whitespace-nowrap">
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 uppercase">
                                                     {match summary_value.kind {
@@ -100,10 +100,10 @@ pub fn RequestsList(
                                                     }}
                                                 </span>
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-bold text-slate-900">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-bold text-slate-900 dark:text-slate-100">
                                                 {primary_label.clone()}
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-slate-500">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                                                 {secondary_label.clone()}
                                             </td>
                                             <td class="px-8 py-5 whitespace-nowrap">

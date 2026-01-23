@@ -430,8 +430,8 @@ pub fn HolidayManagementSection(
     };
 
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-gray-900">{"祝日管理"}</h3>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"祝日管理"}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <DatePicker
                     label=Some("日付")
@@ -591,16 +591,16 @@ pub fn HolidayManagementSection(
                 </div>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th class="px-4 py-2 text-left text-gray-600">{"日付"}</th>
-                            <th class="px-4 py-2 text-left text-gray-600">{"名称"}</th>
-                            <th class="px-4 py-2 text-left text-gray-600">{"備考"}</th>
-                            <th class="px-4 py-2 text-right text-gray-600">{"操作"}</th>
+                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"日付"}</th>
+                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"名称"}</th>
+                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"備考"}</th>
+                            <th class="px-4 py-2 text-right text-gray-600 dark:text-gray-200">{"操作"}</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100">
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <For
                             each=move || holidays_data.get()
                             key=|item| item.id.clone()
@@ -611,9 +611,9 @@ pub fn HolidayManagementSection(
                                 };
                                 view! {
                                     <tr>
-                                        <td class="px-4 py-2">{item.holiday_date.format("%Y-%m-%d").to_string()}</td>
-                                        <td class="px-4 py-2">{item.name.clone()}</td>
-                                        <td class="px-4 py-2 text-gray-600">{item.description.clone().unwrap_or_default()}</td>
+                                        <td class="px-4 py-2 dark:text-gray-100">{item.holiday_date.format("%Y-%m-%d").to_string()}</td>
+                                        <td class="px-4 py-2 dark:text-gray-100">{item.name.clone()}</td>
+                                        <td class="px-4 py-2 text-gray-600 dark:text-gray-400">{item.description.clone().unwrap_or_default()}</td>
                                         <td class="px-4 py-2 text-right">
                                             <button
                                                 class="px-3 py-1 rounded border text-sm disabled:opacity-50"
@@ -631,9 +631,9 @@ pub fn HolidayManagementSection(
                 </table>
             </div>
             <Show when=move || !google_holidays.get().is_empty()>
-                <div class="border rounded-lg p-4 space-y-2">
-                    <h4 class="text-sm font-medium text-gray-900">{"Google 祝日候補"}</h4>
-                    <ul class="space-y-1 text-sm text-gray-700">
+                <div class="border rounded-lg p-4 space-y-2 dark:border-gray-700">
+                    <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">{"Google 祝日候補"}</h4>
+                    <ul class="space-y-1 text-sm text-gray-700 dark:text-gray-300">
                         <For
                             each=move || google_holidays.get()
                             key=|item| (item.name.clone(), item.holiday_date)

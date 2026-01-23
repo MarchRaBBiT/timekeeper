@@ -45,31 +45,31 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         <p class="mt-1 text-sm text-gray-600">"システム操作の履歴を確認・エクスポートします。"</p>
                     </div>
 
-                    <div class="bg-white p-4 rounded-lg shadow space-y-4">
+                    <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">"日時 (From)"</label>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"日時 (From)"</label>
                                 <input type="datetime-local" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().from
                                     on:input=move |ev| on_filter_change(ev, "from")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">"日時 (To)"</label>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"日時 (To)"</label>
                                 <input type="datetime-local" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().to
                                     on:input=move |ev| on_filter_change(ev, "to")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">"ユーザーID"</label>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"ユーザーID"</label>
                                 <input type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().actor_id
                                     on:input=move |ev| on_filter_change(ev, "actor_id")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">"イベントタイプ"</label>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"イベントタイプ"</label>
                                 <select class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().event_type
                                     on:change=move |ev| on_filter_change(ev, "event_type")
@@ -81,7 +81,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">"結果"</label>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"結果"</label>
                                 <select class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().result
                                     on:change=move |ev| on_filter_change(ev, "result")
@@ -114,19 +114,19 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="bg-white shadow overflow-hidden sm:rounded-lg overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                    <div class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"日時"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"ユーザー"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"イベント"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"対象"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"結果"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">"詳細"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"日時"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"ユーザー"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"イベント"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"対象"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"結果"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">"詳細"</th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 <Suspense fallback=move || view! { <tr><td colspan="6" class="p-4 text-center">"読み込み中..."</td></tr> }>
                                     {move || vm.logs_resource.get().map(|res| match res {
                                         Ok(response) => {
@@ -145,17 +145,17 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                                 response.items.into_iter().map(|log| {
                                                     view! {
                                                         <tr>
-                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                                 {log.occurred_at.format("%Y-%m-%d %H:%M:%S").to_string()}
                                                             </td>
-                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                                                                 {log.actor_id.unwrap_or_else(|| "-".to_string())}
-                                                                <span class="text-xs text-gray-500 block">{log.actor_type}</span>
+                                                                <span class="text-xs text-gray-500 dark:text-gray-400 block">{log.actor_type}</span>
                                                             </td>
-                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                                                                 {log.event_type}
                                                             </td>
-                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                                 {format!("{} {}", log.target_type.unwrap_or_default(), log.target_id.unwrap_or_default())}
                                                             </td>
                                                              <td class="px-6 py-4 whitespace-nowrap text-sm">
@@ -164,7 +164,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                                                 </span>
                                                                 {log.error_code.clone().map(|c| view! { <span class="block text-xs text-red-500">{c}</span> })}
                                                             </td>
-                                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                                  {
                                                                     let m = log.metadata.clone();
                                                                     m.map(|val| {
@@ -227,19 +227,19 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
 
                     <Show when=move || selected_metadata.get().is_some()>
                         <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-                                <div class="p-4 border-b flex justify-between items-center">
-                                    <h3 class="text-lg font-bold">"メタデータ詳細"</h3>
-                                    <button class="text-gray-500 hover:text-gray-700" on:click=move |_| selected_metadata.set(None)>
+                            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                                <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+                                    <h3 class="text-lg font-bold dark:text-gray-100">"メタデータ詳細"</h3>
+                                    <button class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" on:click=move |_| selected_metadata.set(None)>
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
-                                <div class="p-4 overflow-auto flex-1 bg-gray-50 font-mono text-xs sm:text-sm">
+                                <div class="p-4 overflow-auto flex-1 bg-gray-50 dark:bg-gray-900 font-mono text-xs sm:text-sm text-gray-900 dark:text-gray-100">
                                     <pre>{move || selected_metadata.get().map(|m| serde_json::to_string_pretty(&m).unwrap_or_default()).unwrap_or_default()}</pre>
                                 </div>
-                                <div class="p-4 border-t flex justify-end">
+                                <div class="p-4 border-t dark:border-gray-700 flex justify-end">
                                     <button
-                                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium"
+                                        class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded text-sm font-medium dark:text-gray-100"
                                         on:click=move |_| selected_metadata.set(None)
                                     >
                                         "閉じる"
