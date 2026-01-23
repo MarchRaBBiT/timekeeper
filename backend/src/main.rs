@@ -379,11 +379,29 @@ fn init_tracing() {
 }
 
 fn log_config(config: &Config) {
-    tracing::info!("Database URL: {}", config.database_url);
-    tracing::info!("Read Database URL: {:?}", config.read_database_url);
+    tracing::info!(
+        "Database URL: {}",
+        crate::utils::security::mask_database_url(&config.database_url)
+    );
+    if let Some(url) = &config.read_database_url {
+        tracing::info!(
+            "Read Database URL: {}",
+            crate::utils::security::mask_database_url(url)
+        );
+    } else {
+        tracing::info!("Read Database URL: None");
+    }
     tracing::info!("JWT Expiration: {} hours", config.jwt_expiration_hours);
     tracing::info!("Time Zone: {}", config.time_zone);
     tracing::info!("CORS Allowed Origins: {:?}", config.cors_allow_origins);
+
+    if config.cors_allow_origins.iter().any(|o| o == "*") {
+        if config.production_mode {
+            tracing::error!("SECURITY ERROR: CORS is configured to allow all origins ('*') in PRODUCTION MODE. This is a severe security risk. The server will refuse to start.");
+            panic!("Refusing to start due to insecure CORS configuration in production mode.");
+        }
+        tracing::warn!("SECURITY WARNING: CORS is configured to allow all origins ('*'). This is dangerous for production!");
+    }
 }
 
 fn cors_layer(config: &Config) -> CorsLayer {
@@ -515,7 +533,23 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 90,
             password_history_count: 5,
+            production_mode: false,
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "Refusing to start due to insecure CORS configuration in production mode")]
+    fn test_production_mode_wildcard_cors_panics() {
+        let mut config = test_config(vec!["*".to_string()]);
+        config.production_mode = true;
+        log_config(&config);
+    }
+
+    #[test]
+    fn test_production_mode_specific_cors_allows() {
+        let mut config = test_config(vec!["https://example.com".to_string()]);
+        config.production_mode = true;
+        log_config(&config);
     }
 
     #[tokio::test]
