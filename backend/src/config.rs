@@ -130,9 +130,9 @@ impl Config {
             .unwrap_or(true);
 
         let cookie_secure = env::var("COOKIE_SECURE")
-            .unwrap_or_else(|_| "false".to_string())
+            .unwrap_or_else(|_| "true".to_string())
             .parse()
-            .unwrap_or(false);
+            .unwrap_or(true);
 
         let cookie_same_site =
             parse_same_site(env::var("COOKIE_SAMESITE").unwrap_or_else(|_| "Lax".to_string()))?;
