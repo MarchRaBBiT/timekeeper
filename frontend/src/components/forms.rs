@@ -63,20 +63,20 @@ pub fn AttendanceActionButtons(
 
     view! {
         <div class="space-y-6 animate-fade-in">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-brand-50/50 border border-brand-100/50">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-brand-50/50 border border-brand-100/50 dark:bg-slate-800 dark:border-slate-700">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-brand-600">
+                    <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-brand-600 dark:bg-slate-700 dark:text-brand-400">
                         <i class="fas fa-user-clock text-lg"></i>
                     </div>
                     <div>
-                        <p class="text-xs font-display font-bold text-brand-600 uppercase tracking-wider">{"現在のステータス"}</p>
+                        <p class="text-xs font-display font-bold text-brand-600 uppercase tracking-wider dark:text-brand-400">{"現在のステータス"}</p>
                         {move || {
                             let status = status_snapshot();
                             let (label, color, dot_color) = match status.as_ref().map(|s| s.status.as_str()) {
-                                Some("clocked_in") => ("勤務中", "text-slate-900", "bg-brand-500 animate-pulse"),
-                                Some("on_break") => ("休憩中", "text-slate-900", "bg-amber-500 animate-pulse"),
-                                Some("clocked_out") => ("退勤済み", "text-slate-500", "bg-slate-400"),
-                                _ => ("未出勤", "text-slate-500", "bg-slate-300"),
+                                Some("clocked_in") => ("勤務中", "text-slate-900 dark:text-white", "bg-brand-500 animate-pulse"),
+                                Some("on_break") => ("休憩中", "text-slate-900 dark:text-white", "bg-amber-500 animate-pulse"),
+                                Some("clocked_out") => ("退勤済み", "text-slate-500 dark:text-slate-400", "bg-slate-400 dark:bg-slate-600"),
+                                _ => ("未出勤", "text-slate-500 dark:text-slate-400", "bg-slate-300 dark:bg-slate-600"),
                             };
                             view! {
                                 <div class="flex items-center gap-2 mt-0.5">
@@ -92,7 +92,7 @@ pub fn AttendanceActionButtons(
             <div class="grid grid-cols-2 gap-3">
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-brand-600 bg-brand-600 text-white shadow-lg shadow-brand-200 hover:bg-brand-700 hover:border-brand-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none"
+                           border-brand-600 bg-brand-600 text-white shadow-lg shadow-brand-200 hover:bg-brand-700 hover:border-brand-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
                     disabled={move || !button_state().clock_in}
                     on:click=move |ev| on_clock_in.call(ev)
                 >
@@ -102,7 +102,7 @@ pub fn AttendanceActionButtons(
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-amber-500 bg-white text-amber-600 hover:bg-amber-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                           border-amber-500 bg-white text-amber-600 hover:bg-amber-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700 dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
                     disabled={move || !button_state().break_start}
                     on:click=move |ev| on_break_start.call(ev)
                 >
@@ -112,7 +112,7 @@ pub fn AttendanceActionButtons(
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-amber-600 bg-amber-600 text-white shadow-lg shadow-amber-200 hover:bg-amber-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none"
+                           border-amber-600 bg-amber-600 text-white shadow-lg shadow-amber-200 hover:bg-amber-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
                     disabled={move || !button_state().break_end}
                     on:click=move |ev| on_break_end.call(ev)
                 >
@@ -122,7 +122,7 @@ pub fn AttendanceActionButtons(
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-red-500 bg-white text-red-600 hover:bg-red-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                           border-red-500 bg-white text-red-600 hover:bg-red-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-slate-700 dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
                     disabled={move || !button_state().clock_out}
                     on:click=move |ev| on_clock_out.call(ev)
                 >
@@ -137,8 +137,8 @@ pub fn AttendanceActionButtons(
                     .map(|reason| {
                         let label = describe_holiday_reason(reason.trim());
                         view! {
-                            <div class="flex items-center gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 animate-pop-in">
-                                <i class="fas fa-calendar-day text-amber-400 text-xl"></i>
+                            <div class="flex items-center gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 animate-pop-in dark:bg-amber-900/20 dark:border-amber-900/30 dark:text-amber-200">
+                                <i class="fas fa-calendar-day text-amber-400 text-xl dark:text-amber-500"></i>
                                 <span class="text-sm font-medium">{format!("本日は{}のため打刻できません。", label)}</span>
                             </div>
                         }
@@ -161,9 +161,9 @@ pub fn AttendanceActionButtons(
                         let msg = &err.error;
                         let is_error = msg.contains("失敗") || msg.contains("エラー") || msg.contains("できません");
                         let (bg, border, text, icon) = if is_error {
-                            ("bg-red-50", "border-red-100", "text-red-700", "fa-exclamation-circle")
+                            ("bg-red-50 dark:bg-red-900/20", "border-red-100 dark:border-red-900/30", "text-red-700 dark:text-red-300", "fa-exclamation-circle")
                         } else {
-                            ("bg-brand-50", "border-brand-100", "text-brand-700", "fa-check-circle")
+                            ("bg-brand-50 dark:bg-brand-900/20", "border-brand-100 dark:border-brand-900/30", "text-brand-700 dark:text-brand-300", "fa-check-circle")
                         };
                         view! {
                             <div class=format!("flex items-center gap-2 p-3 rounded-xl border {} {} {} animate-pop-in", bg, border, text)>
@@ -229,29 +229,29 @@ pub fn DatePicker(
 
     view! {
         <div class="flex flex-col gap-1.5 w-full">
-            {label.map(|l| view! { <label class="text-sm font-bold text-slate-700 ml-1">{l}</label> })}
+            {label.map(|l| view! { <label class="text-sm font-bold text-slate-700 ml-1 dark:text-slate-300">{l}</label> })}
             <div
                 class=move || format!(
-                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-white py-2.5 px-4 flex items-center justify-between shadow-sm border-slate-200 hover:border-brand-300 hover:shadow-md active:scale-[0.98] {}",
-                    if disabled.get() { "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 shadow-none touch-none" } else { "hover:ring-4 hover:ring-brand-50" }
+                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-white py-2.5 px-4 flex items-center justify-between shadow-sm border-slate-200 hover:border-brand-300 hover:shadow-md active:scale-[0.98] dark:bg-slate-800 dark:border-slate-700 {}",
+                    if disabled.get() { "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 shadow-none touch-none dark:bg-slate-900 dark:border-slate-800" } else { "hover:ring-4 hover:ring-brand-50 dark:hover:ring-brand-900/30" }
                 )
                 on:click=on_click
             >
                 <div class="flex items-center gap-3">
                     <div class=move || format!(
                         "w-8 h-8 rounded-lg flex items-center justify-center transition-colors {}",
-                        if value.get().is_empty() { "bg-slate-100 text-slate-400" } else { "bg-brand-50 text-brand-600" }
+                        if value.get().is_empty() { "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500" } else { "bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400" }
                     )>
                         <i class="far fa-calendar-alt text-base"></i>
                     </div>
                     <span class=move || format!(
                         "text-sm font-semibold tracking-wide {}",
-                        if value.get().is_empty() { "text-slate-400" } else { "text-slate-900" }
+                        if value.get().is_empty() { "text-slate-400 dark:text-slate-500" } else { "text-slate-900 dark:text-white" }
                     )>
                         {display_value}
                     </span>
                 </div>
-                <div class="text-slate-300 group-hover:text-brand-400 transition-colors">
+                <div class="text-slate-300 group-hover:text-brand-400 transition-colors dark:text-slate-600">
                     <i class="fas fa-chevron-down text-xs"></i>
                 </div>
 
