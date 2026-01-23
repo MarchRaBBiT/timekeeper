@@ -116,6 +116,7 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 90,
             password_history_count: 5,
+            production_mode: false,
         }
     }
 

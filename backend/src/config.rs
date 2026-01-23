@@ -42,6 +42,7 @@ pub struct Config {
     pub password_require_symbols: bool,
     pub password_expiration_days: u64,
     pub password_history_count: u32,
+    pub production_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +226,11 @@ impl Config {
             .parse()
             .unwrap_or(5);
 
+        let production_mode = env::var("PRODUCTION_MODE")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false);
+
         Ok(Self {
             database_url,
             read_database_url,
@@ -260,6 +266,7 @@ impl Config {
             password_require_symbols,
             password_expiration_days,
             password_history_count,
+            production_mode,
         })
     }
 
@@ -361,6 +368,7 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 90,
             password_history_count: 5,
+            production_mode: false,
         }
     }
 

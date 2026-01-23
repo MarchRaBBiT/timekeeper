@@ -40,6 +40,7 @@ fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u6
         password_require_symbols: true,
         password_expiration_days: 90,
         password_history_count: 5,
+        production_mode: false,
     }
 }
 
