@@ -41,10 +41,44 @@ pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(),
     }
 }
 
+pub fn mask_database_url(url: &str) -> String {
+    if let Some(start_scheme) = url.find("://") {
+        let after_scheme = start_scheme + 3;
+        if let Some(at_symbol) = url[after_scheme..].find('@') {
+            let at_index = after_scheme + at_symbol;
+            let user_pass_part = &url[after_scheme..at_index];
+
+            if let Some(colon) = user_pass_part.find(':') {
+                let user = &user_pass_part[..colon];
+                let remainder = &url[at_index..];
+                return format!("{}://{}:*****{}", &url[..start_scheme], user, remainder);
+            }
+        }
+    }
+    url.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono_tz::UTC;
+
+    #[test]
+    fn test_mask_database_url() {
+        assert_eq!(
+            mask_database_url("postgres://user:password@localhost:5432/db"),
+            "postgres://user:*****@localhost:5432/db"
+        );
+        assert_eq!(
+            mask_database_url("postgres://user:pass-word@localhost:5432/db"),
+            "postgres://user:*****@localhost:5432/db"
+        );
+        assert_eq!(
+            mask_database_url("postgres://user@localhost:5432/db"),
+            "postgres://user@localhost:5432/db"
+        );
+        assert_eq!(mask_database_url("invalid-url"), "invalid-url");
+    }
 
     fn test_config(allowed: Vec<String>) -> Config {
         Config {

@@ -379,11 +379,25 @@ fn init_tracing() {
 }
 
 fn log_config(config: &Config) {
-    tracing::info!("Database URL: {}", config.database_url);
-    tracing::info!("Read Database URL: {:?}", config.read_database_url);
+    tracing::info!(
+        "Database URL: {}",
+        crate::utils::security::mask_database_url(&config.database_url)
+    );
+    if let Some(url) = &config.read_database_url {
+        tracing::info!(
+            "Read Database URL: {}",
+            crate::utils::security::mask_database_url(url)
+        );
+    } else {
+        tracing::info!("Read Database URL: None");
+    }
     tracing::info!("JWT Expiration: {} hours", config.jwt_expiration_hours);
     tracing::info!("Time Zone: {}", config.time_zone);
     tracing::info!("CORS Allowed Origins: {:?}", config.cors_allow_origins);
+
+    if config.cors_allow_origins.iter().any(|o| o == "*") {
+        tracing::warn!("SECURITY WARNING: CORS is configured to allow all origins ('*'). This is dangerous for production!");
+    }
 }
 
 fn cors_layer(config: &Config) -> CorsLayer {
