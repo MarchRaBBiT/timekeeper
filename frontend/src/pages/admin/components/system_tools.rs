@@ -66,8 +66,8 @@ pub fn AdminMfaResetSection(
 
     view! {
         <Show when=move || system_admin_allowed.get()>
-            <div class="bg-white shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">{"MFA リセット"}</h3>
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">{"MFA リセット"}</h3>
                 <div class="flex flex-col gap-2">
                     <AdminUserSelect
                         users=users

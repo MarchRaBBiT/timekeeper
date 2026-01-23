@@ -100,12 +100,12 @@ pub fn AdminUserSelect(
     view! {
         <div class="space-y-1">
             <Show when=move || has_label>
-                <label class="block text-sm font-medium text-gray-700">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     {label_value.clone()}
                 </label>
             </Show>
             <select
-                class="w-full border rounded px-2 py-1 bg-white disabled:opacity-50"
+                class="w-full border rounded px-2 py-1 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
                 on:change=on_change
                 prop:value=selected
                 disabled=disabled

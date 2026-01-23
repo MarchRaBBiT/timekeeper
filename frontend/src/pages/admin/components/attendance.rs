@@ -170,8 +170,8 @@ pub fn AdminAttendanceToolsSection(
 
     view! {
         <Show when=move || system_admin_allowed.get()>
-            <div class="bg-white shadow rounded-lg p-6 space-y-4">
-                <h3 class="text-lg font-medium text-gray-900">{"勤怠ツール"}</h3>
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"勤怠ツール"}</h3>
                 <form class="space-y-3" on:submit=on_submit_attendance>
                     <AdminUserSelect
                         users=users
@@ -183,11 +183,11 @@ pub fn AdminAttendanceToolsSection(
                         label=Some("対象日")
                         value=att_date
                     />
-                    <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />
-                    <input type="datetime-local" class="w-full border rounded px-2 py-1" on:input=move |ev| att_out.set(event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white" on:input=move |ev| att_in.set(event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white" on:input=move |ev| att_out.set(event_target_value(&ev)) />
                     <div>
                         <div class="flex items-center justify-between mb-1">
-                            <span class="text-sm text-gray-700">{"休憩（任意）"}</span>
+                            <span class="text-sm text-gray-700 dark:text-gray-300">{"休憩（任意）"}</span>
                             <button type="button" class="text-blue-600 text-sm" on:click=add_break>{"行を追加"}</button>
                         </div>
                         <For
@@ -198,8 +198,8 @@ pub fn AdminAttendanceToolsSection(
                                 let e = create_rw_signal(e0);
                                 view! {
                                     <div class="flex space-x-2 mb-2">
-                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full" prop:value=s on:input=move |ev| s.set(event_target_value(&ev)) />
-                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full" prop:value=e on:input=move |ev| e.set(event_target_value(&ev)) />
+                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white" prop:value=s on:input=move |ev| s.set(event_target_value(&ev)) />
+                                        <input type="datetime-local" class="border rounded px-2 py-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white" prop:value=e on:input=move |ev| e.set(event_target_value(&ev)) />
                                     </div>
                                 }
                             }
@@ -214,11 +214,11 @@ pub fn AdminAttendanceToolsSection(
                     </button>
                 </form>
                 <div class="mt-4">
-                    <h4 class="text-sm font-medium text-gray-900 mb-2">{"休憩の強制終了"}</h4>
+                    <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">{"休憩の強制終了"}</h4>
                     <div class="flex space-x-2">
                         <input
                             placeholder="Break ID"
-                            class="border rounded px-2 py-1 w-full"
+                            class="border rounded px-2 py-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                             on:input=move |ev| break_force_id.set(event_target_value(&ev))
                         />
                         <button

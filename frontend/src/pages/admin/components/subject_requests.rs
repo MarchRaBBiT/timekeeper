@@ -118,7 +118,7 @@ pub fn AdminSubjectRequestsSection(
             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"本人対応申請"}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
-                    class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1"
+                    class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     on:change=move |ev| on_status_change(event_target_value(&ev))
                 >
                     <option value="">{ "すべて" }</option>
@@ -128,7 +128,7 @@ pub fn AdminSubjectRequestsSection(
                     <option value="cancelled">{ "取消" }</option>
                 </select>
                 <select
-                    class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1"
+                    class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     on:change=move |ev| on_type_change(event_target_value(&ev))
                 >
                     <option value="">{ "請求種別" }</option>
@@ -222,14 +222,14 @@ pub fn AdminSubjectRequestsSection(
                 </table>
             </div>
             <Show when=move || modal_open.get()>
-                <div class="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-                    <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-2">{"本人対応申請の詳細"}</h3>
-                        <pre class="text-xs bg-gray-50 p-2 rounded overflow-auto max-h-64 whitespace-pre-wrap">{move || modal_detail.get()}</pre>
+                <div class="fixed inset-0 bg-black/30 dark:bg-black/80 flex items-center justify-center z-50">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-lg p-6">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">{"本人対応申請の詳細"}</h3>
+                        <pre class="text-xs bg-gray-50 dark:bg-gray-900 dark:text-gray-300 p-2 rounded overflow-auto max-h-64 whitespace-pre-wrap">{move || modal_detail.get()}</pre>
                         <div class="mt-3">
-                            <label class="block text-sm font-medium text-gray-700">{"コメント"}</label>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{"コメント"}</label>
                             <textarea
-                                class="w-full border rounded px-2 py-1"
+                                class="w-full border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                 on:input=move |ev| modal_comment.set(event_target_value(&ev))
                             ></textarea>
                         </div>
@@ -242,7 +242,7 @@ pub fn AdminSubjectRequestsSection(
                             />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
-                            <button class="px-3 py-1 rounded border" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
+                            <button class="px-3 py-1 rounded border dark:border-gray-600 dark:text-gray-300" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
                             <button
                                 class="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-50"
                                 disabled={move || action_pending.get() || !modal_pending.get()}
