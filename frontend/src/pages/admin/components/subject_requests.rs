@@ -114,8 +114,8 @@ pub fn AdminSubjectRequestsSection(
     };
 
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-gray-900">{"本人対応申請"}</h3>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"本人対応申請"}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
                     class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1"
@@ -168,17 +168,17 @@ pub fn AdminSubjectRequestsSection(
                 </div>
             </Show>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"種別"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ユーザー"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ステータス"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"申請日"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"操作"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"種別"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ユーザー"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ステータス"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"申請日"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"操作"}</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         <Show when=move || data.get().is_some()>
                             {move || {
                                 data.get()
@@ -198,14 +198,14 @@ pub fn AdminSubjectRequestsSection(
                                                 };
                                                 view! {
                                                     <tr>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{type_label}</td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.user_id}</td>
+                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{type_label}</td>
+                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{item.user_id}</td>
                                                         <td class="px-6 py-4 whitespace-nowrap">
-                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
                                                                 {status_label}
                                                             </span>
                                                         </td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{created_label}</td>
+                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{created_label}</td>
                                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
                                                             <button class="text-blue-600" on:click=open>{"詳細"}</button>
                                                             <span class="sr-only">{id}</span>

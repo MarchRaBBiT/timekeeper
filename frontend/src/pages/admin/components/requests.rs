@@ -86,8 +86,8 @@ pub fn AdminRequestsSection(
     };
 
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-gray-900">{"申請一覧"}</h3>
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"申請一覧"}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
                     class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1"
@@ -130,17 +130,17 @@ pub fn AdminRequestsSection(
                 </div>
             </Show>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"種別"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"対象"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ユーザー"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"ステータス"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{"操作"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"種別"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"対象"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ユーザー"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ステータス"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"操作"}</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         <Show when=move || requests_data.get().is_object()>
                             {let data = requests_data.get();
                                 let leaves = data.get("leave_requests").cloned().unwrap_or(json!([]));
@@ -159,7 +159,7 @@ pub fn AdminRequestsSection(
                                 if rows.is_empty() {
                                     view! {
                                         <tr>
-                                            <td colspan="5" class="p-4 bg-gray-50">
+                                            <td colspan="5" class="p-4 bg-gray-50 dark:bg-gray-800">
                                                 <EmptyState
                                                     title="申請がありません"
                                                     description="表示できる申請データが見つかりませんでした。"
@@ -190,11 +190,11 @@ pub fn AdminRequestsSection(
                                         let kind_label = if kind == "leave" { "休暇" } else { "残業" };
                                         view! {
                                             <tr>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{kind_label}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{target.clone()}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.clone()}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{kind_label}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{target.clone()}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{user.clone()}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
                                                         {statusv.clone()}
                                                     </span>
                                                 </td>

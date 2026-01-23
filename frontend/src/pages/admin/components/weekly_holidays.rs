@@ -92,11 +92,11 @@ pub fn WeeklyHolidaySection(
     let on_refresh = move |_| reload.update(|value| *value = value.wrapping_add(1));
 
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900">{"週次休日"}</h2>
-                    <p class="text-sm text-gray-600">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{"週次休日"}</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
                         {"週単位の休日を登録します。システム管理者は即日開始も設定できます。"}
                     </p>
                 </div>
@@ -176,24 +176,24 @@ pub fn WeeklyHolidaySection(
             </Show>
             <Show when=move || !holidays_loading.get() && !holidays_data.get().is_empty()>
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                        <thead class="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th class="px-4 py-2 text-left text-gray-600">{"曜日"}</th>
-                                <th class="px-4 py-2 text-left text-gray-600">{"指定期間"}</th>
-                                <th class="px-4 py-2 text-left text-gray-600">{"適用期間"}</th>
-                                <th class="px-4 py-2 text-right text-gray-600">{"操作"}</th>
+                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"曜日"}</th>
+                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"指定期間"}</th>
+                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"適用期間"}</th>
+                                <th class="px-4 py-2 text-right text-gray-600 dark:text-gray-200">{"操作"}</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100">
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                             <For
                                 each=move || holidays_data.get()
                                 key=|item| item.id.clone()
                                 children=move |item| {
                                     view! {
                                         <tr>
-                                            <td class="px-4 py-2">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
-                                            <td class="px-4 py-2 text-gray-600">
+                                            <td class="px-4 py-2 dark:text-gray-100">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
+                                            <td class="px-4 py-2 text-gray-600 dark:text-gray-400">
                                                 {format!(
                                                     "{} 〜 {}",
                                                     item.starts_on.format("%Y-%m-%d"),
@@ -203,7 +203,7 @@ pub fn WeeklyHolidaySection(
                                                         .unwrap_or_else(|| "未設定".into())
                                                 )}
                                             </td>
-                                            <td class="px-4 py-2 text-gray-600">
+                                            <td class="px-4 py-2 text-gray-600 dark:text-gray-400">
                                                 {format!(
                                                     "{} 〜 {}",
                                                     item.enforced_from.format("%Y-%m-%d"),
