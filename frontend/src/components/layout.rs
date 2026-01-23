@@ -301,7 +301,7 @@ pub fn LoadingSpinner() -> impl IntoView {
 #[component]
 pub fn ErrorMessage(message: String) -> impl IntoView {
     view! {
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 dark:bg-red-900/30 dark:border-red-700 dark:text-red-200">
             <div class="flex">
                 <div class="flex-shrink-0">
                     <i class="fas fa-exclamation-circle"></i>
@@ -317,7 +317,7 @@ pub fn ErrorMessage(message: String) -> impl IntoView {
 #[component]
 pub fn SuccessMessage(message: String) -> impl IntoView {
     view! {
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4 dark:bg-green-900/30 dark:border-green-800 dark:text-green-200">
+        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200">
             <div class="flex">
                 <div class="flex-shrink-0">
                     <i class="fas fa-check-circle"></i>
