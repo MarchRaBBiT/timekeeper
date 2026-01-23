@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
 use chrono_tz::Asia::Tokyo;
-use ctor::ctor;
+use ctor::{ctor, dtor};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{
     env,
@@ -28,7 +28,7 @@ use timekeeper_backend::{
 use uuid::Uuid;
 
 static TESTCONTAINERS_DOCKER: OnceLock<&'static Cli> = OnceLock::new();
-static TESTCONTAINERS_PG: OnceLock<Container<'static, GenericImage>> = OnceLock::new();
+static TESTCONTAINERS_PG: OnceLock<Mutex<Option<Container<'static, GenericImage>>>> = OnceLock::new();
 static TESTCONTAINERS_DB_URL: OnceLock<String> = OnceLock::new();
 static DOCKER_WRAPPER_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -70,9 +70,9 @@ fn start_testcontainer_postgres() -> String {
             ));
         let image = RunnableImage::from(image).with_mapped_port((host_port, 5432));
         let container = docker.run(image);
-        TESTCONTAINERS_PG
-            .set(container)
-            .expect("set testcontainers postgres");
+        let holder = TESTCONTAINERS_PG.get_or_init(|| Mutex::new(None));
+        let mut guard = holder.lock().expect("lock testcontainers postgres");
+        *guard = Some(container);
         let url = format!(
             "postgres://timekeeper_test:timekeeper_test@127.0.0.1:{}/postgres",
             host_port
@@ -86,6 +86,15 @@ fn start_testcontainer_postgres() -> String {
     env::set_var("DATABASE_URL", url.clone());
     env::set_var("TEST_DATABASE_URL", url.clone());
     url
+}
+
+#[dtor]
+fn shutdown_testcontainer_postgres() {
+    if let Some(holder) = TESTCONTAINERS_PG.get() {
+        if let Ok(mut guard) = holder.lock() {
+            let _ = guard.take();
+        }
+    }
 }
 
 fn allocate_ephemeral_port() -> u16 {
