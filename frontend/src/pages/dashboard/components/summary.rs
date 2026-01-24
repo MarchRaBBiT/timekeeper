@@ -13,15 +13,15 @@ pub fn SummarySection(
     summary: Resource<(), Result<DashboardSummary, crate::api::ApiError>>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
             <div>
-                <h3 class="text-base font-semibold text-gray-900">{"勤務サマリー"}</h3>
-                <p class="text-sm text-gray-600">{"今月の勤務時間と日数のスナップショット"}</p>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{"勤務サマリー"}</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{"今月の勤務時間と日数のスナップショット"}</p>
             </div>
             <div>
                 {move || match summary.get() {
                     None => view! {
-                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                             <LoadingSpinner />
                             <span>{"勤怠サマリーを読み込み中..."}</span>
                         </div>
@@ -46,10 +46,10 @@ pub fn SummarySection(
 #[component]
 fn Metric(label: String, value: String) -> impl IntoView {
     view! {
-        <div class="relative overflow-hidden p-6 rounded-2xl bg-white border border-gray-100 shadow-premium hover:shadow-premium-hover transition-all duration-300 group">
-            <div class="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-brand-50 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
-            <p class="relative z-10 text-xs font-display font-bold text-brand-600 uppercase tracking-widest">{label}</p>
-            <p class="relative z-10 mt-3 text-3xl font-display font-extrabold text-slate-900">{value}</p>
+        <div class="relative overflow-hidden p-6 rounded-2xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-premium hover:shadow-premium-hover transition-all duration-300 group">
+            <div class="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-brand-50 dark:bg-brand-900 rounded-full opacity-50 group-hover:scale-110 transition-transform"></div>
+            <p class="relative z-10 text-xs font-display font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest">{label}</p>
+            <p class="relative z-10 mt-3 text-3xl font-display font-extrabold text-slate-900 dark:text-white">{value}</p>
         </div>
     }
 }
