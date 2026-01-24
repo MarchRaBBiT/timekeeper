@@ -21,8 +21,9 @@ RUN cargo install wasm-pack
 
 # Build frontend (WASM)
 WORKDIR /app/frontend
-ENV RUST_MIN_STACK=16777216 \
-    CARGO_BUILD_JOBS=1
+ENV RUST_MIN_STACK=33554432 \
+    CARGO_BUILD_JOBS=1 \
+    RUSTFLAGS="-C codegen-units=1"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     wasm-pack build --target web --out-dir pkg --release
