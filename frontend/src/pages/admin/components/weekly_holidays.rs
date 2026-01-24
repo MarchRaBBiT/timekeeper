@@ -92,16 +92,16 @@ pub fn WeeklyHolidaySection(
     let on_refresh = move |_| reload.update(|value| *value = value.wrapping_add(1));
 
     view! {
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{"週次休日"}</h2>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <h2 class="text-lg font-semibold text-fg">{"週次休日"}</h2>
+                    <p class="text-sm text-fg-muted">
                         {"週単位の休日を登録します。システム管理者は即日開始も設定できます。"}
                     </p>
                 </div>
                 <button
-                    class="px-3 py-1 rounded border text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    class="px-3 py-1 rounded border border-border text-sm text-fg hover:bg-action-ghost-bg_hover disabled:opacity-50"
                     disabled={move || holidays_loading.get()}
                     on:click=on_refresh
                 >
@@ -110,9 +110,9 @@ pub fn WeeklyHolidaySection(
             </div>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_submit>
                 <div class="lg:col-span-1">
-                    <label class="block text-sm font-medium text-gray-700">{"曜日"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"曜日"}</label>
                     <select
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value={move || weekday_signal.get()}
                         on:change=move |ev| weekday_signal.set(event_target_value(&ev))
                     >
@@ -130,7 +130,7 @@ pub fn WeeklyHolidaySection(
                         label=Some("稼働開始日")
                         value=starts_on_signal
                     />
-                    <p class="text-xs text-gray-500 mt-1">
+                    <p class="text-xs text-fg-muted mt-1">
                         {move || {
                             if system_admin_allowed.get() {
                                 "システム管理者は本日から設定できます。"
@@ -149,7 +149,7 @@ pub fn WeeklyHolidaySection(
                 <div class="lg:col-span-3">
                     <button
                         type="submit"
-                        class="w-full lg:w-auto px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        class="w-full lg:w-auto px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg_hover disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
                         {move || if create_pending.get() { "登録中..." } else { "週次休日を登録" }}
@@ -166,34 +166,34 @@ pub fn WeeklyHolidaySection(
                 <InlineErrorMessage error={holidays_error} />
             </Show>
             <Show when=move || holidays_loading.get()>
-                <div class="flex items-center gap-2 text-sm text-gray-600">
+                <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
                     <span>{"週次休日を読み込み中です..."}</span>
                 </div>
             </Show>
             <Show when=move || !holidays_loading.get() && holidays_data.get().is_empty()>
-                <p class="text-sm text-gray-500">{"登録済みの週次休日はありません。"} </p>
+                <p class="text-sm text-fg-muted">{"登録済みの週次休日はありません。"} </p>
             </Show>
             <Show when=move || !holidays_loading.get() && !holidays_data.get().is_empty()>
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                        <thead class="bg-gray-50 dark:bg-gray-700">
+                    <table class="min-w-full divide-y divide-border text-sm">
+                        <thead class="bg-surface-muted">
                             <tr>
-                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"曜日"}</th>
-                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"指定期間"}</th>
-                                <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"適用期間"}</th>
-                                <th class="px-4 py-2 text-right text-gray-600 dark:text-gray-200">{"操作"}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{"曜日"}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{"指定期間"}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{"適用期間"}</th>
+                                <th class="px-4 py-2 text-right text-fg-muted">{"操作"}</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <tbody class="divide-y divide-border">
                             <For
                                 each=move || holidays_data.get()
                                 key=|item| item.id.clone()
                                 children=move |item| {
                                     view! {
                                         <tr>
-                                            <td class="px-4 py-2 dark:text-gray-100">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
-                                            <td class="px-4 py-2 text-gray-600 dark:text-gray-400">
+                                            <td class="px-4 py-2 text-fg">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
+                                            <td class="px-4 py-2 text-fg-muted">
                                                 {format!(
                                                     "{} 〜 {}",
                                                     item.starts_on.format("%Y-%m-%d"),
@@ -203,7 +203,7 @@ pub fn WeeklyHolidaySection(
                                                         .unwrap_or_else(|| "未設定".into())
                                                 )}
                                             </td>
-                                            <td class="px-4 py-2 text-gray-600 dark:text-gray-400">
+                                            <td class="px-4 py-2 text-fg-muted">
                                                 {format!(
                                                     "{} 〜 {}",
                                                     item.enforced_from.format("%Y-%m-%d"),
@@ -215,7 +215,7 @@ pub fn WeeklyHolidaySection(
                                             </td>
                                             <td class="px-4 py-2 text-right">
                                                 <button
-                                                    class="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                                    class="text-action-danger-bg hover:text-action-danger-bg_hover disabled:opacity-50"
                                                     disabled={move || delete_action.pending().get()}
                                                     on:click={
                                                         let id = item.id.clone();

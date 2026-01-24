@@ -41,47 +41,47 @@ pub fn Header() -> impl IntoView {
     };
     let toggle_menu = { move |_| set_menu_open.update(|open| *open = !*open) };
     view! {
-        <header class="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
+        <header class="bg-surface-elevated shadow-sm border-b border-border">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center h-16">
                     <div class="flex items-center">
-                        <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
+                        <h1 class="text-xl font-semibold text-fg">
                             "Timekeeper"
                         </h1>
                     </div>
                     <div class="flex items-center">
                         <nav class="hidden lg:flex space-x-4">
-                            <a href="/dashboard" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                            <a href="/dashboard" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                 "ダッシュボード"
                             </a>
-                            <a href="/attendance" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                            <a href="/attendance" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                 "勤怠"
                             </a>
-                            <a href="/requests" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                            <a href="/requests" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                 "申請"
                             </a>
-                            <a href="/settings" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                            <a href="/settings" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                 "設定"
                             </a>
                             <Show when=move || can_access_admin()>
-                                <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                                <a href="/admin" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                     "管理"
                                 </a>
-                                <a href="/admin/export" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                                <a href="/admin/export" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                     "データエクスポート"
                                 </a>
-                                <a href="/admin/audit-logs" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                                <a href="/admin/audit-logs" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                     "監査ログ"
                                 </a>
                             </Show>
                             <Show when=move || can_manage_users()>
-                                <a href="/admin/users" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700">
+                                <a href="/admin/users" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
                                     "ユーザー追加"
                                 </a>
                             </Show>
                             <button
                                 on:click=on_logout
-                                class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg_hover"
                                 disabled={move || logout_pending.get()}
                             >
                                 "ログアウト"
@@ -89,7 +89,7 @@ pub fn Header() -> impl IntoView {
                         </nav>
                         <button
                             type="button"
-                            class="lg:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                            class="lg:hidden inline-flex items-center justify-center p-2 rounded-md text-fg-muted hover:text-fg hover:bg-action-ghost-bg_hover"
                             on:click=toggle_menu
                             aria-expanded=move || menu_open.get()
                             aria-controls="mobile-nav"
@@ -129,32 +129,32 @@ pub fn Header() -> impl IntoView {
                     </div>
                 </div>
                 <Show when=move || menu_open.get()>
-                    <div id="mobile-nav" class="lg:hidden border-t dark:border-gray-700">
+                    <div id="mobile-nav" class="lg:hidden border-t border-border">
                         <nav class="px-4 py-3 space-y-2">
                             <a
                                 href="/dashboard"
-                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "ダッシュボード"
                             </a>
                             <a
                                 href="/attendance"
-                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "勤怠"
                             </a>
                             <a
                                 href="/requests"
-                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "申請"
                             </a>
                             <a
                                 href="/settings"
-                                class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "設定"
@@ -162,21 +162,21 @@ pub fn Header() -> impl IntoView {
                             <Show when=move || can_access_admin()>
                                 <a
                                     href="/admin"
-                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "管理"
                                 </a>
                                 <a
                                     href="/admin/export"
-                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "データエクスポート"
                                 </a>
                                 <a
                                     href="/admin/audit-logs"
-                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "監査ログ"
@@ -185,7 +185,7 @@ pub fn Header() -> impl IntoView {
                             <Show when=move || can_manage_users()>
                                 <a
                                     href="/admin/users"
-                                    class="block text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "ユーザー追加"
@@ -193,7 +193,7 @@ pub fn Header() -> impl IntoView {
                             </Show>
                             <button
                                 on:click=on_logout
-                                class="w-full text-left text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                                class="w-full text-left text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg_hover"
                                 disabled={move || logout_pending.get()}
                             >
                                 "ログアウト"
@@ -209,7 +209,7 @@ pub fn Header() -> impl IntoView {
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
     view! {
-        <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div class="min-h-screen bg-surface">
             <Header/>
             <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 <TimeZoneWarningBanner/>
@@ -269,14 +269,14 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
     view! {
         <Show when=should_show>
             <div class="mb-4">
-                <div class="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-200">
+                <div class="bg-status-warning-bg border border-status-warning-border text-status-warning-text px-4 py-3 rounded">
                     <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <p class="font-semibold">{"タイムゾーン情報に関する警告"}</p>
                             <p class="text-sm mt-1">{warning_message}</p>
                         </div>
                         <button
-                            class="inline-flex items-center justify-center px-4 py-2 border border-yellow-500 text-sm font-medium rounded text-yellow-900 hover:bg-yellow-100 disabled:opacity-60 dark:text-yellow-200 dark:border-yellow-600 dark:hover:bg-yellow-900/50"
+                            class="inline-flex items-center justify-center px-4 py-2 border border-status-warning-border text-sm font-medium rounded text-status-warning-text hover:bg-status-warning-bg disabled:opacity-60"
                             on:click=on_retry
                             disabled=move || refreshing.get()
                         >
@@ -293,7 +293,7 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
 pub fn LoadingSpinner() -> impl IntoView {
     view! {
         <div class="flex justify-center items-center p-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-action-primary-bg"></div>
         </div>
     }
 }
@@ -301,7 +301,7 @@ pub fn LoadingSpinner() -> impl IntoView {
 #[component]
 pub fn ErrorMessage(message: String) -> impl IntoView {
     view! {
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 dark:bg-red-900/30 dark:border-red-700 dark:text-red-200">
+        <div class="bg-status-error-bg border border-status-error-border text-status-error-text px-4 py-3 rounded mb-4">
             <div class="flex">
                 <div class="flex-shrink-0">
                     <i class="fas fa-exclamation-circle"></i>
@@ -317,7 +317,7 @@ pub fn ErrorMessage(message: String) -> impl IntoView {
 #[component]
 pub fn SuccessMessage(message: String) -> impl IntoView {
     view! {
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4 dark:bg-green-900/30 dark:border-green-700 dark:text-green-200">
+        <div class="bg-status-success-bg border border-status-success-border text-status-success-text px-4 py-3 rounded mb-4">
             <div class="flex">
                 <div class="flex-shrink-0">
                     <i class="fas fa-check-circle"></i>

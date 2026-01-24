@@ -15,12 +15,12 @@ pub fn GlobalFilters(filter: RwSignal<ActivityStatusFilter>) -> impl IntoView {
     };
 
     view! {
-        <div class="flex items-center gap-3 text-sm text-gray-700 bg-white border rounded-lg px-4 py-2 shadow-sm">
-            <span class="font-medium text-gray-900">{"フィルター"}</span>
+        <div class="flex items-center gap-3 text-sm text-fg bg-surface-elevated border border-border rounded-lg px-4 py-2 shadow-sm">
+            <span class="font-medium text-fg">{"フィルター"}</span>
             <label class="flex items-center gap-2">
-                <span class="text-gray-500">{"申請ステータス"}</span>
+                <span class="text-fg-muted">{"申請ステータス"}</span>
                 <select
-                    class="border rounded px-2 py-1 text-sm"
+                    class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 text-sm"
                     on:change=on_change
                     prop:value={move || filter.get().as_value().to_string()}
                 >

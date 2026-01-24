@@ -57,13 +57,13 @@ pub fn AdminUsersPage() -> impl IntoView {
             >
                 <AdminUsersFrame>
                     // Tab header
-                    <div class="flex border-b mb-4">
+                    <div class="flex border-b border-border mb-4">
                         <button
                             class=move || {
                                 if vm.active_tab.get() == UserTab::Active {
-                                    "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+                                    "px-4 py-2 font-medium text-link border-b-2 border-action-primary-border"
                                 } else {
-                                    "px-4 py-2 font-medium text-gray-500 hover:text-gray-700"
+                                    "px-4 py-2 font-medium text-fg-muted hover:text-fg"
                                 }
                             }
                             on:click=set_tab_active
@@ -73,9 +73,9 @@ pub fn AdminUsersPage() -> impl IntoView {
                         <button
                             class=move || {
                                 if vm.active_tab.get() == UserTab::Archived {
-                                    "px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600"
+                                    "px-4 py-2 font-medium text-link border-b-2 border-action-primary-border"
                                 } else {
-                                    "px-4 py-2 font-medium text-gray-500 hover:text-gray-700"
+                                    "px-4 py-2 font-medium text-fg-muted hover:text-fg"
                                 }
                             }
                             on:click=set_tab_archived

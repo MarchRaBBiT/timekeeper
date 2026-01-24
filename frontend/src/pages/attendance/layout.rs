@@ -9,8 +9,8 @@ pub fn AttendanceFrame(children: Children) -> impl IntoView {
 #[component]
 pub fn UnauthorizedMessage() -> impl IntoView {
     view! {
-        <div class="bg-white shadow rounded-lg p-6 text-center">
-            <p class="text-sm text-gray-700">{"このページを表示するには適切な権限が必要です。"}</p>
+        <div class="bg-surface-elevated shadow rounded-lg p-6 text-center">
+            <p class="text-sm text-fg">{"このページを表示するには適切な権限が必要です。"}</p>
         </div>
     }
 }

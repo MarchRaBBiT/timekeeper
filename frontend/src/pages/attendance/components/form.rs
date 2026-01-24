@@ -18,7 +18,7 @@ pub fn RangeFormSection(
     on_export_csv: Callback<MouseEvent>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div class="bg-surface-elevated shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
             <div class="w-full lg:w-48">
                 <DatePicker
                     label=Some("開始日")
@@ -32,20 +32,20 @@ pub fn RangeFormSection(
                 />
             </div>
             <button
-                class="w-full lg:w-auto px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                class="w-full lg:w-auto px-4 py-2 bg-surface-muted text-fg rounded hover:bg-action-ghost-bg_hover"
                 on:click=move |ev| on_select_current_month.call(ev)
             >
                 {"今月"}
             </button>
             <button
-                class="w-full lg:w-auto px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                class="w-full lg:w-auto px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                 disabled={move || history_loading.get()}
                 on:click=move |ev| on_load_range.call(ev)
             >
                 {move || if history_loading.get() { "読み込み中..." } else { "読み込み" }}
             </button>
             <button
-                class="w-full lg:w-auto px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
+                class="w-full lg:w-auto px-4 py-2 bg-action-secondary-bg text-action-secondary-text rounded disabled:opacity-50"
                 disabled={move || exporting.get()}
                 on:click=move |ev| on_export_csv.call(ev)
             >
@@ -59,7 +59,7 @@ pub fn RangeFormSection(
             <SuccessMessage message={export_success.get().unwrap_or_default()} />
         </Show>
         <Show when=move || range_error.get().is_some()>
-            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            <div class="bg-status-error-bg border border-status-error-border text-status-error-text px-4 py-3 rounded">
                 {range_error.get().unwrap_or_default()}
             </div>
         </Show>

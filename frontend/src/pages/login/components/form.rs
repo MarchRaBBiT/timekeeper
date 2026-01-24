@@ -37,13 +37,13 @@ pub fn LoginForm(
     };
 
     view! {
-        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div class="min-h-screen flex items-center justify-center bg-surface py-12 px-4 sm:px-6 lg:px-8">
             <div class="max-w-md w-full space-y-8">
                 <div>
-                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-fg">
                         {"Timekeeper にログイン"}
                     </h2>
-                    <p class="mt-2 text-center text-sm text-gray-600">
+                    <p class="mt-2 text-center text-sm text-fg-muted">
                         {"勤怠管理システム"}
                     </p>
                 </div>
@@ -56,7 +56,7 @@ pub fn LoginForm(
                                 name="username"
                                 type="text"
                                 required
-                                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text rounded-t-md focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
                                 placeholder="ユーザー名"
                                 prop:value=form.username
                                 on:input=move |ev| {
@@ -72,7 +72,7 @@ pub fn LoginForm(
                                 name="password"
                                 type="password"
                                 required
-                                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text rounded-b-md focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
                                 placeholder="パスワード"
                                 prop:value=form.password
                                 on:input=move |ev| {
@@ -89,7 +89,7 @@ pub fn LoginForm(
                                 type="text"
                                 inputmode="numeric"
                                 autocomplete="one-time-code"
-                                class="appearance-none rounded relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                                class="appearance-none rounded relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
                                 placeholder="MFAコード (必要な場合)"
                                 prop:value=form.totp_code
                                 on:input=move |ev| {
@@ -102,7 +102,7 @@ pub fn LoginForm(
 
                     <div class="flex items-center justify-between">
                         <div class="text-sm">
-                            <A href="/forgot-password" class="font-medium text-blue-600 hover:text-blue-500">
+                            <A href="/forgot-password" class="font-medium text-link hover:text-link-hover">
                                 "Forgot your password?"
                             </A>
                         </div>
@@ -114,11 +114,11 @@ pub fn LoginForm(
                         <button
                             type="submit"
                             disabled={move || pending.get()}
-                            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-action-primary-text bg-action-primary-bg hover:bg-action-primary-bg_hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-action-primary-focus disabled:opacity-50"
                         >
                             <span class="absolute left-0 inset-y-0 flex items-center pl-3">
                                 <svg
-                                    class="h-5 w-5 text-blue-500 group-hover:text-blue-400"
+                                    class="h-5 w-5 text-action-primary-text/70 group-hover:text-action-primary-text"
                                     xmlns="http://www.w3.org/2000/svg"
                                     viewBox="0 0 20 20"
                                     fill="currentColor"

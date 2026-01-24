@@ -82,31 +82,31 @@ pub fn UserDetailDrawer(
 
                         view! {
                             <div class="fixed inset-0 z-50 flex justify-end">
-                                <div class="absolute inset-0 bg-black/50" on:click=overlay_close></div>
-                                <div class="relative w-full max-w-md bg-white shadow-xl h-full overflow-y-auto">
-                                    <div class="flex items-center justify-between border-b px-6 py-4">
+                                <div class="absolute inset-0 bg-overlay-backdrop" on:click=overlay_close></div>
+                                <div class="relative w-full max-w-md bg-surface-elevated shadow-xl h-full overflow-y-auto">
+                                    <div class="flex items-center justify-between border-b border-border px-6 py-4">
                                         <div>
-                                            <h3 class="text-lg font-semibold text-gray-900">{user.full_name}</h3>
-                                            <p class="text-sm text-gray-500">{format!("@{}", user.username)}</p>
+                                            <h3 class="text-lg font-semibold text-fg">{user.full_name}</h3>
+                                            <p class="text-sm text-fg-muted">{format!("@{}", user.username)}</p>
                                         </div>
-                                        <button class="text-gray-500 hover:text-gray-700" on:click=button_close>
+                                        <button class="text-fg-muted hover:text-fg" on:click=button_close>
                                             {"✕"}
                                         </button>
                                     </div>
                                     <div class="p-6 space-y-4">
                                         <div>
-                                            <p class="text-sm text-gray-600">{"権限"}</p>
-                                            <p class="text-base text-gray-900 font-medium">{user.role}</p>
+                                            <p class="text-sm text-fg-muted">{"権限"}</p>
+                                            <p class="text-base text-fg font-medium">{user.role}</p>
                                         </div>
                                         <div>
-                                            <p class="text-sm text-gray-600">{"システム管理者"}</p>
-                                            <p class="text-base text-gray-900 font-medium">
+                                            <p class="text-sm text-fg-muted">{"システム管理者"}</p>
+                                            <p class="text-base text-fg font-medium">
                                                 {if user.is_system_admin { "有効" } else { "無効" }}
                                             </p>
                                         </div>
                                         <div>
-                                            <p class="text-sm text-gray-600">{"MFA"}</p>
-                                            <p class="text-base text-gray-900 font-medium">
+                                            <p class="text-sm text-fg-muted">{"MFA"}</p>
+                                            <p class="text-base text-fg font-medium">
                                                 {if user.mfa_enabled { "登録済み" } else { "未登録" }}
                                             </p>
                                         </div>
@@ -117,7 +117,7 @@ pub fn UserDetailDrawer(
                                             <SuccessMessage message={messages.success.get().unwrap_or_default()} />
                                         </Show>
                                         <button
-                                            class="w-full px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50"
+                                            class="w-full px-4 py-2 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                                             disabled=move || pending.get()
                                             on:click=reset_click
                                         >
@@ -130,8 +130,8 @@ pub fn UserDetailDrawer(
                                                 when=move || !show_delete_confirm.get()
                                                 fallback=move || {
                                                     view! {
-                                                        <div class="border border-red-200 rounded p-4 bg-red-50">
-                                                            <p class="text-sm text-red-800 mb-3">
+                                                        <div class="border border-status-error-border rounded p-4 bg-status-error-bg text-status-error-text">
+                                                            <p class="text-sm text-status-error-text mb-3">
                                                                 {move || if hard_delete_mode.get() {
                                                                     "このユーザーと全ての関連データを完全に削除しますか？この操作は取り消せません。"
                                                                 } else {
@@ -140,14 +140,14 @@ pub fn UserDetailDrawer(
                                                             </p>
                                                             <div class="flex gap-2">
                                                                 <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
+                                                                    class="flex-1 px-4 py-2 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                                                     disabled=move || delete_pending.get()
                                                                     on:click=confirm_delete
                                                                 >
                                                                     {move || if delete_pending.get() { "処理中..." } else { "削除する" }}
                                                                 </button>
                                                                 <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-gray-300 text-gray-700"
+                                                                    class="flex-1 px-4 py-2 rounded bg-surface-muted text-fg"
                                                                     on:click=cancel_delete
                                                                 >
                                                                     {"キャンセル"}
@@ -158,16 +158,16 @@ pub fn UserDetailDrawer(
                                                 }
                                             >
                                                 <div class="border-t pt-4 mt-4 space-y-2">
-                                                    <p class="text-sm text-gray-500">{"ユーザー削除"}</p>
+                                                    <p class="text-sm text-fg-muted">{"ユーザー削除"}</p>
                                                     <button
-                                                        class="w-full px-4 py-2 rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                                                        class="w-full px-4 py-2 rounded bg-status-warning-text text-text-inverse disabled:opacity-50"
                                                         disabled=move || delete_pending.get()
                                                         on:click=soft_delete_click.clone()
                                                     >
                                                         {"退職処理（アーカイブ）"}
                                                     </button>
                                                     <button
-                                                        class="w-full px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                                                        class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg_hover disabled:opacity-50"
                                                         disabled=move || delete_pending.get()
                                                         on:click=hard_delete_click.clone()
                                                     >
@@ -177,7 +177,7 @@ pub fn UserDetailDrawer(
                                             </Show>
                                         </Show>
                                         <Show when=move || is_self>
-                                            <p class="text-sm text-gray-500 italic">{"自分自身は削除できません。"}</p>
+                                            <p class="text-sm text-fg-muted italic">{"自分自身は削除できません。"}</p>
                                         </Show>
                                     </div>
                                 </div>

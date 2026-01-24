@@ -9,11 +9,13 @@ pub mod config;
 mod pages;
 pub mod router;
 mod state;
+pub mod theme;
 pub mod utils;
 
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
+    theme::init_system_theme();
     let t0 = Date::now();
     console::log_1(&"Starting Timekeeper Frontend (wasm): initializing runtime config".into());
 

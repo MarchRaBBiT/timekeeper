@@ -69,31 +69,31 @@ pub fn ArchivedUserDetailDrawer(
 
                         view! {
                             <div class="fixed inset-0 z-50 flex justify-end">
-                                <div class="absolute inset-0 bg-black/50" on:click=overlay_close></div>
-                                <div class="relative w-full max-w-md bg-white shadow-xl h-full overflow-y-auto">
-                                    <div class="flex items-center justify-between border-b px-6 py-4">
+                                <div class="absolute inset-0 bg-overlay-backdrop" on:click=overlay_close></div>
+                                <div class="relative w-full max-w-md bg-surface-elevated shadow-xl h-full overflow-y-auto">
+                                    <div class="flex items-center justify-between border-b border-border px-6 py-4">
                                         <div>
-                                            <h3 class="text-lg font-semibold text-gray-900">{user.full_name.clone()}</h3>
-                                            <p class="text-sm text-gray-500">{format!("@{}", user.username)}</p>
+                                            <h3 class="text-lg font-semibold text-fg">{user.full_name.clone()}</h3>
+                                            <p class="text-sm text-fg-muted">{format!("@{}", user.username)}</p>
                                         </div>
-                                        <button class="text-gray-500 hover:text-gray-700" on:click=button_close>
+                                        <button class="text-fg-muted hover:text-fg" on:click=button_close>
                                             {"✕"}
                                         </button>
                                     </div>
                                     <div class="p-6 space-y-4">
                                         <div>
-                                            <p class="text-sm text-gray-600">{"権限"}</p>
-                                            <p class="text-base text-gray-900 font-medium">{user.role.clone()}</p>
+                                            <p class="text-sm text-fg-muted">{"権限"}</p>
+                                            <p class="text-base text-fg font-medium">{user.role.clone()}</p>
                                         </div>
                                         <div>
-                                            <p class="text-sm text-gray-600">{"システム管理者"}</p>
-                                            <p class="text-base text-gray-900 font-medium">
+                                            <p class="text-sm text-fg-muted">{"システム管理者"}</p>
+                                            <p class="text-base text-fg font-medium">
                                                 {if user.is_system_admin { "有効" } else { "無効" }}
                                             </p>
                                         </div>
                                         <div>
-                                            <p class="text-sm text-gray-600">{"退職日"}</p>
-                                            <p class="text-base text-gray-900 font-medium">
+                                            <p class="text-sm text-fg-muted">{"退職日"}</p>
+                                            <p class="text-base text-fg font-medium">
                                                 {user.archived_at.split('T').next().unwrap_or(&user.archived_at).to_string()}
                                             </p>
                                         </div>
@@ -107,7 +107,7 @@ pub fn ArchivedUserDetailDrawer(
                                         // Action buttons
                                         <div class="border-t pt-4 mt-4 space-y-2">
                                             <button
-                                                class="w-full px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                                                class="w-full px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg_hover disabled:opacity-50"
                                                 disabled=move || restore_pending.get() || delete_pending.get()
                                                 on:click=restore_click
                                             >
@@ -118,20 +118,20 @@ pub fn ArchivedUserDetailDrawer(
                                                 when=move || !show_delete_confirm.get()
                                                 fallback=move || {
                                                     view! {
-                                                        <div class="border border-red-200 rounded p-4 bg-red-50">
-                                                            <p class="text-sm text-red-800 mb-3">
+                                                        <div class="border border-status-error-border rounded p-4 bg-status-error-bg text-status-error-text">
+                                                            <p class="text-sm text-status-error-text mb-3">
                                                                 {"この退職ユーザーのデータを完全に削除しますか？この操作は取り消せません。"}
                                                             </p>
                                                             <div class="flex gap-2">
                                                                 <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
+                                                                    class="flex-1 px-4 py-2 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                                                     disabled=move || delete_pending.get()
                                                                     on:click=confirm_delete
                                                                 >
                                                                     {move || if delete_pending.get() { "削除中..." } else { "完全削除する" }}
                                                                 </button>
                                                                 <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-gray-300 text-gray-700"
+                                                                    class="flex-1 px-4 py-2 rounded bg-surface-muted text-fg"
                                                                     on:click=cancel_delete
                                                                 >
                                                                     {"キャンセル"}
@@ -142,7 +142,7 @@ pub fn ArchivedUserDetailDrawer(
                                                 }
                                             >
                                                 <button
-                                                    class="w-full px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                                                    class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg_hover disabled:opacity-50"
                                                     disabled=move || restore_pending.get() || delete_pending.get()
                                                     on:click=delete_click
                                                 >

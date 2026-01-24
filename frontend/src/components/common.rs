@@ -16,10 +16,10 @@ pub enum ButtonVariant {
 impl ButtonVariant {
     pub fn classes(&self) -> &'static str {
         match self {
-            ButtonVariant::Primary => "bg-brand-600 hover:bg-brand-700 text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 dark:bg-brand-500 dark:hover:bg-brand-400 dark:focus-visible:outline-brand-500",
-            ButtonVariant::Secondary => "bg-gray-600 hover:bg-gray-700 text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600 dark:focus-visible:outline-gray-500",
-            ButtonVariant::Danger => "bg-red-600 hover:bg-red-700 text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:bg-red-500 dark:hover:bg-red-400 dark:focus-visible:outline-red-500",
-            ButtonVariant::Ghost => "bg-transparent hover:bg-gray-100 text-gray-900 dark:text-gray-100 dark:hover:bg-gray-700",
+            ButtonVariant::Primary => "bg-action-primary-bg hover:bg-action-primary-bg_hover text-action-primary-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-primary-focus",
+            ButtonVariant::Secondary => "bg-action-secondary-bg hover:bg-action-secondary-bg_hover text-action-secondary-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-secondary-focus",
+            ButtonVariant::Danger => "bg-action-danger-bg hover:bg-action-danger-bg_hover text-action-danger-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-danger-focus",
+            ButtonVariant::Ghost => "bg-transparent hover:bg-action-ghost-bg_hover text-action-ghost-text",
         }
     }
 }
