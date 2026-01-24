@@ -128,7 +128,7 @@ pub fn RequestsList(
                                                             {"編集"}
                                                         </button>
                                                         <button
-                                                            class="text-action-danger-bg hover:text-action-danger-bg_hover font-bold flex items-center gap-1 transition-colors"
+                                                            class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
                                                             on:click=move |ev| {
                                                                 ev.stop_propagation();
                                                                 on_cancel.call(summary.get_value());

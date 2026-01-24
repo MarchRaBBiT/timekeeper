@@ -59,7 +59,7 @@ where
                     }}
                 </button>
                 <button
-                    class="px-4 py-2 border border-border text-fg rounded hover:bg-action-ghost-bg_hover"
+                    class="px-4 py-2 border border-border text-fg rounded hover:bg-action-ghost-bg-hover"
                     on:click=move |_| on_refresh()
                 >
                     {"ステータスを再取得"}

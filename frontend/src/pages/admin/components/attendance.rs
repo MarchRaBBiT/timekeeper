@@ -222,7 +222,7 @@ pub fn AdminAttendanceToolsSection(
                             on:input=move |ev| break_force_id.set(event_target_value(&ev))
                         />
                         <button
-                            class="px-3 py-1 bg-status-warning-text text-text-inverse rounded disabled:opacity-50"
+                            class="px-3 py-1 bg-action-danger-bg text-action-danger-text rounded disabled:opacity-50"
                             disabled={move || force_pending.get()}
                             on:click=on_force_end
                         >

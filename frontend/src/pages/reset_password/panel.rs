@@ -116,7 +116,7 @@ pub fn ResetPasswordPanel() -> impl IntoView {
                                     <button
                                         type="submit"
                                         disabled=move || pending.get()
-                                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-action-primary-text bg-action-primary-bg hover:bg-action-primary-bg_hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-action-primary-focus disabled:opacity-50"
+                                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-action-primary-text bg-action-primary-bg hover:bg-action-primary-bg-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-action-primary-focus disabled:opacity-50"
                                     >
                                         <span class="absolute left-0 inset-y-0 flex items-center pl-3">
                                             <svg

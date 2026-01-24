@@ -236,24 +236,24 @@ This section records the initial plan for implementing the screen theme feature.
 | `form.control.border` | Input border | `gray-300` | `gray-600` | inputs/selects |
 | `form.control.placeholder` | Input placeholder | `gray-500` | `gray-400` | inputs/selects |
 | `action.primary.bg` | Primary action background | `brand-600` | `brand-500` | primary button |
-| `action.primary.bg_hover` | Primary action hover | `brand-700` | `brand-400` | primary button hover |
+| `action.primary.bg-hover` | Primary action hover | `brand-700` | `brand-400` | primary button hover |
 | `action.primary.text` | Primary action text | `white` | `white` | primary button |
 | `action.primary.border` | Primary action border | `brand-600` | `brand-500` | primary button border |
-| `action.primary.border_hover` | Primary action border hover | `brand-700` | `brand-400` | primary button border hover |
+| `action.primary.border-hover` | Primary action border hover | `brand-700` | `brand-400` | primary button border hover |
 | `action.primary.focus` | Primary action focus | `brand-600` | `brand-500` | focus outline |
 | `action.secondary.bg` | Secondary action background | `gray-600` | `gray-700` | secondary button |
-| `action.secondary.bg_hover` | Secondary action hover | `gray-700` | `gray-600` | secondary button hover |
+| `action.secondary.bg-hover` | Secondary action hover | `gray-700` | `gray-600` | secondary button hover |
 | `action.secondary.text` | Secondary action text | `white` | `white` | secondary button |
 | `action.secondary.border` | Secondary action border | `gray-600` | `gray-700` | secondary button border |
-| `action.secondary.border_hover` | Secondary action border hover | `gray-700` | `gray-600` | secondary button border hover |
+| `action.secondary.border-hover` | Secondary action border hover | `gray-700` | `gray-600` | secondary button border hover |
 | `action.secondary.focus` | Secondary action focus | `gray-600` | `gray-500` | focus outline |
 | `action.danger.bg` | Danger action background | `red-600` | `red-500` | danger button |
-| `action.danger.bg_hover` | Danger action hover | `red-700` | `red-400` | danger button hover |
+| `action.danger.bg-hover` | Danger action hover | `red-700` | `red-400` | danger button hover |
 | `action.danger.text` | Danger action text | `white` | `white` | danger button |
 | `action.danger.border` | Danger action border | `red-600` | `red-500` | danger button border |
-| `action.danger.border_hover` | Danger action border hover | `red-700` | `red-400` | danger button border hover |
+| `action.danger.border-hover` | Danger action border hover | `red-700` | `red-400` | danger button border hover |
 | `action.danger.focus` | Danger action focus | `red-600` | `red-500` | focus outline |
-| `action.ghost.bg_hover` | Ghost hover background | `gray-100` | `gray-700` | ghost button |
+| `action.ghost.bg-hover` | Ghost hover background | `gray-100` | `gray-700` | ghost button |
 | `action.ghost.text` | Ghost text | `gray-900` | `gray-100` | ghost button |
 | `state.disabled.bg` | Disabled background | `gray-100` | `slate-800` | disabled buttons |
 | `state.disabled.text` | Disabled text | `gray-400` | `slate-500` | disabled buttons |
@@ -280,8 +280,8 @@ This section records the initial plan for implementing the screen theme feature.
 | `status.attendance.break` | Attendance: break | `amber-600` | `amber-400` | `frontend/src/components/forms.rs` |
 | `status.attendance.clock_out` | Attendance: clock out | `slate-400` | `slate-600` | `frontend/src/components/forms.rs` |
 | `status.attendance.not_started` | Attendance: not started | `slate-300` | `slate-600` | `frontend/src/components/forms.rs` |
-| `status.attendance.text_active` | Attendance: active text | `slate-900` | `white` | `frontend/src/components/forms.rs` |
-| `status.attendance.text_inactive` | Attendance: inactive text | `slate-500` | `slate-400` | `frontend/src/components/forms.rs` |
+| `status.attendance.text-active` | Attendance: active text | `slate-900` | `white` | `frontend/src/components/forms.rs` |
+| `status.attendance.text-inactive` | Attendance: inactive text | `slate-500` | `slate-400` | `frontend/src/components/forms.rs` |
 
 ### 7.6 調整メモ
 

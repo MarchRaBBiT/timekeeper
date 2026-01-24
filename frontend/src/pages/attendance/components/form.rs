@@ -32,7 +32,7 @@ pub fn RangeFormSection(
                 />
             </div>
             <button
-                class="w-full lg:w-auto px-4 py-2 bg-surface-muted text-fg rounded hover:bg-action-ghost-bg_hover"
+                class="w-full lg:w-auto px-4 py-2 bg-surface-muted text-fg rounded hover:bg-action-ghost-bg-hover"
                 on:click=move |ev| on_select_current_month.call(ev)
             >
                 {"今月"}

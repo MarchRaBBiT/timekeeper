@@ -257,7 +257,7 @@ pub fn SettingsPage() -> impl IntoView {
                         </div>
                         <div class="flex justify-end">
                             <button type="submit"
-                                class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded hover:bg-action-primary-bg_hover disabled:opacity-50"
+                                class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded hover:bg-action-primary-bg-hover disabled:opacity-50"
                                 disabled=move || password_loading.get()
                             >
                                 {move || if password_loading.get() { "変更中..." } else { "パスワードを変更" }}
@@ -369,7 +369,7 @@ pub fn SettingsPage() -> impl IntoView {
                                                         <td class="px-4 py-2 whitespace-nowrap text-sm text-fg-muted">{created_label}</td>
                                                         <td class="px-4 py-2 whitespace-nowrap text-right text-sm">
                                                             <button
-                                                                class="text-action-danger-bg hover:text-action-danger-bg_hover disabled:opacity-50"
+                                                                class="text-action-danger-bg hover:text-action-danger-bg-hover disabled:opacity-50"
                                                                 disabled={move || cancel_loading.get() || !can_cancel}
                                                                 on:click=on_cancel
                                                             >

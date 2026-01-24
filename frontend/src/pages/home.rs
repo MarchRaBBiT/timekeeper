@@ -14,7 +14,7 @@ pub fn HomePage() -> impl IntoView {
                     </p>
                     <div class="mt-5 max-w-md mx-auto sm:flex sm:justify-center lg:mt-8">
                         <div class="rounded-md shadow">
-                            <a href="/login" class="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-action-primary-text bg-action-primary-bg hover:bg-action-primary-bg_hover lg:py-4 lg:text-lg lg:px-10">
+                            <a href="/login" class="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-action-primary-text bg-action-primary-bg hover:bg-action-primary-bg-hover lg:py-4 lg:text-lg lg:px-10">
                                 "ログイン"
                             </a>
                         </div>

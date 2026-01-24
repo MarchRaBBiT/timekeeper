@@ -227,7 +227,7 @@ pub fn AdminRequestsSection(
                             <InlineErrorMessage error={action_error.into()} />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
-                            <button class="px-3 py-1 rounded border border-border text-fg" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
+                            <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
                             <button
                                 class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                 disabled={move || action_pending.get()}

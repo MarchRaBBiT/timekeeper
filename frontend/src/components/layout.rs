@@ -51,37 +51,37 @@ pub fn Header() -> impl IntoView {
                     </div>
                     <div class="flex items-center">
                         <nav class="hidden lg:flex space-x-4">
-                            <a href="/dashboard" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                            <a href="/dashboard" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                 "ダッシュボード"
                             </a>
-                            <a href="/attendance" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                            <a href="/attendance" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                 "勤怠"
                             </a>
-                            <a href="/requests" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                            <a href="/requests" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                 "申請"
                             </a>
-                            <a href="/settings" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                            <a href="/settings" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                 "設定"
                             </a>
                             <Show when=move || can_access_admin()>
-                                <a href="/admin" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                                <a href="/admin" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                     "管理"
                                 </a>
-                                <a href="/admin/export" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                                <a href="/admin/export" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                     "データエクスポート"
                                 </a>
-                                <a href="/admin/audit-logs" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                                <a href="/admin/audit-logs" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                     "監査ログ"
                                 </a>
                             </Show>
                             <Show when=move || can_manage_users()>
-                                <a href="/admin/users" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover">
+                                <a href="/admin/users" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
                                     "ユーザー追加"
                                 </a>
                             </Show>
                             <button
                                 on:click=on_logout
-                                class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg_hover"
+                                class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg-hover"
                                 disabled={move || logout_pending.get()}
                             >
                                 "ログアウト"
@@ -89,7 +89,7 @@ pub fn Header() -> impl IntoView {
                         </nav>
                         <button
                             type="button"
-                            class="lg:hidden inline-flex items-center justify-center p-2 rounded-md text-fg-muted hover:text-fg hover:bg-action-ghost-bg_hover"
+                            class="lg:hidden inline-flex items-center justify-center p-2 rounded-md text-fg-muted hover:text-fg hover:bg-action-ghost-bg-hover"
                             on:click=toggle_menu
                             aria-expanded=move || menu_open.get()
                             aria-controls="mobile-nav"
@@ -133,28 +133,28 @@ pub fn Header() -> impl IntoView {
                         <nav class="px-4 py-3 space-y-2">
                             <a
                                 href="/dashboard"
-                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "ダッシュボード"
                             </a>
                             <a
                                 href="/attendance"
-                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "勤怠"
                             </a>
                             <a
                                 href="/requests"
-                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "申請"
                             </a>
                             <a
                                 href="/settings"
-                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "設定"
@@ -162,21 +162,21 @@ pub fn Header() -> impl IntoView {
                             <Show when=move || can_access_admin()>
                                 <a
                                     href="/admin"
-                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "管理"
                                 </a>
                                 <a
                                     href="/admin/export"
-                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "データエクスポート"
                                 </a>
                                 <a
                                     href="/admin/audit-logs"
-                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "監査ログ"
@@ -185,7 +185,7 @@ pub fn Header() -> impl IntoView {
                             <Show when=move || can_manage_users()>
                                 <a
                                     href="/admin/users"
-                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg_hover"
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "ユーザー追加"
@@ -193,7 +193,7 @@ pub fn Header() -> impl IntoView {
                             </Show>
                             <button
                                 on:click=on_logout
-                                class="w-full text-left text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg_hover"
+                                class="w-full text-left text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-action-ghost-bg-hover"
                                 disabled={move || logout_pending.get()}
                             >
                                 "ログアウト"

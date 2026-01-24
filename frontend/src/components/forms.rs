@@ -73,10 +73,10 @@ pub fn AttendanceActionButtons(
                         {move || {
                             let status = status_snapshot();
                             let (label, color, dot_color) = match status.as_ref().map(|s| s.status.as_str()) {
-                                Some("clocked_in") => ("勤務中", "text-status-attendance-text_active", "bg-status-attendance-clock_in animate-pulse"),
-                                Some("on_break") => ("休憩中", "text-status-attendance-text_active", "bg-status-attendance-break animate-pulse"),
-                                Some("clocked_out") => ("退勤済み", "text-status-attendance-text_inactive", "bg-status-attendance-clock_out"),
-                                _ => ("未出勤", "text-status-attendance-text_inactive", "bg-status-attendance-not_started"),
+                                Some("clocked_in") => ("勤務中", "text-status-attendance-text-active", "bg-status-attendance-clock_in animate-pulse"),
+                                Some("on_break") => ("休憩中", "text-status-attendance-text-active", "bg-status-attendance-break animate-pulse"),
+                                Some("clocked_out") => ("退勤済み", "text-status-attendance-text-inactive", "bg-status-attendance-clock_out"),
+                                _ => ("未出勤", "text-status-attendance-text-inactive", "bg-status-attendance-not_started"),
                             };
                             view! {
                                 <div class="flex items-center gap-2 mt-0.5">
@@ -92,7 +92,7 @@ pub fn AttendanceActionButtons(
             <div class="grid grid-cols-2 gap-3">
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-status-attendance-clock_in bg-status-attendance-clock_in text-text-inverse shadow-lg hover:bg-action-primary-bg_hover hover:border-action-primary-border_hover disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text disabled:shadow-none"
+                           border-status-attendance-clock_in bg-status-attendance-clock_in text-text-inverse shadow-lg hover:bg-action-primary-bg-hover hover:border-action-primary-border-hover disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text disabled:shadow-none"
                     disabled={move || !button_state().clock_in}
                     on:click=move |ev| on_clock_in.call(ev)
                 >
@@ -159,7 +159,13 @@ pub fn AttendanceActionButtons(
                     .get()
                     .map(|err| {
                         let msg = &err.error;
-                        let is_error = msg.contains("失敗") || msg.contains("エラー") || msg.contains("できません");
+                        let is_success_message =
+                            msg.ends_with("しました。") || msg.ends_with("完了しました。");
+                        let is_error = match err.code.as_str() {
+                            "REQUEST_FAILED" | "UNKNOWN" => true,
+                            "VALIDATION_ERROR" => !is_success_message,
+                            _ => true,
+                        };
                         let (bg, border, text, icon) = if is_error {
                             ("bg-status-error-bg", "border-status-error-border", "text-status-error-text", "fa-exclamation-circle")
                         } else {
@@ -232,7 +238,7 @@ pub fn DatePicker(
             {label.map(|l| view! { <label class="text-sm font-bold text-fg-muted ml-1">{l}</label> })}
             <div
                 class=move || format!(
-                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-form-control-bg py-2.5 px-4 flex items-center justify-between shadow-sm border-form-control-border hover:border-action-primary-border_hover hover:shadow-md active:scale-[0.98] {}",
+                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-form-control-bg py-2.5 px-4 flex items-center justify-between shadow-sm border-form-control-border hover:border-action-primary-border-hover hover:shadow-md active:scale-[0.98] {}",
                     if disabled.get() { "opacity-50 cursor-not-allowed bg-state-disabled-bg border-state-disabled-border text-state-disabled-text shadow-none touch-none" } else { "hover:ring-4 hover:ring-action-primary-focus" }
                 )
                 on:click=on_click

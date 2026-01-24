@@ -438,12 +438,12 @@ pub fn HolidayManagementSection(
                     value=holiday_date_input
                 />
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"名称"}</label>
-                    <input class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"名称"}</label>
+                    <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"備考（任意）"}</label>
-                    <input class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"備考（任意）"}</label>
+                    <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
                 </div>
                 <div class="lg:col-span-3">
                     <button
@@ -459,12 +459,12 @@ pub fn HolidayManagementSection(
                 <div class="flex items-center gap-2">
                     <input
                         type="number"
-                        class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-32"
+                        class="w-32 rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
                         prop:value={move || google_year_input.get()}
                         on:input=move |ev| google_year_input.set(event_target_value(&ev))
                     />
                     <button
-                        class="px-3 py-1 rounded border border-border text-fg disabled:opacity-50"
+                        class="px-3 py-2.5 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover disabled:opacity-50 font-medium transition-colors"
                         disabled={move || google_loading.get()}
                         on:click=on_fetch_google
                     >
@@ -472,7 +472,7 @@ pub fn HolidayManagementSection(
                     </button>
                 </div>
                 <button
-                    class="px-3 py-1 rounded bg-status-success-text text-text-inverse disabled:opacity-50"
+                    class="px-3 py-2.5 rounded-xl border-2 border-status-success-border text-status-success-text bg-status-success-bg disabled:opacity-50 font-bold transition-colors"
                     disabled={move || google_holidays.get().is_empty()}
                     on:click=on_import_google
                 >
@@ -484,7 +484,7 @@ pub fn HolidayManagementSection(
                     <h4 class="text-sm font-medium text-fg">{"祝日一覧フィルター"}</h4>
                     <p class="text-xs text-fg-muted">{"期間を指定すると一致する祝日だけを表示します。"}</p>
                 </div>
-                <div class="grid gap-3 lg:grid-cols-4">
+                <div class="grid gap-3 lg:grid-cols-4 align-bottom">
                     <DatePicker
                         label=Some("開始日")
                         value=filter_from_input
@@ -493,27 +493,27 @@ pub fn HolidayManagementSection(
                         label=Some("終了日")
                         value=filter_to_input
                     />
-                    <div class="lg:col-span-2 flex items-end gap-2">
-                        <button class="px-3 py-1 rounded bg-action-secondary-bg text-action-secondary-text" on:click=on_apply_filters>
+                    <div class="lg:col-span-2 flex items-end gap-2 mb-0.5">
+                        <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_filters>
                             {"日付で絞り込み"}
                         </button>
-                        <button class="px-3 py-1 rounded border border-border text-fg" on:click=on_clear_filters>
+                        <button class="h-[50px] px-4 rounded-xl text-fg-muted hover:text-fg font-medium transition-colors" on:click=on_clear_filters>
                             {"条件クリア"}
                         </button>
                     </div>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-3">
                     <div>
-                        <label class="block text-xs font-medium text-fg-muted">{"カレンダー範囲 (YYYY-MM)"}</label>
+                        <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"カレンダー範囲 (YYYY-MM)"}</label>
                         <input
                             type="month"
-                            class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
+                            class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
                             prop:value={move || calendar_month_input.get()}
                             on:input=move |ev| calendar_month_input.set(event_target_value(&ev))
                         />
                     </div>
-                    <div class="lg:col-span-2 flex items-end">
-                        <button class="px-3 py-1 rounded border border-action-primary-border text-action-primary-bg" on:click=on_apply_calendar_range>
+                    <div class="lg:col-span-2 flex items-end mb-0.5">
+                        <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_calendar_range>
                             {"選択月の範囲を適用"}
                         </button>
                     </div>

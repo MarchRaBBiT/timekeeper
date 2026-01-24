@@ -167,7 +167,7 @@ pub fn UserDetailDrawer(
                                                         {"退職処理（アーカイブ）"}
                                                     </button>
                                                     <button
-                                                        class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg_hover disabled:opacity-50"
+                                                        class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
                                                         disabled=move || delete_pending.get()
                                                         on:click=hard_delete_click.clone()
                                                     >

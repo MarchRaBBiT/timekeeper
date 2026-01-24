@@ -107,7 +107,7 @@ pub fn ArchivedUserDetailDrawer(
                                         // Action buttons
                                         <div class="border-t pt-4 mt-4 space-y-2">
                                             <button
-                                                class="w-full px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg_hover disabled:opacity-50"
+                                                class="w-full px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg-hover disabled:opacity-50"
                                                 disabled=move || restore_pending.get() || delete_pending.get()
                                                 on:click=restore_click
                                             >
@@ -142,7 +142,7 @@ pub fn ArchivedUserDetailDrawer(
                                                 }
                                             >
                                                 <button
-                                                    class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg_hover disabled:opacity-50"
+                                                    class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
                                                     disabled=move || restore_pending.get() || delete_pending.get()
                                                     on:click=delete_click
                                                 >

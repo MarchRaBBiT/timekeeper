@@ -101,7 +101,7 @@ pub fn WeeklyHolidaySection(
                     </p>
                 </div>
                 <button
-                    class="px-3 py-1 rounded border border-border text-sm text-fg hover:bg-action-ghost-bg_hover disabled:opacity-50"
+                    class="px-3 py-1 rounded border border-border text-sm text-fg hover:bg-action-ghost-bg-hover disabled:opacity-50"
                     disabled={move || holidays_loading.get()}
                     on:click=on_refresh
                 >
@@ -110,20 +110,25 @@ pub fn WeeklyHolidaySection(
             </div>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_submit>
                 <div class="lg:col-span-1">
-                    <label class="block text-sm font-medium text-fg-muted">{"曜日"}</label>
-                    <select
-                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
-                        prop:value={move || weekday_signal.get()}
-                        on:change=move |ev| weekday_signal.set(event_target_value(&ev))
-                    >
-                        <option value="0">{"日 (0)"}</option>
-                        <option value="1">{"月 (1)"}</option>
-                        <option value="2">{"火 (2)"}</option>
-                        <option value="3">{"水 (3)"}</option>
-                        <option value="4">{"木 (4)"}</option>
-                        <option value="5">{"金 (5)"}</option>
-                        <option value="6">{"土 (6)"}</option>
-                    </select>
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"曜日"}</label>
+                    <div class="relative">
+                        <select
+                            class="appearance-none w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
+                            prop:value={move || weekday_signal.get()}
+                            on:change=move |ev| weekday_signal.set(event_target_value(&ev))
+                        >
+                            <option value="0">{"日 (0)"}</option>
+                            <option value="1">{"月 (1)"}</option>
+                            <option value="2">{"火 (2)"}</option>
+                            <option value="3">{"水 (3)"}</option>
+                            <option value="4">{"木 (4)"}</option>
+                            <option value="5">{"金 (5)"}</option>
+                            <option value="6">{"土 (6)"}</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-fg-muted">
+                            <i class="fas fa-chevron-down text-xs"></i>
+                        </div>
+                    </div>
                 </div>
                 <div class="lg:col-span-1">
                     <DatePicker
@@ -149,7 +154,7 @@ pub fn WeeklyHolidaySection(
                 <div class="lg:col-span-3">
                     <button
                         type="submit"
-                        class="w-full lg:w-auto px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg_hover disabled:opacity-50"
+                        class="w-full lg:w-auto px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg-hover disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
                         {move || if create_pending.get() { "登録中..." } else { "週次休日を登録" }}
@@ -215,7 +220,7 @@ pub fn WeeklyHolidaySection(
                                             </td>
                                             <td class="px-4 py-2 text-right">
                                                 <button
-                                                    class="text-action-danger-bg hover:text-action-danger-bg_hover disabled:opacity-50"
+                                                    class="text-action-danger-bg hover:text-action-danger-bg-hover disabled:opacity-50"
                                                     disabled={move || delete_action.pending().get()}
                                                     on:click={
                                                         let id = item.id.clone();

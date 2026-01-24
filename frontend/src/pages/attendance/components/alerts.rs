@@ -26,7 +26,7 @@ pub fn HolidayAlerts(
                     </p>
                 </div>
                 <button
-                    class="px-3 py-1 text-sm rounded border border-border text-fg hover:bg-action-ghost-bg_hover disabled:opacity-50"
+                    class="px-3 py-1 text-sm rounded border border-border text-fg hover:bg-action-ghost-bg-hover disabled:opacity-50"
                     disabled={move || loading.get()}
                     on:click=move |_| on_refresh.call(())
                 >

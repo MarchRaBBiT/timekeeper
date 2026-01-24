@@ -1,18 +1,27 @@
 #[cfg(target_arch = "wasm32")]
 mod wasm {
+    use std::cell::RefCell;
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
     use web_sys;
 
     const DARK_CLASS: &str = "dark";
 
+    struct ThemeWatcher {
+        _media_query: web_sys::MediaQueryList,
+        _listener: Closure<dyn FnMut(web_sys::MediaQueryListEvent)>,
+    }
+
+    thread_local! {
+        static THEME_WATCHER: RefCell<Option<ThemeWatcher>> = RefCell::new(None);
+    }
+
     fn update_html_class(html: &web_sys::Element, is_dark: bool) {
-        if let Some(list) = html.class_list().ok() {
-            if is_dark {
-                let _ = list.add_1(DARK_CLASS);
-            } else {
-                let _ = list.remove_1(DARK_CLASS);
-            }
+        let list = html.class_list();
+        if is_dark {
+            let _ = list.add_1(DARK_CLASS);
+        } else {
+            let _ = list.remove_1(DARK_CLASS);
         }
     }
 
@@ -53,13 +62,19 @@ mod wasm {
             {
                 // ignore
             }
-            closure.forget();
+            THEME_WATCHER.with(|slot| {
+                *slot.borrow_mut() = Some(ThemeWatcher {
+                    _media_query: list,
+                    _listener: closure,
+                });
+            });
         } else {
             set_from_query(false);
         }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 pub use wasm::init as init_system_theme;
 
 #[cfg(not(target_arch = "wasm32"))]
