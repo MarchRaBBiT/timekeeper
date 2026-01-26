@@ -63,6 +63,7 @@ impl<T: Serialize> PaginatedResponse<T> {
     }
 }
 
+pub mod active_session;
 pub mod attendance;
 pub mod audit_log;
 pub mod break_record;
