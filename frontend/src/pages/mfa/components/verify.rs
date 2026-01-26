@@ -23,23 +23,23 @@ pub fn VerificationSection(
                         let qr_svg_data_url = svg_to_data_url(&qr_svg);
 
                         view! {
-                            <div class="bg-white shadow rounded-lg p-6 space-y-4">
-                                <h2 class="text-lg font-semibold text-gray-900">
+                            <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+                                <h2 class="text-lg font-semibold text-fg">
                                     {"認証アプリで QR をスキャン"}
                                 </h2>
-                                <div class="border rounded p-4 bg-gray-50">
+                                <div class="border border-border rounded p-4 bg-surface-muted">
                                     <img src=qr_svg_data_url alt="認証アプリのQRコード" />
                                 </div>
-                                <p class="text-sm text-gray-600 break-all">
+                                <p class="text-sm text-fg-muted break-all">
                                     {info.otpauth_url.clone()}
                                 </p>
                                 <form class="space-y-3" on:submit=move |ev| on_submit.call(ev)>
-                                    <label class="block text-sm font-medium text-gray-700">
+                                    <label class="block text-sm font-medium text-fg-muted">
                                         {"確認コード"}
                                     </label>
                                     <input
                                         type="text"
-                                        class="mt-1 w-full border rounded px-3 py-2"
+                                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                         placeholder="6桁コード"
                                         maxlength=6
                                         on:input=move |ev| {
@@ -48,7 +48,7 @@ pub fn VerificationSection(
                                         }
                                     />
                                     <button
-                                        class="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
+                                        class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                                         disabled={move || activate_loading.get()}
                                     >
                                         {move || if activate_loading.get() {

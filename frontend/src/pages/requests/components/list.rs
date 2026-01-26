@@ -16,16 +16,16 @@ pub fn RequestsList(
     message: RwSignal<crate::pages::requests::utils::MessageState>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-white dark:bg-gray-800 shadow-premium rounded-3xl overflow-hidden border border-gray-100/50 dark:border-gray-700/50">
-            <div class="px-8 py-6 border-b border-gray-100 dark:border-gray-700">
-                <h3 class="text-xl font-display font-bold text-slate-900 dark:text-slate-100">{"申請一覧"}</h3>
+        <div class="bg-surface-elevated shadow-premium rounded-3xl overflow-hidden border border-border">
+            <div class="px-8 py-6 border-b border-border">
+                <h3 class="text-xl font-display font-bold text-fg">{"申請一覧"}</h3>
                 <Show when=move || message.get().error.is_some()>
                     <div class="mt-4">
                         <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
                     </div>
                 </Show>
                 <Show when=move || message.get().success.is_some()>
-                    <div class="mt-4 flex items-center gap-2 p-3 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 animate-pop-in">
+                    <div class="mt-4 flex items-center gap-2 p-3 rounded-xl bg-status-success-bg border border-status-success-border text-status-success-text animate-pop-in">
                         <i class="fas fa-check-circle"></i>
                         <span class="text-sm font-medium">{message.get().success.clone().unwrap_or_default()}</span>
                     </div>
@@ -39,7 +39,7 @@ pub fn RequestsList(
             </Show>
 
             <Show when=move || loading.get()>
-                <div class="p-12 flex flex-col items-center justify-center gap-4 text-slate-400">
+                <div class="p-12 flex flex-col items-center justify-center gap-4 text-fg-muted">
                     <LoadingSpinner />
                     <span class="text-sm font-medium tracking-widest uppercase">{"データを取得中..."}</span>
                 </div>
@@ -49,24 +49,24 @@ pub fn RequestsList(
                 <EmptyState
                     title="表示できる申請がありません"
                     description="左または上のフォームから新しい申請を送信できます"
-                    icon=view! { <i class="fas fa-inbox text-4xl text-slate-300"></i> }.into_view()
+                    icon=view! { <i class="fas fa-inbox text-4xl text-fg-muted"></i> }.into_view()
                 />
             </Show>
 
             <Show when=move || !summaries.get().is_empty()>
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-100 dark:divide-gray-700">
+                    <table class="min-w-full divide-y divide-border">
                         <thead>
-                            <tr class="bg-slate-50/50 dark:bg-gray-700/50">
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"種類"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"期間 / 日付"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"補足"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"ステータス"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"提出日"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-slate-400 dark:text-slate-200 uppercase tracking-widest">{"操作"}</th>
+                            <tr class="bg-surface-muted">
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"種類"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"期間 / 日付"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"補足"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"ステータス"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"提出日"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"操作"}</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-50 bg-white dark:bg-gray-800 dark:divide-gray-700">
+                        <tbody class="divide-y divide-border bg-surface-elevated">
                             <For
                                 each=move || summaries.get()
                                 key=|summary| summary.id.clone()
@@ -84,26 +84,26 @@ pub fn RequestsList(
                                         summary_value.submitted_at.clone().unwrap_or_else(|| "-".into());
 
                                     let status_style = match status.as_str() {
-                                        "approved" => "bg-green-100 text-green-700",
-                                        "rejected" => "bg-red-100 text-red-700",
-                                        "pending" => "bg-brand-100 text-brand-700",
-                                        _ => "bg-slate-100 text-slate-700",
+                                        "approved" => "bg-status-success-bg text-status-success-text",
+                                        "rejected" => "bg-status-error-bg text-status-error-text",
+                                        "pending" => "bg-status-warning-bg text-status-warning-text",
+                                        _ => "bg-status-neutral-bg text-status-neutral-text",
                                     };
 
                                     view! {
-                                        <tr class="hover:bg-slate-50/80 dark:hover:bg-gray-700/80 transition-colors group cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
+                                        <tr class="hover:bg-surface-muted transition-colors group cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
                                             <td class="px-8 py-5 whitespace-nowrap">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 uppercase">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-status-neutral-bg text-status-neutral-text uppercase">
                                                     {match summary_value.kind {
                                                         RequestKind::Leave => "休暇",
                                                         RequestKind::Overtime => "残業",
                                                     }}
                                                 </span>
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-bold text-slate-900 dark:text-slate-100">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-bold text-fg">
                                                 {primary_label.clone()}
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-fg-muted">
                                                 {secondary_label.clone()}
                                             </td>
                                             <td class="px-8 py-5 whitespace-nowrap">
@@ -111,14 +111,14 @@ pub fn RequestsList(
                                                     {status.clone()}
                                                 </span>
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-medium text-slate-400">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm font-medium text-fg-muted">
                                                 {submitted_at.clone()}
                                             </td>
-                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-gray-900">
+                                            <td class="px-8 py-5 whitespace-nowrap text-sm text-fg">
                                                 <Show when=move || status_for_pending == "pending">
                                                     <div class="flex gap-4">
                                                         <button
-                                                            class="text-brand-600 hover:text-brand-700 font-bold flex items-center gap-1 transition-colors"
+                                                            class="text-link hover:text-link-hover font-bold flex items-center gap-1 transition-colors"
                                                             on:click=move |ev| {
                                                                 ev.stop_propagation();
                                                                 on_edit.call(summary.get_value());
@@ -128,7 +128,7 @@ pub fn RequestsList(
                                                             {"編集"}
                                                         </button>
                                                         <button
-                                                            class="text-red-500 hover:text-red-600 font-bold flex items-center gap-1 transition-colors"
+                                                            class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
                                                             on:click=move |ev| {
                                                                 ev.stop_propagation();
                                                                 on_cancel.call(summary.get_value());
@@ -140,7 +140,7 @@ pub fn RequestsList(
                                                     </div>
                                                 </Show>
                                                 <Show when=move || status_for_not_pending != "pending">
-                                                    <span class="text-slate-300">
+                                                    <span class="text-fg-muted">
                                                         <i class="fas fa-lock text-xs"></i>
                                                     </span>
                                                 </Show>

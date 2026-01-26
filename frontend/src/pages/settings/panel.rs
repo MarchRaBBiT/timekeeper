@@ -220,8 +220,8 @@ pub fn SettingsPage() -> impl IntoView {
             <div class="mx-auto max-w-3xl space-y-8">
 
                 // --- Password Change Section ---
-                <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
-                    <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 border-b pb-2">"パスワード変更"</h2>
+                <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+                    <h2 class="text-xl font-semibold text-fg border-b border-border pb-2">"パスワード変更"</h2>
 
                     <Show when=move || password_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={password_success_msg.get().unwrap_or_default()} />
@@ -232,32 +232,32 @@ pub fn SettingsPage() -> impl IntoView {
 
                     <form class="space-y-4" on:submit=on_submit_password>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"現在のパスワード"</label>
+                            <label class="block text-sm font-medium text-fg-muted">"現在のパスワード"</label>
                             <input type="password" required
-                                class="mt-1 w-full border rounded px-3 py-2"
+                                class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| set_current_password.set(event_target_value(&ev))
                                 prop:value=current_password
                             />
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"新しいパスワード"</label>
+                            <label class="block text-sm font-medium text-fg-muted">"新しいパスワード"</label>
                             <input type="password" required
-                                class="mt-1 w-full border rounded px-3 py-2"
+                                class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| set_new_password.set(event_target_value(&ev))
                                 prop:value=new_password
                             />
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"新しいパスワード（確認）"</label>
+                            <label class="block text-sm font-medium text-fg-muted">"新しいパスワード（確認）"</label>
                             <input type="password" required
-                                class="mt-1 w-full border rounded px-3 py-2"
+                                class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| set_confirm_password.set(event_target_value(&ev))
                                 prop:value=confirm_password
                             />
                         </div>
                         <div class="flex justify-end">
                             <button type="submit"
-                                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded hover:bg-action-primary-bg-hover disabled:opacity-50"
                                 disabled=move || password_loading.get()
                             >
                                 {move || if password_loading.get() { "変更中..." } else { "パスワードを変更" }}
@@ -291,8 +291,8 @@ pub fn SettingsPage() -> impl IntoView {
                 </div>
 
                 // --- Subject Request Section ---
-                <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
-                    <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 border-b pb-2">"本人対応申請"</h2>
+                <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+                    <h2 class="text-xl font-semibold text-fg border-b border-border pb-2">"本人対応申請"</h2>
                     <Show when=move || subject_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={subject_success_msg.get().unwrap_or_default()} />
                     </Show>
@@ -301,9 +301,9 @@ pub fn SettingsPage() -> impl IntoView {
                     </Show>
                     <form class="space-y-3" on:submit=on_submit_subject>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"申請種別"</label>
+                            <label class="block text-sm font-medium text-fg-muted">"申請種別"</label>
                             <select
-                                class="mt-1 w-full border rounded px-3 py-2"
+                                class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 prop:value={move || subject_request_type.get()}
                                 on:change=move |ev| subject_request_type.set(event_target_value(&ev))
                             >
@@ -314,9 +314,9 @@ pub fn SettingsPage() -> impl IntoView {
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">"詳細"</label>
+                            <label class="block text-sm font-medium text-fg-muted">"詳細"</label>
                             <textarea
-                                class="mt-1 w-full border rounded px-3 py-2"
+                                class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 rows="3"
                                 prop:value={move || subject_details.get()}
                                 on:input=move |ev| subject_details.set(event_target_value(&ev))
@@ -325,7 +325,7 @@ pub fn SettingsPage() -> impl IntoView {
                         <div class="flex justify-end">
                             <button
                                 type="submit"
-                                class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                                class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                                 disabled=move || subject_loading.get()
                             >
                                 {move || if subject_loading.get() { "送信中..." } else { "申請する" }}
@@ -333,21 +333,21 @@ pub fn SettingsPage() -> impl IntoView {
                         </div>
                     </form>
                     <div>
-                        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{"申請履歴"}</h3>
+                        <h3 class="text-sm font-medium text-fg-muted mb-2">{"申請履歴"}</h3>
                         <Show when=move || subject_requests_error.get().is_some()>
                             <ErrorMessage message={subject_requests_error.get().unwrap_or_default()} />
                         </Show>
                         <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead class="bg-gray-50 dark:bg-gray-700">
+                            <table class="min-w-full divide-y divide-border">
+                                <thead class="bg-surface-muted">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"種別"}</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ステータス"}</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"申請日"}</th>
-                                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"操作"}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"種別"}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ステータス"}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"申請日"}</th>
+                                        <th class="px-4 py-2 text-right text-xs font-medium text-fg-muted uppercase tracking-wider">{"操作"}</th>
                                     </tr>
                                 </thead>
-                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tbody class="bg-surface-elevated divide-y divide-border">
                                     {move || {
                                         subject_requests
                                             .get()
@@ -364,12 +364,12 @@ pub fn SettingsPage() -> impl IntoView {
                                                 };
                                                 view! {
                                                     <tr>
-                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{type_label}</td>
-                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{status_label}</td>
-                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{created_label}</td>
+                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-fg">{type_label}</td>
+                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-fg-muted">{status_label}</td>
+                                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-fg-muted">{created_label}</td>
                                                         <td class="px-4 py-2 whitespace-nowrap text-right text-sm">
                                                             <button
-                                                                class="text-red-600 disabled:opacity-50"
+                                                                class="text-action-danger-bg hover:text-action-danger-bg-hover disabled:opacity-50"
                                                                 disabled={move || cancel_loading.get() || !can_cancel}
                                                                 on:click=on_cancel
                                                             >

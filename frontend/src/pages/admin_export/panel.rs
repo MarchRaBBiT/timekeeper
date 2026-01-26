@@ -27,8 +27,8 @@ pub fn AdminExportPage() -> impl IntoView {
                 fallback=move || {
                     view! {
                         <div class="space-y-6">
-                            <div class="bg-white shadow rounded-lg p-6">
-                                <p class="text-sm text-gray-700">
+                            <div class="bg-surface-elevated shadow rounded-lg p-6">
+                                <p class="text-sm text-fg">
                                     {"このページは管理者以上の権限が必要です。"}
                                 </p>
                             </div>
@@ -88,13 +88,13 @@ fn AdminExportPanel() -> impl IntoView {
 
     view! {
         <div class="space-y-6">
-            <div class="bg-white shadow rounded-lg p-6">
-                <h2 class="text-lg font-medium text-gray-900 mb-4">{"データエクスポート (CSV)"}</h2>
+            <div class="bg-surface-elevated shadow rounded-lg p-6">
+                <h2 class="text-lg font-medium text-fg mb-4">{"データエクスポート (CSV)"}</h2>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
                     <div>
-                        <label class="block text-sm text-gray-700">{"ユーザー"}</label>
+                        <label class="block text-sm text-fg-muted">{"ユーザー"}</label>
                         <div class="mt-1 space-y-2">
-                            <div class="flex items-center gap-4 text-sm text-gray-700">
+                            <div class="flex items-center gap-4 text-sm text-fg">
                                 <label class="flex items-center gap-1">
                                     <input
                                         type="radio"
@@ -128,7 +128,7 @@ fn AdminExportPanel() -> impl IntoView {
                             <Show when=move || users_error.get().is_some()>
                                 <div class="space-y-1">
                                     <input
-                                        class="w-full border rounded px-2 py-1 disabled:opacity-50"
+                                        class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 disabled:opacity-50"
                                         placeholder="username を直接入力"
                                         prop:value={move || vm.username.get()}
                                         on:input=move |ev| vm.username.set(event_target_value(&ev))
@@ -148,7 +148,7 @@ fn AdminExportPanel() -> impl IntoView {
                                 />
                             </Show>
                             <Show when=move || specific_user_required.get()>
-                                <p class="text-xs text-amber-600">
+                                <p class="text-xs text-status-warning-text">
                                     {"指定ユーザーを選択してください。"}
                                 </p>
                             </Show>
@@ -167,24 +167,24 @@ fn AdminExportPanel() -> impl IntoView {
                     <InlineErrorMessage error={vm.error.into()} />
                 </Show>
                 <button
-                    class="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
+                    class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                     on:click=on_export
                     disabled=move || downloading.get() || specific_user_required.get()
                 >
                     <span class="inline-flex items-center gap-2">
                         <Show when=move || downloading.get()>
-                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                         </Show>
                         {move || if downloading.get() { "エクスポート中..." } else { "CSVをエクスポート" }}
                     </span>
                 </button>
                 <Show when=move || vm.preview.get().is_some()>
                     <div class="mt-4">
-                        <h3 class="text-sm text-gray-700">
+                        <h3 class="text-sm text-fg">
                             {"プレビュー (先頭2KB) - ファイル名: "}
                             {move || vm.filename.get()}
                         </h3>
-                        <pre class="mt-2 text-xs bg-gray-50 p-3 rounded overflow-auto max-h-64 whitespace-pre-wrap">
+                        <pre class="mt-2 text-xs bg-surface-muted p-3 rounded overflow-auto max-h-64 whitespace-pre-wrap">
                             {move || vm.preview.get().unwrap_or_default()}
                         </pre>
                     </div>

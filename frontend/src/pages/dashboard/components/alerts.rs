@@ -13,14 +13,14 @@ type AlertsResource = Resource<
 #[component]
 pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div class="flex flex-col gap-2">
-                <h3 class="text-base font-semibold text-gray-900">{"アラート"}</h3>
-                <p class="text-sm text-gray-600">{"勤務や申請に関する注意事項"}</p>
+                <h3 class="text-base font-semibold text-fg">{"アラート"}</h3>
+                <p class="text-sm text-fg-muted">{"勤務や申請に関する注意事項"}</p>
             </div>
             {move || match alerts.get() {
                 None => view! {
-                    <div class="flex items-center gap-2 text-sm text-gray-500">
+                    <div class="flex items-center gap-2 text-sm text-fg-muted">
                         <LoadingSpinner />
                         <span>{"アラート情報を読み込み中..."}</span>
                     </div>
@@ -37,7 +37,7 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
                             children=move |alert: DashboardAlert| {
                                 let badge = render_badge(&alert.level);
                                 view! {
-                                    <li class="flex items-start gap-2 text-sm text-gray-800">
+                                    <li class="flex items-start gap-2 text-sm text-fg">
                                         {badge}
                                         <span>{alert.message}</span>
                                     </li>
@@ -53,9 +53,9 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
 
 fn render_badge(level: &DashboardAlertLevel) -> View {
     let (color, text) = match level {
-        DashboardAlertLevel::Info => ("bg-blue-100 text-blue-800", "INFO"),
-        DashboardAlertLevel::Warning => ("bg-amber-100 text-amber-800", "WARN"),
-        DashboardAlertLevel::Error => ("bg-red-100 text-red-800", "ERROR"),
+        DashboardAlertLevel::Info => ("bg-status-info-bg text-status-info-text", "INFO"),
+        DashboardAlertLevel::Warning => ("bg-status-warning-bg text-status-warning-text", "WARN"),
+        DashboardAlertLevel::Error => ("bg-status-error-bg text-status-error-text", "ERROR"),
     };
     view! {
         <span class=format!("px-2 py-0.5 rounded-full text-xs font-semibold {}", color)>

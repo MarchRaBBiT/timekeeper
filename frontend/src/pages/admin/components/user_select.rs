@@ -100,12 +100,12 @@ pub fn AdminUserSelect(
     view! {
         <div class="space-y-1">
             <Show when=move || has_label>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label class="block text-sm font-medium text-fg-muted">
                     {label_value.clone()}
                 </label>
             </Show>
             <select
-                class="w-full border rounded px-2 py-1 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
+                class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 disabled:opacity-50"
                 on:change=on_change
                 prop:value=selected
                 disabled=disabled
@@ -117,7 +117,7 @@ pub fn AdminUserSelect(
                 <div class="flex items-center gap-2">
                     <InlineErrorMessage error={fetch_error.into()} />
                     <button
-                        class="text-sm text-blue-700 hover:underline disabled:opacity-50"
+                        class="text-sm text-link hover:text-link-hover hover:underline disabled:opacity-50"
                         on:click=on_retry
                         disabled=move || loading.get()
                     >

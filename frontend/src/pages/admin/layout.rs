@@ -5,8 +5,8 @@ use leptos::*;
 pub fn UnauthorizedMessage() -> impl IntoView {
     view! {
         <div class="space-y-6">
-            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                <p class="text-sm text-gray-700 dark:text-gray-300">
+            <div class="bg-surface-elevated shadow rounded-lg p-6">
+                <p class="text-sm text-fg">
                     {"このページは管理者以上の権限が必要です。"}
                 </p>
             </div>
@@ -19,8 +19,8 @@ pub fn AdminDashboardFrame(children: Children) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{"管理者ツール"}</h1>
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <h1 class="text-2xl font-bold text-fg">{"管理者ツール"}</h1>
+                <p class="mt-1 text-sm text-fg-muted">
                     {"週次休日や申請、勤怠、MFA、祝日管理をまとめて実行できます。"}
                 </p>
             </div>

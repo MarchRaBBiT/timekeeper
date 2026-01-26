@@ -41,7 +41,7 @@ pub fn Clock() -> impl IntoView {
     let time_str = move || time.get().format("%H:%M:%S").to_string();
 
     view! {
-        <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none shadow-lg rounded-lg overflow-hidden">
+        <div class="bg-gradient-to-br from-action-primary-bg to-action-primary-bg-hover text-text-inverse border-none shadow-lg rounded-lg overflow-hidden">
             <div class="flex flex-col items-center justify-center py-4 space-y-2">
                 <div class="text-lg font-medium opacity-90">
                     {date_str} <span class="ml-1">{weekday_str}</span>

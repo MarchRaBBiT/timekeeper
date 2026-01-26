@@ -16,14 +16,14 @@ pub fn ArchivedUserList(
                 when=move || loading.get()
                 fallback=move || {
                     view! {
-                        <Suspense fallback=move || view! { <p class="text-gray-500">{"読み込み中..."}</p> }>
+                        <Suspense fallback=move || view! { <p class="text-fg-muted">{"読み込み中..."}</p> }>
                             {move || {
                                 archived_users_resource
                                     .get()
                                     .map(|result| match result {
                                         Ok(users) if users.is_empty() => {
                                             view! {
-                                                <p class="text-gray-500 text-center py-8">
+                                                <p class="text-fg-muted text-center py-8">
                                                     {"退職ユーザーはいません。"}
                                                 </p>
                                             }
@@ -31,7 +31,7 @@ pub fn ArchivedUserList(
                                         }
                                         Ok(users) => {
                                             view! {
-                                                <ul class="divide-y divide-gray-200 border rounded-lg">
+                                                <ul class="divide-y divide-border border border-border rounded-lg">
                                                     <For
                                                         each=move || users.clone()
                                                         key=|user| user.id.clone()
@@ -40,25 +40,25 @@ pub fn ArchivedUserList(
                                                                 let user = user.clone();
                                                                 move |_| on_select.call(user.clone())
                                                             };
-                                                            view! {
-                                                                <li
-                                                                    class="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center justify-between"
-                                                                    on:click=on_click
-                                                                >
-                                                                    <div>
-                                                                        <p class="font-medium text-gray-900">
-                                                                            {user.full_name.clone()}
-                                                                        </p>
-                                                                        <p class="text-sm text-gray-500">
-                                                                            {format!("@{}", user.username)}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div class="text-right">
-                                                                        <p class="text-xs text-gray-400">{"退職日"}</p>
-                                                                        <p class="text-sm text-gray-600">
-                                                                            {user.archived_at.split('T').next().unwrap_or(&user.archived_at).to_string()}
-                                                                        </p>
-                                                                    </div>
+                                                        view! {
+                                                            <li
+                                                                class="px-4 py-3 hover:bg-surface-muted cursor-pointer flex items-center justify-between"
+                                                                on:click=on_click
+                                                            >
+                                                                <div>
+                                                                    <p class="font-medium text-fg">
+                                                                        {user.full_name.clone()}
+                                                                    </p>
+                                                                    <p class="text-sm text-fg-muted">
+                                                                        {format!("@{}", user.username)}
+                                                                    </p>
+                                                                </div>
+                                                                <div class="text-right">
+                                                                    <p class="text-xs text-fg-muted">{"退職日"}</p>
+                                                                    <p class="text-sm text-fg-muted">
+                                                                        {user.archived_at.split('T').next().unwrap_or(&user.archived_at).to_string()}
+                                                                    </p>
+                                                                </div>
                                                                 </li>
                                                             }
                                                         }
@@ -80,7 +80,7 @@ pub fn ArchivedUserList(
                     }
                 }
             >
-                <p class="text-gray-500">{"読み込み中..."}</p>
+                <p class="text-fg-muted">{"読み込み中..."}</p>
             </Show>
         </div>
     }

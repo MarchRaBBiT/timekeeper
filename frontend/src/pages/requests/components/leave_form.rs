@@ -48,10 +48,10 @@ pub fn LeaveRequestForm(
     let end_signal = state.end_signal();
     let reason_signal = state.reason_signal();
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
-                <h3 class="text-lg font-medium text-gray-900">{"休暇申請"}</h3>
-                <p class="text-sm text-gray-600">{"休暇の種類と期間を入力して申請を送信します。"} </p>
+                <h3 class="text-lg font-medium text-fg">{"休暇申請"}</h3>
+                <p class="text-sm text-fg-muted">{"休暇の種類と期間を入力して申請を送信します。"} </p>
                 <Show
                     when=move || {
                         editing
@@ -60,9 +60,9 @@ pub fn LeaveRequestForm(
                             .unwrap_or(false)
                     }
                 >
-                    <p class="mt-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 inline-flex items-center gap-2">
+                    <p class="mt-1 text-xs text-status-info-text bg-status-info-bg border border-status-info-border rounded px-2 py-1 inline-flex items-center gap-2">
                         {"編集中: 既存の休暇申請を更新します。"}
-                        <button class="text-blue-700 underline" on:click=move |_| on_cancel_edit.call(())>
+                        <button class="text-status-info-text underline" on:click=move |_| on_cancel_edit.call(())>
                             {"キャンセル"}
                         </button>
                     </p>
@@ -76,9 +76,9 @@ pub fn LeaveRequestForm(
             </Show>
             <form class="space-y-4" on:submit=on_submit>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"種類"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"種類"}</label>
                     <select
-                        class="mt-1 block w-full border rounded px-2 py-1"
+                        class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=move || leave_type.get()
                         on:change=move |ev| leave_type.set(event_target_value(&ev))
                     >
@@ -99,17 +99,17 @@ pub fn LeaveRequestForm(
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"理由（任意）"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"理由（任意）"}</label>
                     <textarea
                         rows=3
-                        class="mt-1 block w-full border rounded px-2 py-1"
+                        class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=move || reason_signal.get()
                         on:input=move |ev| reason_signal.set(event_target_value(&ev))
                     ></textarea>
                 </div>
                 <button
                     type="submit"
-                    class="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+                    class="px-4 py-2 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                     disabled=move || pending.get() || updating.get()
                 >
                     {move || {

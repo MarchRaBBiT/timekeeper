@@ -430,25 +430,25 @@ pub fn HolidayManagementSection(
     };
 
     view! {
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"祝日管理"}</h3>
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+            <h3 class="text-lg font-medium text-fg">{"祝日管理"}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <DatePicker
                     label=Some("日付")
                     value=holiday_date_input
                 />
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"名称"}</label>
-                    <input class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"名称"}</label>
+                    <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"備考（任意）"}</label>
-                    <input class="mt-1 w-full border rounded px-2 py-1" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"備考（任意）"}</label>
+                    <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
                 </div>
                 <div class="lg:col-span-3">
                     <button
                         type="submit"
-                        class="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+                        class="px-4 py-2 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
                         {move || if create_pending.get() { "登録中..." } else { "祝日を登録" }}
@@ -459,12 +459,12 @@ pub fn HolidayManagementSection(
                 <div class="flex items-center gap-2">
                     <input
                         type="number"
-                        class="border rounded px-2 py-1 w-32"
+                        class="w-32 rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
                         prop:value={move || google_year_input.get()}
                         on:input=move |ev| google_year_input.set(event_target_value(&ev))
                     />
                     <button
-                        class="px-3 py-1 rounded border disabled:opacity-50"
+                        class="px-3 py-2.5 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover disabled:opacity-50 font-medium transition-colors"
                         disabled={move || google_loading.get()}
                         on:click=on_fetch_google
                     >
@@ -472,19 +472,19 @@ pub fn HolidayManagementSection(
                     </button>
                 </div>
                 <button
-                    class="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
+                    class="px-3 py-2.5 rounded-xl border-2 border-status-success-border text-status-success-text bg-status-success-bg disabled:opacity-50 font-bold transition-colors"
                     disabled={move || google_holidays.get().is_empty()}
                     on:click=on_import_google
                 >
                     {"一覧から登録"}
                 </button>
             </div>
-            <div class="space-y-3 rounded-lg border border-dashed border-gray-200 p-4">
+            <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <div class="flex flex-col gap-1">
-                    <h4 class="text-sm font-medium text-gray-900">{"祝日一覧フィルター"}</h4>
-                    <p class="text-xs text-gray-500">{"期間を指定すると一致する祝日だけを表示します。"}</p>
+                    <h4 class="text-sm font-medium text-fg">{"祝日一覧フィルター"}</h4>
+                    <p class="text-xs text-fg-muted">{"期間を指定すると一致する祝日だけを表示します。"}</p>
                 </div>
-                <div class="grid gap-3 lg:grid-cols-4">
+                <div class="grid gap-3 lg:grid-cols-4 align-bottom">
                     <DatePicker
                         label=Some("開始日")
                         value=filter_from_input
@@ -493,27 +493,27 @@ pub fn HolidayManagementSection(
                         label=Some("終了日")
                         value=filter_to_input
                     />
-                    <div class="lg:col-span-2 flex items-end gap-2">
-                        <button class="px-3 py-1 rounded bg-gray-800 text-white" on:click=on_apply_filters>
+                    <div class="lg:col-span-2 flex items-end gap-2 mb-0.5">
+                        <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_filters>
                             {"日付で絞り込み"}
                         </button>
-                        <button class="px-3 py-1 rounded border" on:click=on_clear_filters>
+                        <button class="h-[50px] px-4 rounded-xl text-fg-muted hover:text-fg font-medium transition-colors" on:click=on_clear_filters>
                             {"条件クリア"}
                         </button>
                     </div>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-3">
                     <div>
-                        <label class="block text-xs font-medium text-gray-600">{"カレンダー範囲 (YYYY-MM)"}</label>
+                        <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"カレンダー範囲 (YYYY-MM)"}</label>
                         <input
                             type="month"
-                            class="mt-1 w-full border rounded px-2 py-1"
+                            class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
                             prop:value={move || calendar_month_input.get()}
                             on:input=move |ev| calendar_month_input.set(event_target_value(&ev))
                         />
                     </div>
-                    <div class="lg:col-span-2 flex items-end">
-                        <button class="px-3 py-1 rounded border border-blue-500 text-blue-600" on:click=on_apply_calendar_range>
+                    <div class="lg:col-span-2 flex items-end mb-0.5">
+                        <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_calendar_range>
                             {"選択月の範囲を適用"}
                         </button>
                     </div>
@@ -532,12 +532,12 @@ pub fn HolidayManagementSection(
                 <InlineErrorMessage error={google_error.into()} />
             </Show>
             <Show when=move || holidays_loading.get()>
-                <div class="flex items-center gap-2 text-sm text-gray-600">
+                <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
                     <span>{"祝日一覧を読み込み中..."}</span>
                 </div>
             </Show>
-            <div class="flex flex-col gap-2 rounded-lg border border-gray-100 p-3 text-sm text-gray-700 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm text-fg lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     {move || {
                         page_bounds
@@ -553,11 +553,11 @@ pub fn HolidayManagementSection(
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <label class="flex items-center gap-1">
-                        <span class="text-xs uppercase tracking-wide text-gray-500">
+                        <span class="text-xs uppercase tracking-wide text-fg-muted">
                             {"件数/ページ"}
                         </span>
                         <select
-                            class="border rounded px-2 py-1"
+                            class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                             prop:value={move || holiday_query.get().per_page.to_string()}
                             on:change=on_per_page_change
                         >
@@ -568,20 +568,20 @@ pub fn HolidayManagementSection(
                     </label>
                     <div class="inline-flex items-center gap-2">
                         <button
-                            class="px-3 py-1 rounded border disabled:opacity-50"
+                            class="px-3 py-1 rounded border border-border text-fg disabled:opacity-50"
                             disabled={move || holidays_loading.get() || !can_go_prev.get()}
                             on:click=on_prev_page
                         >
                             {"前へ"}
                         </button>
-                        <span class="text-xs text-gray-500">
+                        <span class="text-xs text-fg-muted">
                             {move || {
                                 let current = page_total.get().map(|(page, _, _)| page).unwrap_or(1);
                                 format!("ページ {}/{}", current, total_pages.get())
                             }}
                         </span>
                         <button
-                            class="px-3 py-1 rounded border disabled:opacity-50"
+                            class="px-3 py-1 rounded border border-border text-fg disabled:opacity-50"
                             disabled={move || holidays_loading.get() || !can_go_next.get()}
                             on:click=on_next_page
                         >
@@ -591,16 +591,16 @@ pub fn HolidayManagementSection(
                 </div>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                    <thead class="bg-gray-50 dark:bg-gray-700">
+                <table class="min-w-full divide-y divide-border text-sm">
+                    <thead class="bg-surface-muted">
                         <tr>
-                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"日付"}</th>
-                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"名称"}</th>
-                            <th class="px-4 py-2 text-left text-gray-600 dark:text-gray-200">{"備考"}</th>
-                            <th class="px-4 py-2 text-right text-gray-600 dark:text-gray-200">{"操作"}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{"日付"}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{"名称"}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{"備考"}</th>
+                            <th class="px-4 py-2 text-right text-fg-muted">{"操作"}</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody class="divide-y divide-border">
                         <For
                             each=move || holidays_data.get()
                             key=|item| item.id.clone()
@@ -611,12 +611,12 @@ pub fn HolidayManagementSection(
                                 };
                                 view! {
                                     <tr>
-                                        <td class="px-4 py-2 dark:text-gray-100">{item.holiday_date.format("%Y-%m-%d").to_string()}</td>
-                                        <td class="px-4 py-2 dark:text-gray-100">{item.name.clone()}</td>
-                                        <td class="px-4 py-2 text-gray-600 dark:text-gray-400">{item.description.clone().unwrap_or_default()}</td>
+                                        <td class="px-4 py-2 text-fg">{item.holiday_date.format("%Y-%m-%d").to_string()}</td>
+                                        <td class="px-4 py-2 text-fg">{item.name.clone()}</td>
+                                        <td class="px-4 py-2 text-fg-muted">{item.description.clone().unwrap_or_default()}</td>
                                         <td class="px-4 py-2 text-right">
                                             <button
-                                                class="px-3 py-1 rounded border text-sm disabled:opacity-50"
+                                                class="px-3 py-1 rounded border border-border text-sm text-fg disabled:opacity-50"
                                                 disabled={move || deleting_id.get().as_deref() == Some(&item.id)}
                                                 on:click=remove
                                             >
@@ -631,9 +631,9 @@ pub fn HolidayManagementSection(
                 </table>
             </div>
             <Show when=move || !google_holidays.get().is_empty()>
-                <div class="border rounded-lg p-4 space-y-2 dark:border-gray-700">
-                    <h4 class="text-sm font-medium text-gray-900 dark:text-gray-100">{"Google 祝日候補"}</h4>
-                    <ul class="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                <div class="border border-border rounded-lg p-4 space-y-2">
+                    <h4 class="text-sm font-medium text-fg">{"Google 祝日候補"}</h4>
+                    <ul class="space-y-1 text-sm text-fg">
                         <For
                             each=move || google_holidays.get()
                             key=|item| (item.name.clone(), item.holiday_date)

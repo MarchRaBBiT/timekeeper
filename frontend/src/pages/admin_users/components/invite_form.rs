@@ -31,10 +31,10 @@ pub fn InviteForm(
     };
 
     view! {
-        <div class="bg-white shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
-                <h2 class="text-lg font-medium text-gray-900">{"ユーザー招待 (管理者専用)"}</h2>
-                <p class="text-sm text-gray-600">{"ユーザー名・氏名・権限を入力し、必要に応じてシステム管理者権限を付与します。"}</p>
+                <h2 class="text-lg font-medium text-fg">{"ユーザー招待 (管理者専用)"}</h2>
+                <p class="text-sm text-fg-muted">{"ユーザー名・氏名・権限を入力し、必要に応じてシステム管理者権限を付与します。"}</p>
             </div>
 
             <Show when=move || messages.error.get().is_some()>
@@ -46,46 +46,46 @@ pub fn InviteForm(
 
             <form class="grid grid-cols-1 lg:grid-cols-2 gap-4" on:submit=on_submit>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"ユーザー名"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"ユーザー名"}</label>
                     <input
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         placeholder="username"
                         prop:value=form_state.username
                         on:input=move |ev| form_state.username.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"氏名"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"氏名"}</label>
                     <input
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         placeholder="山田太郎"
                         prop:value=form_state.full_name
                         on:input=move |ev| form_state.full_name.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"メールアドレス"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"メールアドレス"}</label>
                     <input
                         type="email"
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         placeholder="user@example.com"
                         prop:value=form_state.email
                         on:input=move |ev| form_state.email.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"パスワード"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"パスワード"}</label>
                     <input
                         type="password"
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=form_state.password
                         on:input=move |ev| form_state.password.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">{"権限"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{"権限"}</label>
                     <select
-                        class="mt-1 w-full border rounded px-2 py-1"
+                        class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=form_state.role
                         on:change=move |ev| form_state.role.set(event_target_value(&ev))
                     >
@@ -96,7 +96,7 @@ pub fn InviteForm(
                 <div class="flex items-center space-x-2 h-full pt-6">
                     <input
                         type="checkbox"
-                        class="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                        class="h-4 w-4 text-action-primary-bg border-form-control-border rounded"
                         prop:checked=form_state.is_system_admin
                         on:change=move |ev| {
                             if let Some(target) =
@@ -106,13 +106,13 @@ pub fn InviteForm(
                             }
                         }
                     />
-                    <span class="text-sm text-gray-700">{"システム管理者権限を付与"}</span>
+                    <span class="text-sm text-fg">{"システム管理者権限を付与"}</span>
                 </div>
                 <div class="lg:col-span-2">
                     <button
                         type="submit"
                         disabled=move || pending.get()
-                        class="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                        class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                     >
                         {move || if pending.get() { "作成中..." } else { "ユーザーを作成" }}
                     </button>

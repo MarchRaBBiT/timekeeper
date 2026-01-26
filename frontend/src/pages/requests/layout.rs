@@ -7,8 +7,8 @@ pub fn RequestsLayout(children: Children) -> impl IntoView {
         <Layout>
             <div class="space-y-6">
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{"申請管理"}</h1>
-                    <p class="mt-1 text-sm text-gray-600">
+                    <h1 class="text-2xl font-bold text-fg">{"申請管理"}</h1>
+                    <p class="mt-1 text-sm text-fg-muted">
                         {"休暇と残業申請を作成し、申請状況をまとめて確認できます。"}
                     </p>
                 </div>

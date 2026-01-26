@@ -16,10 +16,10 @@ pub fn SummarySection(
 ) -> impl IntoView {
     view! {
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">{"勤怠管理"}</h1>
-            <p class="mt-1 text-sm text-gray-600">{"当日のステータスを確認できます。"}</p>
+            <h1 class="text-2xl font-bold text-fg">{"勤怠管理"}</h1>
+            <p class="mt-1 text-sm text-fg-muted">{"当日のステータスを確認できます。"}</p>
             <Show when=move || state.get().today_holiday_reason.is_some()>
-                <p class="mt-1 text-sm text-amber-700">
+                <p class="mt-1 text-sm text-status-warning-text">
                     {move || state
                         .get()
                         .today_holiday_reason
@@ -30,7 +30,7 @@ pub fn SummarySection(
             </Show>
         </div>
         <Show when=move || state.get().today_status.is_some()>
-            <div class="rounded-md p-4 border bg-white shadow-sm">
+            <div class="rounded-md p-4 border border-border bg-surface-elevated shadow-sm">
                 <AttendanceActionButtons
                     attendance_state=state
                     action_pending=action_pending

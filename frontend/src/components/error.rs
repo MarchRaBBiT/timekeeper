@@ -5,7 +5,7 @@ use leptos::*;
 pub fn InlineErrorMessage(error: Signal<Option<ApiError>>) -> impl IntoView {
     view! {
         <Show when=move || error.get().is_some() fallback=|| ()>
-            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded space-y-1 my-2">
+            <div class="bg-status-error-bg border border-status-error-border text-status-error-text px-4 py-3 rounded space-y-1 my-2">
                 <div class="font-bold">{move || error.get().map(|e| e.error).unwrap_or_default()}</div>
                 {move || error.get().map(|e| {
                     let code = &e.code;

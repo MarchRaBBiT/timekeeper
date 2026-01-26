@@ -66,8 +66,8 @@ pub fn AdminMfaResetSection(
 
     view! {
         <Show when=move || system_admin_allowed.get()>
-            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">{"MFA リセット"}</h3>
+            <div class="bg-surface-elevated shadow rounded-lg p-6">
+                <h3 class="text-lg font-medium text-fg mb-4">{"MFA リセット"}</h3>
                 <div class="flex flex-col gap-2">
                     <AdminUserSelect
                         users=users
@@ -76,13 +76,13 @@ pub fn AdminMfaResetSection(
                         placeholder="ユーザーを選択してください".into()
                     />
                     <button
-                        class="px-3 py-1 rounded bg-indigo-600 text-white disabled:opacity-50"
+                        class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                         disabled={move || pending.get()}
                         on:click=on_reset
                     >
                         <span class="inline-flex items-center gap-2">
                             <Show when=move || pending.get()>
-                                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                                <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                             </Show>
                             {move || if pending.get() { "リセット中..." } else { "MFA をリセット" }}
                         </span>

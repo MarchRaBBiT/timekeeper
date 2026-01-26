@@ -170,3 +170,124 @@ Shared components are defined in `src/components/` and provide the building bloc
 *   **Global State**: Authentication user profile is held in a global context.
 *   **Local State**: Page-specific data (forms, list filters) is managed via `RwSignal` in ViewModels.
 *   **API Integration**: All backend communication occurs via the centralized `ApiClient` in `src/api/client.rs`.
+
+## 7. Theme Feature Plan
+
+This section records the initial plan for implementing the screen theme feature. It will be refined later.
+
+### 7.1 色指定部品の意味 (現状)
+
+| Component / Location | Meaning (Semantic Role) | Notes |
+|---|---|---|
+| `frontend/src/components/common.rs` | Button variants for primary/secondary/danger/ghost actions | Uses `brand`, `gray`, `red` with `dark:` overrides |
+| `frontend/src/components/layout.rs` | App surface, header, nav links, warning banner, success/error messages, loading indicator | Global UI tone and status feedback |
+| `frontend/src/components/error.rs` | Inline form error feedback | Form validation error emphasis |
+| `frontend/src/components/empty_state.rs` | Empty state placeholder | Neutral and subdued presentation |
+| `frontend/src/components/forms.rs` | Attendance status, action buttons, holiday alert, processing, success/error messages | Status-specific colors (brand/amber/red/gray) |
+| `frontend/src/pages/admin_audit_logs/panel.rs` | Result badges and link emphasis | Success vs failure badge colors |
+| `frontend/src/pages/admin/components/requests.rs` | Approve/reject buttons and modal overlay | Success/danger actions and overlay tone |
+| `frontend/src/pages/admin/components/holidays.rs` | Primary/confirm actions for holiday ops | Primary and success-like actions |
+| `frontend/src/pages/settings/panel.rs` | Form labels, primary submit, danger actions | Text hierarchy and action emphasis |
+
+### 7.2 意味と色のマッチング (現状)
+
+| Meaning | Light Colors | Dark Colors | Examples |
+|---|---|---|---|
+| Primary action / brand | `brand-600/700` | `brand-500/400` | Primary button, key status |
+| Secondary action / neutral | `gray-600/700` | `gray-700/600` | Secondary button |
+| Danger / error | `red-600/700`, `red-50/200` | `red-500/400`, `red-900/700` | Error banners, reject actions |
+| Success | `green-600/700`, `green-50/200` | `green-500/400`, `green-900/700` | Success banners |
+| Warning / attention | `yellow-50/200/900`, `amber-50/100/800` | `yellow-900/700`, `amber-900/500` | Warning banners, holiday alerts |
+| Informational / link | `blue-600` | `blue-400` | Links, some CTA |
+| Surface / background | `bg-gray-50`, `bg-white` | `bg-gray-900`, `bg-gray-800` | App shell, cards |
+| Overlay | `bg-black/30` | `bg-black/80` | Modals |
+| Attendance status | brand/amber/red/gray | brand/amber/red/gray | Clock in/out/break |
+
+### 7.3 実装計画
+
+1. Define semantic color tokens (surface, text, border, action, status, overlay) and document the mapping.
+2. Implement a CSS variable-based palette for Light/Dark (and optional System) themes.
+3. Update Tailwind configuration to map semantic tokens to utilities (e.g., `bg-surface`, `text-primary`).
+4. Introduce a theme switcher in global state (System/Light/Dark) and apply it via `class` or `data-theme`.
+5. Replace hard-coded colors in shared components first, then page-level components.
+6. Normalize status colors (success/warn/error) and attendance state colors across screens.
+7. Validate contrast and readability on key pages (Dashboard/Attendance/Requests/Admin).
+
+### 7.4 ダークモードの現状
+
+- `frontend/tailwind.config.js` uses `darkMode: 'media'` and many components rely on `dark:` classes.
+- Existing hard-coded dark styles should be replaced with semantic tokens while preserving current behavior.
+
+### 7.5 トークン一覧 (案)
+
+| Token | Meaning / Usage | Light Value | Dark Value | References (Current) |
+|---|---|---|---|---|
+| `surface.base` | App background | `gray-50` | `gray-900` | `frontend/src/components/layout.rs` |
+| `surface.elevated` | Card / panel background | `white` | `gray-800` | `frontend/src/pages/**` |
+| `surface.muted` | Subtle section background | `gray-50` | `gray-700` | tables, filters |
+| `text.primary` | Primary text | `gray-900` | `gray-100` | headings, main text |
+| `text.secondary` | Secondary text | `gray-700` | `gray-300` | labels, body |
+| `text.muted` | Muted text | `gray-500` | `gray-400` | helper, placeholders |
+| `text.inverse` | Text on strong backgrounds | `white` | `white` | primary/danger buttons |
+| `border.subtle` | Default border | `gray-200` | `gray-700` | cards, tables |
+| `border.strong` | Emphasized border | `gray-300` | `gray-600` | inputs, separators |
+| `form.control.bg` | Input background | `white` | `gray-700` | inputs/selects |
+| `form.control.text` | Input text | `gray-900` | `gray-100` | inputs/selects |
+| `form.control.border` | Input border | `gray-300` | `gray-600` | inputs/selects |
+| `form.control.placeholder` | Input placeholder | `gray-500` | `gray-400` | inputs/selects |
+| `action.primary.bg` | Primary action background | `brand-600` | `brand-500` | primary button |
+| `action.primary.bg-hover` | Primary action hover | `brand-700` | `brand-400` | primary button hover |
+| `action.primary.text` | Primary action text | `white` | `white` | primary button |
+| `action.primary.border` | Primary action border | `brand-600` | `brand-500` | primary button border |
+| `action.primary.border-hover` | Primary action border hover | `brand-700` | `brand-400` | primary button border hover |
+| `action.primary.focus` | Primary action focus | `brand-600` | `brand-500` | focus outline |
+| `action.secondary.bg` | Secondary action background | `gray-600` | `gray-700` | secondary button |
+| `action.secondary.bg-hover` | Secondary action hover | `gray-700` | `gray-600` | secondary button hover |
+| `action.secondary.text` | Secondary action text | `white` | `white` | secondary button |
+| `action.secondary.border` | Secondary action border | `gray-600` | `gray-700` | secondary button border |
+| `action.secondary.border-hover` | Secondary action border hover | `gray-700` | `gray-600` | secondary button border hover |
+| `action.secondary.focus` | Secondary action focus | `gray-600` | `gray-500` | focus outline |
+| `action.danger.bg` | Danger action background | `red-600` | `red-500` | danger button |
+| `action.danger.bg-hover` | Danger action hover | `red-700` | `red-400` | danger button hover |
+| `action.danger.text` | Danger action text | `white` | `white` | danger button |
+| `action.danger.border` | Danger action border | `red-600` | `red-500` | danger button border |
+| `action.danger.border-hover` | Danger action border hover | `red-700` | `red-400` | danger button border hover |
+| `action.danger.focus` | Danger action focus | `red-600` | `red-500` | focus outline |
+| `action.ghost.bg-hover` | Ghost hover background | `gray-100` | `gray-700` | ghost button |
+| `action.ghost.text` | Ghost text | `gray-900` | `gray-100` | ghost button |
+| `state.disabled.bg` | Disabled background | `gray-100` | `slate-800` | disabled buttons |
+| `state.disabled.text` | Disabled text | `gray-400` | `slate-500` | disabled buttons |
+| `state.disabled.border` | Disabled border | `gray-200` | `slate-700` | disabled buttons |
+| `status.success.bg` | Success background | `green-50` | `green-900/30` | success banners |
+| `status.success.border` | Success border | `green-200` | `green-700` | success banners |
+| `status.success.text` | Success text | `green-700` | `green-200` | success banners |
+| `status.error.bg` | Error background | `red-50` | `red-900/30` | error banners |
+| `status.error.border` | Error border | `red-200` | `red-700` | error banners |
+| `status.error.text` | Error text | `red-700` | `red-200` | error banners |
+| `status.warning.bg` | Warning background | `amber-50` | `amber-900/20` | warning banners |
+| `status.warning.border` | Warning border | `amber-100` | `amber-900/30` | warning banners |
+| `status.warning.text` | Warning text | `amber-800` | `amber-200` | warning banners |
+| `status.info.bg` | Info background | `blue-50` | `blue-900/30` | info banners |
+| `status.info.border` | Info border | `blue-200` | `blue-700` | info banners |
+| `status.info.text` | Info text | `blue-700` | `blue-200` | info banners |
+| `status.neutral.bg` | Neutral badge background | `gray-100` | `gray-700` | status badges |
+| `status.neutral.border` | Neutral badge border | `gray-200` | `gray-600` | status badges |
+| `status.neutral.text` | Neutral badge text | `gray-800` | `gray-100` | status badges |
+| `overlay.backdrop` | Modal overlay | `black/30` | `black/80` | modals |
+| `link.default` | Link / emphasis | `blue-600` | `blue-400` | links |
+| `link.hover` | Link hover | `blue-800` | `blue-300` | links |
+| `status.attendance.clock_in` | Attendance: clock in | `brand-600` | `brand-500` | `frontend/src/components/forms.rs` |
+| `status.attendance.break` | Attendance: break | `amber-600` | `amber-400` | `frontend/src/components/forms.rs` |
+| `status.attendance.clock_out` | Attendance: clock out | `slate-400` | `slate-600` | `frontend/src/components/forms.rs` |
+| `status.attendance.not_started` | Attendance: not started | `slate-300` | `slate-600` | `frontend/src/components/forms.rs` |
+| `status.attendance.text-active` | Attendance: active text | `slate-900` | `white` | `frontend/src/components/forms.rs` |
+| `status.attendance.text-inactive` | Attendance: inactive text | `slate-500` | `slate-400` | `frontend/src/components/forms.rs` |
+
+### 7.6 調整メモ
+
+- Added missing action tokens for danger/secondary/primary borders and focus outlines.
+- Added disabled state tokens to cover repeated gray/slate disabled styles.
+- Unified warning palette to amber for `status.warning.*` (current yellow usage should be migrated).
+- Added neutral badge tokens for gray status labels.
+- Added form control tokens for inputs and selects.
+- Moved attendance colors under `status.attendance.*` to keep all special colors under `status.*`.

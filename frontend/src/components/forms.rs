@@ -63,20 +63,20 @@ pub fn AttendanceActionButtons(
 
     view! {
         <div class="space-y-6 animate-fade-in">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-brand-50/50 border border-brand-100/50 dark:bg-slate-800 dark:border-slate-700">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-surface-muted border border-border">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm text-brand-600 dark:bg-slate-700 dark:text-brand-400">
+                    <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-elevated shadow-sm text-action-primary-bg">
                         <i class="fas fa-user-clock text-lg"></i>
                     </div>
                     <div>
-                        <p class="text-xs font-display font-bold text-brand-600 uppercase tracking-wider dark:text-brand-400">{"現在のステータス"}</p>
+                        <p class="text-xs font-display font-bold text-action-primary-bg uppercase tracking-wider">{"現在のステータス"}</p>
                         {move || {
                             let status = status_snapshot();
                             let (label, color, dot_color) = match status.as_ref().map(|s| s.status.as_str()) {
-                                Some("clocked_in") => ("勤務中", "text-slate-900 dark:text-white", "bg-brand-500 animate-pulse"),
-                                Some("on_break") => ("休憩中", "text-slate-900 dark:text-white", "bg-amber-500 animate-pulse"),
-                                Some("clocked_out") => ("退勤済み", "text-slate-500 dark:text-slate-400", "bg-slate-400 dark:bg-slate-600"),
-                                _ => ("未出勤", "text-slate-500 dark:text-slate-400", "bg-slate-300 dark:bg-slate-600"),
+                                Some("clocked_in") => ("勤務中", "text-status-attendance-text-active", "bg-status-attendance-clock_in animate-pulse"),
+                                Some("on_break") => ("休憩中", "text-status-attendance-text-active", "bg-status-attendance-break animate-pulse"),
+                                Some("clocked_out") => ("退勤済み", "text-status-attendance-text-inactive", "bg-status-attendance-clock_out"),
+                                _ => ("未出勤", "text-status-attendance-text-inactive", "bg-status-attendance-not_started"),
                             };
                             view! {
                                 <div class="flex items-center gap-2 mt-0.5">
@@ -92,41 +92,41 @@ pub fn AttendanceActionButtons(
             <div class="grid grid-cols-2 gap-3">
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-brand-600 bg-brand-600 text-white shadow-lg shadow-brand-200 hover:bg-brand-700 hover:border-brand-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
+                           border-status-attendance-clock_in bg-status-attendance-clock_in text-text-inverse shadow-lg hover:bg-action-primary-bg-hover hover:border-action-primary-border-hover disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text disabled:shadow-none"
                     disabled={move || !button_state().clock_in}
                     on:click=move |ev| on_clock_in.call(ev)
                 >
-                    <i class="fas fa-sign-in-alt text-xl mb-2 group-disabled:text-gray-300"></i>
+                    <i class="fas fa-sign-in-alt text-xl mb-2 group-disabled:text-state-disabled-text"></i>
                     <span class="font-bold">{"出勤"}</span>
                 </button>
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-amber-500 bg-white text-amber-600 hover:bg-amber-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-slate-800 dark:text-amber-400 dark:hover:bg-slate-700 dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
+                           border-status-attendance-break bg-surface-elevated text-status-attendance-break hover:bg-status-warning-bg disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text"
                     disabled={move || !button_state().break_start}
                     on:click=move |ev| on_break_start.call(ev)
                 >
-                    <i class="fas fa-coffee text-xl mb-2 group-disabled:text-gray-300"></i>
+                    <i class="fas fa-coffee text-xl mb-2 group-disabled:text-state-disabled-text"></i>
                     <span class="font-bold">{"休憩開始"}</span>
                 </button>
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-amber-600 bg-amber-600 text-white shadow-lg shadow-amber-200 hover:bg-amber-700 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
+                           border-status-attendance-break bg-status-attendance-break text-text-inverse shadow-lg hover:bg-status-warning-text disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text disabled:shadow-none"
                     disabled={move || !button_state().break_end}
                     on:click=move |ev| on_break_end.call(ev)
                 >
-                    <i class="fas fa-mug-hot text-xl mb-2 group-disabled:text-gray-300"></i>
+                    <i class="fas fa-mug-hot text-xl mb-2 group-disabled:text-state-disabled-text"></i>
                     <span class="font-bold">{"休憩終了"}</span>
                 </button>
 
                 <button
                     class="group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 transform active:scale-95 disabled:opacity-40 disabled:active:scale-100
-                           border-red-500 bg-white text-red-600 hover:bg-red-50 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-slate-700 dark:disabled:bg-slate-800 dark:disabled:border-slate-700 dark:disabled:text-slate-500"
+                           border-action-danger-border bg-surface-elevated text-action-danger-bg hover:bg-status-error-bg disabled:border-state-disabled-border disabled:bg-state-disabled-bg disabled:text-state-disabled-text"
                     disabled={move || !button_state().clock_out}
                     on:click=move |ev| on_clock_out.call(ev)
                 >
-                    <i class="fas fa-sign-out-alt text-xl mb-2 group-disabled:text-gray-300"></i>
+                    <i class="fas fa-sign-out-alt text-xl mb-2 group-disabled:text-state-disabled-text"></i>
                     <span class="font-bold">{"退勤"}</span>
                 </button>
             </div>
@@ -137,8 +137,8 @@ pub fn AttendanceActionButtons(
                     .map(|reason| {
                         let label = describe_holiday_reason(reason.trim());
                         view! {
-                            <div class="flex items-center gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 animate-pop-in dark:bg-amber-900/20 dark:border-amber-900/30 dark:text-amber-200">
-                                <i class="fas fa-calendar-day text-amber-400 text-xl dark:text-amber-500"></i>
+                            <div class="flex items-center gap-3 p-4 rounded-2xl bg-status-warning-bg border border-status-warning-border text-status-warning-text animate-pop-in">
+                                <i class="fas fa-calendar-day text-status-warning-text text-xl"></i>
                                 <span class="text-sm font-medium">{format!("本日は{}のため打刻できません。", label)}</span>
                             </div>
                         }
@@ -148,7 +148,7 @@ pub fn AttendanceActionButtons(
             }}
 
             <Show when=move || action_pending.get()>
-                <div class="flex items-center justify-center gap-2 py-2 text-brand-600">
+                <div class="flex items-center justify-center gap-2 py-2 text-action-primary-bg">
                     <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
                     <p class="text-sm font-medium">{"処理中..."}</p>
                 </div>
@@ -159,11 +159,17 @@ pub fn AttendanceActionButtons(
                     .get()
                     .map(|err| {
                         let msg = &err.error;
-                        let is_error = msg.contains("失敗") || msg.contains("エラー") || msg.contains("できません");
+                        let is_success_message =
+                            msg.ends_with("しました。") || msg.ends_with("完了しました。");
+                        let is_error = match err.code.as_str() {
+                            "REQUEST_FAILED" | "UNKNOWN" => true,
+                            "VALIDATION_ERROR" => !is_success_message,
+                            _ => true,
+                        };
                         let (bg, border, text, icon) = if is_error {
-                            ("bg-red-50 dark:bg-red-900/20", "border-red-100 dark:border-red-900/30", "text-red-700 dark:text-red-300", "fa-exclamation-circle")
+                            ("bg-status-error-bg", "border-status-error-border", "text-status-error-text", "fa-exclamation-circle")
                         } else {
-                            ("bg-brand-50 dark:bg-brand-900/20", "border-brand-100 dark:border-brand-900/30", "text-brand-700 dark:text-brand-300", "fa-check-circle")
+                            ("bg-status-success-bg", "border-status-success-border", "text-status-success-text", "fa-check-circle")
                         };
                         view! {
                             <div class=format!("flex items-center gap-2 p-3 rounded-xl border {} {} {} animate-pop-in", bg, border, text)>
@@ -229,29 +235,29 @@ pub fn DatePicker(
 
     view! {
         <div class="flex flex-col gap-1.5 w-full">
-            {label.map(|l| view! { <label class="text-sm font-bold text-slate-700 ml-1 dark:text-slate-300">{l}</label> })}
+            {label.map(|l| view! { <label class="text-sm font-bold text-fg-muted ml-1">{l}</label> })}
             <div
                 class=move || format!(
-                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-white py-2.5 px-4 flex items-center justify-between shadow-sm border-slate-200 hover:border-brand-300 hover:shadow-md active:scale-[0.98] dark:bg-slate-800 dark:border-slate-700 {}",
-                    if disabled.get() { "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 shadow-none touch-none dark:bg-slate-900 dark:border-slate-800" } else { "hover:ring-4 hover:ring-brand-50 dark:hover:ring-brand-900/30" }
+                    "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-form-control-bg py-2.5 px-4 flex items-center justify-between shadow-sm border-form-control-border hover:border-action-primary-border-hover hover:shadow-md active:scale-[0.98] {}",
+                    if disabled.get() { "opacity-50 cursor-not-allowed bg-state-disabled-bg border-state-disabled-border text-state-disabled-text shadow-none touch-none" } else { "hover:ring-4 hover:ring-action-primary-focus" }
                 )
                 on:click=on_click
             >
                 <div class="flex items-center gap-3">
                     <div class=move || format!(
                         "w-8 h-8 rounded-lg flex items-center justify-center transition-colors {}",
-                        if value.get().is_empty() { "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500" } else { "bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400" }
+                        if value.get().is_empty() { "bg-surface-muted text-text-muted" } else { "bg-primary-subtle text-action-primary-bg" }
                     )>
                         <i class="far fa-calendar-alt text-base"></i>
                     </div>
                     <span class=move || format!(
                         "text-sm font-semibold tracking-wide {}",
-                        if value.get().is_empty() { "text-slate-400 dark:text-slate-500" } else { "text-slate-900 dark:text-white" }
+                        if value.get().is_empty() { "text-text-muted" } else { "text-fg" }
                     )>
                         {display_value}
                     </span>
                 </div>
-                <div class="text-slate-300 group-hover:text-brand-400 transition-colors dark:text-slate-600">
+                <div class="text-fg-muted group-hover:text-action-primary-bg transition-colors">
                     <i class="fas fa-chevron-down text-xs"></i>
                 </div>
 

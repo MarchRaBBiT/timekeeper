@@ -82,7 +82,15 @@ impl ApiClient {
         if let Some(window) = web_sys::window() {
             let location = window.location();
             if let Ok(pathname) = location.pathname() {
-                if pathname == "/login" {
+                // Public paths where 401 is expected (not logged in) and should not trigger redirect
+                let public_paths = [
+                    "/",
+                    "/login",
+                    "/forgot-password",
+                    "/reset-password",
+                    "/mfa/register",
+                ];
+                if public_paths.contains(&pathname.as_str()) {
                     return;
                 }
             }

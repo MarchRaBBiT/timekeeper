@@ -86,11 +86,11 @@ pub fn AdminRequestsSection(
     };
 
     view! {
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">{"申請一覧"}</h3>
+        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+            <h3 class="text-lg font-medium text-fg">{"申請一覧"}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
-                    class="w-full lg:w-auto border-gray-300 rounded-md px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    class="w-full lg:w-auto border border-form-control-border bg-form-control-bg text-form-control-text rounded-md px-2 py-1"
                     on:change=move |ev| on_status_change(event_target_value(&ev))
                 >
                     <option value="">{ "すべて" }</option>
@@ -108,13 +108,13 @@ pub fn AdminRequestsSection(
                     />
                 </div>
                 <button
-                    class="w-full lg:w-auto px-3 py-1 bg-blue-600 text-white rounded"
+                    class="w-full lg:w-auto px-3 py-1 bg-action-primary-bg text-action-primary-text rounded"
                     disabled={move || requests_loading.get()}
                     on:click=on_search
                 >
                     <span class="inline-flex items-center gap-2">
                         <Show when=move || requests_loading.get()>
-                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                         </Show>
                         {move || if requests_loading.get() { "検索中..." } else { "検索" }}
                     </span>
@@ -124,23 +124,23 @@ pub fn AdminRequestsSection(
                 <InlineErrorMessage error={requests_error} />
             </Show>
             <Show when=move || requests_loading.get()>
-                <div class="flex items-center gap-2 text-sm text-gray-600">
+                <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
                     <span>{"申請情報を読み込み中..."}</span>
                 </div>
             </Show>
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead class="bg-gray-50 dark:bg-gray-700">
+                <table class="min-w-full divide-y divide-border">
+                    <thead class="bg-surface-muted">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"種別"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"対象"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ユーザー"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"ステータス"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">{"操作"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"種別"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"対象"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ユーザー"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ステータス"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"操作"}</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody class="bg-surface-elevated divide-y divide-border">
                         <Show when=move || requests_data.get().is_object()>
                             {let data = requests_data.get();
                                 let leaves = data.get("leave_requests").cloned().unwrap_or(json!([]));
@@ -159,7 +159,7 @@ pub fn AdminRequestsSection(
                                 if rows.is_empty() {
                                     view! {
                                         <tr>
-                                            <td colspan="5" class="p-4 bg-gray-50 dark:bg-gray-800">
+                                            <td colspan="5" class="p-4 bg-surface-muted">
                                                 <EmptyState
                                                     title="申請がありません"
                                                     description="表示できる申請データが見つかりませんでした。"
@@ -190,16 +190,16 @@ pub fn AdminRequestsSection(
                                         let kind_label = if kind == "leave" { "休暇" } else { "残業" };
                                         view! {
                                             <tr>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{kind_label}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{target.clone()}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{user.clone()}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{kind_label}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{target.clone()}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.clone()}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-neutral-bg text-status-neutral-text">
                                                         {statusv.clone()}
                                                     </span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                                    <button class="text-blue-600" on:click=open>{"詳細"}</button>
+                                                    <button class="text-link hover:text-link-hover" on:click=open>{"詳細"}</button>
                                                 </td>
                                             </tr>
                                         }
@@ -212,14 +212,14 @@ pub fn AdminRequestsSection(
                 </table>
             </div>
             <Show when=move || modal_open.get()>
-                <div class="fixed inset-0 bg-black/30 dark:bg-black/80 flex items-center justify-center z-50">
-                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-lg p-6">
-                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">{"申請詳細"}</h3>
-                        <pre class="text-xs bg-gray-50 dark:bg-gray-900 dark:text-gray-300 p-2 rounded overflow-auto max-h-64">{format!("{}", modal_data.get())}</pre>
+                <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
+                    <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
+                        <h3 class="text-lg font-medium text-fg mb-2">{"申請詳細"}</h3>
+                        <pre class="text-xs bg-surface-muted text-fg p-2 rounded overflow-auto max-h-64">{format!("{}", modal_data.get())}</pre>
                         <div class="mt-3">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{"コメント（任意）"}</label>
+                            <label class="block text-sm font-medium text-fg-muted">{"コメント（任意）"}</label>
                             <textarea
-                                class="w-full border rounded px-2 py-1 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                                 on:input=move |ev| modal_comment.set(event_target_value(&ev))
                             ></textarea>
                         </div>
@@ -227,16 +227,16 @@ pub fn AdminRequestsSection(
                             <InlineErrorMessage error={action_error.into()} />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
-                            <button class="px-3 py-1 rounded border dark:border-gray-600 dark:text-gray-300" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
+                            <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
                             <button
-                                class="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-50"
+                                class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                 disabled={move || action_pending.get()}
                                 on:click=move |_| on_action(false)
                             >
                                 {"却下"}
                             </button>
                             <button
-                                class="px-3 py-1 rounded bg-green-600 text-white disabled:opacity-50"
+                                class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                                 disabled={move || action_pending.get()}
                                 on:click=move |_| on_action(true)
                             >
