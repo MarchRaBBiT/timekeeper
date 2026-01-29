@@ -4,6 +4,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use tracing::Span;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sqlx::PgPool;
 
@@ -28,6 +29,8 @@ pub async fn auth(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
+    Span::current().record("user_id", &user.id.to_string());
+    Span::current().record("username", &user.username);
     request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user.clone());
 
@@ -56,6 +59,8 @@ pub async fn auth_admin(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
+    Span::current().record("user_id", &user.id.to_string());
+    Span::current().record("username", &user.username);
     if !(user.is_admin() || user.is_system_admin()) {
         let mut response = StatusCode::FORBIDDEN.into_response();
         response.extensions_mut().insert(user);

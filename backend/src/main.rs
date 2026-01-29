@@ -12,8 +12,10 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
-    trace::TraceLayer,
+    trace::{DefaultOnResponse, TraceLayer},
 };
+use tracing::Level;
+
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -93,8 +95,32 @@ async fn main() -> anyhow::Result<()> {
         .layer(
             ServiceBuilder::new()
                 .layer(axum_middleware::from_fn(middleware::request_id))
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
+                            let request_id = request
+                                .extensions()
+                                .get::<middleware::RequestId>()
+                                .map(|id| id.0.as_str())
+                                .unwrap_or("unknown");
+
+                            tracing::info_span!(
+                                "http_request",
+                                method = %request.method(),
+                                uri = %request.uri(),
+                                version = ?request.version(),
+                                request_id = %request_id,
+                                user_id = tracing::field::Empty,
+                                username = tracing::field::Empty,
+                            )
+                        })
+                        .on_response(
+                            DefaultOnResponse::new()
+                                .level(Level::INFO)
+                                .latency_unit(tower_http::LatencyUnit::Millis),
+                        ),
+                )
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
-                .layer(TraceLayer::new_for_http())
                 .layer(cors_layer(&config)),
         )
         .layer(Extension(audit_log_service))
