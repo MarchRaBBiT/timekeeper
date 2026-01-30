@@ -337,11 +337,14 @@ pub async fn get_attendance_status(
 
 pub async fn get_breaks_by_attendance(
     State(state): State<AppState>,
+    Extension(user): Extension<User>,
     Path(attendance_id): Path<String>,
 ) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
     let attendance_id = AttendanceId::from_str(&attendance_id)
         .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
-    let records = get_break_records(state.read_pool(), attendance_id).await?;
+    let attendance = fetch_attendance_by_id(state.read_pool(), attendance_id).await?;
+    ensure_authorized_access(&attendance, user.id)?;
+    let records = get_break_records(state.read_pool(), attendance.id).await?;
     Ok(Json(records))
 }
 
