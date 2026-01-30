@@ -502,6 +502,9 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "auth", "login"]) => Some(event("auth_login", "user", None)),
         (&Method::POST, ["api", "auth", "refresh"]) => Some(event("auth_refresh", "user", None)),
         (&Method::POST, ["api", "auth", "logout"]) => Some(event("auth_logout", "user", None)),
+        (&Method::GET, ["api", "auth", "sessions"]) => {
+            Some(event("auth_session_list", "session", None))
+        }
         (&Method::POST, ["api", "auth", "mfa", "register"]) => {
             Some(event("mfa_register", "user", None))
         }
@@ -637,6 +640,11 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "admin", "users"]) => {
             Some(event("admin_user_create", "user", None))
         }
+        (&Method::GET, ["api", "admin", "users", user_id, "sessions"]) => Some(event(
+            "admin_user_session_list",
+            "user",
+            Some((*user_id).to_string()),
+        )),
         (&Method::GET, ["api", "admin", "attendance"]) => {
             Some(event("admin_attendance_list", "system", None))
         }
@@ -750,6 +758,21 @@ mod tests {
         assert_eq!(admin_approve.event_type, "admin_subject_request_approve");
         assert_eq!(admin_approve.target_type, Some("subject_request"));
         assert_eq!(admin_approve.target_id.as_deref(), Some("req-2"));
+    }
+
+    #[test]
+    fn classify_event_matches_session_list_paths() {
+        let user_event =
+            classify_event(&Method::GET, "/api/auth/sessions").expect("auth list maps");
+        assert_eq!(user_event.event_type, "auth_session_list");
+        assert_eq!(user_event.target_type, Some("session"));
+        assert!(user_event.target_id.is_none());
+
+        let admin_event = classify_event(&Method::GET, "/api/admin/users/user-1/sessions")
+            .expect("admin list maps");
+        assert_eq!(admin_event.event_type, "admin_user_session_list");
+        assert_eq!(admin_event.target_type, Some("user"));
+        assert_eq!(admin_event.target_id.as_deref(), Some("user-1"));
     }
 
     #[test]
