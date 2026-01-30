@@ -50,7 +50,7 @@ const pages = [
     waitForAny: [
       "text=ユーザー管理",
       "text=このページはシステム管理者のみ利用できます。",
-      "button:has-text(\"新規作成\")"
+      "button:has-text(\"新規作成\")",
     ],
     requiresAuth: true,
   },
@@ -59,12 +59,7 @@ const pages = [
     path: "/admin/export",
     waitForAny: ['h2:has-text("データエクスポート")', "text=データエクスポート"],
     requiresAuth: true,
-  },
-  {
-    name: "admin-export",
-    path: "/admin/export",
-    waitForAny: ['h2:has-text("データエクスポート")', "text=データエクスポート"],
-    requiresAuth: true,
+    expectAbsentSelector: "text=プレビュー (先頭2KB)",
   },
   {
     name: "users",

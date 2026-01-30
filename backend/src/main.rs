@@ -12,8 +12,10 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
-    trace::TraceLayer,
+    trace::{DefaultOnResponse, TraceLayer},
 };
+use tracing::Level;
+
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -92,9 +94,17 @@ async fn main() -> anyhow::Result<()> {
         .merge(SwaggerUi::new("/api/docs").url("/api-doc/openapi.json", openapi.clone()))
         .layer(
             ServiceBuilder::new()
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(build_http_request_span)
+                        .on_response(
+                            DefaultOnResponse::new()
+                                .level(Level::INFO)
+                                .latency_unit(tower_http::LatencyUnit::Millis),
+                        ),
+                )
                 .layer(axum_middleware::from_fn(middleware::request_id))
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
-                .layer(TraceLayer::new_for_http())
                 .layer(cors_layer(&config)),
         )
         .layer(Extension(audit_log_service))
@@ -113,6 +123,26 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+fn build_http_request_span(
+    request: &axum::http::Request<axum::body::Body>,
+) -> tracing::Span {
+    let request_id = request
+        .extensions()
+        .get::<middleware::RequestId>()
+        .map(|id| id.0.as_str())
+        .unwrap_or("unknown");
+
+    tracing::info_span!(
+        "http_request",
+        method = %request.method(),
+        uri = %request.uri(),
+        version = ?request.version(),
+        request_id = %request_id,
+        user_id = tracing::field::Empty,
+        username = tracing::field::Empty,
+    )
 }
 
 fn public_routes(state: AppState) -> Router<AppState> {
@@ -494,8 +524,22 @@ mod tests {
     use axum::{body::Body, extract::ConnectInfo, http::Request};
     use chrono_tz::UTC;
     use sqlx::postgres::PgPoolOptions;
-    use std::net::SocketAddr;
+    use std::{
+        collections::HashMap,
+        io,
+        net::SocketAddr,
+        sync::{Arc, Mutex},
+    };
     use tower::Service;
+    use tracing::{
+        field::{Field, Visit},
+        span::{Attributes, Id, Record},
+    };
+    use tracing_subscriber::{
+        fmt::MakeWriter,
+        layer::{Context, Layer},
+        registry::LookupSpan,
+    };
 
     fn test_config(cors_allow_origins: Vec<String>) -> Config {
         Config {
@@ -575,5 +619,229 @@ mod tests {
         let response = app.call(request).await.unwrap();
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[derive(Default, Clone)]
+    struct SpanStore {
+        data: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    }
+
+    #[derive(Default, Clone)]
+    struct CaptureWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    struct CaptureWriterGuard {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl<'a> MakeWriter<'a> for CaptureWriter {
+        type Writer = CaptureWriterGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CaptureWriterGuard {
+                buffer: Arc::clone(&self.buffer),
+            }
+        }
+    }
+
+    impl io::Write for CaptureWriterGuard {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let mut buffer = self.buffer.lock().expect("lock log buffer");
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FieldCapture {
+        fields: HashMap<String, String>,
+    }
+
+    impl FieldCapture {
+        fn record_value(&mut self, field: &Field, value: String) {
+            self.fields.insert(field.name().to_string(), value);
+        }
+    }
+
+    impl Visit for FieldCapture {
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_f64(&mut self, field: &Field, value: f64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.record_value(field, format!("{:?}", value));
+        }
+    }
+
+    struct SpanName(String);
+
+    impl<S> Layer<S> for SpanStore
+    where
+        S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+            let mut visitor = FieldCapture::default();
+            attrs.record(&mut visitor);
+            let name = attrs.metadata().name().to_string();
+
+            {
+                let mut data = self.data.lock().expect("lock span data");
+                data.insert(name.clone(), visitor.fields);
+            }
+
+            if let Some(span) = ctx.span(id) {
+                span.extensions_mut().insert(SpanName(name));
+            }
+        }
+
+        fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
+            let mut visitor = FieldCapture::default();
+            values.record(&mut visitor);
+            if visitor.fields.is_empty() {
+                return;
+            }
+
+            if let Some(span) = ctx.span(id) {
+                if let Some(name) = span.extensions().get::<SpanName>() {
+                    let mut data = self.data.lock().expect("lock span data");
+                    let entry = data.entry(name.0.clone()).or_default();
+                    entry.extend(visitor.fields);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_http_request_span_fields_are_recorded() {
+        let store = SpanStore::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_test_writer().with_ansi(false))
+            .with(store.clone());
+
+        tracing::subscriber::with_default(subscriber, || {
+            let mut request = Request::builder()
+                .method("GET")
+                .uri("/api/attendance/status")
+                .version(axum::http::Version::HTTP_11)
+                .body(Body::empty())
+                .expect("build request");
+            request
+                .extensions_mut()
+                .insert(middleware::RequestId("req-123".to_string()));
+
+            let span = build_http_request_span(&request);
+            span.record("user_id", &"42");
+            span.record("username", &"alice");
+
+            let _guard = span.enter();
+            tracing::info!("span capture test");
+        });
+
+        let data = store.data.lock().expect("lock span data");
+        let span_fields = data
+            .get("http_request")
+            .expect("http_request span recorded");
+
+        assert_eq!(span_fields.get("method").map(String::as_str), Some("GET"));
+        assert_eq!(
+            span_fields.get("uri").map(String::as_str),
+            Some("/api/attendance/status")
+        );
+        assert_eq!(
+            span_fields.get("version").map(String::as_str),
+            Some("HTTP/1.1")
+        );
+        assert_eq!(
+            span_fields.get("request_id").map(String::as_str),
+            Some("req-123")
+        );
+        assert_eq!(span_fields.get("user_id").map(String::as_str), Some("42"));
+        assert_eq!(
+            span_fields.get("username").map(String::as_str),
+            Some("alice")
+        );
+    }
+
+    #[test]
+    fn test_http_request_span_does_not_log_sensitive_values() {
+        let store = SpanStore::default();
+        let writer = CaptureWriter::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(writer.clone())
+                    .with_ansi(false),
+            )
+            .with(store.clone());
+
+        tracing::subscriber::with_default(subscriber, || {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("Authorization", "Bearer super-secret-token")
+                .body(Body::from(r#"{"password":"P@ssw0rd","token":"secret-token"}"#))
+                .expect("build request");
+            request
+                .extensions_mut()
+                .insert(middleware::RequestId("req-123".to_string()));
+
+            let span = build_http_request_span(&request);
+            let _guard = span.enter();
+            tracing::info!("login attempt");
+        });
+
+        let data = store.data.lock().expect("lock span data");
+        let span_fields = data
+            .get("http_request")
+            .expect("http_request span recorded");
+        let sensitive_values = ["super-secret-token", "P@ssw0rd", "secret-token"];
+
+        for value in sensitive_values {
+            let leaked_field = span_fields
+                .values()
+                .any(|field| field.contains(value));
+            assert!(
+                !leaked_field,
+                "span fields should not contain sensitive value: {}",
+                value
+            );
+        }
+
+        let output = String::from_utf8(
+            writer
+                .buffer
+                .lock()
+                .expect("lock log buffer")
+                .clone(),
+        )
+        .expect("log output should be valid utf-8");
+        for value in sensitive_values {
+            assert!(
+                !output.contains(value),
+                "log output should not contain sensitive value: {}",
+                value
+            );
+        }
     }
 }
