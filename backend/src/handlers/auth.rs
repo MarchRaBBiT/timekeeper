@@ -7,22 +7,26 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::future::Future;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::{
     config::Config,
     error::AppError,
     repositories::{
+        active_session,
         auth::{self as auth_repo, ActiveAccessToken},
         password_reset as password_reset_repo,
         user as user_repo,
     },
     models::{
+        active_session::ActiveSession,
         password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
         user::{
             ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
             MfaStatusResponse, UpdateProfile, User, UserResponse,
         },
     },
+    services::token_cache::TokenCacheServiceTrait,
     state::AppState,
     types::UserId,
     utils::{
@@ -88,6 +92,23 @@ pub async fn login(
                 Ok(())
             }
         },
+        {
+            let pool = state.write_pool.clone();
+            let cache = state.token_cache.clone();
+            let config = state.config.clone();
+            move |user_id, refresh_token, claims, device_label| async move {
+                register_active_session(
+                    &pool,
+                    cache.as_ref(),
+                    &config,
+                    user_id,
+                    refresh_token,
+                    claims,
+                    device_label,
+                )
+                .await
+            }
+        },
     )
     .await?;
 
@@ -135,11 +156,18 @@ pub async fn refresh(
 
     let session = create_auth_session(&user, &state.config).await?;
 
-    auth_repo::delete_refresh_token_by_id(&state.write_pool, &stored.id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
-
     let rt_data = session.refresh_token_data(state.config.refresh_token_expiration_days)?;
+    let claims = session.access_claims(&state.config.jwt_secret)?;
+    let previous_session =
+        active_session::find_active_session_by_refresh_token_id(&state.write_pool, &stored.id)
+            .await
+            .map_err(|_| internal_error("Failed to fetch active session"))?;
+    let previous_device_label = previous_session
+        .as_ref()
+        .and_then(|session| session.device_label.clone());
+    let previous_access_jti = previous_session
+        .as_ref()
+        .and_then(|session| session.access_jti.clone());
     persist_refresh_token(
         &state.write_pool,
         &rt_data,
@@ -147,13 +175,49 @@ pub async fn refresh(
     )
     .await?;
 
-    let claims = session.access_claims(&state.config.jwt_secret)?;
     persist_active_access_token(
         &state.write_pool,
         &claims,
         Some(format!("refresh_{}", stored.id)),
     )
     .await?;
+
+    let updated = active_session::update_active_session_tokens(
+        &state.write_pool,
+        &stored.id,
+        &rt_data.id,
+        &claims.jti,
+        Utc::now(),
+        rt_data.expires_at,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to update active session"))?;
+
+    if !updated {
+        register_active_session(
+            &state.write_pool,
+            state.token_cache.as_ref(),
+            &state.config,
+            user.id,
+            rt_data.clone(),
+            claims.clone(),
+            previous_device_label,
+        )
+        .await?;
+    }
+
+    if let Some(access_jti) = previous_access_jti.as_deref() {
+        auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti)
+            .await
+            .map_err(|_| internal_error("Failed to revoke previous access token"))?;
+        if let Some(cache) = &state.token_cache {
+            let _ = cache.invalidate_token(access_jti).await;
+        }
+    }
+
+    auth_repo::delete_refresh_token_by_id(&state.write_pool, &stored.id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
 
     if let Some(cache) = &state.token_cache {
         let user_id =
@@ -185,6 +249,9 @@ pub async fn logout(
         auth_repo::delete_active_access_tokens_for_user(&state.write_pool, user.id)
             .await
             .map_err(|_| internal_error("Failed to revoke access tokens"))?;
+        active_session::delete_active_sessions_for_user(&state.write_pool, user.id)
+            .await
+            .map_err(|_| internal_error("Failed to revoke active sessions"))?;
 
         if let Some(cache) = &state.token_cache {
             let _ = cache.invalidate_user_tokens(user.id).await;
@@ -216,6 +283,10 @@ pub async fn logout(
     auth_repo::delete_active_access_token_by_jti(&state.write_pool, &claims.jti)
         .await
         .map_err(|_| internal_error("Failed to revoke access token"))?;
+
+    active_session::delete_active_session_by_access_jti(&state.write_pool, &claims.jti)
+        .await
+        .map_err(|_| internal_error("Failed to revoke active session"))?;
 
     if let Some(cache) = &state.token_cache {
         let _ = cache.invalidate_token(&claims.jti).await;
@@ -589,18 +660,21 @@ async fn begin_mfa_enrollment(
     })
 }
 
-pub async fn process_login_for_user<PF, AF, PFut, AFut>(
+pub async fn process_login_for_user<PF, AF, SF, PFut, AFut, SFut>(
     user: User,
     payload: LoginRequest,
     config: &Config,
     persist_refresh_token: PF,
     persist_active_access_token: AF,
+    persist_active_session: SF,
 ) -> HandlerResult<AuthSession>
 where
     PF: FnOnce(RefreshToken) -> PFut,
     PFut: Future<Output = HandlerResult<()>>,
     AF: FnOnce(Claims, Option<String>) -> AFut,
     AFut: Future<Output = HandlerResult<()>>,
+    SF: FnOnce(UserId, RefreshToken, Claims, Option<String>) -> SFut,
+    SFut: Future<Output = HandlerResult<()>>,
 {
     ensure_password_matches(
         &payload.password,
@@ -625,12 +699,13 @@ where
             .map_err(|_| internal_error("Refresh token creation error"))?;
     let refresh_token = refresh_token_data.encoded();
 
-    persist_refresh_token(refresh_token_data).await?;
+    persist_refresh_token(refresh_token_data.clone()).await?;
     let context = payload
         .device_label
         .clone()
         .map(|label| label.trim().to_string());
-    persist_active_access_token(claims, context).await?;
+    persist_active_access_token(claims.clone(), context.clone()).await?;
+    persist_active_session(user.id, refresh_token_data, claims, context).await?;
 
     let response = AuthSession {
         access_token,
@@ -651,6 +726,17 @@ async fn persist_refresh_token(
         .map_err(|_| internal_error(error_message))
 }
 
+fn sanitize_device_label(label: Option<String>) -> Option<String> {
+    label.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.chars().take(128).collect::<String>())
+        }
+    })
+}
+
 async fn persist_active_access_token(
     pool: &sqlx::PgPool,
     claims: &Claims,
@@ -663,14 +749,7 @@ async fn persist_active_access_token(
         .await
         .map_err(|_| internal_error("Failed to cleanup expired tokens"))?;
 
-    let sanitized_context = context.and_then(|ctx| {
-        let trimmed = ctx.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.chars().take(128).collect::<String>())
-        }
-    });
+    let sanitized_context = sanitize_device_label(context);
     let user_id =
         UserId::from_str(&claims.sub).map_err(|_| internal_error("Invalid user ID in claims"))?;
     let token = ActiveAccessToken {
@@ -682,6 +761,78 @@ async fn persist_active_access_token(
     auth_repo::insert_active_access_token(pool, &token)
         .await
         .map_err(|_| internal_error("Failed to register access token"))
+}
+
+async fn register_active_session(
+    pool: &sqlx::PgPool,
+    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    config: &Config,
+    user_id: UserId,
+    refresh_token: RefreshToken,
+    claims: Claims,
+    device_label: Option<String>,
+) -> HandlerResult<()> {
+    let device_label = sanitize_device_label(device_label);
+    active_session::create_active_session(
+        pool,
+        user_id,
+        &refresh_token.id,
+        &claims.jti,
+        device_label.as_deref(),
+        refresh_token.expires_at,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to create active session"))?;
+
+    enforce_session_limit(pool, token_cache, config, user_id).await?;
+    Ok(())
+}
+
+async fn enforce_session_limit(
+    pool: &sqlx::PgPool,
+    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    config: &Config,
+    user_id: UserId,
+) -> HandlerResult<()> {
+    let limit = config.max_concurrent_sessions as usize;
+    if limit == 0 {
+        return Ok(());
+    }
+
+    let sessions = active_session::list_active_sessions_for_user(pool, user_id)
+        .await
+        .map_err(|_| internal_error("Failed to list active sessions"))?;
+
+    if sessions.len() <= limit {
+        return Ok(());
+    }
+
+    for session in sessions.iter().skip(limit) {
+        revoke_active_session(pool, token_cache, session).await?;
+    }
+
+    Ok(())
+}
+
+async fn revoke_active_session(
+    pool: &sqlx::PgPool,
+    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    session: &ActiveSession,
+) -> HandlerResult<()> {
+    if let Some(access_jti) = session.access_jti.as_deref() {
+        auth_repo::delete_active_access_token_by_jti(pool, access_jti)
+            .await
+            .map_err(|_| internal_error("Failed to revoke access token"))?;
+        if let Some(cache) = token_cache {
+            let _ = cache.invalidate_token(access_jti).await;
+        }
+    }
+
+    auth_repo::delete_refresh_token_by_id(pool, &session.refresh_token_id)
+        .await
+        .map_err(|_| internal_error("Failed to revoke refresh token"))?;
+
+    Ok(())
 }
 
 impl AuthSession {

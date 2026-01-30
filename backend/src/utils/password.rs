@@ -81,6 +81,7 @@ mod tests {
             jwt_secret: "".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
+            max_concurrent_sessions: 3,
             audit_log_retention_days: 0,
             audit_log_retention_forever: false,
             consent_log_retention_days: 0,

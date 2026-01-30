@@ -13,6 +13,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiration_hours: u64,
     pub refresh_token_expiration_days: u64,
+    pub max_concurrent_sessions: u32,
     pub audit_log_retention_days: i64,
     pub audit_log_retention_forever: bool,
     pub consent_log_retention_days: i64,
@@ -98,6 +99,11 @@ impl Config {
             .unwrap_or_else(|_| "7".to_string())
             .parse()
             .unwrap_or(7);
+
+        let max_concurrent_sessions = env::var("MAX_CONCURRENT_SESSIONS")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse()
+            .unwrap_or(3);
 
         let audit_log_retention_days = env::var("AUDIT_LOG_RETENTION_DAYS")
             .unwrap_or_else(|_| "1825".to_string())
@@ -237,6 +243,7 @@ impl Config {
             jwt_secret,
             jwt_expiration_hours,
             refresh_token_expiration_days,
+            max_concurrent_sessions,
             audit_log_retention_days,
             audit_log_retention_forever,
             consent_log_retention_days,
@@ -339,6 +346,7 @@ mod tests {
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
+            max_concurrent_sessions: 3,
             audit_log_retention_days: 1825,
             audit_log_retention_forever: false,
             consent_log_retention_days: 1825,

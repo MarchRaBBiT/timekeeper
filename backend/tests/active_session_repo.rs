@@ -55,11 +55,13 @@ async fn active_session_repo_roundtrip() {
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let expires_at = Utc::now() + ChronoDuration::hours(1);
     let refresh_token_id = insert_refresh_token(&pool, &user.id.to_string(), expires_at).await;
+    let access_jti = Uuid::new_v4().to_string();
 
     let created = active_session::create_active_session(
         &pool,
         user.id,
         &refresh_token_id,
+        &access_jti,
         Some("macbook-pro"),
         expires_at,
     )
@@ -68,6 +70,7 @@ async fn active_session_repo_roundtrip() {
 
     assert_eq!(created.user_id, user.id);
     assert_eq!(created.refresh_token_id, refresh_token_id);
+    assert_eq!(created.access_jti.as_deref(), Some(access_jti.as_str()));
     assert_eq!(created.device_label.as_deref(), Some("macbook-pro"));
     assert_same_millis(created.expires_at, expires_at);
     assert!(created.last_seen_at.is_some());
@@ -79,7 +82,7 @@ async fn active_session_repo_roundtrip() {
     assert_eq!(sessions[0].id, created.id);
 
     let new_last_seen = Utc::now() + ChronoDuration::minutes(5);
-    active_session::touch_active_session(&pool, &created.id, new_last_seen)
+    active_session::touch_active_session_by_access_jti(&pool, &access_jti, new_last_seen)
         .await
         .expect("touch active session");
 
@@ -110,20 +113,22 @@ async fn active_session_repo_deletes_by_refresh_token() {
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let expires_at = Utc::now() + ChronoDuration::hours(2);
     let refresh_token_id = insert_refresh_token(&pool, &user.id.to_string(), expires_at).await;
+    let access_jti = Uuid::new_v4().to_string();
 
     let created = active_session::create_active_session(
         &pool,
         user.id,
         &refresh_token_id,
+        &access_jti,
         None,
         expires_at,
     )
     .await
     .expect("create active session");
 
-    active_session::delete_active_session_by_refresh_token_id(&pool, &created.refresh_token_id)
+    active_session::delete_active_session_by_id(&pool, &created.id)
         .await
-        .expect("delete by refresh token id");
+        .expect("delete by id");
 
     let sessions = active_session::list_active_sessions_for_user(&pool, user.id)
         .await
@@ -154,11 +159,14 @@ async fn active_session_repo_cleans_expired_sessions() {
     let valid_expires_at = Utc::now() + ChronoDuration::hours(1);
     let expired_refresh = insert_refresh_token(&pool, &user.id.to_string(), valid_expires_at).await;
     let valid_refresh = insert_refresh_token(&pool, &user.id.to_string(), valid_expires_at).await;
+    let expired_access_jti = Uuid::new_v4().to_string();
+    let valid_access_jti = Uuid::new_v4().to_string();
 
     active_session::create_active_session(
         &pool,
         user.id,
         &expired_refresh,
+        &expired_access_jti,
         Some("expired"),
         expired_at,
     )
@@ -168,6 +176,7 @@ async fn active_session_repo_cleans_expired_sessions() {
         &pool,
         user.id,
         &valid_refresh,
+        &valid_access_jti,
         Some("valid"),
         valid_expires_at,
     )
