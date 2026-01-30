@@ -22,6 +22,7 @@ fn test_config() -> Config {
         jwt_secret: "a-secure-test-secret-that-is-long-enough".repeat(2),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        max_concurrent_sessions: 3,
         audit_log_retention_days: 1825,
         audit_log_retention_forever: false,
         consent_log_retention_days: 1825,
@@ -118,6 +119,7 @@ fn login_succeeds_when_password_matches_without_db() {
                 }
             }
         },
+        |_, _, _, _| async { Ok(()) },
     ))
     .expect("login should succeed");
 
@@ -155,6 +157,7 @@ fn login_rejects_invalid_password_without_db() {
         &config,
         |_| async { Ok(()) },
         |_, _| async { Ok(()) },
+        |_, _, _, _| async { Ok(()) },
     ))
     .expect_err("mismatched password should fail");
     match err {
@@ -181,6 +184,7 @@ fn login_rejects_invalid_totp_code_when_mfa_is_enabled() {
         &config,
         |_| async { Ok(()) },
         |_, _| async { Ok(()) },
+        |_, _, _, _| async { Ok(()) },
     ))
     .expect_err("invalid code should be rejected");
     match err {
@@ -207,6 +211,7 @@ fn login_requires_totp_code_when_mfa_is_enabled() {
         &config,
         |_| async { Ok(()) },
         |_, _| async { Ok(()) },
+        |_, _, _, _| async { Ok(()) },
     ))
     .expect_err("missing code should be rejected");
     match err {
@@ -250,6 +255,7 @@ fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
             assert_eq!(context.as_deref(), Some("device"));
             Ok(())
         },
+        |_, _, _, _| async { Ok(()) },
     ))
     .expect("valid code should pass");
 }

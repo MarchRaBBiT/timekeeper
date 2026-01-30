@@ -48,6 +48,7 @@ timekeeper/
 - 改行コード: LF
 - 言語: 英語で思考、日本語でコミュニケーション
 - コミット: Conventional Commits (`feat:`, `fix:`, `chore:`)
+- バージョン管理: `git` コマンドは使わず `jj` (jujutsu) を使用
 
 ### Rust 全般
 - インデント: 4 スペース

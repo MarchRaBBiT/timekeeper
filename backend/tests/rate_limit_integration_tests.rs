@@ -11,6 +11,7 @@ fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u6
         jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 7,
+        max_concurrent_sessions: 3,
         audit_log_retention_days: 30,
         audit_log_retention_forever: false,
         consent_log_retention_days: 30,

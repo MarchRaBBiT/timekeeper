@@ -16,6 +16,8 @@ pub struct ActiveSession {
     pub user_id: UserId,
     /// Refresh token ID linked to the session.
     pub refresh_token_id: String,
+    /// Access token JTI associated with the session.
+    pub access_jti: Option<String>,
     /// Optional label identifying the client/device.
     pub device_label: Option<String>,
     /// Timestamp when the session was created.
