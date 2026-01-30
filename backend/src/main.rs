@@ -94,7 +94,6 @@ async fn main() -> anyhow::Result<()> {
         .merge(SwaggerUi::new("/api/docs").url("/api-doc/openapi.json", openapi.clone()))
         .layer(
             ServiceBuilder::new()
-                .layer(axum_middleware::from_fn(middleware::request_id))
                 .layer(
                     TraceLayer::new_for_http()
                         .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
@@ -120,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
                                 .latency_unit(tower_http::LatencyUnit::Millis),
                         ),
                 )
+                .layer(axum_middleware::from_fn(middleware::request_id))
                 .layer(axum_middleware::from_fn(middleware::log_error_responses))
                 .layer(cors_layer(&config)),
         )
