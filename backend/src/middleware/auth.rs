@@ -11,7 +11,7 @@ use sqlx::PgPool;
 use crate::types::UserId;
 use crate::{
     models::user::User,
-    repositories::auth as auth_repo,
+    repositories::{active_session, auth as auth_repo},
     state::AppState,
     utils::{
         cookies::{extract_cookie_value, ACCESS_COOKIE_NAME},
@@ -182,6 +182,16 @@ async fn authenticate_request(
 
     if !is_active {
         return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if let Err(err) = active_session::touch_active_session_by_access_jti(
+        &state.write_pool,
+        &claims.jti,
+        Utc::now(),
+    )
+    .await
+    {
+        tracing::warn!(error = ?err, jti = %claims.jti, "Failed to update active session");
     }
 
     let user = get_user_by_id(&state.write_pool, &claims.sub)

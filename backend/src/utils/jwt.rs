@@ -13,7 +13,7 @@ pub struct Claims {
     pub jti: String, // JWT ID
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RefreshToken {
     pub id: String,
     pub user_id: String,

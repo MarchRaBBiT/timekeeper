@@ -9,6 +9,7 @@ fn loads_time_zone_string_without_db() {
         jwt_secret: "secret".into(),
         jwt_expiration_hours: 1,
         refresh_token_expiration_days: 1,
+        max_concurrent_sessions: 3,
         audit_log_retention_days: 1825,
         audit_log_retention_forever: false,
         consent_log_retention_days: 1825,
