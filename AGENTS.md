@@ -112,3 +112,9 @@ cd e2e; node run.mjs
 - `frontend/AGENTS.md` - フロントエンド詳細（MVVM・API・状態管理）
 - `frontend/src/api/AGENTS.md` - API クライアントのアーキテクチャ（トークン管理・自動リフレッシュ）
 - `frontend/src/pages/admin/components/AGENTS.md` - 管理者コンポーネントのアーキテクチャ（祝日管理・UI ロジック）
+
+## RUST SKILLS (GENERAL)
+The following skills are available for general Rust development tasks:
+- `rust_router`: Question routing for Rust concepts.
+- `coding_guidelines`: Project-wide settings and style enforcement.
+- `unsafe_checker`: Safety validation for `unsafe` blocks.
