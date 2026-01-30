@@ -194,6 +194,26 @@ pub fn AdminAttendanceToolsSection(
                             each=move || breaks.get().into_iter().enumerate().collect::<Vec<_>>()
                             key=|(idx, _)| *idx
                             children=move |(idx, (start, end))| {
+                                let start_value = {
+                                    let breaks = breaks;
+                                    move || {
+                                        breaks
+                                            .with(|list| {
+                                                list.get(idx).map(|item| item.0.clone())
+                                            })
+                                            .unwrap_or_default()
+                                    }
+                                };
+                                let end_value = {
+                                    let breaks = breaks;
+                                    move || {
+                                        breaks
+                                            .with(|list| {
+                                                list.get(idx).map(|item| item.1.clone())
+                                            })
+                                            .unwrap_or_default()
+                                    }
+                                };
                                 let on_start = {
                                     let breaks = breaks;
                                     move |ev| {
@@ -218,8 +238,8 @@ pub fn AdminAttendanceToolsSection(
                                 };
                                 view! {
                                     <div class="flex space-x-2 mb-2">
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=start on:input=on_start />
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=end on:input=on_end />
+                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=start_value on:input=on_start />
+                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=end_value on:input=on_end />
                                     </div>
                                 }
                             }
