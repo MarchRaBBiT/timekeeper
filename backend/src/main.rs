@@ -526,6 +526,7 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
     use std::{
         collections::HashMap,
+        io,
         net::SocketAddr,
         sync::{Arc, Mutex},
     };
@@ -535,6 +536,7 @@ mod tests {
         span::{Attributes, Id, Record},
     };
     use tracing_subscriber::{
+        fmt::MakeWriter,
         layer::{Context, Layer},
         registry::LookupSpan,
     };
@@ -622,6 +624,37 @@ mod tests {
     #[derive(Default, Clone)]
     struct SpanStore {
         data: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    }
+
+    #[derive(Default, Clone)]
+    struct CaptureWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    struct CaptureWriterGuard {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl<'a> MakeWriter<'a> for CaptureWriter {
+        type Writer = CaptureWriterGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            CaptureWriterGuard {
+                buffer: Arc::clone(&self.buffer),
+            }
+        }
+    }
+
+    impl io::Write for CaptureWriterGuard {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let mut buffer = self.buffer.lock().expect("lock log buffer");
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 
     #[derive(Default)]
@@ -748,5 +781,67 @@ mod tests {
             span_fields.get("username").map(String::as_str),
             Some("alice")
         );
+    }
+
+    #[test]
+    fn test_http_request_span_does_not_log_sensitive_values() {
+        let store = SpanStore::default();
+        let writer = CaptureWriter::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(writer.clone())
+                    .with_ansi(false),
+            )
+            .with(store.clone());
+
+        tracing::subscriber::with_default(subscriber, || {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("Authorization", "Bearer super-secret-token")
+                .body(Body::from(r#"{"password":"P@ssw0rd","token":"secret-token"}"#))
+                .expect("build request");
+            request
+                .extensions_mut()
+                .insert(middleware::RequestId("req-123".to_string()));
+
+            let span = build_http_request_span(&request);
+            let _guard = span.enter();
+            tracing::info!("login attempt");
+        });
+
+        let data = store.data.lock().expect("lock span data");
+        let span_fields = data
+            .get("http_request")
+            .expect("http_request span recorded");
+        let sensitive_values = ["super-secret-token", "P@ssw0rd", "secret-token"];
+
+        for value in sensitive_values {
+            let leaked_field = span_fields
+                .values()
+                .any(|field| field.contains(value));
+            assert!(
+                !leaked_field,
+                "span fields should not contain sensitive value: {}",
+                value
+            );
+        }
+
+        let output = String::from_utf8(
+            writer
+                .buffer
+                .lock()
+                .expect("lock log buffer")
+                .clone(),
+        )
+        .expect("log output should be valid utf-8");
+        for value in sensitive_values {
+            assert!(
+                !output.contains(value),
+                "log output should not contain sensitive value: {}",
+                value
+            );
+        }
     }
 }
