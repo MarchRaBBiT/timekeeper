@@ -93,7 +93,10 @@ pub async fn export_data(
                 .try_get::<String, &str>("username")
                 .unwrap_or_default();
             let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
-            let date = record.try_get::<String, _>("date").unwrap_or_default();
+            let date = record
+                .try_get::<chrono::NaiveDate, _>("date")
+                .map(|value| value.format("%Y-%m-%d").to_string())
+                .unwrap_or_default();
             let clock_in = record
                 .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
                 .ok()
