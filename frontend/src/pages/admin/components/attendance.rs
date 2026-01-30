@@ -191,15 +191,55 @@ pub fn AdminAttendanceToolsSection(
                             <button type="button" class="text-link hover:text-link-hover text-sm" on:click=add_break>{"行を追加"}</button>
                         </div>
                         <For
-                            each=move || breaks.get()
-                            key=|pair| pair.clone()
-                            children=move |(s0, e0)| {
-                                let s = create_rw_signal(s0);
-                                let e = create_rw_signal(e0);
+                            each=move || breaks.get().into_iter().enumerate().collect::<Vec<_>>()
+                            key=|(idx, _)| *idx
+                            children=move |(idx, (start, end))| {
+                                let start_value = {
+                                    let breaks = breaks;
+                                    move || {
+                                        breaks
+                                            .with(|list| {
+                                                list.get(idx).map(|item| item.0.clone())
+                                            })
+                                            .unwrap_or_default()
+                                    }
+                                };
+                                let end_value = {
+                                    let breaks = breaks;
+                                    move || {
+                                        breaks
+                                            .with(|list| {
+                                                list.get(idx).map(|item| item.1.clone())
+                                            })
+                                            .unwrap_or_default()
+                                    }
+                                };
+                                let on_start = {
+                                    let breaks = breaks;
+                                    move |ev| {
+                                        let value = event_target_value(&ev);
+                                        breaks.update(|list| {
+                                            if let Some(item) = list.get_mut(idx) {
+                                                item.0 = value;
+                                            }
+                                        });
+                                    }
+                                };
+                                let on_end = {
+                                    let breaks = breaks;
+                                    move |ev| {
+                                        let value = event_target_value(&ev);
+                                        breaks.update(|list| {
+                                            if let Some(item) = list.get_mut(idx) {
+                                                item.1 = value;
+                                            }
+                                        });
+                                    }
+                                };
                                 view! {
                                     <div class="flex space-x-2 mb-2">
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=s on:input=move |ev| s.set(event_target_value(&ev)) />
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=e on:input=move |ev| e.set(event_target_value(&ev)) />
+                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=start_value on:input=on_start />
+                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=end_value on:input=on_end />
                                     </div>
                                 }
                             }
