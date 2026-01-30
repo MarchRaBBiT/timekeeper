@@ -1,6 +1,6 @@
 use axum::{
     extract::{Extension, State},
-    http::{header, HeaderMap},
+    http::{header, header::USER_AGENT, HeaderMap},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -12,6 +12,7 @@ use std::sync::Arc;
 use crate::{
     config::Config,
     error::AppError,
+    middleware::request_id::RequestId,
     repositories::{
         active_session,
         auth::{self as auth_repo, ActiveAccessToken},
@@ -26,6 +27,7 @@ use crate::{
             MfaStatusResponse, UpdateProfile, User, UserResponse,
         },
     },
+    services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     services::token_cache::TokenCacheServiceTrait,
     state::AppState,
     types::UserId,
@@ -59,6 +61,9 @@ pub struct AuthSession {
 
 pub async fn login(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
+    headers: HeaderMap,
     Json(payload): Json<LoginRequest>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
@@ -67,6 +72,13 @@ pub async fn login(
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
+
+    let audit_context = AuditContext::new(
+        Some(user.id),
+        "user",
+        &headers,
+        Some(&request_id),
+    );
 
     let session = process_login_for_user(
         user,
@@ -96,15 +108,20 @@ pub async fn login(
             let pool = state.write_pool.clone();
             let cache = state.token_cache.clone();
             let config = state.config.clone();
+            let audit_log_service = audit_log_service.clone();
+            let audit_context = audit_context.clone();
             move |user_id, refresh_token, claims, device_label| async move {
                 register_active_session(
                     &pool,
                     cache.as_ref(),
+                    Some(audit_log_service.clone()),
+                    audit_context.clone(),
                     &config,
                     user_id,
                     refresh_token,
                     claims,
                     device_label,
+                    "login",
                 )
                 .await
             }
@@ -119,6 +136,8 @@ pub async fn login(
 
 pub async fn refresh(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
@@ -153,6 +172,13 @@ pub async fn refresh(
         .ok_or_else(|| unauthorized("User not found"))?;
 
     enforce_password_expiration(&user, &state.config)?;
+
+    let audit_context = AuditContext::new(
+        Some(user.id),
+        "user",
+        &headers,
+        Some(&request_id),
+    );
 
     let session = create_auth_session(&user, &state.config).await?;
 
@@ -197,11 +223,14 @@ pub async fn refresh(
         register_active_session(
             &state.write_pool,
             state.token_cache.as_ref(),
+            Some(audit_log_service.clone()),
+            audit_context.clone(),
             &state.config,
             user.id,
             rt_data.clone(),
             claims.clone(),
             previous_device_label,
+            "refresh",
         )
         .await?;
     }
@@ -235,6 +264,8 @@ pub async fn logout(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Extension(claims): Extension<Claims>,
+    Extension(request_id): Extension<RequestId>,
+    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
@@ -243,6 +274,9 @@ pub async fn logout(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if all {
+        let sessions = active_session::list_active_sessions_for_user(&state.write_pool, user.id)
+            .await
+            .map_err(|_| internal_error("Failed to list active sessions"))?;
         auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
             .await
             .map_err(|_| internal_error("Failed to revoke tokens"))?;
@@ -255,6 +289,17 @@ pub async fn logout(
 
         if let Some(cache) = &state.token_cache {
             let _ = cache.invalidate_user_tokens(user.id).await;
+        }
+        let audit_context =
+            AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+        for session in sessions {
+            record_session_audit_event(
+                Some(audit_log_service.clone()),
+                audit_context.clone(),
+                "session_destroy",
+                Some(session.id),
+                Some(json!({ "reason": "logout_all" })),
+            );
         }
         let mut response_headers = HeaderMap::new();
         clear_auth_cookies(&mut response_headers, &state.config);
@@ -280,6 +325,11 @@ pub async fn logout(
         }
     }
 
+    let session =
+        active_session::find_active_session_by_access_jti(&state.write_pool, &claims.jti)
+            .await
+            .map_err(|_| internal_error("Failed to fetch active session"))?;
+
     auth_repo::delete_active_access_token_by_jti(&state.write_pool, &claims.jti)
         .await
         .map_err(|_| internal_error("Failed to revoke access token"))?;
@@ -290,6 +340,17 @@ pub async fn logout(
 
     if let Some(cache) = &state.token_cache {
         let _ = cache.invalidate_token(&claims.jti).await;
+    }
+    if let Some(session) = session {
+        let audit_context =
+            AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+        record_session_audit_event(
+            Some(audit_log_service.clone()),
+            audit_context,
+            "session_destroy",
+            Some(session.id),
+            Some(json!({ "reason": "logout" })),
+        );
     }
     let mut response_headers = HeaderMap::new();
     clear_auth_cookies(&mut response_headers, &state.config);
@@ -766,14 +827,17 @@ async fn persist_active_access_token(
 async fn register_active_session(
     pool: &sqlx::PgPool,
     token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    audit_context: AuditContext,
     config: &Config,
     user_id: UserId,
     refresh_token: RefreshToken,
     claims: Claims,
     device_label: Option<String>,
+    source: &'static str,
 ) -> HandlerResult<()> {
     let device_label = sanitize_device_label(device_label);
-    active_session::create_active_session(
+    let session = active_session::create_active_session(
         pool,
         user_id,
         &refresh_token.id,
@@ -784,13 +848,34 @@ async fn register_active_session(
     .await
     .map_err(|_| internal_error("Failed to create active session"))?;
 
-    enforce_session_limit(pool, token_cache, config, user_id).await?;
+    record_session_audit_event(
+        audit_log_service.clone(),
+        audit_context.clone(),
+        "session_create",
+        Some(session.id),
+        Some(json!({
+            "source": source,
+            "device_label": device_label
+        })),
+    );
+
+    enforce_session_limit(
+        pool,
+        token_cache,
+        audit_log_service,
+        audit_context,
+        config,
+        user_id,
+    )
+    .await?;
     Ok(())
 }
 
 async fn enforce_session_limit(
     pool: &sqlx::PgPool,
     token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    audit_context: AuditContext,
     config: &Config,
     user_id: UserId,
 ) -> HandlerResult<()> {
@@ -809,6 +894,16 @@ async fn enforce_session_limit(
 
     for session in sessions.iter().skip(limit) {
         revoke_active_session(pool, token_cache, session).await?;
+        record_session_audit_event(
+            audit_log_service.clone(),
+            audit_context.clone(),
+            "session_destroy",
+            Some(session.id.clone()),
+            Some(json!({
+                "reason": "max_concurrent_sessions",
+                "limit": config.max_concurrent_sessions
+            })),
+        );
     }
 
     Ok(())
@@ -833,6 +928,91 @@ async fn revoke_active_session(
         .map_err(|_| internal_error("Failed to revoke refresh token"))?;
 
     Ok(())
+}
+
+#[derive(Clone)]
+struct AuditContext {
+    actor_id: Option<UserId>,
+    actor_type: String,
+    ip: Option<String>,
+    user_agent: Option<String>,
+    request_id: Option<String>,
+}
+
+impl AuditContext {
+    fn new(
+        actor_id: Option<UserId>,
+        actor_type: &str,
+        headers: &HeaderMap,
+        request_id: Option<&RequestId>,
+    ) -> Self {
+        Self {
+            actor_id,
+            actor_type: actor_type.to_string(),
+            ip: extract_ip(headers),
+            user_agent: extract_user_agent(headers),
+            request_id: request_id.map(|id| id.0.clone()),
+        }
+    }
+}
+
+fn record_session_audit_event(
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    context: AuditContext,
+    event_type: &'static str,
+    session_id: Option<String>,
+    metadata: Option<Value>,
+) {
+    let Some(audit_log_service) = audit_log_service else {
+        return;
+    };
+    let entry = AuditLogEntry {
+        occurred_at: Utc::now(),
+        actor_id: context.actor_id,
+        actor_type: context.actor_type,
+        event_type: event_type.to_string(),
+        target_type: Some("session".to_string()),
+        target_id: session_id,
+        result: "success".to_string(),
+        error_code: None,
+        metadata,
+        ip: context.ip,
+        user_agent: context.user_agent,
+        request_id: context.request_id,
+    };
+
+    tokio::spawn(async move {
+        if let Err(err) = audit_log_service.record_event(entry).await {
+            tracing::warn!(
+                error = ?err,
+                event_type = %event_type,
+                "Failed to record session audit log"
+            );
+        }
+    });
+}
+
+fn extract_ip(headers: &HeaderMap) -> Option<String> {
+    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        return value
+            .split(',')
+            .next()
+            .map(|ip| ip.trim().to_string())
+            .filter(|ip| !ip.is_empty());
+    }
+    headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .map(|ip| ip.trim().to_string())
+        .filter(|ip| !ip.is_empty())
+}
+
+fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|agent| agent.trim().to_string())
+        .filter(|agent| !agent.is_empty())
 }
 
 impl AuthSession {

@@ -1,17 +1,21 @@
 use axum::{
     extract::{Extension, Path, State},
+    http::{header::USER_AGENT, HeaderMap},
     Json,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
+use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
+    middleware::request_id::RequestId,
     models::{active_session::ActiveSession, user::User},
     repositories::{active_session, auth as auth_repo},
+    services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     services::token_cache::TokenCacheServiceTrait,
     state::AppState,
     types::UserId,
@@ -69,7 +73,10 @@ pub async fn list_user_sessions(
 
 pub async fn revoke_session(
     State(state): State<AppState>,
-    Extension(_user): Extension<User>,
+    Extension(user): Extension<User>,
+    Extension(request_id): Extension<RequestId>,
+    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
+    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     if session_id.trim().is_empty() {
@@ -87,6 +94,19 @@ pub async fn revoke_session(
         &session,
     )
     .await?;
+
+    record_session_audit_event(
+        Some(audit_log_service),
+        &user.id,
+        &headers,
+        &request_id,
+        "session_destroy",
+        Some(session.id.clone()),
+        Some(json!({
+            "reason": "admin_revoke",
+            "target_user_id": session.user_id.to_string()
+        })),
+    );
 
     Ok(Json(json!({
         "message": "Session revoked",
@@ -117,4 +137,65 @@ async fn revoke_session_tokens(
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     Ok(())
+}
+
+fn record_session_audit_event(
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    actor_id: &UserId,
+    headers: &HeaderMap,
+    request_id: &RequestId,
+    event_type: &'static str,
+    session_id: Option<String>,
+    metadata: Option<Value>,
+) {
+    let Some(audit_log_service) = audit_log_service else {
+        return;
+    };
+    let entry = AuditLogEntry {
+        occurred_at: Utc::now(),
+        actor_id: Some(*actor_id),
+        actor_type: "user".to_string(),
+        event_type: event_type.to_string(),
+        target_type: Some("session".to_string()),
+        target_id: session_id,
+        result: "success".to_string(),
+        error_code: None,
+        metadata,
+        ip: extract_ip(headers),
+        user_agent: extract_user_agent(headers),
+        request_id: Some(request_id.0.clone()),
+    };
+
+    tokio::spawn(async move {
+        if let Err(err) = audit_log_service.record_event(entry).await {
+            tracing::warn!(
+                error = ?err,
+                event_type = %event_type,
+                "Failed to record session audit log"
+            );
+        }
+    });
+}
+
+fn extract_ip(headers: &HeaderMap) -> Option<String> {
+    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        return value
+            .split(',')
+            .next()
+            .map(|ip| ip.trim().to_string())
+            .filter(|ip| !ip.is_empty());
+    }
+    headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .map(|ip| ip.trim().to_string())
+        .filter(|ip| !ip.is_empty())
+}
+
+fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|agent| agent.trim().to_string())
+        .filter(|agent| !agent.is_empty())
 }
