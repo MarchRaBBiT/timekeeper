@@ -23,6 +23,7 @@ Active JWT access tokens are cached in Redis to avoid DB hits on every request.
 - `REDIS_URL`: e.g., `redis://localhost:6379`.
 - `REDIS_POOL_SIZE`: Max connections to Redis (default: 10).
 - `FEATURE_REDIS_CACHE_ENABLED=true` (default).
+Active sessions enforce a 1:1 mapping between refresh tokens and session records for reliable cleanup.
 
 ### Cache-Aside Pattern
 The system checks Redis first. If the token is not found, it falls back to PostgreSQL and backfills Redis.

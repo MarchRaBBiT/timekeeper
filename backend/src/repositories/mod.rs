@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 pub mod attendance;
+pub mod active_session;
 pub mod audit_log;
 pub mod auth;
 pub mod break_record;
@@ -20,6 +21,7 @@ pub mod user;
 pub mod weekly_holiday;
 
 pub use attendance::*;
+pub use active_session::*;
 pub use audit_log::*;
 pub use auth::*;
 pub use break_record::*;
