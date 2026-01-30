@@ -191,9 +191,9 @@ pub fn AdminAttendanceToolsSection(
                             <button type="button" class="text-link hover:text-link-hover text-sm" on:click=add_break>{"行を追加"}</button>
                         </div>
                         <For
-                            each=move || breaks.get().into_iter().enumerate().collect::<Vec<_>>()
+                            each=move || breaks.get().into_iter().enumerate()
                             key=|(idx, _)| *idx
-                            children=move |(idx, (start, end))| {
+                            children=move |(idx, _)| {
                                 let start_value = {
                                     let breaks = breaks;
                                     move || {
@@ -271,8 +271,8 @@ pub fn AdminAttendanceToolsSection(
                     </div>
                 </div>
                 <Show when=move || error.get().is_some()>
-                <InlineErrorMessage error={error.into()} />
-            </Show>
+                    <InlineErrorMessage error={error.into()} />
+                </Show>
                 <Show when=move || message.get().is_some()>
                     <SuccessMessage message={message.get().unwrap_or_default()} />
                 </Show>
