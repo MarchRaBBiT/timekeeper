@@ -245,6 +245,8 @@ fn user_routes(state: AppState) -> Router<AppState> {
         .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
         .route("/api/auth/me", get(handlers::auth::me))
         .route("/api/auth/me", put(handlers::auth::update_profile))
+        .route("/api/auth/sessions", get(handlers::sessions::list_sessions))
+        .route("/api/auth/sessions/{id}", delete(handlers::sessions::revoke_session))
         .route(
             "/api/auth/change-password",
             put(handlers::auth::change_password),
@@ -324,6 +326,14 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             delete(handlers::admin::delete_weekly_holiday),
         )
         .route("/api/admin/users", get(handlers::admin::get_users))
+        .route(
+            "/api/admin/users/{id}/sessions",
+            get(handlers::admin::list_user_sessions),
+        )
+        .route(
+            "/api/admin/sessions/{id}",
+            delete(handlers::admin::revoke_session),
+        )
         .route(
             "/api/admin/attendance",
             get(handlers::admin::get_all_attendance),
@@ -548,6 +558,7 @@ mod tests {
             jwt_secret: "test-jwt-secret-32-chars-minimum!".to_string(),
             jwt_expiration_hours: 1,
             refresh_token_expiration_days: 7,
+            max_concurrent_sessions: 3,
             audit_log_retention_days: 1825,
             audit_log_retention_forever: false,
             consent_log_retention_days: 1825,

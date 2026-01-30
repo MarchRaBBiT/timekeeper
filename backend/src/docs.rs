@@ -7,9 +7,10 @@ use crate::{
             AdminRequestListPageInfo, AdminRequestListResponse, ApprovePayload,
             AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse, AuditLogResponse,
             DecisionPayload, ExportQuery, RejectPayload, RequestListQuery, ResetMfaPayload,
-            SubjectRequestListQuery, SubjectRequestListResponse,
+            SubjectRequestListQuery, SubjectRequestListResponse, AdminSessionResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
+        sessions::SessionResponse,
     },
     models::{
         attendance::{
@@ -52,6 +53,8 @@ use utoipa::{
         mfa_disable_doc,
         change_password_doc,
         logout_doc,
+        list_sessions_doc,
+        revoke_session_doc,
         clock_in_doc,
         clock_out_doc,
         break_start_doc,
@@ -77,6 +80,8 @@ use utoipa::{
         admin_reject_subject_request_doc,
         admin_get_users_doc,
         admin_create_user_doc,
+        admin_list_user_sessions_doc,
+        admin_revoke_session_doc,
         admin_list_holidays_doc,
         admin_create_holiday_doc,
         admin_delete_holiday_doc,
@@ -100,6 +105,7 @@ use utoipa::{
             MfaCodeRequest,
             MfaSetupResponse,
             MfaStatusResponse,
+            SessionResponse,
             // users
             CreateUser,
             UpdateUser,
@@ -150,6 +156,7 @@ use utoipa::{
             AdminHolidayListResponse,
             AdminHolidayKind,
             AdminHolidayListItem,
+            AdminSessionResponse,
             ExportQuery,
             AuditLogListQuery,
             AuditLogListResponse,
@@ -264,6 +271,23 @@ fn change_password_doc() {}
     tag = "Auth"
 )]
 fn logout_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/sessions",
+    responses((status = 200, body = [SessionResponse])),
+    tag = "Auth"
+)]
+fn list_sessions_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/auth/sessions/{id}",
+    params(("id" = String, Path, description = "Session ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Auth"
+)]
+fn revoke_session_doc() {}
 
 #[utoipa::path(
     post,
@@ -491,6 +515,24 @@ fn admin_get_users_doc() {}
     tag = "Admin"
 )]
 fn admin_create_user_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{id}/sessions",
+    params(("id" = String, Path, description = "User ID")),
+    responses((status = 200, body = [AdminSessionResponse])),
+    tag = "Admin"
+)]
+fn admin_list_user_sessions_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/sessions/{id}",
+    params(("id" = String, Path, description = "Session ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_revoke_session_doc() {}
 
 #[utoipa::path(
     get,

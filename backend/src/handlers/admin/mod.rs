@@ -4,6 +4,7 @@ pub mod common;
 pub mod export;
 pub mod holidays;
 pub mod requests;
+pub mod sessions;
 pub mod users;
 
 pub use attendance::*;
@@ -14,6 +15,7 @@ pub use audit_logs::*;
 pub use export::*;
 pub use holidays::*;
 pub use requests::*;
+pub use sessions::*;
 pub use users::*;
 
 pub mod subject_requests;

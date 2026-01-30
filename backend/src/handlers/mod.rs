@@ -7,4 +7,5 @@ pub mod consents;
 pub mod holiday_exceptions;
 pub mod holidays;
 pub mod requests;
+pub mod sessions;
 pub mod subject_requests;
