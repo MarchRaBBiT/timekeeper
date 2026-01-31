@@ -13,12 +13,6 @@ use crate::{
     config::Config,
     error::AppError,
     middleware::request_id::RequestId,
-    repositories::{
-        active_session,
-        auth::{self as auth_repo, ActiveAccessToken},
-        password_reset as password_reset_repo,
-        user as user_repo,
-    },
     models::{
         active_session::ActiveSession,
         password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
@@ -26,6 +20,11 @@ use crate::{
             ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
             MfaStatusResponse, UpdateProfile, User, UserResponse,
         },
+    },
+    repositories::{
+        active_session,
+        auth::{self as auth_repo, ActiveAccessToken},
+        password_reset as password_reset_repo, user as user_repo,
     },
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     services::token_cache::TokenCacheServiceTrait,
@@ -73,12 +72,7 @@ pub async fn login(
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
 
-    let audit_context = AuditContext::new(
-        Some(user.id),
-        "user",
-        &headers,
-        Some(&request_id),
-    );
+    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
 
     let session = process_login_for_user(
         user,
@@ -173,12 +167,7 @@ pub async fn refresh(
 
     enforce_password_expiration(&user, &state.config)?;
 
-    let audit_context = AuditContext::new(
-        Some(user.id),
-        "user",
-        &headers,
-        Some(&request_id),
-    );
+    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
 
     let session = create_auth_session(&user, &state.config).await?;
 
@@ -290,8 +279,7 @@ pub async fn logout(
         if let Some(cache) = &state.token_cache {
             let _ = cache.invalidate_user_tokens(user.id).await;
         }
-        let audit_context =
-            AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+        let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
         for session in sessions {
             record_session_audit_event(
                 Some(audit_log_service.clone()),
@@ -325,10 +313,9 @@ pub async fn logout(
         }
     }
 
-    let session =
-        active_session::find_active_session_by_access_jti(&state.write_pool, &claims.jti)
-            .await
-            .map_err(|_| internal_error("Failed to fetch active session"))?;
+    let session = active_session::find_active_session_by_access_jti(&state.write_pool, &claims.jti)
+        .await
+        .map_err(|_| internal_error("Failed to fetch active session"))?;
 
     auth_repo::delete_active_access_token_by_jti(&state.write_pool, &claims.jti)
         .await
@@ -342,8 +329,7 @@ pub async fn logout(
         let _ = cache.invalidate_token(&claims.jti).await;
     }
     if let Some(session) = session {
-        let audit_context =
-            AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+        let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
         record_session_audit_event(
             Some(audit_log_service.clone()),
             audit_context,
@@ -378,13 +364,10 @@ pub async fn update_profile(
     payload.validate()?;
 
     if let Some(ref email) = payload.email {
-        let email_exists = user_repo::email_exists_for_other_user(
-            &state.write_pool,
-            email,
-            &user.id.to_string(),
-        )
-        .await
-        .map_err(|_| internal_error("Database error"))?;
+        let email_exists =
+            user_repo::email_exists_for_other_user(&state.write_pool, email, &user.id.to_string())
+                .await
+                .map_err(|_| internal_error("Database error"))?;
 
         if email_exists {
             return Err(bad_request("Email already in use"));
@@ -394,14 +377,10 @@ pub async fn update_profile(
     let full_name = payload.full_name.unwrap_or(user.full_name);
     let email = payload.email.unwrap_or(user.email);
 
-    let updated_user = user_repo::update_profile(
-        &state.write_pool,
-        &user.id.to_string(),
-        &full_name,
-        &email,
-    )
-    .await
-    .map_err(|_| internal_error("Failed to update profile"))?;
+    let updated_user =
+        user_repo::update_profile(&state.write_pool, &user.id.to_string(), &full_name, &email)
+            .await
+            .map_err(|_| internal_error("Failed to update profile"))?;
 
     Ok(Json(UserResponse::from(updated_user)))
 }

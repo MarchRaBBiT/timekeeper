@@ -96,12 +96,7 @@ pub async fn revoke_session(
         ));
     }
 
-    revoke_session_tokens(
-        &state.write_pool,
-        state.token_cache.as_ref(),
-        &session,
-    )
-    .await?;
+    revoke_session_tokens(&state.write_pool, state.token_cache.as_ref(), &session).await?;
 
     record_session_audit_event(
         Some(audit_log_service),

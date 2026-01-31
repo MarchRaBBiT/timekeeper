@@ -11,15 +11,12 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     error::AppError,
     models::{
-        leave_request::LeaveRequestResponse,
-        overtime_request::OvertimeRequestResponse,
-        user::User,
+        leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
     },
     repositories::{
-        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
         repository::Repository,
-        LeaveRequestRepository,
-        OvertimeRequestRepository,
+        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
+        LeaveRequestRepository, OvertimeRequestRepository,
     },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},

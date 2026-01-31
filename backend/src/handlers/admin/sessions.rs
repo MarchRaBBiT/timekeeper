@@ -58,8 +58,8 @@ pub async fn list_user_sessions(
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
 ) -> Result<Json<Vec<AdminSessionResponse>>, AppError> {
-    let user_id = UserId::from_str(&user_id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
+    let user_id =
+        UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
 
     let sessions = active_session::list_active_sessions_for_user(state.read_pool(), user_id)
         .await
@@ -88,12 +88,7 @@ pub async fn revoke_session(
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
 
-    revoke_session_tokens(
-        &state.write_pool,
-        state.token_cache.as_ref(),
-        &session,
-    )
-    .await?;
+    revoke_session_tokens(&state.write_pool, state.token_cache.as_ref(), &session).await?;
 
     record_session_audit_event(
         Some(audit_log_service),

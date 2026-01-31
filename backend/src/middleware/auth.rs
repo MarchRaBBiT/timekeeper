@@ -4,9 +4,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use tracing::Span;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use sqlx::PgPool;
+use tracing::Span;
 
 use crate::types::UserId;
 use crate::{

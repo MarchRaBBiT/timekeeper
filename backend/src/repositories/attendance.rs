@@ -161,10 +161,7 @@ impl AttendanceRepository {
         }
         builder.push(" ORDER BY date DESC");
 
-        let rows = builder
-            .build_query_as::<Attendance>()
-            .fetch_all(db)
-            .await?;
+        let rows = builder.build_query_as::<Attendance>().fetch_all(db).await?;
         Ok(rows)
     }
 

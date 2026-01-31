@@ -18,10 +18,7 @@ use crate::state::AppState;
 use crate::{
     handlers::attendance::recalculate_total_hours,
     handlers::attendance_utils::{get_break_records, get_break_records_map},
-    models::{
-        attendance::AttendanceResponse,
-        user::User,
-    },
+    models::{attendance::AttendanceResponse, user::User},
     utils::time,
 };
 
@@ -40,7 +37,9 @@ pub async fn get_all_attendance(
     let repo = AttendanceRepository::new();
     let total = repo.count_all(state.read_pool()).await?;
 
-    let attendances = repo.list_paginated(state.read_pool(), limit, offset).await?;
+    let attendances = repo
+        .list_paginated(state.read_pool(), limit, offset)
+        .await?;
 
     let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
     let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;

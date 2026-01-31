@@ -1,9 +1,6 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use std::sync::OnceLock;
-use timekeeper_backend::{
-    models::user::UserRole,
-    repositories::active_session,
-};
+use timekeeper_backend::{models::user::UserRole, repositories::active_session};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -89,7 +86,10 @@ async fn active_session_repo_roundtrip() {
     let sessions = active_session::list_active_sessions_for_user(&pool, user.id)
         .await
         .expect("list active sessions after touch");
-    assert_same_millis(sessions[0].last_seen_at.expect("last_seen_at"), new_last_seen);
+    assert_same_millis(
+        sessions[0].last_seen_at.expect("last_seen_at"),
+        new_last_seen,
+    );
 
     sqlx::query("TRUNCATE active_sessions, refresh_tokens")
         .execute(&pool)

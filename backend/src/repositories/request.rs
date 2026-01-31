@@ -231,13 +231,7 @@ impl RequestRepository {
                     timestamp,
                 } => {
                     leave_repo
-                        .approve(
-                            db,
-                            leave_request_id,
-                            *approver_id,
-                            comment,
-                            *timestamp,
-                        )
+                        .approve(db, leave_request_id, *approver_id, comment, *timestamp)
                         .await?
                 }
                 RequestStatusUpdate::Reject {
@@ -246,13 +240,7 @@ impl RequestRepository {
                     timestamp,
                 } => {
                     leave_repo
-                        .reject(
-                            db,
-                            leave_request_id,
-                            *approver_id,
-                            comment,
-                            *timestamp,
-                        )
+                        .reject(db, leave_request_id, *approver_id, comment, *timestamp)
                         .await?
                 }
             };
@@ -271,13 +259,7 @@ impl RequestRepository {
                     timestamp,
                 } => {
                     overtime_repo
-                        .approve(
-                            db,
-                            overtime_request_id,
-                            *approver_id,
-                            comment,
-                            *timestamp,
-                        )
+                        .approve(db, overtime_request_id, *approver_id, comment, *timestamp)
                         .await?
                 }
                 RequestStatusUpdate::Reject {
@@ -286,13 +268,7 @@ impl RequestRepository {
                     timestamp,
                 } => {
                     overtime_repo
-                        .reject(
-                            db,
-                            overtime_request_id,
-                            *approver_id,
-                            comment,
-                            *timestamp,
-                        )
+                        .reject(db, overtime_request_id, *approver_id, comment, *timestamp)
                         .await?
                 }
             };

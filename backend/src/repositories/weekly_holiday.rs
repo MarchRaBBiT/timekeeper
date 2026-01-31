@@ -31,12 +31,21 @@ impl Repository<WeeklyHoliday> for WeeklyHolidayRepository {
     type Id = WeeklyHolidayId;
 
     async fn find_all(&self, db: &PgPool) -> Result<Vec<WeeklyHoliday>, AppError> {
-        let query = format!("{} ORDER BY enforced_from, weekday", Self::base_select_query());
-        let rows = sqlx::query_as::<_, WeeklyHoliday>(&query).fetch_all(db).await?;
+        let query = format!(
+            "{} ORDER BY enforced_from, weekday",
+            Self::base_select_query()
+        );
+        let rows = sqlx::query_as::<_, WeeklyHoliday>(&query)
+            .fetch_all(db)
+            .await?;
         Ok(rows)
     }
 
-    async fn find_by_id(&self, db: &PgPool, id: WeeklyHolidayId) -> Result<WeeklyHoliday, AppError> {
+    async fn find_by_id(
+        &self,
+        db: &PgPool,
+        id: WeeklyHolidayId,
+    ) -> Result<WeeklyHoliday, AppError> {
         let query = format!("{} WHERE id = $1", Self::base_select_query());
         let result = sqlx::query_as::<_, WeeklyHoliday>(&query)
             .bind(id)
