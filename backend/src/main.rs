@@ -69,11 +69,17 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(HolidayExceptionService::new(write_pool.clone()));
 
     let redis_pool = create_redis_pool(&config).await?;
-    let token_cache: Option<Arc<dyn TokenCacheServiceTrait>> = redis_pool
-        .as_ref()
-        .map(|pool| Arc::new(TokenCacheService::new(pool.clone())) as Arc<dyn TokenCacheServiceTrait>);
+    let token_cache: Option<Arc<dyn TokenCacheServiceTrait>> = redis_pool.as_ref().map(|pool| {
+        Arc::new(TokenCacheService::new(pool.clone())) as Arc<dyn TokenCacheServiceTrait>
+    });
 
-    let shared_state = AppState::new(write_pool, read_pool, redis_pool, token_cache, config.clone());
+    let shared_state = AppState::new(
+        write_pool,
+        read_pool,
+        redis_pool,
+        token_cache,
+        config.clone(),
+    );
 
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
@@ -125,9 +131,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_http_request_span(
-    request: &axum::http::Request<axum::body::Body>,
-) -> tracing::Span {
+fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) -> tracing::Span {
     let request_id = request
         .extensions()
         .get::<middleware::RequestId>()
@@ -246,7 +250,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
         .route("/api/auth/me", get(handlers::auth::me))
         .route("/api/auth/me", put(handlers::auth::update_profile))
         .route("/api/auth/sessions", get(handlers::sessions::list_sessions))
-        .route("/api/auth/sessions/{id}", delete(handlers::sessions::revoke_session))
+        .route(
+            "/api/auth/sessions/{id}",
+            delete(handlers::sessions::revoke_session),
+        )
         .route(
             "/api/auth/change-password",
             put(handlers::auth::change_password),
@@ -593,7 +600,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Refusing to start due to insecure CORS configuration in production mode")]
+    #[should_panic(
+        expected = "Refusing to start due to insecure CORS configuration in production mode"
+    )]
     fn test_production_mode_wildcard_cors_panics() {
         let mut config = test_config(vec!["*".to_string()]);
         config.production_mode = true;
@@ -747,7 +756,11 @@ mod tests {
     fn test_http_request_span_fields_are_recorded() {
         let store = SpanStore::default();
         let subscriber = tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer().with_test_writer().with_ansi(false))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_test_writer()
+                    .with_ansi(false),
+            )
             .with(store.clone());
 
         tracing::subscriber::with_default(subscriber, || {
@@ -811,7 +824,9 @@ mod tests {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header("Authorization", "Bearer super-secret-token")
-                .body(Body::from(r#"{"password":"P@ssw0rd","token":"secret-token"}"#))
+                .body(Body::from(
+                    r#"{"password":"P@ssw0rd","token":"secret-token"}"#,
+                ))
                 .expect("build request");
             request
                 .extensions_mut()
@@ -829,9 +844,7 @@ mod tests {
         let sensitive_values = ["super-secret-token", "P@ssw0rd", "secret-token"];
 
         for value in sensitive_values {
-            let leaked_field = span_fields
-                .values()
-                .any(|field| field.contains(value));
+            let leaked_field = span_fields.values().any(|field| field.contains(value));
             assert!(
                 !leaked_field,
                 "span fields should not contain sensitive value: {}",
@@ -839,14 +852,8 @@ mod tests {
             );
         }
 
-        let output = String::from_utf8(
-            writer
-                .buffer
-                .lock()
-                .expect("lock log buffer")
-                .clone(),
-        )
-        .expect("log output should be valid utf-8");
+        let output = String::from_utf8(writer.buffer.lock().expect("lock log buffer").clone())
+            .expect("log output should be valid utf-8");
         for value in sensitive_values {
             assert!(
                 !output.contains(value),

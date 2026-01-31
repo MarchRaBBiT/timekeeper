@@ -8,9 +8,6 @@ use chrono::Utc;
 use serde_json::json;
 use sqlx::PgPool;
 use std::{env, sync::OnceLock};
-use tokio::sync::Mutex;
-use tower::ServiceExt;
-use uuid::Uuid;
 use timekeeper_backend::{
     handlers,
     models::user::{User, UserRole},
@@ -21,6 +18,9 @@ use timekeeper_backend::{
         security::generate_token,
     },
 };
+use tokio::sync::Mutex;
+use tower::ServiceExt;
+use uuid::Uuid;
 
 mod support;
 
@@ -84,8 +84,8 @@ async fn test_password_reset_full_flow() {
     let new_hash = hash_password(new_password).expect("hash new password");
     let updated_user =
         auth_repo::update_user_password(&pool, user.id, &new_hash, &user.password_hash, 5)
-        .await
-        .expect("update password");
+            .await
+            .expect("update password");
 
     assert_ne!(updated_user.password_hash, user.password_hash);
 
@@ -167,9 +167,7 @@ async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
     let password_hash = hash_password(password).expect("hash password");
 
     let user_id = Uuid::new_v4();
-    let (local, domain) = email
-        .split_once('@')
-        .unwrap_or((email, "example.com"));
+    let (local, domain) = email.split_once('@').unwrap_or((email, "example.com"));
     let unique_email = format!("{}+{}@{}", local, user_id, domain);
     let username = format!("user_{}", unique_email);
     sqlx::query_as::<_, User>(
@@ -216,9 +214,7 @@ async fn request_password_reset_creates_token_record() {
                 .method("POST")
                 .uri("/api/auth/request-password-reset")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({ "email": user.email }).to_string(),
-                ))
+                .body(Body::from(json!({ "email": user.email }).to_string()))
                 .expect("build request"),
         )
         .await
@@ -293,8 +289,8 @@ async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
         .await
         .expect("fetch user")
         .expect("user exists");
-    let matches = verify_password("NewPassword123!", &updated_user.password_hash)
-        .expect("verify password");
+    let matches =
+        verify_password("NewPassword123!", &updated_user.password_hash).expect("verify password");
     assert!(matches);
 
     let response = app

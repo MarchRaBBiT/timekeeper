@@ -69,7 +69,10 @@ pub async fn fetch_attendance_by_id(
     repo.find_by_id(pool, attendance_id).await
 }
 
-pub async fn insert_attendance_record(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
+pub async fn insert_attendance_record(
+    pool: &PgPool,
+    attendance: &Attendance,
+) -> Result<(), AppError> {
     let repo = AttendanceRepository::new();
     repo.create(pool, attendance).await?;
     Ok(())

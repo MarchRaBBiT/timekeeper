@@ -170,9 +170,7 @@ pub async fn break_start(
     }
 
     let break_record = BreakRecord::new(payload.attendance_id, break_start_time, now_utc);
-    break_repo
-        .create(&state.write_pool, &break_record)
-        .await?;
+    break_repo.create(&state.write_pool, &break_record).await?;
 
     let response = BreakRecordResponse::from(break_record);
     Ok(Json(response))
@@ -201,9 +199,7 @@ pub async fn break_end(
     ensure_authorized_access(&att, user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
-    break_repo
-        .update(&state.write_pool, &break_record)
-        .await?;
+    break_repo.update(&state.write_pool, &break_record).await?;
 
     if att.clock_out_time.is_some() {
         recalculate_total_hours(&state.write_pool, att, now_utc).await?;

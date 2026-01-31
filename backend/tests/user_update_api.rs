@@ -12,9 +12,7 @@ async fn migrate_db(pool: &PgPool) {
 }
 
 fn unique_email(base: &str) -> String {
-    let (local, domain) = base
-        .split_once('@')
-        .unwrap_or((base, "example.com"));
+    let (local, domain) = base.split_once('@').unwrap_or((base, "example.com"));
     format!("{}+{}@{}", local, Uuid::new_v4(), domain)
 }
 

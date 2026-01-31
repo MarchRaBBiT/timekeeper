@@ -76,13 +76,12 @@ pub async fn email_exists_for_other_user(
     email: &str,
     exclude_user_id: &str,
 ) -> Result<bool, sqlx::Error> {
-    let result: (bool,) = sqlx::query_as(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)",
-    )
-    .bind(email)
-    .bind(exclude_user_id)
-    .fetch_one(pool)
-    .await?;
+    let result: (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)")
+            .bind(email)
+            .bind(exclude_user_id)
+            .fetch_one(pool)
+            .await?;
     Ok(result.0)
 }
 
@@ -99,7 +98,7 @@ pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error
 
 /// Checks if a username exists (for conflict check).
 pub async fn username_exists(pool: &PgPool, username: &str) -> Result<bool, sqlx::Error> {
-     let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM users WHERE username = $1")
+    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM users WHERE username = $1")
         .bind(username)
         .fetch_optional(pool)
         .await?;
@@ -127,7 +126,11 @@ pub async fn update_profile(
 }
 
 /// Enables MFA for a user.
-pub async fn enable_mfa(pool: &PgPool, user_id: &str, at: chrono::DateTime<chrono::Utc>) -> Result<bool, sqlx::Error> {
+pub async fn enable_mfa(
+    pool: &PgPool,
+    user_id: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("UPDATE users SET mfa_enabled_at = $1, updated_at = $1 WHERE id = $2")
         .bind(at)
         .bind(user_id)

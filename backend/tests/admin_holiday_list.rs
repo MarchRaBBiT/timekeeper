@@ -10,9 +10,7 @@ use std::time::Duration;
 use timekeeper_backend::{
     config::Config,
     error::AppError,
-    handlers::admin::holidays::{
-        list_holidays, AdminHolidayListQuery, AdminHolidayListResponse,
-    },
+    handlers::admin::holidays::{list_holidays, AdminHolidayListQuery, AdminHolidayListResponse},
     models::{
         holiday::{AdminHolidayKind, AdminHolidayListItem},
         user::{User, UserRole},

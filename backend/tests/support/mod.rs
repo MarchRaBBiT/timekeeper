@@ -4,12 +4,11 @@ use chrono_tz::Asia::Tokyo;
 use ctor::{ctor, dtor};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{
-    env,
-    fs,
+    env, fs,
+    net::TcpListener,
     path::Path,
     path::PathBuf,
     process::Command,
-    net::TcpListener,
     sync::{Mutex, OnceLock},
     time::Duration as StdDuration,
 };
@@ -28,7 +27,8 @@ use timekeeper_backend::{
 use uuid::Uuid;
 
 static TESTCONTAINERS_DOCKER: OnceLock<&'static Cli> = OnceLock::new();
-static TESTCONTAINERS_PG: OnceLock<Mutex<Option<Container<'static, GenericImage>>>> = OnceLock::new();
+static TESTCONTAINERS_PG: OnceLock<Mutex<Option<Container<'static, GenericImage>>>> =
+    OnceLock::new();
 static TESTCONTAINERS_DB_URL: OnceLock<String> = OnceLock::new();
 static DOCKER_WRAPPER_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -53,8 +53,7 @@ fn env_guard() -> std::sync::MutexGuard<'static, ()> {
 fn start_testcontainer_postgres() -> String {
     let url = TESTCONTAINERS_DB_URL.get().cloned().unwrap_or_else(|| {
         ensure_docker_cli();
-        let docker = TESTCONTAINERS_DOCKER
-            .get_or_init(|| Box::leak(Box::new(Cli::default())));
+        let docker = TESTCONTAINERS_DOCKER.get_or_init(|| Box::leak(Box::new(Cli::default())));
         let image_ref = env::var("TESTCONTAINERS_POSTGRES_IMAGE")
             .unwrap_or_else(|_| "postgres:15-alpine".to_string());
         let (image_name, image_tag) = image_ref
