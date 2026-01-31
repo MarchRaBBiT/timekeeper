@@ -31,3 +31,17 @@ pub fn trigger_csv_download(filename: &str, csv_data: &str) -> Result<(), String
     let _ = web_sys::Url::revoke_object_url(&url);
     Ok(())
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn trigger_csv_download_succeeds() {
+        let result = trigger_csv_download("test.csv", "a,b\n1,2\n");
+        assert!(result.is_ok());
+    }
+}

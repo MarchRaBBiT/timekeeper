@@ -1,6 +1,6 @@
 use crate::{
     components::forms::AttendanceActionButtons,
-    state::attendance::{describe_holiday_reason, AttendanceState},
+    state::attendance::{describe_holiday_reason, AttendanceState, ClockMessage},
 };
 use leptos::{ev::MouseEvent, *};
 
@@ -8,7 +8,7 @@ use leptos::{ev::MouseEvent, *};
 pub fn SummarySection(
     state: ReadSignal<AttendanceState>,
     action_pending: ReadSignal<bool>,
-    message: ReadSignal<Option<crate::api::ApiError>>,
+    message: ReadSignal<Option<ClockMessage>>,
     on_clock_in: Callback<MouseEvent>,
     on_clock_out: Callback<MouseEvent>,
     on_break_start: Callback<MouseEvent>,

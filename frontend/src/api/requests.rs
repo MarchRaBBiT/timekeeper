@@ -8,6 +8,28 @@ use super::{
     },
 };
 
+fn admin_request_params(
+    status: Option<&str>,
+    user_id: Option<&str>,
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Vec<(&'static str, String)> {
+    let mut params = Vec::new();
+    if let Some(status) = status {
+        params.push(("status", status.to_string()));
+    }
+    if let Some(user_id) = user_id {
+        params.push(("user_id", user_id.to_string()));
+    }
+    if let Some(page) = page {
+        params.push(("page", page.to_string()));
+    }
+    if let Some(per_page) = per_page {
+        params.push(("per_page", per_page.to_string()));
+    }
+    params
+}
+
 impl ApiClient {
     pub async fn admin_list_requests(
         &self,
@@ -17,41 +39,16 @@ impl ApiClient {
         per_page: Option<u32>,
     ) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/admin/requests", base_url);
-        let mut qp = vec![];
-        if let Some(s) = status {
-            qp.push(format!("status={}", s));
-        }
-        if let Some(u) = user_id {
-            qp.push(format!("user_id={}", u));
-        }
-        if let Some(p) = page {
-            qp.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            qp.push(format!("per_page={}", pp));
-        }
-        if !qp.is_empty() {
-            url.push('?');
-            url.push_str(&qp.join("&"));
-        }
-        let response = self
-            .send_with_refresh(|| Ok(self.http_client().get(&url)))
-            .await?;
-        self.map_json_response(response).await
-    }
-
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 管理者の申請詳細表示
-    #[allow(dead_code)]
-    pub async fn admin_get_request_detail(&self, id: &str) -> Result<Value, ApiError> {
-        let base_url = self.resolved_base_url().await;
+        let params = admin_request_params(status, user_id, page, per_page);
         let response = self
             .send_with_refresh(|| {
-                Ok(self
+                let mut request = self
                     .http_client()
-                    .get(format!("{}/admin/requests/{}", base_url, id)))
+                    .get(format!("{}/admin/requests", base_url));
+                if !params.is_empty() {
+                    request = request.query(&params);
+                }
+                Ok(request)
             })
             .await?;
         self.map_json_response(response).await
@@ -176,5 +173,25 @@ impl ApiClient {
                 .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
             Err(error)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admin_request_params_skip_missing_values() {
+        let params = admin_request_params(None, None, None, None);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn admin_request_params_includes_filters() {
+        let params = admin_request_params(Some("approved"), Some("user-1"), Some(2), Some(50));
+        assert!(params.contains(&("status", "approved".to_string())));
+        assert!(params.contains(&("user_id", "user-1".to_string())));
+        assert!(params.contains(&("page", "2".to_string())));
+        assert!(params.contains(&("per_page", "50".to_string())));
     }
 }

@@ -52,15 +52,6 @@ async fn check_auth_status(api_client: &ApiClient) -> Result<UserResponse, ApiEr
     api_client.get_me().await
 }
 
-// TODO: リファクタリング後に使用可否を判断
-// - 使う可能性: あり
-// - 想定機能: セッション更新の手動実行
-#[allow(dead_code)]
-async fn refresh_session(api_client: &ApiClient) -> Result<UserResponse, ApiError> {
-    let response = api_client.refresh_token().await?;
-    Ok(response.user)
-}
-
 pub async fn login_request(
     request: LoginRequest,
     repo: &login_repository::LoginRepository,
@@ -122,4 +113,27 @@ pub fn use_logout_action() -> Action<bool, Result<(), ApiError>> {
         let repo = repo.clone();
         async move { logout(flag, &repo, set_auth).await }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use leptos::create_runtime;
+
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[test]
+    fn use_auth_returns_default_without_context() {
+        with_runtime(|| {
+            let (state, _set_state) = use_auth();
+            let snapshot = state.get();
+            assert!(!snapshot.is_authenticated);
+            assert!(snapshot.user.is_none());
+        });
+    }
 }

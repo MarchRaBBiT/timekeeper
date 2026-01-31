@@ -3,7 +3,7 @@ use super::utils::{month_bounds, AttendanceFormState};
 use crate::api::{ApiClient, ApiError};
 use crate::state::attendance::{
     self as attendance_state, load_attendance_range, refresh_today_context, use_attendance,
-    AttendanceState, ClockEventKind, ClockEventPayload,
+    AttendanceState, ClockEventKind, ClockEventPayload, ClockMessage,
 };
 use crate::utils::time::today_in_app_tz;
 use chrono::{Datelike, NaiveDate};
@@ -81,11 +81,6 @@ impl ExportPayload {
 
 #[derive(Clone)]
 pub struct AttendanceViewModel {
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 勤怠画面でのAPI再利用
-    #[allow(dead_code)]
-    pub api: ApiClient,
     pub state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
     pub form_state: AttendanceFormState,
     pub history_query: RwSignal<HistoryQuery>,
@@ -93,14 +88,10 @@ pub struct AttendanceViewModel {
     pub holiday_query: RwSignal<HolidayQuery>,
     pub holiday_resource:
         Resource<HolidayQuery, Result<Vec<crate::api::HolidayCalendarEntry>, ApiError>>,
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 勤怠コンテキスト再取得
-    #[allow(dead_code)]
     pub context_resource: Resource<(), Result<(), ApiError>>,
     pub export_action: Action<ExportPayload, Result<Value, ApiError>>,
     pub clock_action: Action<ClockEventPayload, Result<(), ApiError>>,
-    pub clock_message: RwSignal<Option<ApiError>>,
+    pub clock_message: RwSignal<Option<ClockMessage>>,
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
     pub range_error: RwSignal<Option<String>>,
     pub export_error: RwSignal<Option<ApiError>>,
@@ -207,9 +198,9 @@ impl AttendanceViewModel {
                                 Some(ClockEventKind::ClockOut) => "退勤しました。",
                                 None => "操作が完了しました。",
                             };
-                            clock_message.set(Some(ApiError::validation(success)));
+                            clock_message.set(Some(ClockMessage::Success(success.to_string())));
                         }
-                        Err(err) => clock_message.set(Some(err)),
+                        Err(err) => clock_message.set(Some(ClockMessage::Error(err))),
                     }
                 }
             });
@@ -247,7 +238,6 @@ impl AttendanceViewModel {
         }
 
         Self {
-            api,
             state: (state, set_state),
             form_state,
             history_query,
@@ -382,15 +372,21 @@ impl AttendanceViewModel {
                 return;
             }
             let Some(status) = state.with(|s| s.today_status.clone()) else {
-                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "ステータスを取得できません。",
+                ))));
                 return;
             };
             if status.status != "clocked_in" {
-                clock_message.set(Some(ApiError::validation("出勤中のみ休憩を開始できます。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "出勤中のみ休憩を開始できます。",
+                ))));
                 return;
             }
             let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some(ApiError::validation("出勤レコードが見つかりません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "出勤レコードが見つかりません。",
+                ))));
                 return;
             };
             clock_message.set(None);
@@ -409,15 +405,21 @@ impl AttendanceViewModel {
                 return;
             }
             let Some(status) = state.with(|s| s.today_status.clone()) else {
-                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "ステータスを取得できません。",
+                ))));
                 return;
             };
             if status.status != "on_break" {
-                clock_message.set(Some(ApiError::validation("休憩中のみ休憩を終了できます。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "休憩中のみ休憩を終了できます。",
+                ))));
                 return;
             }
             let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some(ApiError::validation("休憩レコードが見つかりません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "休憩レコードが見つかりません。",
+                ))));
                 return;
             };
             clock_message.set(None);
@@ -435,5 +437,29 @@ pub fn use_attendance_view_model() -> AttendanceViewModel {
             provide_context(vm.clone());
             vm
         }
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use leptos::create_runtime;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[wasm_bindgen_test]
+    fn attendance_view_model_sets_up_context_refresh() {
+        with_runtime(|| {
+            let vm = AttendanceViewModel::new();
+            let _ = vm.context_resource.loading().get();
+        });
     }
 }

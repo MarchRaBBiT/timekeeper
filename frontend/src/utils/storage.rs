@@ -10,3 +10,16 @@ pub fn local_storage() -> Result<Storage, String> {
         .map_err(|_| "No localStorage".to_string())?
         .ok_or_else(|| "No localStorage".to_string())
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn local_storage_is_available() {
+        assert!(local_storage().is_ok());
+    }
+}

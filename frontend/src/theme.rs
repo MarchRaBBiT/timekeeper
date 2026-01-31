@@ -72,6 +72,26 @@ mod wasm {
             set_from_query(false);
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use wasm_bindgen_test::*;
+
+        wasm_bindgen_test_configure!(run_in_browser);
+
+        #[wasm_bindgen_test]
+        fn update_html_class_toggles_dark_mode() {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let element = document.create_element("div").unwrap();
+
+            update_html_class(&element, true);
+            assert!(element.class_list().contains(DARK_CLASS));
+
+            update_html_class(&element, false);
+            assert!(!element.class_list().contains(DARK_CLASS));
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

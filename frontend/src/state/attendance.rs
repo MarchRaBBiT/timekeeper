@@ -18,6 +18,12 @@ pub struct ClockEventPayload {
     pub break_id: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClockMessage {
+    Success(String),
+    Error(ApiError),
+}
+
 impl ClockEventPayload {
     pub fn clock_in() -> Self {
         Self {
