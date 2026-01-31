@@ -4,18 +4,12 @@ use leptos::*;
 pub enum ButtonVariant {
     #[default]
     Primary,
-    Secondary,
-    Danger,
-    Ghost,
 }
 
 impl ButtonVariant {
     pub fn classes(&self) -> &'static str {
         match self {
             ButtonVariant::Primary => "bg-action-primary-bg hover:bg-action-primary-bg-hover text-action-primary-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-primary-focus",
-            ButtonVariant::Secondary => "bg-action-secondary-bg hover:bg-action-secondary-bg-hover text-action-secondary-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-secondary-focus",
-            ButtonVariant::Danger => "bg-action-danger-bg hover:bg-action-danger-bg-hover text-action-danger-text shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-danger-focus",
-            ButtonVariant::Ghost => "bg-transparent hover:bg-action-ghost-bg-hover text-action-ghost-text",
         }
     }
 }
@@ -46,5 +40,16 @@ pub fn Button(
             </Show>
             {children()}
         </button>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn primary_variant_includes_primary_class() {
+        let classes = ButtonVariant::Primary.classes();
+        assert!(classes.contains("bg-action-primary-bg"));
     }
 }

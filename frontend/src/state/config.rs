@@ -24,3 +24,25 @@ pub async fn refresh_time_zone(set_state: WriteSignal<ConfigState>) {
     let status = config::refresh_time_zone().await;
     set_state.update(|s| s.time_zone_status = status);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use leptos::create_runtime;
+
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[test]
+    fn use_config_seeds_time_zone_status() {
+        with_runtime(|| {
+            let (read, _write) = use_config();
+            let seeded = read.get().time_zone_status;
+            assert_eq!(seeded, config::time_zone_status());
+        });
+    }
+}

@@ -1,4 +1,4 @@
-use crate::state::attendance::{describe_holiday_reason, AttendanceState};
+use crate::state::attendance::{describe_holiday_reason, AttendanceState, ClockMessage};
 use chrono::{Datelike, NaiveDate};
 use leptos::{ev::MouseEvent, *};
 use wasm_bindgen::JsCast;
@@ -40,7 +40,7 @@ fn button_flags_for(status: Option<&str>, loading: bool) -> AttendanceButtonFlag
 pub fn AttendanceActionButtons(
     attendance_state: ReadSignal<AttendanceState>,
     action_pending: ReadSignal<bool>,
-    message: ReadSignal<Option<crate::api::ApiError>>,
+    message: ReadSignal<Option<ClockMessage>>,
     on_clock_in: Callback<MouseEvent>,
     on_clock_out: Callback<MouseEvent>,
     on_break_start: Callback<MouseEvent>,
@@ -157,30 +157,70 @@ pub fn AttendanceActionButtons(
             {move || {
                 message
                     .get()
-                    .map(|err| {
-                        let msg = &err.error;
-                        let is_success_message =
-                            msg.ends_with("しました。") || msg.ends_with("完了しました。");
-                        let is_error = match err.code.as_str() {
-                            "REQUEST_FAILED" | "UNKNOWN" => true,
-                            "VALIDATION_ERROR" => !is_success_message,
-                            _ => true,
+                    .map(|message| {
+                        let (text, is_error) = match message {
+                            ClockMessage::Success(text) => (text, false),
+                            ClockMessage::Error(err) => (err.error, true),
                         };
-                        let (bg, border, text, icon) = if is_error {
-                            ("bg-status-error-bg", "border-status-error-border", "text-status-error-text", "fa-exclamation-circle")
+                        let (bg, border, color, icon) = if is_error {
+                            (
+                                "bg-status-error-bg",
+                                "border-status-error-border",
+                                "text-status-error-text",
+                                "fa-exclamation-circle",
+                            )
                         } else {
-                            ("bg-status-success-bg", "border-status-success-border", "text-status-success-text", "fa-check-circle")
+                            (
+                                "bg-status-success-bg",
+                                "border-status-success-border",
+                                "text-status-success-text",
+                                "fa-check-circle",
+                            )
                         };
                         view! {
-                            <div class=format!("flex items-center gap-2 p-3 rounded-xl border {} {} {} animate-pop-in", bg, border, text)>
+                            <div class=format!("flex items-center gap-2 p-3 rounded-xl border {} {} {} animate-pop-in", bg, border, color)>
                                 <i class=format!("fas {}", icon)></i>
-                                <p class="text-sm font-medium">{msg.clone()}</p>
+                                <p class="text-sm font-medium">{text}</p>
                             </div>
-                        }.into_view()
+                        }
+                        .into_view()
                     })
                     .unwrap_or_else(|| view! {}.into_view())
             }}
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn button_flags_follow_status() {
+        let flags = button_flags_for(Some("not_started"), false);
+        assert!(flags.clock_in);
+        assert!(!flags.clock_out);
+
+        let flags = button_flags_for(Some("clocked_in"), false);
+        assert!(flags.break_start);
+        assert!(flags.clock_out);
+
+        let flags = button_flags_for(Some("on_break"), false);
+        assert!(flags.break_end);
+        assert!(flags.clock_out);
+
+        let flags = button_flags_for(Some("clocked_out"), false);
+        assert!(!flags.clock_in);
+        assert!(!flags.clock_out);
+    }
+
+    #[test]
+    fn loading_disables_buttons() {
+        let flags = button_flags_for(Some("clocked_in"), true);
+        assert!(!flags.clock_in);
+        assert!(!flags.break_start);
+        assert!(!flags.break_end);
+        assert!(!flags.clock_out);
     }
 }
 

@@ -9,6 +9,36 @@ use super::{
     },
 };
 
+fn attendance_range_params(
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+) -> Vec<(&'static str, String)> {
+    let mut params = Vec::new();
+    if let Some(value) = from {
+        params.push(("from", value.format("%Y-%m-%d").to_string()));
+    }
+    if let Some(value) = to {
+        params.push(("to", value.format("%Y-%m-%d").to_string()));
+    }
+    params
+}
+
+fn attendance_status_params(date: Option<NaiveDate>) -> Vec<(&'static str, String)> {
+    date.map(|value| vec![("date", value.format("%Y-%m-%d").to_string())])
+        .unwrap_or_default()
+}
+
+fn attendance_summary_params(year: Option<i32>, month: Option<u32>) -> Vec<(&'static str, String)> {
+    let mut params = Vec::new();
+    if let Some(year) = year {
+        params.push(("year", year.to_string()));
+    }
+    if let Some(month) = month {
+        params.push(("month", month.to_string()));
+    }
+    params
+}
+
 impl ApiClient {
     pub async fn clock_in(&self) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
@@ -46,51 +76,6 @@ impl ApiClient {
                     .post(format!("{}/attendance/clock-out", base_url))
                     .json(&json!({})))
             })
-            .await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
-        } else {
-            let error: ApiError = response
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
-            Err(error)
-        }
-    }
-
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 勤怠のマイページ表示での取得
-    #[allow(dead_code)]
-    pub async fn get_my_attendance(
-        &self,
-        year: Option<i32>,
-        month: Option<u32>,
-    ) -> Result<Vec<AttendanceResponse>, ApiError> {
-        let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/attendance/me", base_url);
-        let mut query_params = Vec::new();
-
-        if let Some(year) = year {
-            query_params.push(format!("year={}", year));
-        }
-        if let Some(month) = month {
-            query_params.push(format!("month={}", month));
-        }
-
-        if !query_params.is_empty() {
-            url.push('?');
-            url.push_str(&query_params.join("&"));
-        }
-
-        let response = self
-            .send_with_refresh(|| Ok(self.http_client().get(&url)))
             .await?;
 
         let status = response.status();
@@ -167,23 +152,17 @@ impl ApiClient {
         to: Option<NaiveDate>,
     ) -> Result<Vec<AttendanceResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/attendance/me", base_url);
-        let mut query_params = Vec::new();
-
-        if let Some(from) = from {
-            query_params.push(format!("from={}", from));
-        }
-        if let Some(to) = to {
-            query_params.push(format!("to={}", to));
-        }
-
-        if !query_params.is_empty() {
-            url.push('?');
-            url.push_str(&query_params.join("&"));
-        }
-
+        let params = attendance_range_params(from, to);
         let response = self
-            .send_with_refresh(|| Ok(self.http_client().get(&url)))
+            .send_with_refresh(|| {
+                let mut request = self
+                    .http_client()
+                    .get(format!("{}/attendance/me", base_url));
+                if !params.is_empty() {
+                    request = request.query(&params);
+                }
+                Ok(request)
+            })
             .await?;
 
         let status = response.status();
@@ -207,12 +186,17 @@ impl ApiClient {
         date: Option<NaiveDate>,
     ) -> Result<AttendanceStatusResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/attendance/status", base_url);
-        if let Some(d) = date {
-            url.push_str(&format!("?date={}", d));
-        }
+        let params = attendance_status_params(date);
         let response = self
-            .send_with_refresh(|| Ok(self.http_client().get(&url)))
+            .send_with_refresh(|| {
+                let mut request = self
+                    .http_client()
+                    .get(format!("{}/attendance/status", base_url));
+                if !params.is_empty() {
+                    request = request.query(&params);
+                }
+                Ok(request)
+            })
             .await?;
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -318,23 +302,17 @@ impl ApiClient {
         month: Option<u32>,
     ) -> Result<AttendanceSummary, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/attendance/me/summary", base_url);
-        let mut query_params = Vec::new();
-
-        if let Some(year) = year {
-            query_params.push(format!("year={}", year));
-        }
-        if let Some(month) = month {
-            query_params.push(format!("month={}", month));
-        }
-
-        if !query_params.is_empty() {
-            url.push('?');
-            url.push_str(&query_params.join("&"));
-        }
-
+        let params = attendance_summary_params(year, month);
         let response = self
-            .send_with_refresh(|| Ok(self.http_client().get(&url)))
+            .send_with_refresh(|| {
+                let mut request = self
+                    .http_client()
+                    .get(format!("{}/attendance/me/summary", base_url));
+                if !params.is_empty() {
+                    request = request.query(&params);
+                }
+                Ok(request)
+            })
             .await?;
 
         let status = response.status();
@@ -397,5 +375,37 @@ impl ApiClient {
                 .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
             Err(error)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn builds_attendance_range_params() {
+        let from = NaiveDate::from_ymd_opt(2025, 1, 2).unwrap();
+        let to = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap();
+        let params = attendance_range_params(Some(from), Some(to));
+        assert_eq!(params.len(), 2);
+        assert!(params.contains(&("from", "2025-01-02".to_string())));
+        assert!(params.contains(&("to", "2025-01-31".to_string())));
+    }
+
+    #[test]
+    fn builds_attendance_status_params() {
+        let date = NaiveDate::from_ymd_opt(2025, 2, 1).unwrap();
+        let params = attendance_status_params(Some(date));
+        assert_eq!(params, vec![("date", "2025-02-01".to_string())]);
+        assert!(attendance_status_params(None).is_empty());
+    }
+
+    #[test]
+    fn builds_attendance_summary_params() {
+        let params = attendance_summary_params(Some(2024), Some(3));
+        assert!(params.contains(&("year", "2024".to_string())));
+        assert!(params.contains(&("month", "3".to_string())));
+        assert_eq!(attendance_summary_params(None, None).len(), 0);
     }
 }

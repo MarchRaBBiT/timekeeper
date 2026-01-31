@@ -43,42 +43,38 @@ impl LoginFormState {
     }
 }
 
-// TODO: リファクタリング後に使用可否を判断
-// - 使う可能性: あり
-// - 想定機能: ログイン入力バリデーション
-#[allow(dead_code)]
-pub fn validate_credentials(username: &str, password: &str) -> Result<(), ApiError> {
-    if username.trim().is_empty() {
-        return Err(ApiError::validation("ユーザー名を入力してください"));
-    }
-    if password.is_empty() {
-        return Err(ApiError::validation("パスワードを入力してください"));
-    }
-    Ok(())
-}
-
-// TODO: リファクタリング後に使用可否を判断
-// - 使う可能性: あり
-// - 想定機能: TOTPコードの正規化
-#[allow(dead_code)]
-pub fn normalize_totp_code(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wasm_bindgen_test::*;
+    use leptos::create_runtime;
 
-    #[wasm_bindgen_test]
-    fn validate_credentials_tests() {
-        assert!(validate_credentials("", "pass").is_err());
-        assert!(validate_credentials("user", "").is_err());
-        assert!(validate_credentials("user", "pass").is_ok());
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[test]
+    fn login_form_validation_requires_values() {
+        with_runtime(|| {
+            let state = LoginFormState::default();
+            assert!(state.validate().is_err());
+            state.username.set("user".into());
+            assert!(state.validate().is_err());
+            state.password.set("pass".into());
+            assert!(state.validate().is_ok());
+        });
+    }
+
+    #[test]
+    fn normalize_totp_trims_value() {
+        with_runtime(|| {
+            let state = LoginFormState::default();
+            state.totp_code.set(" 123456 ".into());
+            assert_eq!(state.normalize_totp().as_deref(), Some("123456"));
+            state.totp_code.set("   ".into());
+            assert!(state.normalize_totp().is_none());
+        });
     }
 }

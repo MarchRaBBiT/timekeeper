@@ -2,7 +2,7 @@ use crate::api::{ApiClient, ApiError};
 use crate::pages::dashboard::{repository, utils::ActivityStatusFilter};
 use crate::state::attendance::{
     self as attendance_state, refresh_today_context, use_attendance, AttendanceState,
-    ClockEventKind, ClockEventPayload,
+    ClockEventKind, ClockEventPayload, ClockMessage,
 };
 use leptos::{ev::MouseEvent, *};
 
@@ -18,7 +18,7 @@ pub struct DashboardViewModel {
     pub activity_filter: RwSignal<ActivityStatusFilter>,
     pub attendance_state: (ReadSignal<AttendanceState>, WriteSignal<AttendanceState>),
     pub clock_action: Action<ClockEventPayload, Result<(), ApiError>>,
-    pub clock_message: RwSignal<Option<ApiError>>,
+    pub clock_message: RwSignal<Option<ClockMessage>>,
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
 }
 
@@ -104,9 +104,9 @@ impl DashboardViewModel {
                                 Some(ClockEventKind::ClockOut) => "退勤しました。",
                                 None => "操作が完了しました。",
                             };
-                            clock_message.set(Some(ApiError::validation(success)));
+                            clock_message.set(Some(ClockMessage::Success(success.to_string())));
                         }
-                        Err(err) => clock_message.set(Some(err)),
+                        Err(err) => clock_message.set(Some(ClockMessage::Error(err))),
                     }
                 }
             });
@@ -172,15 +172,21 @@ impl DashboardViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "ステータスを取得できません。",
+                ))));
                 return;
             };
             if status.status != "clocked_in" {
-                clock_message.set(Some(ApiError::validation("出勤中のみ休憩を開始できます。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "出勤中のみ休憩を開始できます。",
+                ))));
                 return;
             }
             let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some(ApiError::validation("出勤レコードが見つかりません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "出勤レコードが見つかりません。",
+                ))));
                 return;
             };
             clock_message.set(None);
@@ -199,15 +205,21 @@ impl DashboardViewModel {
                 return;
             }
             let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some(ApiError::validation("ステータスを取得できません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "ステータスを取得できません。",
+                ))));
                 return;
             };
             if status.status != "on_break" {
-                clock_message.set(Some(ApiError::validation("休憩中のみ休憩を終了できます。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "休憩中のみ休憩を終了できます。",
+                ))));
                 return;
             }
             let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some(ApiError::validation("休憩レコードが見つかりません。")));
+                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
+                    "休憩レコードが見つかりません。",
+                ))));
                 return;
             };
             clock_message.set(None);

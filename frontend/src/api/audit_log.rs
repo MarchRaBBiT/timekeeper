@@ -1,6 +1,50 @@
 use crate::api::client::ApiClient;
 use crate::api::types::{ApiError, AuditLog, AuditLogListResponse};
 
+fn audit_log_params(
+    page: Option<i64>,
+    per_page: Option<i64>,
+    from: Option<String>,
+    to: Option<String>,
+    actor_id: Option<String>,
+    event_type: Option<String>,
+    result: Option<String>,
+) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    if let Some(page) = page {
+        params.push(("page".to_string(), page.to_string()));
+    }
+    if let Some(per_page) = per_page {
+        params.push(("per_page".to_string(), per_page.to_string()));
+    }
+    if let Some(value) = from {
+        if !value.is_empty() {
+            params.push(("from".into(), value));
+        }
+    }
+    if let Some(value) = to {
+        if !value.is_empty() {
+            params.push(("to".into(), value));
+        }
+    }
+    if let Some(value) = actor_id {
+        if !value.is_empty() {
+            params.push(("actor_id".into(), value));
+        }
+    }
+    if let Some(value) = event_type {
+        if !value.is_empty() {
+            params.push(("event_type".into(), value));
+        }
+    }
+    if let Some(value) = result {
+        if !value.is_empty() {
+            params.push(("result".into(), value));
+        }
+    }
+    params
+}
+
 impl ApiClient {
     pub async fn list_audit_logs(
         &self,
@@ -13,35 +57,15 @@ impl ApiClient {
         result: Option<String>,
     ) -> Result<AuditLogListResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut params = vec![
-            ("page".to_string(), page.to_string()),
-            ("per_page".to_string(), per_page.to_string()),
-        ];
-        if let Some(v) = from {
-            if !v.is_empty() {
-                params.push(("from".into(), v));
-            }
-        }
-        if let Some(v) = to {
-            if !v.is_empty() {
-                params.push(("to".into(), v));
-            }
-        }
-        if let Some(v) = actor_id {
-            if !v.is_empty() {
-                params.push(("actor_id".into(), v));
-            }
-        }
-        if let Some(v) = event_type {
-            if !v.is_empty() {
-                params.push(("event_type".into(), v));
-            }
-        }
-        if let Some(v) = result {
-            if !v.is_empty() {
-                params.push(("result".into(), v));
-            }
-        }
+        let params = audit_log_params(
+            Some(page),
+            Some(per_page),
+            from,
+            to,
+            actor_id,
+            event_type,
+            result,
+        );
 
         let response = self
             .send_with_refresh(|| {
@@ -77,32 +101,7 @@ impl ApiClient {
         result: Option<String>,
     ) -> Result<Vec<AuditLog>, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut params = Vec::new();
-        if let Some(v) = from {
-            if !v.is_empty() {
-                params.push(("from".to_string(), v));
-            }
-        }
-        if let Some(v) = to {
-            if !v.is_empty() {
-                params.push(("to".to_string(), v));
-            }
-        }
-        if let Some(v) = actor_id {
-            if !v.is_empty() {
-                params.push(("actor_id".to_string(), v));
-            }
-        }
-        if let Some(v) = event_type {
-            if !v.is_empty() {
-                params.push(("event_type".to_string(), v));
-            }
-        }
-        if let Some(v) = result {
-            if !v.is_empty() {
-                params.push(("result".to_string(), v));
-            }
-        }
+        let params = audit_log_params(None, None, from, to, actor_id, event_type, result);
 
         let response = self
             .send_with_refresh(|| {
@@ -127,5 +126,34 @@ impl ApiClient {
                 .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
             Err(error)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_log_params_include_page_defaults() {
+        let params = audit_log_params(Some(1), Some(20), None, None, None, None, None);
+        assert!(params.contains(&("page".to_string(), "1".to_string())));
+        assert!(params.contains(&("per_page".to_string(), "20".to_string())));
+    }
+
+    #[test]
+    fn audit_log_params_skip_empty_strings() {
+        let params = audit_log_params(
+            None,
+            None,
+            Some("".into()),
+            Some("2025-01-01".into()),
+            Some("".into()),
+            None,
+            Some("success".into()),
+        );
+        assert!(!params.iter().any(|(k, _)| k == "from"));
+        assert!(params.iter().any(|(k, v)| k == "to" && v == "2025-01-01"));
+        assert!(!params.iter().any(|(k, _)| k == "actor_id"));
+        assert!(params.iter().any(|(k, v)| k == "result" && v == "success"));
     }
 }

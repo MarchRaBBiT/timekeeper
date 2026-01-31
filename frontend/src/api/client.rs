@@ -195,13 +195,16 @@ impl ApiClient {
     /// Delete a user (soft delete by default, hard delete if `hard` is true).
     pub async fn admin_delete_user(&self, user_id: &str, hard: bool) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
-        let url = if hard {
-            format!("{}/admin/users/{}?hard=true", base_url, user_id)
-        } else {
-            format!("{}/admin/users/{}", base_url, user_id)
-        };
         let resp = self
-            .send_with_refresh(|| Ok(self.client.delete(&url)))
+            .send_with_refresh(|| {
+                let mut request = self
+                    .client
+                    .delete(format!("{}/admin/users/{}", base_url, user_id));
+                if hard {
+                    request = request.query(&[("hard", "true")]);
+                }
+                Ok(request)
+            })
             .await?;
         let status = resp.status();
         Self::handle_unauthorized_status(status);
@@ -281,32 +284,6 @@ impl ApiClient {
             Ok(())
         } else {
             let error: ApiError = resp
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
-            Err(error)
-        }
-    }
-
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 祝日カレンダー表示・勤怠入力補助
-    #[allow(dead_code)]
-    pub async fn get_public_holidays(&self) -> Result<Vec<HolidayResponse>, ApiError> {
-        let base_url = self.resolved_base_url().await;
-        let response = self
-            .send_with_refresh(|| Ok(self.client.get(format!("{}/holidays", base_url))))
-            .await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
-        } else {
-            let error: ApiError = response
                 .json()
                 .await
                 .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
@@ -556,36 +533,17 @@ impl ApiClient {
         year: Option<i32>,
     ) -> Result<Vec<CreateHolidayRequest>, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let mut url = format!("{}/admin/holidays/google", base_url);
-        if let Some(year) = year {
-            url.push_str(&format!("?year={}", year));
-        }
-        let response = self.send_with_refresh(|| Ok(self.client.get(&url))).await?;
-
-        let status = response.status();
-        Self::handle_unauthorized_status(status);
-        if status.is_success() {
-            response
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
-        } else {
-            let error: ApiError = response
-                .json()
-                .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
-            Err(error)
-        }
-    }
-
-    // TODO: リファクタリング後に使用可否を判断
-    // - 使う可能性: あり
-    // - 想定機能: 設定/管理画面からのデータエクスポート
-    #[allow(dead_code)]
-    pub async fn export_data(&self) -> Result<serde_json::Value, ApiError> {
-        let base_url = self.resolved_base_url().await;
         let response = self
-            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/export", base_url))))
+            .send_with_refresh(|| {
+                let mut request = self
+                    .client
+                    .get(format!("{}/admin/holidays/google", base_url));
+                if let Some(year) = year {
+                    let params = [("year", year.to_string())];
+                    request = request.query(&params);
+                }
+                Ok(request)
+            })
             .await?;
 
         let status = response.status();
