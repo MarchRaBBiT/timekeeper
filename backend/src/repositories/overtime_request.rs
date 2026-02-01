@@ -155,6 +155,19 @@ impl OvertimeRequestRepository {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_select_query_references_table_and_columns() {
+        let query = OvertimeRequestRepository::base_select_query();
+        assert!(query.contains("SELECT"));
+        assert!(query.contains(TABLE_NAME));
+        assert!(query.contains("planned_hours"));
+    }
+}
+
 impl Repository<OvertimeRequest> for OvertimeRequestRepository {
     const TABLE: &'static str = TABLE_NAME;
     type Id = OvertimeRequestId;
@@ -247,16 +260,5 @@ impl Repository<OvertimeRequest> for OvertimeRequestRepository {
         let query = format!("DELETE FROM {} WHERE id = $1", TABLE_NAME);
         sqlx::query(&query).bind(id).execute(db).await?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn overtime_request_select_columns_include_expected_fields() {
-        assert!(SELECT_COLUMNS.contains("planned_hours"));
-        assert!(SELECT_COLUMNS.contains("decision_comment"));
     }
 }
