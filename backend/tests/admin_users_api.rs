@@ -345,3 +345,161 @@ async fn test_regular_admin_cannot_reset_mfa() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn test_delete_user_rejects_invalid_id_and_missing_user() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = Router::new()
+        .route(
+            "/api/admin/users/{id}",
+            axum::routing::delete(users::delete_user),
+        )
+        .layer(Extension(sysadmin))
+        .with_state(AppState::new(pool, None, None, None, test_config()));
+
+    let invalid = Request::builder()
+        .method("DELETE")
+        .uri("/api/admin/users/not-a-uuid?hard=true")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build invalid request");
+    let invalid_response = app
+        .clone()
+        .oneshot(invalid)
+        .await
+        .expect("call invalid request");
+    assert_eq!(invalid_response.status(), StatusCode::BAD_REQUEST);
+
+    let missing = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/admin/users/{}?hard=true", UserId::new()))
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build missing request");
+    let missing_response = app.oneshot(missing).await.expect("call missing request");
+    assert_eq!(missing_response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let regular_admin = seed_user(&pool, UserRole::Admin, false).await;
+    let target = seed_user(&pool, UserRole::Employee, false).await;
+
+    let app_sysadmin = Router::new()
+        .route("/api/admin/users", axum::routing::post(users::create_user))
+        .route(
+            "/api/admin/users/{id}",
+            axum::routing::delete(users::delete_user),
+        )
+        .route(
+            "/api/admin/archived-users",
+            axum::routing::get(users::get_archived_users),
+        )
+        .route(
+            "/api/admin/archived-users/{id}/restore",
+            axum::routing::post(users::restore_archived_user),
+        )
+        .route(
+            "/api/admin/archived-users/{id}",
+            axum::routing::delete(users::delete_archived_user),
+        )
+        .layer(Extension(sysadmin.clone()))
+        .with_state(AppState::new(pool.clone(), None, None, None, test_config()));
+
+    let sysadmin_token = create_test_token(sysadmin.id, sysadmin.role.clone());
+
+    let soft_delete = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/admin/users/{}?hard=false", target.id))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .expect("build soft delete");
+    let soft_delete_response = app_sysadmin
+        .clone()
+        .oneshot(soft_delete)
+        .await
+        .expect("call soft delete");
+    assert_eq!(soft_delete_response.status(), StatusCode::OK);
+
+    let inserted_conflict = sqlx::query(
+        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NOW(), NOW(), NOW())",
+    )
+    .bind(UserId::new().to_string())
+    .bind(&target.username)
+    .bind("hash")
+    .bind("Conflict User")
+    .bind(format!("conflict-{}@example.com", UserId::new()))
+    .bind("employee")
+    .bind(false)
+    .execute(&pool)
+    .await
+    .expect("insert conflict user");
+    assert_eq!(inserted_conflict.rows_affected(), 1);
+
+    let restore_conflict = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/archived-users/{}/restore", target.id))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .expect("build restore conflict request");
+    let restore_conflict_response = app_sysadmin
+        .clone()
+        .oneshot(restore_conflict)
+        .await
+        .expect("call restore conflict");
+    assert_eq!(restore_conflict_response.status(), StatusCode::BAD_REQUEST);
+
+    let delete_missing_archived = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/admin/archived-users/{}", UserId::new()))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .expect("build delete missing archived request");
+    let delete_missing_archived_response = app_sysadmin
+        .clone()
+        .oneshot(delete_missing_archived)
+        .await
+        .expect("call delete missing archived");
+    assert_eq!(
+        delete_missing_archived_response.status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let app_regular_admin = Router::new()
+        .route(
+            "/api/admin/archived-users",
+            axum::routing::get(users::get_archived_users),
+        )
+        .layer(Extension(regular_admin.clone()))
+        .with_state(AppState::new(pool, None, None, None, test_config()));
+    let regular_token = create_test_token(regular_admin.id, regular_admin.role.clone());
+
+    let forbidden_list = Request::builder()
+        .uri("/api/admin/archived-users")
+        .header("Authorization", format!("Bearer {}", regular_token))
+        .body(Body::empty())
+        .expect("build forbidden list request");
+    let forbidden_list_response = app_regular_admin
+        .oneshot(forbidden_list)
+        .await
+        .expect("call forbidden list");
+    assert_eq!(forbidden_list_response.status(), StatusCode::FORBIDDEN);
+}
