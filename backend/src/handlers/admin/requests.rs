@@ -14,9 +14,9 @@ use crate::{
         leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
     },
     repositories::{
-        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
+        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
     },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
@@ -470,7 +470,10 @@ mod tests {
 
     #[test]
     fn test_request_list_page_info_structure() {
-        let info = AdminRequestListPageInfo { page: 1, per_page: 20 };
+        let info = AdminRequestListPageInfo {
+            page: 1,
+            per_page: 20,
+        };
         assert_eq!(info.page, 1);
         assert_eq!(info.per_page, 20);
     }
@@ -480,7 +483,10 @@ mod tests {
         let response = AdminRequestListResponse {
             leave_requests: vec![],
             overtime_requests: vec![],
-            page_info: AdminRequestListPageInfo { page: 1, per_page: 20 },
+            page_info: AdminRequestListPageInfo {
+                page: 1,
+                per_page: 20,
+            },
         };
         assert!(response.leave_requests.is_empty());
         assert!(response.overtime_requests.is_empty());

@@ -23,19 +23,35 @@ pub trait OvertimeRequestRepositoryTrait: Send + Sync {
     async fn find_all(&self, db: &PgPool) -> Result<Vec<OvertimeRequest>, AppError>;
 
     /// Find an overtime request by ID
-    async fn find_by_id(&self, db: &PgPool, id: OvertimeRequestId) -> Result<OvertimeRequest, AppError>;
+    async fn find_by_id(
+        &self,
+        db: &PgPool,
+        id: OvertimeRequestId,
+    ) -> Result<OvertimeRequest, AppError>;
 
     /// Create a new overtime request
-    async fn create(&self, db: &PgPool, item: &OvertimeRequest) -> Result<OvertimeRequest, AppError>;
+    async fn create(
+        &self,
+        db: &PgPool,
+        item: &OvertimeRequest,
+    ) -> Result<OvertimeRequest, AppError>;
 
     /// Update an existing overtime request
-    async fn update(&self, db: &PgPool, item: &OvertimeRequest) -> Result<OvertimeRequest, AppError>;
+    async fn update(
+        &self,
+        db: &PgPool,
+        item: &OvertimeRequest,
+    ) -> Result<OvertimeRequest, AppError>;
 
     /// Delete an overtime request by ID
     async fn delete(&self, db: &PgPool, id: OvertimeRequestId) -> Result<(), AppError>;
 
     /// Find overtime requests by user
-    async fn find_by_user(&self, db: &PgPool, user_id: UserId) -> Result<Vec<OvertimeRequest>, AppError>;
+    async fn find_by_user(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+    ) -> Result<Vec<OvertimeRequest>, AppError>;
 
     /// Find overtime requests by user and date range
     async fn find_by_user_and_date_range(
@@ -109,7 +125,11 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
         Ok(rows)
     }
 
-    async fn find_by_id(&self, db: &PgPool, id: OvertimeRequestId) -> Result<OvertimeRequest, AppError> {
+    async fn find_by_id(
+        &self,
+        db: &PgPool,
+        id: OvertimeRequestId,
+    ) -> Result<OvertimeRequest, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE id = $1",
             "id, user_id, date, planned_hours, reason, status, approved_by, \
@@ -124,7 +144,11 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
         Ok(result)
     }
 
-    async fn create(&self, db: &PgPool, item: &OvertimeRequest) -> Result<OvertimeRequest, AppError> {
+    async fn create(
+        &self,
+        db: &PgPool,
+        item: &OvertimeRequest,
+    ) -> Result<OvertimeRequest, AppError> {
         use crate::models::request::RequestStatus;
 
         let query = format!(
@@ -161,7 +185,11 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
         Ok(row)
     }
 
-    async fn update(&self, db: &PgPool, item: &OvertimeRequest) -> Result<OvertimeRequest, AppError> {
+    async fn update(
+        &self,
+        db: &PgPool,
+        item: &OvertimeRequest,
+    ) -> Result<OvertimeRequest, AppError> {
         use crate::models::request::RequestStatus;
 
         let query = format!(
@@ -202,7 +230,11 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
         Ok(())
     }
 
-    async fn find_by_user(&self, db: &PgPool, user_id: UserId) -> Result<Vec<OvertimeRequest>, AppError> {
+    async fn find_by_user(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+    ) -> Result<Vec<OvertimeRequest>, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE user_id = $1 ORDER BY created_at DESC",
             "id, user_id, date, planned_hours, reason, status, approved_by, \

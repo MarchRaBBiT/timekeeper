@@ -290,12 +290,18 @@ END:VEVENT
 END:VCALENDAR"#;
 
         let result = parse_google_calendar_ics(ics_content, None);
-        
+
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, "元日");
-        assert_eq!(result[0].holiday_date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert_eq!(
+            result[0].holiday_date,
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()
+        );
         assert_eq!(result[1].name, "成人の日");
-        assert_eq!(result[1].holiday_date, NaiveDate::from_ymd_opt(2024, 1, 8).unwrap());
+        assert_eq!(
+            result[1].holiday_date,
+            NaiveDate::from_ymd_opt(2024, 1, 8).unwrap()
+        );
     }
 
     #[test]
@@ -314,7 +320,7 @@ END:VEVENT
 END:VCALENDAR"#;
 
         let result = parse_google_calendar_ics(ics_content, Some(2024));
-        
+
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "元日 2024");
     }
@@ -335,7 +341,7 @@ END:VEVENT
 END:VCALENDAR"#;
 
         let result = parse_google_calendar_ics(ics_content, None);
-        
+
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "成人の日");
     }
@@ -352,7 +358,7 @@ END:VEVENT
 END:VCALENDAR"#;
 
         let result = parse_google_calendar_ics(ics_content, None);
-        
+
         assert_eq!(result.len(), 1);
         // ICS continuation lines concatenate without adding a space
         assert_eq!(result[0].name, "Very Long HolidayName That Continues");
@@ -379,7 +385,7 @@ END:VEVENT
 END:VCALENDAR"#;
 
         let result = parse_google_calendar_ics(ics_content, None);
-        
+
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].name, "元日");
         assert_eq!(result[1].name, "Independence Day");

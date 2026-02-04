@@ -131,10 +131,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get("x-request-id").unwrap(),
-            "req-id"
-        );
+        assert_eq!(response.headers().get("x-request-id").unwrap(), "req-id");
     }
 
     #[test]

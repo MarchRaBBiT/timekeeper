@@ -308,8 +308,8 @@ mod tests {
 
     #[test]
     fn test_admin_holiday_list_response_structure() {
-        use crate::models::holiday::AdminHolidayListItem;
         use crate::models::holiday::AdminHolidayKind;
+        use crate::models::holiday::AdminHolidayListItem;
         use chrono::Utc;
 
         let item = AdminHolidayListItem {
@@ -458,7 +458,10 @@ mod tests {
     fn test_parse_type_filter_rejects_invalid_type() {
         let result = parse_type_filter(Some("invalid"));
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "`type` must be one of public, weekly, exception, all");
+        assert_eq!(
+            result.unwrap_err(),
+            "`type` must be one of public, weekly, exception, all"
+        );
     }
 
     #[test]

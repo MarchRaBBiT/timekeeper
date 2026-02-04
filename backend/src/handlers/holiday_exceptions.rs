@@ -140,7 +140,9 @@ mod tests {
     fn map_exception_error_handles_conflict() {
         let err = holiday_exception_error_to_app_error(HolidayExceptionError::Conflict);
         match err {
-            AppError::Conflict(msg) => assert_eq!(msg, "Holiday exception already exists for this date"),
+            AppError::Conflict(msg) => {
+                assert_eq!(msg, "Holiday exception already exists for this date")
+            }
             _ => panic!("Expected Conflict"),
         }
     }
