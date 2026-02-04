@@ -35,7 +35,11 @@ pub trait LeaveRequestRepositoryTrait: Send + Sync {
     async fn delete(&self, db: &PgPool, id: LeaveRequestId) -> Result<(), AppError>;
 
     /// Find leave requests by user
-    async fn find_by_user(&self, db: &PgPool, user_id: UserId) -> Result<Vec<LeaveRequest>, AppError>;
+    async fn find_by_user(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+    ) -> Result<Vec<LeaveRequest>, AppError>;
 
     /// Find leave requests by user and date range
     async fn find_by_user_and_date_range(
@@ -217,7 +221,11 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
         Ok(())
     }
 
-    async fn find_by_user(&self, db: &PgPool, user_id: UserId) -> Result<Vec<LeaveRequest>, AppError> {
+    async fn find_by_user(
+        &self,
+        db: &PgPool,
+        user_id: UserId,
+    ) -> Result<Vec<LeaveRequest>, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE user_id = $1 ORDER BY created_at DESC",
             "id, user_id, leave_type, start_date, end_date, reason, status, \

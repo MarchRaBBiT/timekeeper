@@ -1201,8 +1201,7 @@ mod tests {
     }
 
     fn build_user() -> User {
-        let password_hash =
-            hash_password("Secret123!").expect("hash password for tests");
+        let password_hash = hash_password("Secret123!").expect("hash password for tests");
         User::new(
             "tester".into(),
             password_hash,
@@ -1289,15 +1288,9 @@ mod tests {
             .max_connections(1)
             .connect_lazy("postgres://127.0.0.1:1/timekeeper")
             .expect("create lazy pool");
-        ensure_password_not_reused(
-            &pool,
-            UserId::new(),
-            "candidate",
-            "hash",
-            0,
-        )
-        .await
-        .expect("history limit zero should skip db");
+        ensure_password_not_reused(&pool, UserId::new(), "candidate", "hash", 0)
+            .await
+            .expect("history limit zero should skip db");
     }
 
     #[tokio::test]
@@ -1313,9 +1306,9 @@ mod tests {
             .access_claims(&config.jwt_secret)
             .expect("claims decode");
         assert_eq!(claims.sub, user.id.to_string());
-        let refresh_data =
-            session.refresh_token_data(config.refresh_token_expiration_days)
-                .expect("refresh data");
+        let refresh_data = session
+            .refresh_token_data(config.refresh_token_expiration_days)
+            .expect("refresh data");
         assert_eq!(refresh_data.user_id, user.id.to_string());
     }
 
@@ -1336,10 +1329,7 @@ mod tests {
     #[test]
     fn extract_ip_prefers_forwarded_for_and_falls_back_to_real_ip() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-for",
-            " 1.2.3.4 , 5.6.7.8 ".parse().unwrap(),
-        );
+        headers.insert("x-forwarded-for", " 1.2.3.4 , 5.6.7.8 ".parse().unwrap());
         headers.insert("x-real-ip", "9.9.9.9".parse().unwrap());
         assert_eq!(extract_ip(&headers), Some("1.2.3.4".to_string()));
         headers.remove("x-forwarded-for");
@@ -1349,10 +1339,7 @@ mod tests {
     #[test]
     fn extract_user_agent_trims_value() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            header::USER_AGENT,
-            "  TestAgent/1.0 ".parse().unwrap(),
-        );
+        headers.insert(header::USER_AGENT, "  TestAgent/1.0 ".parse().unwrap());
         assert_eq!(
             extract_user_agent(&headers),
             Some("TestAgent/1.0".to_string())
@@ -1362,14 +1349,8 @@ mod tests {
     #[test]
     fn cookie_header_value_reads_cookie_string() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            "foo=bar; baz=qux".parse().unwrap(),
-        );
-        assert_eq!(
-            cookie_header_value(&headers),
-            Some("foo=bar; baz=qux")
-        );
+        headers.insert(header::COOKIE, "foo=bar; baz=qux".parse().unwrap());
+        assert_eq!(cookie_header_value(&headers), Some("foo=bar; baz=qux"));
     }
 
     #[tokio::test]

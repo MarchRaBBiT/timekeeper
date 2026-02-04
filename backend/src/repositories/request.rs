@@ -5,9 +5,10 @@ use std::str::FromStr;
 use crate::error::AppError;
 use crate::models::{leave_request::LeaveRequest, overtime_request::OvertimeRequest};
 use crate::repositories::{
-    common::push_clause, repository::Repository,
+    common::push_clause,
     leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
     overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
+    repository::Repository,
 };
 use crate::types::{LeaveRequestId, OvertimeRequestId, UserId};
 

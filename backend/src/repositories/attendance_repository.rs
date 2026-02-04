@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use sqlx::{PgPool, Postgres};
 use sqlx::postgres::PgTransaction;
 use sqlx::Row as _;
+use sqlx::{PgPool, Postgres};
 
 use crate::error::AppError;
 use crate::models::attendance::Attendance;
@@ -118,10 +118,7 @@ impl AttendanceRepositoryTrait for AttendanceRepository {
     async fn find_by_id(&self, db: &PgPool, id: AttendanceId) -> Result<Attendance, AppError> {
         const SELECT_COLUMNS: &str =
             "id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at";
-        let query = format!(
-            "SELECT {} FROM attendance WHERE id = $1",
-            SELECT_COLUMNS
-        );
+        let query = format!("SELECT {} FROM attendance WHERE id = $1", SELECT_COLUMNS);
         let result = sqlx::query_as::<_, Attendance>(&query)
             .bind(id)
             .fetch_optional(db)
@@ -239,10 +236,7 @@ impl AttendanceRepositoryTrait for AttendanceRepository {
     ) -> Result<Option<Attendance>, AppError> {
         const SELECT_COLUMNS: &str =
             "id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at";
-        let query = format!(
-            "SELECT {} FROM attendance WHERE id = $1",
-            SELECT_COLUMNS
-        );
+        let query = format!("SELECT {} FROM attendance WHERE id = $1", SELECT_COLUMNS);
         let result = sqlx::query_as::<_, Attendance>(&query)
             .bind(id)
             .fetch_optional(db)

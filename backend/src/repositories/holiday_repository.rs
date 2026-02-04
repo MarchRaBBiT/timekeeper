@@ -35,7 +35,8 @@ pub trait HolidayRepositoryTrait: Send + Sync {
     async fn delete(&self, db: &PgPool, id: HolidayId) -> Result<(), AppError>;
 
     /// Find holiday by date
-    async fn find_by_date(&self, db: &PgPool, date: NaiveDate) -> Result<Option<Holiday>, AppError>;
+    async fn find_by_date(&self, db: &PgPool, date: NaiveDate)
+        -> Result<Option<Holiday>, AppError>;
 
     /// Create a holiday with duplicate date checking
     async fn create_unique(&self, db: &PgPool, item: &Holiday) -> Result<Holiday, AppError>;
@@ -108,11 +109,18 @@ impl HolidayRepositoryTrait for HolidayRepository {
     }
 
     async fn delete(&self, db: &PgPool, id: HolidayId) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM holidays WHERE id = $1").bind(id).execute(db).await?;
+        sqlx::query("DELETE FROM holidays WHERE id = $1")
+            .bind(id)
+            .execute(db)
+            .await?;
         Ok(())
     }
 
-    async fn find_by_date(&self, db: &PgPool, date: NaiveDate) -> Result<Option<Holiday>, AppError> {
+    async fn find_by_date(
+        &self,
+        db: &PgPool,
+        date: NaiveDate,
+    ) -> Result<Option<Holiday>, AppError> {
         let query = "SELECT id, holiday_date, name, description, created_at, updated_at FROM holidays WHERE holiday_date = $1";
         let row = sqlx::query_as::<_, Holiday>(query)
             .bind(date)
@@ -149,10 +157,10 @@ impl HolidayRepositoryTrait for HolidayRepository {
         per_page: i64,
         offset: i64,
     ) -> Result<(Vec<AdminHolidayListItem>, i64), AppError> {
+        use crate::repositories::common::push_clause;
+        use chrono::DateTime;
         use sqlx::{FromRow, Postgres, QueryBuilder};
         use std::str::FromStr;
-        use chrono::DateTime;
-        use crate::repositories::common::push_clause;
 
         const ADMIN_HOLIDAY_UNION_CTE: &str = r#"
         WITH unioned AS (

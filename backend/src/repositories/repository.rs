@@ -47,7 +47,7 @@ mod mock_tests {
             T: Repository<Id>,
         {
         }
-        
+
         // Trait exists - test passes
         assert!(true);
     }
