@@ -2,8 +2,5 @@
 DATABASE_URL = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper"
 SQLX_OFFLINE = "true"
 
-[build]
-rustc-wrapper = "sccache"
-
 [target.'cfg(target_os = "linux")']
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
