@@ -187,3 +187,23 @@ pub async fn cleanup_expired_sessions(pool: &PgPool) -> Result<u64, sqlx::Error>
         .await?;
     Ok(result.rows_affected())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_session_functions_exist() {
+        let _create_active_session = create_active_session;
+        let _list_active_sessions_for_user = list_active_sessions_for_user;
+        let _find_active_session_by_id = find_active_session_by_id;
+        let _find_active_session_by_refresh_token_id = find_active_session_by_refresh_token_id;
+        let _find_active_session_by_access_jti = find_active_session_by_access_jti;
+        let _touch_active_session_by_access_jti = touch_active_session_by_access_jti;
+        let _update_active_session_tokens = update_active_session_tokens;
+        let _delete_active_session_by_id = delete_active_session_by_id;
+        let _delete_active_session_by_access_jti = delete_active_session_by_access_jti;
+        let _delete_active_sessions_for_user = delete_active_sessions_for_user;
+        let _cleanup_expired_sessions = cleanup_expired_sessions;
+    }
+}

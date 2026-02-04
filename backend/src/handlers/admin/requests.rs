@@ -14,9 +14,9 @@ use crate::{
         leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
     },
     repositories::{
-        repository::Repository,
         request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
-        LeaveRequestRepository, OvertimeRequestRepository,
+        leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
+        overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
     },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
@@ -277,4 +277,213 @@ fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>>
         return Some(Utc.from_utc_datetime(&dt));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Timelike;
+
+    #[test]
+    fn test_validate_decision_comment_accepts_valid_comment() {
+        let comment = "This is a valid decision comment";
+        assert!(validate_decision_comment(comment).is_ok());
+    }
+
+    #[test]
+    fn test_validate_decision_comment_rejects_empty_comment() {
+        let comment = "";
+        let result = validate_decision_comment(comment);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn test_validate_decision_comment_rejects_whitespace_only_comment() {
+        let comment = "   ";
+        let result = validate_decision_comment(comment);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn test_validate_decision_comment_rejects_too_long_comment() {
+        let comment = "a".repeat(MAX_DECISION_COMMENT_LENGTH + 1);
+        let result = validate_decision_comment(&comment);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn test_validate_decision_comment_accepts_max_length_comment() {
+        let comment = "a".repeat(MAX_DECISION_COMMENT_LENGTH);
+        assert!(validate_decision_comment(&comment).is_ok());
+    }
+
+    #[test]
+    fn test_paginate_requests_with_defaults() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: None,
+            per_page: None,
+        };
+        let result = paginate_requests(&query).unwrap();
+        assert_eq!(result.0, 1);
+        assert_eq!(result.1, 20);
+        assert_eq!(result.2, 0);
+    }
+
+    #[test]
+    fn test_paginate_requests_with_custom_values() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: Some(3),
+            per_page: Some(50),
+        };
+        let result = paginate_requests(&query).unwrap();
+        assert_eq!(result.0, 3);
+        assert_eq!(result.1, 50);
+        assert_eq!(result.2, 100);
+    }
+
+    #[test]
+    fn test_paginate_requests_clamps_per_page() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: Some(1),
+            per_page: Some(200),
+        };
+        let result = paginate_requests(&query).unwrap();
+        assert_eq!(result.1, 100);
+    }
+
+    #[test]
+    fn test_paginate_requests_rejects_zero_page() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: Some(0),
+            per_page: None,
+        };
+        let result = paginate_requests(&query).unwrap();
+        assert_eq!(result.0, 1);
+    }
+
+    #[test]
+    fn test_paginate_requests_rejects_negative_per_page() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: Some(1),
+            per_page: Some(-5),
+        };
+        let result = paginate_requests(&query).unwrap();
+        assert_eq!(result.1, 1);
+    }
+
+    #[test]
+    fn test_parse_filter_datetime_parses_rfc3339() {
+        let input = "2024-01-15T10:30:00Z";
+        let result = parse_filter_datetime(input, false);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_filter_datetime_parses_date_only_start() {
+        let input = "2024-01-15";
+        let result = parse_filter_datetime(input, false);
+        assert!(result.is_some());
+        let dt = result.unwrap();
+        assert_eq!(dt.hour(), 0);
+        assert_eq!(dt.minute(), 0);
+        assert_eq!(dt.second(), 0);
+    }
+
+    #[test]
+    fn test_parse_filter_datetime_parses_date_only_end() {
+        let input = "2024-01-15";
+        let result = parse_filter_datetime(input, true);
+        assert!(result.is_some());
+        let dt = result.unwrap();
+        assert_eq!(dt.hour(), 23);
+        assert_eq!(dt.minute(), 59);
+        assert_eq!(dt.second(), 59);
+    }
+
+    #[test]
+    fn test_parse_filter_datetime_returns_none_for_invalid() {
+        let input = "invalid-date";
+        let result = parse_filter_datetime(input, false);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_approve_payload_structure() {
+        let payload = ApprovePayload {
+            comment: "Approved".to_string(),
+        };
+        assert_eq!(payload.comment, "Approved");
+    }
+
+    #[test]
+    fn test_reject_payload_structure() {
+        let payload = RejectPayload {
+            comment: "Rejected".to_string(),
+        };
+        assert_eq!(payload.comment, "Rejected");
+    }
+
+    #[test]
+    fn test_request_list_query_default_values() {
+        let query = RequestListQuery {
+            status: None,
+            r#type: None,
+            user_id: None,
+            from: None,
+            to: None,
+            page: None,
+            per_page: None,
+        };
+        assert!(query.status.is_none());
+        assert!(query.r#type.is_none());
+        assert!(query.page.is_none());
+        assert!(query.per_page.is_none());
+    }
+
+    #[test]
+    fn test_request_list_page_info_structure() {
+        let info = AdminRequestListPageInfo { page: 1, per_page: 20 };
+        assert_eq!(info.page, 1);
+        assert_eq!(info.per_page, 20);
+    }
+
+    #[test]
+    fn test_request_list_response_structure() {
+        let response = AdminRequestListResponse {
+            leave_requests: vec![],
+            overtime_requests: vec![],
+            page_info: AdminRequestListPageInfo { page: 1, per_page: 20 },
+        };
+        assert!(response.leave_requests.is_empty());
+        assert!(response.overtime_requests.is_empty());
+        assert_eq!(response.page_info.page, 1);
+    }
 }

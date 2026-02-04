@@ -12,9 +12,9 @@ use crate::{
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{
-        repository::Repository,
         request::{RequestCreate, RequestRecord, RequestRepository},
-        LeaveRequestRepository, OvertimeRequestRepository,
+        leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
+        overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
     },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},

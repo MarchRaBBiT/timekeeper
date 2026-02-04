@@ -1,5 +1,5 @@
 use crate::models::holiday::{AdminHolidayKind, AdminHolidayListItem};
-use crate::repositories::holiday::HolidayRepository;
+use crate::repositories::holiday::{HolidayRepository, HolidayRepositoryTrait};
 use crate::repositories::repository::Repository;
 use crate::repositories::weekly_holiday::WeeklyHolidayRepository;
 use axum::{
@@ -266,5 +266,235 @@ fn parse_type_filter(raw: Option<&str>) -> Result<Option<AdminHolidayKind>, &'st
             .map(Some)
             .map_err(|_| "`type` must be one of public, weekly, exception, all"),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn test_admin_holiday_list_query_default_values() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: None,
+            r#type: None,
+            from: None,
+            to: None,
+        };
+        assert!(query.page.is_none());
+        assert!(query.per_page.is_none());
+        assert!(query.r#type.is_none());
+        assert!(query.from.is_none());
+        assert!(query.to.is_none());
+    }
+
+    #[test]
+    fn test_admin_holiday_list_query_with_values() {
+        let query = AdminHolidayListQuery {
+            page: Some(2),
+            per_page: Some(50),
+            r#type: Some("public".to_string()),
+            from: Some("2024-01-01".to_string()),
+            to: Some("2024-12-31".to_string()),
+        };
+        assert_eq!(query.page, Some(2));
+        assert_eq!(query.per_page, Some(50));
+        assert_eq!(query.r#type, Some("public".to_string()));
+        assert_eq!(query.from, Some("2024-01-01".to_string()));
+        assert_eq!(query.to, Some("2024-12-31".to_string()));
+    }
+
+    #[test]
+    fn test_admin_holiday_list_response_structure() {
+        use crate::models::holiday::AdminHolidayListItem;
+        use crate::models::holiday::AdminHolidayKind;
+        use chrono::Utc;
+
+        let item = AdminHolidayListItem {
+            id: "test-id".to_string(),
+            kind: AdminHolidayKind::Public,
+            applies_from: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            applies_to: None,
+            date: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            weekday: None,
+            starts_on: None,
+            ends_on: None,
+            name: Some("New Year's Day".to_string()),
+            description: Some("Public holiday".to_string()),
+            user_id: None,
+            reason: None,
+            created_by: None,
+            created_at: Utc::now(),
+            is_override: None,
+        };
+
+        let response = AdminHolidayListResponse {
+            page: 1,
+            per_page: 25,
+            total: 100,
+            items: vec![item],
+        };
+
+        assert_eq!(response.page, 1);
+        assert_eq!(response.per_page, 25);
+        assert_eq!(response.total, 100);
+        assert_eq!(response.items.len(), 1);
+    }
+
+    #[test]
+    fn test_admin_holiday_query_params_structure() {
+        use crate::models::holiday::AdminHolidayKind;
+
+        let params = AdminHolidayQueryParams {
+            page: 1,
+            per_page: 25,
+            kind: Some(AdminHolidayKind::Public),
+            from: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            to: Some(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()),
+        };
+
+        assert_eq!(params.page, 1);
+        assert_eq!(params.per_page, 25);
+        assert_eq!(params.kind, Some(AdminHolidayKind::Public));
+        assert!(params.from.is_some());
+        assert!(params.to.is_some());
+    }
+
+    #[test]
+    fn test_validate_admin_holiday_query_with_defaults() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: None,
+            r#type: None,
+            from: None,
+            to: None,
+        };
+
+        let result = validate_admin_holiday_query(query);
+        assert!(result.is_ok());
+
+        let params = result.unwrap();
+        assert_eq!(params.page, DEFAULT_PAGE);
+        assert_eq!(params.per_page, DEFAULT_PER_PAGE);
+        assert!(params.kind.is_none());
+        assert!(params.from.is_none());
+        assert!(params.to.is_none());
+    }
+
+    #[test]
+    fn test_validate_admin_holiday_query_with_valid_values() {
+        let query = AdminHolidayListQuery {
+            page: Some(2),
+            per_page: Some(50),
+            r#type: Some("public".to_string()),
+            from: Some("2024-01-01".to_string()),
+            to: Some("2024-12-31".to_string()),
+        };
+
+        let result = validate_admin_holiday_query(query);
+        assert!(result.is_ok());
+
+        let params = result.unwrap();
+        assert_eq!(params.page, 2);
+        assert_eq!(params.per_page, 50);
+        assert_eq!(params.kind, Some(AdminHolidayKind::Public));
+        assert!(params.from.is_some());
+        assert!(params.to.is_some());
+    }
+
+    #[test]
+    fn test_validate_admin_holiday_query_rejects_invalid_date_range() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: None,
+            r#type: None,
+            from: Some("2024-12-31".to_string()),
+            to: Some("2024-01-01".to_string()),
+        };
+
+        let result = validate_admin_holiday_query(query);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn test_parse_type_filter_with_public() {
+        let result = parse_type_filter(Some("public"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(AdminHolidayKind::Public));
+    }
+
+    #[test]
+    fn test_parse_type_filter_with_weekly() {
+        let result = parse_type_filter(Some("weekly"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(AdminHolidayKind::Weekly));
+    }
+
+    #[test]
+    fn test_parse_type_filter_with_exception() {
+        let result = parse_type_filter(Some("exception"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(AdminHolidayKind::Exception));
+    }
+
+    #[test]
+    fn test_parse_type_filter_with_all() {
+        let result = parse_type_filter(Some("all"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_parse_type_filter_with_none() {
+        let result = parse_type_filter(None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_parse_type_filter_rejects_invalid_type() {
+        let result = parse_type_filter(Some("invalid"));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "`type` must be one of public, weekly, exception, all");
+    }
+
+    #[test]
+    fn test_parse_type_filter_case_insensitive() {
+        let result = parse_type_filter(Some("PUBLIC"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(AdminHolidayKind::Public));
+    }
+
+    #[test]
+    fn test_validate_admin_holiday_query_clamps_page() {
+        let query = AdminHolidayListQuery {
+            page: Some(10000),
+            per_page: None,
+            r#type: None,
+            from: None,
+            to: None,
+        };
+
+        let result = validate_admin_holiday_query(query);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().page, MAX_PAGE);
+    }
+
+    #[test]
+    fn test_validate_admin_holiday_query_clamps_per_page() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: Some(200),
+            r#type: None,
+            from: None,
+            to: None,
+        };
+
+        let result = validate_admin_holiday_query(query);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().per_page, MAX_PER_PAGE);
     }
 }

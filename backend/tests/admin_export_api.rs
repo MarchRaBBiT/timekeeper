@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::admin::export_data,
     models::{attendance::Attendance, user::UserRole},
-    repositories::{attendance::AttendanceRepository, repository::Repository},
+    repositories::{attendance::AttendanceRepository, AttendanceRepositoryTrait},
     state::AppState,
 };
 use tokio::sync::Mutex;

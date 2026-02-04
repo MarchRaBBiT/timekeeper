@@ -116,6 +116,7 @@ fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::user::UserRole;
 
     #[test]
     fn map_exception_error_handles_user_not_found() {
@@ -123,6 +124,104 @@ mod tests {
         match err {
             AppError::NotFound(msg) => assert_eq!(msg, "User not found"),
             _ => panic!("Expected NotFound"),
+        }
+    }
+
+    #[test]
+    fn map_exception_error_handles_not_found() {
+        let err = holiday_exception_error_to_app_error(HolidayExceptionError::NotFound);
+        match err {
+            AppError::NotFound(msg) => assert_eq!(msg, "Holiday exception not found"),
+            _ => panic!("Expected NotFound"),
+        }
+    }
+
+    #[test]
+    fn map_exception_error_handles_conflict() {
+        let err = holiday_exception_error_to_app_error(HolidayExceptionError::Conflict);
+        match err {
+            AppError::Conflict(msg) => assert_eq!(msg, "Holiday exception already exists for this date"),
+            _ => panic!("Expected Conflict"),
+        }
+    }
+
+    #[test]
+    fn map_exception_error_handles_database_error() {
+        let db_err = sqlx::Error::PoolTimedOut;
+        let err = holiday_exception_error_to_app_error(HolidayExceptionError::Database(db_err));
+        match err {
+            AppError::InternalServerError(_) => (),
+            _ => panic!("Expected InternalServerError"),
+        }
+    }
+
+    #[test]
+    fn ensure_admin_or_system_allows_admin() {
+        let now = chrono::Utc::now();
+        let admin_user = User {
+            id: UserId::new(),
+            username: "admin".to_string(),
+            password_hash: "hash".to_string(),
+            full_name: "Admin".to_string(),
+            email: "admin@example.com".to_string(),
+            role: UserRole::Admin,
+            is_system_admin: false,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: now,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let result = ensure_admin_or_system(&admin_user);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ensure_admin_or_system_allows_system_admin() {
+        let now = chrono::Utc::now();
+        let system_admin = User {
+            id: UserId::new(),
+            username: "sysadmin".to_string(),
+            password_hash: "hash".to_string(),
+            full_name: "System Admin".to_string(),
+            email: "sysadmin@example.com".to_string(),
+            role: UserRole::Employee,
+            is_system_admin: true,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: now,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let result = ensure_admin_or_system(&system_admin);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ensure_admin_or_system_rejects_regular_user() {
+        let now = chrono::Utc::now();
+        let user = User {
+            id: UserId::new(),
+            username: "user".to_string(),
+            password_hash: "hash".to_string(),
+            full_name: "User".to_string(),
+            email: "user@example.com".to_string(),
+            role: UserRole::Employee,
+            is_system_admin: false,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: now,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let result = ensure_admin_or_system(&user);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::Forbidden(msg) => assert_eq!(msg, "Forbidden"),
+            _ => panic!("Expected Forbidden error"),
         }
     }
 }

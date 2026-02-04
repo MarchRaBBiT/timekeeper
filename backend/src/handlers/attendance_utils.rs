@@ -1,7 +1,6 @@
 use crate::models::break_record::BreakRecordResponse;
-use crate::repositories::attendance::AttendanceRepository;
+use crate::repositories::attendance::{AttendanceRepository, AttendanceRepositoryTrait};
 use crate::repositories::break_record::BreakRecordRepository;
-use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, UserId};
 use crate::{error::AppError, models::attendance::Attendance};
 use chrono::NaiveDate;

@@ -1,4 +1,6 @@
 use axum::extract::{Extension, Query, State};
+#[cfg(feature = "test-utils")]
+use axum::Json;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use chrono_tz::UTC;
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -18,6 +20,9 @@ use timekeeper_backend::{
     state::AppState,
     utils::cookies::SameSite,
 };
+
+#[path = "support/mod.rs"]
+mod support;
 
 #[cfg(feature = "test-utils")]
 fn integration_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -605,7 +610,13 @@ async fn admin_holiday_list_integration_success() {
     };
 
     let Json(resp) = list_holidays(
-        State((pool.clone(), config.clone())),
+        State(AppState::new(
+            pool.clone(),
+            None,
+            None,
+            None,
+            config.clone(),
+        )),
         Extension(test_admin()),
         Query(query),
     )
@@ -626,7 +637,7 @@ async fn admin_holiday_list_integration_success() {
     };
 
     let Json(resp2) = list_holidays(
-        State((pool, config)),
+        State(AppState::new(pool, None, None, None, config)),
         Extension(test_admin()),
         Query(query_page2),
     )
@@ -649,7 +660,13 @@ async fn admin_holiday_list_integration_type_filtering() {
 
     // Public only
     let Json(public_resp) = list_holidays(
-        State((pool.clone(), config.clone())),
+        State(AppState::new(
+            pool.clone(),
+            None,
+            None,
+            None,
+            config.clone(),
+        )),
         Extension(test_admin()),
         Query(AdminHolidayListQuery {
             page: Some(1),
@@ -667,7 +684,13 @@ async fn admin_holiday_list_integration_type_filtering() {
 
     // Weekly only
     let Json(weekly_resp) = list_holidays(
-        State((pool.clone(), config.clone())),
+        State(AppState::new(
+            pool.clone(),
+            None,
+            None,
+            None,
+            config.clone(),
+        )),
         Extension(test_admin()),
         Query(AdminHolidayListQuery {
             page: Some(1),
@@ -685,7 +708,7 @@ async fn admin_holiday_list_integration_type_filtering() {
 
     // Exception only
     let Json(exception_resp) = list_holidays(
-        State((pool, config)),
+        State(AppState::new(pool, None, None, None, config)),
         Extension(test_admin()),
         Query(AdminHolidayListQuery {
             page: Some(1),

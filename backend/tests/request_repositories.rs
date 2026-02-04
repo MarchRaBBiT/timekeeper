@@ -6,7 +6,12 @@ use timekeeper_backend::{
         overtime_request::OvertimeRequest,
         user::UserRole,
     },
-    repositories::{repository::Repository, LeaveRequestRepository, OvertimeRequestRepository},
+    repositories::{
+        LeaveRequestRepository,
+        LeaveRequestRepositoryTrait,
+        OvertimeRequestRepository,
+        OvertimeRequestRepositoryTrait,
+    },
 };
 use tokio::sync::Mutex;
 

@@ -60,6 +60,7 @@ pub enum LeaveType {
 }
 
 impl LeaveType {
+    #[allow(dead_code)]
     pub fn db_value(&self) -> &'static str {
         match self {
             LeaveType::Annual => "annual",

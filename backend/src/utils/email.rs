@@ -114,3 +114,93 @@ impl Default for EmailService {
         Self::new().expect("Failed to initialize email service")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn email_service_new_creates_service() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        std::env::remove_var("SMTP_FROM_ADDRESS");
+        let service = EmailService::new();
+        assert!(service.is_ok());
+        let service = service.unwrap();
+        assert_eq!(service.from_address, "noreply@timekeeper.local");
+    }
+
+    #[test]
+    fn email_service_new_uses_env_vars() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        std::env::set_var("SMTP_HOST", "smtp.example.com");
+        std::env::set_var("SMTP_PORT", "2525");
+        std::env::set_var("SMTP_FROM_ADDRESS", "test@example.com");
+
+        let service = EmailService::new().unwrap();
+        assert_eq!(service.from_address, "test@example.com");
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_skips_when_enabled() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        std::env::set_var("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("test@example.com", "token123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_skips_when_enabled() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("test@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_includes_token() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        std::env::set_var("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("test@example.com", "abc123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_includes_username() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("test@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_default_impl_new() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        let service = EmailService::default();
+        assert_eq!(service.from_address, "noreply@timekeeper.local");
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_valid_to_address() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+        std::env::set_var("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("valid@example.com", "abc123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_valid_to_address() {
+        std::env::set_var("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("valid@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+}

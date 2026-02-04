@@ -213,3 +213,149 @@ fn extract_auth_headers(headers: &axum::http::HeaderMap) -> (Option<String>, Opt
         .map(|value| value.to_owned());
     (auth_header, cookie_header)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    #[test]
+    fn test_parse_bearer_token_with_bearer_prefix() {
+        let header = "Bearer test_token_123";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, Some("test_token_123"));
+    }
+
+    #[test]
+    fn test_parse_bearer_token_lowercase_bearer() {
+        let header = "bearer test_token_123";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, Some("test_token_123"));
+    }
+
+    #[test]
+    fn test_parse_bearer_token_with_multiple_spaces() {
+        let header = "Bearer   test_token_123";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, Some("  test_token_123"));
+    }
+
+    #[test]
+    fn test_parse_bearer_token_returns_none_for_invalid_prefix() {
+        let header = "Basic test_token_123";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_bearer_token_returns_none_for_missing_token() {
+        let header = "Bearer ";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, Some(""));
+    }
+
+    #[test]
+    fn test_parse_bearer_token_returns_none_for_empty_string() {
+        let header = "";
+        let result = parse_bearer_token(header);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_auth_headers_with_authorization() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer test_token".parse().unwrap(),
+        );
+        let (auth, cookie) = extract_auth_headers(&headers);
+        assert_eq!(auth, Some("Bearer test_token".to_string()));
+        assert_eq!(cookie, None);
+    }
+
+    #[test]
+    fn test_extract_auth_headers_with_cookie() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            "access_token=cookie_token".parse().unwrap(),
+        );
+        let (auth, cookie) = extract_auth_headers(&headers);
+        assert_eq!(auth, None);
+        assert_eq!(cookie, Some("access_token=cookie_token".to_string()));
+    }
+
+    #[test]
+    fn test_extract_auth_headers_with_both() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer test_token".parse().unwrap(),
+        );
+        headers.insert(
+            header::COOKIE,
+            "access_token=cookie_token".parse().unwrap(),
+        );
+        let (auth, cookie) = extract_auth_headers(&headers);
+        assert_eq!(auth, Some("Bearer test_token".to_string()));
+        assert_eq!(cookie, Some("access_token=cookie_token".to_string()));
+    }
+
+    #[test]
+    fn test_extract_auth_headers_empty() {
+        let headers = HeaderMap::new();
+        let (auth, cookie) = extract_auth_headers(&headers);
+        assert_eq!(auth, None);
+        assert_eq!(cookie, None);
+    }
+
+    #[test]
+    fn test_verify_token_with_valid_token() {
+        use crate::utils::jwt::{create_access_token, verify_access_token};
+        use crate::types::UserId;
+        use crate::models::user::UserRole;
+
+        let user_id = UserId::new();
+        let username = "testuser".to_string();
+        let role = format!("{:?}", UserRole::Employee);
+        let secret = "test_secret_key_for_jwt_tokens";
+        let (token_string, _claims) = create_access_token(user_id.to_string(), username, role, &secret, 1).unwrap();
+
+        let result = verify_access_token(&token_string, secret);
+        assert!(result.is_ok());
+        
+        let claims = result.unwrap();
+        assert_eq!(claims.sub, user_id.to_string());
+    }
+
+    #[test]
+    fn test_verify_token_with_invalid_secret() {
+        use crate::utils::jwt::{create_access_token, verify_access_token};
+        use crate::types::UserId;
+        use crate::models::user::UserRole;
+
+        let user_id = UserId::new();
+        let username = "testuser".to_string();
+        let role = format!("{:?}", UserRole::Employee);
+        let secret = "correct_secret";
+        let wrong_secret = "wrong_secret";
+        let (token_string, _claims) = create_access_token(user_id.to_string(), username, role, &secret, 1).unwrap();
+
+        let result = verify_access_token(&token_string, wrong_secret);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_token_with_malformed_token() {
+        let secret = "test_secret";
+        let result = verify_token("not.a.valid.token", secret);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_token_with_empty_token() {
+        let secret = "test_secret";
+        let result = verify_token("", secret);
+        assert!(result.is_err());
+    }
+}

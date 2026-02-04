@@ -18,7 +18,9 @@ use crate::handlers::attendance_utils::{
     update_clock_out,
 };
 use crate::repositories::{
-    attendance::AttendanceRepository, break_record::BreakRecordRepository, repository::Repository,
+    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
+    break_record::BreakRecordRepository,
+    repository::Repository,
 };
 use crate::state::AppState;
 use crate::types::{AttendanceId, UserId};
@@ -524,4 +526,93 @@ async fn reject_if_holiday(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn test_attendance_query_default_values() {
+        let query = AttendanceQuery {
+            year: None,
+            month: None,
+            from: None,
+            to: None,
+        };
+        assert!(query.year.is_none());
+        assert!(query.month.is_none());
+        assert!(query.from.is_none());
+        assert!(query.to.is_none());
+    }
+
+    #[test]
+    fn test_attendance_query_with_values() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let query = AttendanceQuery {
+            year: Some(2024),
+            month: Some(1),
+            from: Some(date),
+            to: Some(date),
+        };
+        assert_eq!(query.year, Some(2024));
+        assert_eq!(query.month, Some(1));
+        assert_eq!(query.from, Some(date));
+        assert_eq!(query.to, Some(date));
+    }
+
+    #[test]
+    fn test_attendance_export_query_default_values() {
+        let query = AttendanceExportQuery {
+            from: None,
+            to: None,
+        };
+        assert!(query.from.is_none());
+        assert!(query.to.is_none());
+    }
+
+    #[test]
+    fn test_attendance_status_response_structure() {
+        let response = AttendanceStatusResponse {
+            status: "clocked_in".to_string(),
+            attendance_id: Some("test-id".to_string()),
+            active_break_id: None,
+            clock_in_time: None,
+            clock_out_time: None,
+        };
+        assert_eq!(response.status, "clocked_in");
+        assert!(response.attendance_id.is_some());
+        assert!(response.active_break_id.is_none());
+    }
+
+    #[test]
+    fn test_clock_in_request_structure() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15);
+        let request = ClockInRequest { date };
+        assert_eq!(request.date, date);
+    }
+
+    #[test]
+    fn test_clock_out_request_structure() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15);
+        let request = ClockOutRequest { date };
+        assert_eq!(request.date, date);
+    }
+
+    #[test]
+    fn test_attendance_summary_structure() {
+        let summary = AttendanceSummary {
+            month: 1,
+            year: 2024,
+            total_work_hours: 160.5,
+            total_work_days: 20,
+            average_daily_hours: 8.0,
+        };
+        assert_eq!(summary.month, 1);
+        assert_eq!(summary.year, 2024);
+        assert_eq!(summary.total_work_hours, 160.5);
+        assert_eq!(summary.total_work_days, 20);
+        assert_eq!(summary.average_daily_hours, 8.0);
+    }
 }

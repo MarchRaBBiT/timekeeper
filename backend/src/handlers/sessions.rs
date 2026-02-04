@@ -199,3 +199,78 @@ fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
         .map(|agent| agent.trim().to_string())
         .filter(|agent| !agent.is_empty())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    #[test]
+    fn extract_ip_from_x_forwarded_for() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.195, 70.41.3.18, 150.172.238.178".parse().unwrap());
+        
+        let result = extract_ip(&headers);
+        
+        assert_eq!(result, Some("203.0.113.195".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_from_x_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "192.168.1.100".parse().unwrap());
+        
+        let result = extract_ip(&headers);
+        
+        assert_eq!(result, Some("192.168.1.100".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_prefers_x_forwarded_for() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.195".parse().unwrap());
+        headers.insert("x-real-ip", "192.168.1.100".parse().unwrap());
+        
+        let result = extract_ip(&headers);
+        
+        assert_eq!(result, Some("203.0.113.195".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_returns_none_when_missing() {
+        let headers = HeaderMap::new();
+        
+        let result = extract_ip(&headers);
+        
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_user_agent_from_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)".parse().unwrap());
+        
+        let result = extract_user_agent(&headers);
+        
+        assert_eq!(result, Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64)".to_string()));
+    }
+
+    #[test]
+    fn extract_user_agent_returns_none_when_missing() {
+        let headers = HeaderMap::new();
+        
+        let result = extract_user_agent(&headers);
+        
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_user_agent_trims_whitespace() {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, "  TestAgent  ".parse().unwrap());
+        
+        let result = extract_user_agent(&headers);
+        
+        assert_eq!(result, Some("TestAgent".to_string()));
+    }
+}

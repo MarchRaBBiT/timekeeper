@@ -129,3 +129,64 @@ fn log_error_event(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn buffer_body_returns_bytes_and_preview() {
+        let body = Body::from("test body");
+        let (bytes, preview) = buffer_body(body).await.unwrap();
+        assert_eq!(bytes, b"test body"[..]);
+        assert_eq!(preview, "test body");
+    }
+
+    #[tokio::test]
+    async fn buffer_body_truncates_large_body() {
+        let large_body = "x".repeat(10000);
+        let body = Body::from(large_body.clone());
+        let (bytes, preview) = buffer_body(body).await.unwrap();
+        assert_eq!(bytes.len(), 10000);
+        assert!(preview.starts_with("x"));
+        assert!(preview.contains("... (truncated"));
+        assert!(preview.contains("10000 bytes total"));
+    }
+
+    #[tokio::test]
+    async fn buffer_body_handles_empty_body() {
+        let body = Body::empty();
+        let (bytes, preview) = buffer_body(body).await.unwrap();
+        assert_eq!(bytes.len(), 0);
+        assert_eq!(preview, "");
+    }
+
+    #[tokio::test]
+    async fn buffer_body_handles_invalid_utf8() {
+        let invalid_bytes = vec![0xFF, 0xFE, 0xFD];
+        let body = Body::from(invalid_bytes);
+        let (bytes, preview) = buffer_body(body).await.unwrap();
+        assert_eq!(bytes.len(), 3);
+        assert!(preview.contains("\u{FFFD}"));
+    }
+
+    #[tokio::test]
+    async fn buffer_body_exceeds_max_size() {
+        let huge_body = vec![0u8; 100000];
+        let body = Body::from(huge_body);
+        let result = buffer_body(body).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn buffer_body_constants_are_defined() {
+        assert_eq!(MAX_BUFFERED_BODY_BYTES, 64 * 1024);
+        assert_eq!(MAX_LOGGED_BODY_BYTES, 2048);
+    }
+
+    #[test]
+    fn log_error_responses_constants_are_defined() {
+        assert_eq!(MAX_BUFFERED_BODY_BYTES, 64 * 1024);
+        assert_eq!(MAX_LOGGED_BODY_BYTES, 2048);
+    }
+}

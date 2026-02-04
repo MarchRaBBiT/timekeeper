@@ -33,3 +33,15 @@ pub async fn rollback_transaction(tx: PgTransaction<'_>) -> Result<(), AppError>
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transaction_module_is_compilable() {
+        let _ = begin_transaction;
+        let _ = commit_transaction;
+        let _ = rollback_transaction;
+    }
+}

@@ -54,10 +54,14 @@ impl AdminSessionResponse {
 
 pub async fn list_user_sessions(
     State(state): State<AppState>,
-    Extension(_user): Extension<User>,
+    Extension(user): Extension<User>,
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
 ) -> Result<Json<Vec<AdminSessionResponse>>, AppError> {
+    if !(user.is_admin() || user.is_system_admin()) {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
     let user_id =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
 
@@ -79,6 +83,10 @@ pub async fn revoke_session(
     headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
+    if !(user.is_admin() || user.is_system_admin()) {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
     if session_id.trim().is_empty() {
         return Err(AppError::BadRequest("Session ID is required".into()));
     }

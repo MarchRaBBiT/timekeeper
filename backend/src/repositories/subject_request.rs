@@ -220,3 +220,16 @@ fn push_clause<'a>(builder: &mut QueryBuilder<'a, Postgres>, has_clause: &mut bo
         *has_clause = true;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subject_request_filters_default() {
+        let filters = SubjectRequestFilters::default();
+        assert!(filters.status.is_none());
+        assert!(filters.request_type.is_none());
+        assert!(filters.user_id.is_none());
+    }
+}

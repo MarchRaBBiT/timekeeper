@@ -12,7 +12,8 @@ use timekeeper_backend::{
     handlers::attendance,
     models::{attendance::Attendance, break_record::BreakRecord, user::UserRole},
     repositories::{
-        attendance::AttendanceRepository, break_record::BreakRecordRepository,
+        attendance::{AttendanceRepository, AttendanceRepositoryTrait},
+        break_record::BreakRecordRepository,
         repository::Repository,
     },
     state::AppState,
