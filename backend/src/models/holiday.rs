@@ -171,3 +171,72 @@ pub struct AdminHolidayListItem {
     pub created_at: DateTime<Utc>,
     pub is_override: Option<bool>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn admin_holiday_kind_as_str_and_from_str_roundtrip() {
+        for (kind, expected) in [
+            (AdminHolidayKind::Public, "public"),
+            (AdminHolidayKind::Weekly, "weekly"),
+            (AdminHolidayKind::Exception, "exception"),
+        ] {
+            assert_eq!(kind.as_str(), expected);
+            assert_eq!(AdminHolidayKind::from_str(expected), Ok(kind));
+            assert_eq!(
+                AdminHolidayKind::from_str(&expected.to_uppercase()),
+                Ok(kind)
+            );
+        }
+        assert!(AdminHolidayKind::from_str("unknown").is_err());
+    }
+
+    #[test]
+    fn holiday_new_sets_fields_and_timestamps() {
+        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("valid date");
+        let holiday = Holiday::new(date, "Foundation Day".to_string(), Some("desc".to_string()));
+
+        assert_eq!(holiday.holiday_date, date);
+        assert_eq!(holiday.name, "Foundation Day");
+        assert_eq!(holiday.description.as_deref(), Some("desc"));
+        assert_eq!(holiday.created_at, holiday.updated_at);
+    }
+
+    #[test]
+    fn weekly_holiday_new_sets_enforced_window_from_inputs() {
+        let starts_on = NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date");
+        let ends_on = NaiveDate::from_ymd_opt(2026, 12, 31);
+        let created_by = UserId::new();
+        let weekly = WeeklyHoliday::new(1, starts_on, ends_on, created_by);
+
+        assert_eq!(weekly.weekday, 1);
+        assert_eq!(weekly.starts_on, starts_on);
+        assert_eq!(weekly.ends_on, ends_on);
+        assert_eq!(weekly.enforced_from, starts_on);
+        assert_eq!(weekly.enforced_to, ends_on);
+        assert_eq!(weekly.created_by, created_by);
+        assert_eq!(weekly.created_at, weekly.updated_at);
+    }
+
+    #[test]
+    fn holiday_and_weekly_responses_map_from_models() {
+        let date = NaiveDate::from_ymd_opt(2026, 5, 3).expect("valid date");
+        let holiday = Holiday::new(date, "Constitution".to_string(), None);
+        let holiday_id = holiday.id;
+        let holiday_response = HolidayResponse::from(holiday);
+        assert_eq!(holiday_response.id, holiday_id);
+        assert_eq!(holiday_response.holiday_date, date);
+        assert_eq!(holiday_response.name, "Constitution");
+
+        let weekly = WeeklyHoliday::new(6, date, None, UserId::new());
+        let weekly_id = weekly.id;
+        let weekly_response = WeeklyHolidayResponse::from(weekly);
+        assert_eq!(weekly_response.id, weekly_id);
+        assert_eq!(weekly_response.weekday, 6);
+        assert_eq!(weekly_response.starts_on, date);
+        assert!(weekly_response.ends_on.is_none());
+    }
+}

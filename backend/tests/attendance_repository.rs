@@ -7,9 +7,7 @@ use timekeeper_backend::{
         user::UserRole,
     },
     repositories::{
-        repository::Repository,
-        AttendanceRepository,
-        AttendanceRepositoryTrait,
+        repository::Repository, AttendanceRepository, AttendanceRepositoryTrait,
         BreakRecordRepository,
     },
 };

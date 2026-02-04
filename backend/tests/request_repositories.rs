@@ -7,9 +7,7 @@ use timekeeper_backend::{
         user::UserRole,
     },
     repositories::{
-        LeaveRequestRepository,
-        LeaveRequestRepositoryTrait,
-        OvertimeRequestRepository,
+        LeaveRequestRepository, LeaveRequestRepositoryTrait, OvertimeRequestRepository,
         OvertimeRequestRepositoryTrait,
     },
 };

@@ -599,6 +599,14 @@ mod tests {
         }
     }
 
+    fn test_state_with_config(config: Config) -> AppState {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url)
+            .expect("create lazy pool");
+        AppState::new(pool, None, None, None, config)
+    }
+
     #[test]
     #[should_panic(
         expected = "Refusing to start due to insecure CORS configuration in production mode"
@@ -619,11 +627,7 @@ mod tests {
     #[tokio::test]
     async fn test_app_router_builds() {
         let config = test_config(vec!["*".to_string()]);
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect_lazy(&config.database_url)
-            .expect("create lazy pool");
-        let state = AppState::new(pool, None, None, None, config);
+        let state = test_state_with_config(config);
 
         let mut app = Router::new()
             .merge(public_routes(state.clone()))
@@ -639,6 +643,79 @@ mod tests {
         let response = app.call(request).await.unwrap();
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_user_admin_and_system_routes_require_auth() {
+        let state = test_state_with_config(test_config(vec!["*".to_string()]));
+
+        let mut user_app = Router::new()
+            .merge(user_routes(state.clone()))
+            .with_state(state.clone());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/auth/me")
+            .body(Body::empty())
+            .expect("build user route request");
+        let response = user_app.call(request).await.expect("call user route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let mut admin_app = Router::new()
+            .merge(admin_routes(state.clone()))
+            .with_state(state.clone());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/admin/users")
+            .body(Body::empty())
+            .expect("build admin route request");
+        let response = admin_app.call(request).await.expect("call admin route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let mut system_admin_app = Router::new()
+            .merge(system_admin_routes(state.clone()))
+            .with_state(state);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/admin/mfa/reset")
+            .body(Body::empty())
+            .expect("build system admin route request");
+        let response = system_admin_app
+            .call(request)
+            .await
+            .expect("call system admin route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_log_config_with_read_database_and_wildcard_in_non_production() {
+        let mut config = test_config(vec!["*".to_string()]);
+        config.read_database_url = Some("postgres://read-db".to_string());
+        config.production_mode = false;
+        log_config(&config);
+    }
+
+    #[test]
+    fn test_cors_layer_accepts_specific_origins() {
+        let config = test_config(vec![
+            "https://example.com".to_string(),
+            "http://localhost:3000".to_string(),
+        ]);
+        let _layer = cors_layer(&config);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_cleanup_skips_when_retention_disabled() {
+        let config = test_config(vec!["*".to_string()]);
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url)
+            .expect("create lazy pool");
+        let audit_service: Arc<dyn AuditLogServiceTrait> =
+            Arc::new(AuditLogService::new(pool.clone()));
+        let consent_service = Arc::new(ConsentLogService::new(pool));
+
+        spawn_audit_log_cleanup(audit_service, AuditLogRetentionPolicy::Disabled);
+        spawn_consent_log_cleanup(consent_service, AuditLogRetentionPolicy::Disabled);
     }
 
     #[derive(Default, Clone)]

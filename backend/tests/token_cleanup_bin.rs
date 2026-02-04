@@ -21,15 +21,13 @@ async fn token_cleanup_binary_removes_expired_records() {
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let expired = Utc::now() - Duration::hours(2);
 
-    sqlx::query(
-        "INSERT INTO active_access_tokens (jti, user_id, expires_at) VALUES ($1, $2, $3)",
-    )
-    .bind(Uuid::new_v4().to_string())
-    .bind(user.id.to_string())
-    .bind(expired)
-    .execute(&pool)
-    .await
-    .expect("insert active access token");
+    sqlx::query("INSERT INTO active_access_tokens (jti, user_id, expires_at) VALUES ($1, $2, $3)")
+        .bind(Uuid::new_v4().to_string())
+        .bind(user.id.to_string())
+        .bind(expired)
+        .execute(&pool)
+        .await
+        .expect("insert active access token");
 
     let refresh_id = Uuid::new_v4().to_string();
     sqlx::query(
@@ -82,11 +80,10 @@ async fn token_cleanup_binary_removes_expired_records() {
         .expect("run token_cleanup");
     assert!(status.success());
 
-    let access_tokens: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM active_access_tokens")
-            .fetch_one(&pool)
-            .await
-            .expect("count active access tokens");
+    let access_tokens: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_access_tokens")
+        .fetch_one(&pool)
+        .await
+        .expect("count active access tokens");
     let sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM active_sessions")
         .fetch_one(&pool)
         .await

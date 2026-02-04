@@ -34,7 +34,10 @@ async fn migrate_db(pool: &PgPool) {
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD.get_or_init(|| tokio::sync::Mutex::new(())).lock().await
+    GUARD
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
 }
 
 fn auth_router_with_config(pool: PgPool, config: Config) -> Router {
@@ -114,13 +117,11 @@ async fn count_active_sessions(pool: &PgPool, user_id: &str) -> i64 {
 }
 
 async fn refresh_token_exists(pool: &PgPool, token_id: &str) -> bool {
-    sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM refresh_tokens WHERE id = $1)",
-    )
-    .bind(token_id)
-    .fetch_one(pool)
-    .await
-    .expect("refresh token exists")
+    sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM refresh_tokens WHERE id = $1)")
+        .bind(token_id)
+        .fetch_one(pool)
+        .await
+        .expect("refresh token exists")
 }
 
 #[tokio::test]
@@ -170,8 +171,8 @@ async fn login_rejects_invalid_password() {
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
 
-    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!")
-        .await;
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
     let app = auth_router(pool.clone());
 
     let payload = json!({
@@ -221,15 +222,13 @@ async fn login_enforces_session_limit() {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "username": user.username.clone(),
-                            "password": password,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
                 .expect("build login request"),
         )
         .await
@@ -283,7 +282,10 @@ async fn me_returns_current_user() {
     assert_eq!(payload["full_name"].as_str(), Some(user.full_name.as_str()));
     assert_eq!(payload["email"].as_str(), Some(user.email.as_str()));
     assert_eq!(payload["role"].as_str(), Some(user.role.as_str()));
-    assert_eq!(payload["is_system_admin"].as_bool(), Some(user.is_system_admin));
+    assert_eq!(
+        payload["is_system_admin"].as_bool(),
+        Some(user.is_system_admin)
+    );
     assert_eq!(payload["mfa_enabled"].as_bool(), Some(false));
 }
 
@@ -303,15 +305,13 @@ async fn update_profile_updates_full_name_and_email() {
                 .method("PUT")
                 .uri("/api/auth/me")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "full_name": new_full_name,
-                            "email": new_email,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "full_name": new_full_name,
+                        "email": new_email,
+                    })
+                    .to_string(),
+                ))
                 .expect("build update profile request"),
         )
         .await
@@ -345,14 +345,12 @@ async fn update_profile_rejects_duplicate_email() {
                 .method("PUT")
                 .uri("/api/auth/me")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "email": other.email,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "email": other.email,
+                    })
+                    .to_string(),
+                ))
                 .expect("build update profile request"),
         )
         .await
@@ -376,15 +374,13 @@ async fn refresh_rotates_tokens_and_revokes_previous_access_token() {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "username": user.username.clone(),
-                            "password": password,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
                 .expect("build login request"),
         )
         .await
@@ -472,10 +468,7 @@ async fn refresh_rejects_missing_or_malformed_token() {
                 .method("POST")
                 .uri("/api/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
-                .header(
-                    header::COOKIE,
-                    format!("{REFRESH_COOKIE_NAME}=not-a-token"),
-                )
+                .header(header::COOKIE, format!("{REFRESH_COOKIE_NAME}=not-a-token"))
                 .body(Body::from("{}"))
                 .expect("build refresh request"),
         )
@@ -500,15 +493,13 @@ async fn logout_revokes_current_session() {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "username": user.username.clone(),
-                            "password": password,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
                 .expect("build login request"),
         )
         .await
@@ -529,14 +520,12 @@ async fn logout_revokes_current_session() {
                 .method("POST")
                 .uri("/api/auth/logout")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "refresh_token": refresh_token,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "refresh_token": refresh_token,
+                    })
+                    .to_string(),
+                ))
                 .expect("build logout request"),
         )
         .await
@@ -569,15 +558,13 @@ async fn logout_all_revokes_all_sessions() {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(
-                    Body::from(
-                        json!({
-                            "username": user.username.clone(),
-                            "password": password,
-                        })
-                        .to_string(),
-                    ),
-                )
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
                 .expect("build login request"),
         )
         .await

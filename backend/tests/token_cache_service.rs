@@ -20,9 +20,7 @@ async fn token_cache_service_roundtrip() {
     let docker = Cli::default();
     let host_port = allocate_ephemeral_port();
     let image = GenericImage::new("redis", "7-alpine")
-        .with_wait_for(WaitFor::message_on_stdout(
-            "Ready to accept connections",
-        ));
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
     let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
     let _container = docker.run(image);
 
@@ -42,20 +40,14 @@ async fn token_cache_service_roundtrip() {
         .cache_token("jti-1", user_id, 60)
         .await
         .expect("cache token");
-    let active = service
-        .is_token_active("jti-1")
-        .await
-        .expect("check token");
+    let active = service.is_token_active("jti-1").await.expect("check token");
     assert_eq!(active, Some(true));
 
     service
         .invalidate_token("jti-1")
         .await
         .expect("invalidate token");
-    let active = service
-        .is_token_active("jti-1")
-        .await
-        .expect("check token");
+    let active = service.is_token_active("jti-1").await.expect("check token");
     assert_eq!(active, Some(false));
 
     service

@@ -27,8 +27,8 @@ use {
     },
     serde_json::json,
     std::sync::{Arc, OnceLock},
-    tower::ServiceExt,
     tokio::sync::Mutex,
+    tower::ServiceExt,
 };
 
 #[path = "support/mod.rs"]

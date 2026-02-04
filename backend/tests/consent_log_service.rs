@@ -45,11 +45,10 @@ async fn consent_log_service_deletes_logs_before_cutoff() {
         .expect("delete logs");
     assert_eq!(deleted, 1);
 
-    let remaining: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM consent_logs WHERE user_id = $1")
-            .bind(user.id.to_string())
-            .fetch_one(&pool)
-            .await
-            .expect("count logs");
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM consent_logs WHERE user_id = $1")
+        .bind(user.id.to_string())
+        .fetch_one(&pool)
+        .await
+        .expect("count logs");
     assert_eq!(remaining, 0);
 }

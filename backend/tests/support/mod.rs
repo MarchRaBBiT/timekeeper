@@ -187,7 +187,7 @@ pub fn test_config() -> Config {
 pub async fn test_pool() -> PgPool {
     let database_url = test_database_url();
     let mut retry_count = 0;
-    let max_retries = 3;
+    let max_retries = 10;
 
     loop {
         match PgPoolOptions::new()
@@ -482,7 +482,9 @@ pub async fn seed_attendance(
     };
 
     let repo = AttendanceRepository::new();
-    repo.create(pool, &attendance).await.expect("create attendance")
+    repo.create(pool, &attendance)
+        .await
+        .expect("create attendance")
 }
 
 pub async fn seed_break_record(
@@ -509,15 +511,12 @@ pub async fn seed_break_record(
     };
 
     let repo = BreakRecordRepository::new();
-    repo.create(pool, &break_record).await.expect("create break record")
+    repo.create(pool, &break_record)
+        .await
+        .expect("create break record")
 }
 
-pub async fn seed_audit_log(
-    pool: &PgPool,
-    user_id: UserId,
-    action: &str,
-    resource: &str,
-) {
+pub async fn seed_audit_log(pool: &PgPool, user_id: UserId, action: &str, resource: &str) {
     use sqlx::types::Json;
 
     let id = timekeeper_backend::types::AuditLogId::new();
@@ -546,12 +545,7 @@ pub async fn seed_audit_log(
     .expect("insert audit log");
 }
 
-pub async fn seed_consent_log(
-    pool: &PgPool,
-    user_id: UserId,
-    purpose: &str,
-    policy_version: &str,
-) {
+pub async fn seed_consent_log(pool: &PgPool, user_id: UserId, purpose: &str, policy_version: &str) {
     use chrono::Utc;
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -601,7 +595,7 @@ pub async fn seed_active_session(
     .execute(pool)
     .await
     .expect("insert refresh token");
-    
+
     sqlx::query(
         "INSERT INTO active_sessions \
             (id, user_id, refresh_token_id, access_jti, device_label, created_at, last_seen_at, expires_at) \
@@ -686,35 +680,39 @@ where
 
 pub fn create_test_token(user_id: UserId, role: UserRole) -> String {
     use timekeeper_backend::utils::jwt::create_access_token;
-    
+
     let username = "testuser".to_string();
     let role_str = format!("{:?}", role);
     let secret = test_config().jwt_secret;
-    let (token, _claims) = create_access_token(
-        user_id.to_string(),
-        username,
-        role_str,
-        &secret,
-        1,
-    )
-    .expect("create test token");
-    
+    let (token, _claims) = create_access_token(user_id.to_string(), username, role_str, &secret, 1)
+        .expect("create test token");
+
     token
 }
 
-pub fn build_auth_request(method: &str, uri: &str, token: &str, body: Option<Body>) -> Request<Body> {
+pub fn build_auth_request(
+    method: &str,
+    uri: &str,
+    token: &str,
+    body: Option<Body>,
+) -> Request<Body> {
     let builder = Request::builder()
         .method(method)
         .uri(uri)
         .header(header::AUTHORIZATION, format!("Bearer {}", token));
-    
+
     match body {
         Some(b) => builder.body(b).expect("build request with body"),
         None => builder.body(Body::empty()).expect("build request"),
     }
 }
 
-pub fn build_json_request(method: &str, uri: &str, token: &str, json_body: serde_json::Value) -> Request<Body> {
+pub fn build_json_request(
+    method: &str,
+    uri: &str,
+    token: &str,
+    json_body: serde_json::Value,
+) -> Request<Body> {
     let body = Body::from(json_body.to_string());
     Request::builder()
         .method(method)

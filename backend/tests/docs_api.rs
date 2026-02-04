@@ -29,10 +29,7 @@ fn openapi_includes_login_path_and_bearer_scheme() {
         .pointer("/components/securitySchemes/BearerAuth")
         .expect("BearerAuth scheme");
     assert_eq!(bearer.get("type").and_then(Value::as_str), Some("http"));
-    assert_eq!(
-        bearer.get("scheme").and_then(Value::as_str),
-        Some("bearer")
-    );
+    assert_eq!(bearer.get("scheme").and_then(Value::as_str), Some("bearer"));
 }
 
 #[tokio::test]

@@ -30,9 +30,7 @@ async fn create_pool_with_config_connects() {
 #[tokio::test]
 async fn create_pools_returns_none_when_read_url_missing() {
     let url = ensure_test_db().await;
-    let (write_pool, read_pool) = create_pools(&url, None)
-        .await
-        .expect("create pools");
+    let (write_pool, read_pool) = create_pools(&url, None).await.expect("create pools");
     assert!(read_pool.is_none());
     ping(&write_pool).await;
 }

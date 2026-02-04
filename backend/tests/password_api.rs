@@ -15,19 +15,23 @@ use tower::ServiceExt;
 
 mod support;
 
-use support::{
-    create_test_token, seed_user, test_config, test_pool,
-};
+use support::{create_test_token, seed_user, test_config, test_pool};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD.get_or_init(|| tokio::sync::Mutex::new(())).lock().await
+    GUARD
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
 }
 
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());
     Router::new()
-        .route("/api/auth/password", axum::routing::put(auth::change_password))
+        .route(
+            "/api/auth/password",
+            axum::routing::put(auth::change_password),
+        )
         .layer(Extension(user))
         .with_state(state)
 }
@@ -47,10 +51,10 @@ async fn test_change_password_with_correct_current_password_succeeds() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "NewPass456!@#"
@@ -63,7 +67,7 @@ async fn test_change_password_with_correct_current_password_succeeds() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -81,10 +85,10 @@ async fn test_change_password_with_incorrect_current_password_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": "WrongPass123!",
         "new_password": "NewPass456!@#"
@@ -97,7 +101,7 @@ async fn test_change_password_with_incorrect_current_password_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
@@ -115,10 +119,10 @@ async fn test_change_password_same_as_current_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": password
@@ -131,7 +135,7 @@ async fn test_change_password_same_as_current_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -149,10 +153,10 @@ async fn test_change_password_with_weak_password_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "weak"
@@ -165,7 +169,7 @@ async fn test_change_password_with_weak_password_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -183,10 +187,10 @@ async fn test_change_password_with_short_password_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "Short1!"
@@ -199,7 +203,7 @@ async fn test_change_password_with_short_password_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -217,10 +221,10 @@ async fn test_change_password_without_uppercase_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "lowercase123!"
@@ -233,7 +237,7 @@ async fn test_change_password_without_uppercase_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -251,10 +255,10 @@ async fn test_change_password_without_number_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "NoNumbersHere!"
@@ -267,7 +271,7 @@ async fn test_change_password_without_number_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -285,10 +289,10 @@ async fn test_change_password_without_special_char_fails() {
     let mut employee = seed_user(&pool, UserRole::Employee, false).await;
     let password_hash = hash_password(password).expect("hash password");
     employee.password_hash = password_hash;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": password,
         "new_password": "NoSpecialChar123"
@@ -301,7 +305,7 @@ async fn test_change_password_without_special_char_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
@@ -316,10 +320,10 @@ async fn test_change_password_empty_current_password_fails() {
         .expect("run migrations");
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
-    
+
     let payload = json!({
         "current_password": "",
         "new_password": "NewPass456!@#"
@@ -332,7 +336,7 @@ async fn test_change_password_empty_current_password_fails() {
         .header("Content-Type", "application/json")
         .body(Body::from(payload.to_string()))
         .unwrap();
-    
+
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

@@ -11,9 +11,7 @@ use std::sync::Once;
 use std::time::Duration;
 use timekeeper_backend::{
     handlers::holiday_exceptions,
-    models::{
-        user::{User, UserRole},
-    },
+    models::user::{User, UserRole},
     services::holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
     state::AppState,
 };
@@ -21,14 +19,15 @@ use tower::ServiceExt;
 
 mod support;
 
-use support::{
-    create_test_token, seed_user, test_config, test_pool,
-};
+use support::{create_test_token, seed_user, test_config, test_pool};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     init_tracing();
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD.get_or_init(|| tokio::sync::Mutex::new(())).lock().await
+    GUARD
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
 }
 
 async fn setup_test_pool() -> PgPool {
@@ -69,13 +68,22 @@ where
 
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool.clone(), None, None, None, test_config());
-    let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> = 
+    let holiday_exception_service: Arc<dyn HolidayExceptionServiceTrait> =
         Arc::new(HolidayExceptionService::new(pool));
-    
+
     Router::new()
-        .route("/api/admin/users/{user_id}/holiday-exceptions", axum::routing::post(holiday_exceptions::create_holiday_exception))
-        .route("/api/admin/users/{user_id}/holiday-exceptions", axum::routing::get(holiday_exceptions::list_holiday_exceptions))
-        .route("/api/admin/users/{user_id}/holiday-exceptions/{id}", axum::routing::delete(holiday_exceptions::delete_holiday_exception))
+        .route(
+            "/api/admin/users/{user_id}/holiday-exceptions",
+            axum::routing::post(holiday_exceptions::create_holiday_exception),
+        )
+        .route(
+            "/api/admin/users/{user_id}/holiday-exceptions",
+            axum::routing::get(holiday_exceptions::list_holiday_exceptions),
+        )
+        .route(
+            "/api/admin/users/{user_id}/holiday-exceptions/{id}",
+            axum::routing::delete(holiday_exceptions::delete_holiday_exception),
+        )
         .layer(Extension(user))
         .layer(Extension(holiday_exception_service))
         .with_state(state)
@@ -88,10 +96,10 @@ async fn test_admin_can_create_holiday_exception() {
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-12-25",
         "reason": "Working on holiday"
@@ -99,7 +107,10 @@ async fn test_admin_can_create_holiday_exception() {
     let response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -116,10 +127,10 @@ async fn test_system_admin_can_create_holiday_exception() {
 
     let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_state(pool.clone(), sysadmin.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-01-01",
         "reason": "Non-working day override"
@@ -127,7 +138,10 @@ async fn test_system_admin_can_create_holiday_exception() {
     let response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -144,10 +158,10 @@ async fn test_employee_cannot_create_holiday_exception() {
 
     let employee1 = seed_user(&pool, UserRole::Employee, false).await;
     let employee2 = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(employee1.id, employee1.role.clone());
     let app = test_router_with_state(pool.clone(), employee1.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-12-25",
         "reason": "Working"
@@ -155,7 +169,10 @@ async fn test_employee_cannot_create_holiday_exception() {
     let response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee2.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee2.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -172,13 +189,16 @@ async fn test_admin_can_list_holiday_exceptions() {
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let response = oneshot_with_retry(&app, || {
         Request::builder()
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .body(Body::empty())
             .unwrap()
@@ -194,13 +214,16 @@ async fn test_list_holiday_exceptions_with_date_range() {
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let response = oneshot_with_retry(&app, || {
         Request::builder()
-            .uri(format!("/api/admin/users/{}/holiday-exceptions?from=2024-01-01&to=2024-12-31", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions?from=2024-01-01&to=2024-12-31",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .body(Body::empty())
             .unwrap()
@@ -216,19 +239,22 @@ async fn test_create_duplicate_holiday_exception_fails() {
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-07-04",
         "reason": "Working on holiday"
     });
-    
+
     let first_response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -240,7 +266,10 @@ async fn test_create_duplicate_holiday_exception_fails() {
     let response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -256,10 +285,10 @@ async fn test_invalid_user_id_format_fails() {
     let pool = setup_test_pool().await;
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-12-25",
         "reason": "Working"
@@ -283,10 +312,10 @@ async fn test_nonexistent_user_fails() {
     let pool = setup_test_pool().await;
 
     let admin = seed_user(&pool, UserRole::Admin, false).await;
-    
+
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
-    
+
     let payload = json!({
         "exception_date": "2024-12-25",
         "reason": "Working"
@@ -294,7 +323,10 @@ async fn test_nonexistent_user_fails() {
     let response = oneshot_with_retry(&app, || {
         Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", timekeeper_backend::types::UserId::new()))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                timekeeper_backend::types::UserId::new()
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .body(Body::from(payload.to_string()))
@@ -311,13 +343,16 @@ async fn test_employee_cannot_list_other_user_exceptions() {
 
     let employee1 = seed_user(&pool, UserRole::Employee, false).await;
     let employee2 = seed_user(&pool, UserRole::Employee, false).await;
-    
+
     let token = create_test_token(employee1.id, employee1.role.clone());
     let app = test_router_with_state(pool.clone(), employee1.clone());
-    
+
     let response = oneshot_with_retry(&app, || {
         Request::builder()
-            .uri(format!("/api/admin/users/{}/holiday-exceptions", employee2.id))
+            .uri(format!(
+                "/api/admin/users/{}/holiday-exceptions",
+                employee2.id
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .body(Body::empty())
             .unwrap()

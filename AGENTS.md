@@ -50,6 +50,19 @@ timekeeper/
 - コミット: Conventional Commits (`feat:`, `fix:`, `chore:`)
 - バージョン管理: `git` コマンドは使わず `jj` (jujutsu) を使用
 
+### Jujutsu スナップショット運用
+- 変更後にテストが成功するたび、`jj` でスナップショットを作成する
+- 基本手順:
+  1. `jj status` で差分確認
+  2. 対象テストを実行（例: `cargo test --test auth_flow_api`）
+  3. テスト成功を確認
+  4. `jj commit -m "<message>"` でスナップショット作成
+
+- コミットメッセージ規則:
+  - テスト追加・更新のみ: `chore(test): add coverage for <module_or_endpoint>`
+  - テスト成功ごとのスナップショット: `chore(test): snapshot after <test_target> pass`
+  - 機能修正＋テスト成功: `fix(<scope>): <summary>`
+
 ### Rust 全般
 - インデント: 4 スペース
 - 命名: モジュールは `snake_case`、型は `PascalCase`
