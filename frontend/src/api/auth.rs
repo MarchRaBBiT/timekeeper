@@ -1,6 +1,6 @@
 use serde_json::json;
 
-#[cfg(test)]
+#[cfg(all(test, not(coverage)))]
 use std::sync::{Mutex, OnceLock};
 
 use super::{
