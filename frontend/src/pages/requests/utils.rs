@@ -226,22 +226,27 @@ fn optional_string(value: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::ssr::with_runtime;
 
     #[test]
     fn leave_form_rejects_invalid_dates() {
-        let state = LeaveFormState::default();
-        state.start_signal().set("2025-01-10".into());
-        state.end_signal().set("2025-01-05".into());
-        assert!(state.to_payload().is_err());
+        with_runtime(|| {
+            let state = LeaveFormState::default();
+            state.start_signal().set("2025-01-10".into());
+            state.end_signal().set("2025-01-05".into());
+            assert!(state.to_payload().is_err());
+        });
     }
 
     #[test]
     fn overtime_form_validates_hours() {
-        let state = OvertimeFormState::default();
-        state.date_signal().set("2025-01-15".into());
-        state.hours_signal().set("0.1".into());
-        assert!(state.to_payload().is_err());
-        state.hours_signal().set("2.5".into());
-        assert!(state.to_payload().is_ok());
+        with_runtime(|| {
+            let state = OvertimeFormState::default();
+            state.date_signal().set("2025-01-15".into());
+            state.hours_signal().set("0.1".into());
+            assert!(state.to_payload().is_err());
+            state.hours_signal().set("2.5".into());
+            assert!(state.to_payload().is_ok());
+        });
     }
 }

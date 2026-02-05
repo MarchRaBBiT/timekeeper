@@ -265,6 +265,74 @@ pub fn AdminSubjectRequestsSection(
     }
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use chrono::Utc;
+
+    fn render_with_items(items: Vec<DataSubjectRequestResponse>) -> String {
+        render_to_string(move || {
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            let filter = SubjectRequestFilterState::new();
+            let resource = Resource::new(
+                move || (true, filter.snapshot(), 0u32),
+                move |_| {
+                    let items = items.clone();
+                    async move {
+                        Ok(SubjectRequestListResponse {
+                            page: 1,
+                            per_page: 20,
+                            total: items.len() as i64,
+                            items,
+                        })
+                    }
+                },
+            );
+            let action = create_action(|_: &SubjectRequestActionPayload| async move { Ok(()) });
+            let action_error = create_rw_signal(None::<ApiError>);
+            let reload = create_rw_signal(0u32);
+            view! {
+                <AdminSubjectRequestsSection
+                    users=users
+                    filter=filter
+                    resource=resource
+                    action=action
+                    action_error=action_error
+                    reload=reload
+                />
+            }
+        })
+    }
+
+    #[test]
+    fn subject_requests_renders_empty() {
+        let html = render_with_items(Vec::new());
+        assert!(html.contains("本人対応申請"));
+    }
+
+    #[test]
+    fn subject_requests_renders_row() {
+        let html = render_with_items(vec![DataSubjectRequestResponse {
+            id: "sr-1".into(),
+            user_id: "u1".into(),
+            request_type: DataSubjectRequestType::Access,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }]);
+        assert!(html.contains("開示"));
+        assert!(html.contains("pending"));
+    }
+}
+
 fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
     match request_type {
         DataSubjectRequestType::Access => "開示",

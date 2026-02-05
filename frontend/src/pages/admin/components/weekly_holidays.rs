@@ -247,3 +247,68 @@ pub fn WeeklyHolidaySection(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    fn sample_item() -> WeeklyHolidayResponse {
+        WeeklyHolidayResponse {
+            id: "wh1".into(),
+            weekday: 1,
+            starts_on: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            ends_on: None,
+            enforced_from: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            enforced_to: None,
+        }
+    }
+
+    fn render_with_resource(
+        items: Vec<WeeklyHolidayResponse>,
+        admin_allowed: bool,
+        system_admin_allowed: bool,
+    ) -> String {
+        render_to_string(move || {
+            let state = WeeklyHolidayFormState::new("1", "2025-01-02".into());
+            let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            resource.set(Ok(items.clone()));
+            let action = create_action(|_: &CreateWeeklyHolidayRequest| async move {
+                Ok(sample_item())
+            });
+            let delete_action = create_action(|_: &String| async move { Ok(()) });
+            let reload = create_rw_signal(0u32);
+            let message = create_rw_signal(None::<String>);
+            let error = create_rw_signal(None::<ApiError>);
+            let admin_allowed = create_memo(move |_| admin_allowed);
+            let system_admin_allowed = create_memo(move |_| system_admin_allowed);
+            view! {
+                <WeeklyHolidaySection
+                    state=state
+                    resource=resource
+                    action=action
+                    delete_action=delete_action
+                    reload=reload
+                    message=message
+                    error=error
+                    admin_allowed=admin_allowed
+                    system_admin_allowed=system_admin_allowed
+                />
+            }
+        })
+    }
+
+    #[test]
+    fn weekly_holiday_section_renders_empty_state() {
+        let html = render_with_resource(Vec::new(), true, false);
+        assert!(html.contains("週次休日"));
+        assert!(html.contains("登録済みの週次休日はありません。"));
+    }
+
+    #[test]
+    fn weekly_holiday_section_renders_table() {
+        let html = render_with_resource(vec![sample_item()], true, true);
+        assert!(html.contains("週次休日"));
+        assert!(html.contains("月"));
+    }
+}

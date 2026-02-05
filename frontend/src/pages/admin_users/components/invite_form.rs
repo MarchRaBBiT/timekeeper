@@ -121,3 +121,31 @@ pub fn InviteForm(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn invite_form_renders() {
+        let html = render_to_string(move || {
+            let form_state = InviteFormState::default();
+            let messages = MessageState::default();
+            let invite_action = create_action(|_: &CreateUser| async move {
+                Err(ApiError::validation("failed"))
+            });
+            let is_system_admin = create_memo(|_| true);
+            view! {
+                <InviteForm
+                    form_state=form_state
+                    messages=messages
+                    invite_action=invite_action
+                    is_system_admin=is_system_admin
+                />
+            }
+        });
+        assert!(html.contains("ユーザー招待"));
+        assert!(html.contains("ユーザーを作成"));
+    }
+}

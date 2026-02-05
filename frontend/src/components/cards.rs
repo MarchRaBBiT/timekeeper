@@ -183,3 +183,117 @@ pub fn UserCard() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::{AttendanceResponse, AttendanceStatusResponse, BreakRecordResponse};
+    use crate::pages::dashboard::repository::{DashboardActivity, DashboardSummary};
+    use crate::pages::dashboard::utils::ActivityStatusFilter;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    fn today_datetime(hour: u32, minute: u32) -> chrono::NaiveDateTime {
+        let today = crate::utils::time::today_in_app_tz();
+        today.and_hms_opt(hour, minute, 0).unwrap()
+    }
+
+    #[test]
+    fn attendance_card_renders_with_values() {
+        let today = crate::utils::time::today_in_app_tz();
+        let attendance = AttendanceResponse {
+            id: "att-1".into(),
+            user_id: "u1".into(),
+            date: today,
+            clock_in_time: Some(today_datetime(9, 0)),
+            clock_out_time: Some(today_datetime(18, 0)),
+            status: "clocked_in".into(),
+            total_work_hours: Some(8.0),
+            break_records: vec![BreakRecordResponse {
+                id: "br-1".into(),
+                attendance_id: "att-1".into(),
+                break_start_time: today_datetime(12, 0),
+                break_end_time: Some(today_datetime(12, 30)),
+                duration_minutes: Some(30),
+            }],
+        };
+        let status = AttendanceStatusResponse {
+            status: "clocked_in".into(),
+            attendance_id: Some("att-1".into()),
+            active_break_id: None,
+            clock_in_time: Some(today_datetime(9, 0)),
+            clock_out_time: Some(today_datetime(18, 0)),
+        };
+        let state = AttendanceState {
+            current_attendance: Some(attendance.clone()),
+            attendance_history: vec![attendance],
+            today_status: Some(status),
+            today_holiday_reason: None,
+            last_refresh_error: None,
+            range_from: Some(today),
+            range_to: Some(today),
+            loading: false,
+        };
+
+        let html = render_to_string(move || {
+            let (signal, _) = create_signal(state);
+            view! { <AttendanceCard attendance_state=signal /> }
+        });
+        assert!(html.contains("今日の勤怠"));
+        assert!(html.contains("30"));
+    }
+
+    #[test]
+    fn summary_card_renders_values() {
+        let html = render_to_string(move || {
+            let summary = Resource::new(
+                || (),
+                |_| async move {
+                    Ok(DashboardSummary {
+                        total_work_hours: Some(160.0),
+                        total_work_days: Some(20),
+                        average_daily_hours: Some(8.0),
+                    })
+                },
+            );
+            summary.set(Ok(DashboardSummary {
+                total_work_hours: Some(160.0),
+                total_work_days: Some(20),
+                average_daily_hours: Some(8.0),
+            }));
+            view! { <SummaryCard summary=summary /> }
+        });
+        assert!(html.contains("今月のサマリー"));
+    }
+
+    #[test]
+    fn request_card_renders_activity_list() {
+        let html = render_to_string(move || {
+            let activities = Resource::new(
+                || ActivityStatusFilter::All,
+                |_| async move {
+                    Ok(vec![DashboardActivity {
+                        title: "休暇申請（承認待ち）".into(),
+                        detail: Some("1 件".into()),
+                    }])
+                },
+            );
+            activities.set(Ok(vec![DashboardActivity {
+                title: "休暇申請（承認待ち）".into(),
+                detail: Some("1 件".into()),
+            }]));
+            view! { <RequestCard requests=activities /> }
+        });
+        assert!(html.contains("申請状況"));
+    }
+
+    #[test]
+    fn user_card_renders_user_info() {
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <UserCard /> }
+        });
+        assert!(html.contains("ユーザー情報"));
+        assert!(html.contains("admin"));
+    }
+}

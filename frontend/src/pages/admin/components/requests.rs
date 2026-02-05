@@ -249,3 +249,59 @@ pub fn AdminRequestsSection(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    fn render_with_data(data: Value) -> String {
+        render_to_string(move || {
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            let filter = RequestFilterState::new();
+            let resource = Resource::new(
+                move || (true, filter.snapshot(), 0u32),
+                |_| async move { Ok(Value::Null) },
+            );
+            resource.set(Ok(data.clone()));
+            let action = create_action(|_: &RequestActionPayload| async move { Ok(()) });
+            let action_error = create_rw_signal(None::<ApiError>);
+            let reload = create_rw_signal(0u32);
+            view! {
+                <AdminRequestsSection
+                    users=users
+                    filter=filter
+                    resource=resource
+                    action=action
+                    action_error=action_error
+                    reload=reload
+                />
+            }
+        })
+    }
+
+    #[test]
+    fn admin_requests_section_renders_empty_state() {
+        let html = render_with_data(json!({
+            "leave_requests": [],
+            "overtime_requests": []
+        }));
+        assert!(html.contains("申請がありません"));
+    }
+
+    #[test]
+    fn admin_requests_section_renders_rows() {
+        let html = render_with_data(json!({
+            "leave_requests": [{
+                "id": "req-1",
+                "user_id": "u1",
+                "status": "pending",
+                "start_date": "2025-01-01",
+                "end_date": "2025-01-02"
+            }],
+            "overtime_requests": []
+        }));
+        assert!(html.contains("休暇"));
+        assert!(html.contains("pending"));
+    }
+}

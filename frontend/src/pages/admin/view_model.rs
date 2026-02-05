@@ -261,3 +261,54 @@ pub struct SubjectRequestActionPayload {
     pub comment: String,
     pub approve: bool,
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn admin_view_model_initializes_with_admin_context() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "u1",
+                "username": "alice",
+                "full_name": "Alice Example",
+                "role": "admin",
+                "is_system_admin": true,
+                "mfa_enabled": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/holidays/weekly");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/requests");
+            then.status(200).json_body(serde_json::json!({ "items": [] }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/subject-requests");
+            then.status(200).json_body(serde_json::json!({
+                "page": 1,
+                "per_page": 20,
+                "total": 0,
+                "items": []
+            }));
+        });
+
+        let server = server.clone();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_admin_view_model();
+            assert_eq!(vm.requests_filter.snapshot().page, 1);
+            view! { <div>{vm.requests_filter.snapshot().per_page}</div> }
+        });
+        assert!(html.contains("20"));
+    }
+}

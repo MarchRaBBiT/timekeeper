@@ -329,3 +329,63 @@ pub fn SuccessMessage(message: String) -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::config::TimeZoneStatus;
+    use crate::test_support::helpers::{admin_user, provide_auth, set_time_zone_ok};
+    use crate::test_support::ssr::render_to_string;
+
+    fn set_time_zone_warning() {
+        crate::config::overwrite_time_zone_status_for_test(TimeZoneStatus {
+            time_zone: Some("UTC".into()),
+            is_fallback: true,
+            last_error: Some("network error".into()),
+            loading: false,
+        });
+    }
+
+    #[test]
+    fn header_renders_admin_links() {
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <Header /> }
+        });
+        assert!(html.contains("管理"));
+        assert!(html.contains("ユーザー追加"));
+    }
+
+    #[test]
+    fn layout_renders_children_and_warning() {
+        set_time_zone_warning();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <Layout><div>"child"</div></Layout> }
+        });
+        assert!(html.contains("タイムゾーン情報に関する警告"));
+        assert!(html.contains("child"));
+    }
+
+    #[test]
+    fn time_zone_banner_hidden_when_ok() {
+        set_time_zone_ok();
+        let html = render_to_string(move || view! { <TimeZoneWarningBanner /> });
+        assert!(!html.contains("タイムゾーン情報に関する警告"));
+    }
+
+    #[test]
+    fn renders_feedback_components() {
+        let html = render_to_string(move || {
+            view! {
+                <div>
+                    <LoadingSpinner />
+                    <ErrorMessage message="error".into() />
+                    <SuccessMessage message="ok".into() />
+                </div>
+            }
+        });
+        assert!(html.contains("error"));
+        assert!(html.contains("ok"));
+    }
+}

@@ -6,6 +6,8 @@ pub mod router;
 mod state;
 pub mod theme;
 pub mod utils;
+#[cfg(test)]
+pub mod test_support;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]

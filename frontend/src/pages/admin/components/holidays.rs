@@ -652,3 +652,20 @@ pub fn HolidayManagementSection(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::ApiClient;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn holiday_management_section_renders() {
+        let html = render_to_string(move || {
+            let repo = AdminRepository::new_with_client(std::rc::Rc::new(ApiClient::new()));
+            let allowed = create_memo(|_| false);
+            view! { <HolidayManagementSection repository=repo admin_allowed=allowed /> }
+        });
+        assert!(html.contains("祝日管理"));
+    }
+}

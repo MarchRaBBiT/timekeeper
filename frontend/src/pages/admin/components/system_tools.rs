@@ -98,3 +98,22 @@ pub fn AdminMfaResetSection(
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::ApiClient;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn admin_mfa_reset_section_renders_when_allowed() {
+        let html = render_to_string(move || {
+            let api = ApiClient::new();
+            let repo = AdminRepository::new_with_client(std::rc::Rc::new(api));
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            let allowed = create_memo(|_| true);
+            view! { <AdminMfaResetSection repository=repo system_admin_allowed=allowed users=users /> }
+        });
+        assert!(html.contains("MFA リセット"));
+    }
+}

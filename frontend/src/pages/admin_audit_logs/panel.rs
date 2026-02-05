@@ -253,3 +253,47 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
         </Layout>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn audit_logs_page_renders_denied_for_non_admin() {
+        let html = render_to_string(move || {
+            provide_auth(Some(regular_user()));
+            view! { <AdminAuditLogsPage /> }
+        });
+        assert!(html.contains("権限がありません"));
+    }
+
+    #[test]
+    fn audit_logs_page_renders_empty_state_for_admin() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/audit-logs");
+            then.status(200).json_body(serde_json::json!({
+                "page": 1,
+                "per_page": 20,
+                "total": 0,
+                "items": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/audit-logs/export");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+
+        let server = server.clone();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            provide_context(crate::api::ApiClient::new_with_base_url(&server.url("/api")));
+            view! { <AdminAuditLogsPage /> }
+        });
+        assert!(html.contains("監査ログ"));
+        assert!(html.contains("JSONエクスポート"));
+    }
+}

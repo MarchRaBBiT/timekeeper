@@ -189,3 +189,42 @@ pub fn UserDetailDrawer(
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    fn user() -> UserResponse {
+        UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice Example".into(),
+            role: "admin".into(),
+            is_system_admin: false,
+            mfa_enabled: true,
+        }
+    }
+
+    #[test]
+    fn user_detail_drawer_renders() {
+        let html = render_to_string(move || {
+            let selected = create_rw_signal(Some(user()));
+            let messages = MessageState::default();
+            let reset_action = create_action(|_: &String| async move { Ok(()) });
+            let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
+            let current_user_id = Signal::derive(|| None::<String>);
+            view! {
+                <UserDetailDrawer
+                    selected_user=selected
+                    messages=messages
+                    reset_mfa_action=reset_action
+                    delete_user_action=delete_action
+                    current_user_id=current_user_id
+                />
+            }
+        });
+        assert!(html.contains("Alice Example"));
+        assert!(html.contains("MFA"));
+    }
+}

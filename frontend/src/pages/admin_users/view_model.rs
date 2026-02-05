@@ -217,3 +217,41 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         is_system_admin,
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn admin_users_view_model_initializes() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "u1",
+                "username": "alice",
+                "full_name": "Alice Example",
+                "role": "admin",
+                "is_system_admin": true,
+                "mfa_enabled": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/archived-users");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+
+        let server = server.clone();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_admin_users_view_model();
+            assert!(matches!(vm.active_tab.get_untracked(), UserTab::Active));
+            view! { <div>{vm.invite_form.role.get()}</div> }
+        });
+        assert!(html.contains("employee"));
+    }
+}

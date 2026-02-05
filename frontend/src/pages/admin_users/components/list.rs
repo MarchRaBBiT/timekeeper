@@ -156,3 +156,45 @@ pub fn UserList(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    fn user() -> UserResponse {
+        UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice Example".into(),
+            role: "admin".into(),
+            is_system_admin: true,
+            mfa_enabled: false,
+        }
+    }
+
+    #[test]
+    fn user_list_renders_empty_message() {
+        let html = render_to_string(move || {
+            let users = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            users.set(Ok(Vec::new()));
+            let loading = Signal::derive(|| false);
+            let on_select = Callback::new(|_| {});
+            view! { <UserList users_resource=users loading=loading on_select=on_select /> }
+        });
+        assert!(html.contains("登録済みのユーザーが見つかりません"));
+    }
+
+    #[test]
+    fn user_list_renders_rows() {
+        let html = render_to_string(move || {
+            let users = Resource::new(|| (true, 0u32), |_| async move { Ok(vec![user()]) });
+            users.set(Ok(vec![user()]));
+            let loading = Signal::derive(|| false);
+            let on_select = Callback::new(|_| {});
+            view! { <UserList users_resource=users loading=loading on_select=on_select /> }
+        });
+        assert!(html.contains("alice"));
+        assert!(html.contains("Alice Example"));
+    }
+}

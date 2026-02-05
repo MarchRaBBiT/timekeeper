@@ -131,3 +131,58 @@ pub fn AdminUserSelect(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::UserResponse;
+    use crate::test_support::ssr::render_to_string;
+
+    fn user(id: &str, name: &str, username: &str) -> UserResponse {
+        UserResponse {
+            id: id.into(),
+            username: username.into(),
+            full_name: name.into(),
+            role: "admin".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+        }
+    }
+
+    #[test]
+    fn user_select_renders_empty_state() {
+        let html = render_to_string(move || {
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            users.set(Ok(Vec::new()));
+            let selected = create_rw_signal(String::new());
+            view! { <AdminUserSelect users=users selected=selected /> }
+        });
+        assert!(html.contains("ユーザーが0件です"));
+    }
+
+    #[test]
+    fn user_select_renders_error_state() {
+        let html = render_to_string(move || {
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            users.set(Err(ApiError::validation("fetch error")));
+            let selected = create_rw_signal(String::new());
+            view! { <AdminUserSelect users=users selected=selected /> }
+        });
+        assert!(html.contains("ユーザーの取得に失敗しました"));
+    }
+
+    #[test]
+    fn user_select_renders_options() {
+        let html = render_to_string(move || {
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            users.set(Ok(vec![
+                user("u1", "Alice", "alice"),
+                user("u2", "Bob", "bob"),
+            ]));
+            let selected = create_rw_signal(String::new());
+            view! { <AdminUserSelect users=users selected=selected /> }
+        });
+        assert!(html.contains("Alice"));
+        assert!(html.contains("Bob"));
+    }
+}
