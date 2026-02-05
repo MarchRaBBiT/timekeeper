@@ -63,13 +63,16 @@ mod host_tests {
     #[test]
     fn summary_section_renders_metrics() {
         let html = render_to_string(move || {
-            let resource = Resource::new(|| (), |_| async move {
-                Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
-                    total_work_hours: Some(160.0),
-                    total_work_days: Some(20),
-                    average_daily_hours: Some(8.0),
-                })
-            });
+            let resource = Resource::new(
+                || (),
+                |_| async move {
+                    Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
+                        total_work_hours: Some(160.0),
+                        total_work_days: Some(20),
+                        average_daily_hours: Some(8.0),
+                    })
+                },
+            );
             resource.set(Ok(DashboardSummary {
                 total_work_hours: Some(160.0),
                 total_work_days: Some(20),
@@ -84,13 +87,16 @@ mod host_tests {
     #[test]
     fn summary_section_renders_error() {
         let html = render_to_string(move || {
-            let resource = Resource::new(|| (), |_| async move {
-                Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
-                    total_work_hours: None,
-                    total_work_days: None,
-                    average_daily_hours: None,
-                })
-            });
+            let resource = Resource::new(
+                || (),
+                |_| async move {
+                    Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
+                        total_work_hours: None,
+                        total_work_days: None,
+                        average_daily_hours: None,
+                    })
+                },
+            );
             resource.set(Err(crate::api::ApiError::unknown("summary failed")));
             view! { <SummarySection summary=resource /> }
         });

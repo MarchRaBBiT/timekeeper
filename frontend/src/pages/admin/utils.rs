@@ -281,7 +281,10 @@ mod host_tests {
             let min = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
             let payload = state.to_payload(min).unwrap();
             assert_eq!(payload.weekday, 1);
-            assert_eq!(payload.starts_on, NaiveDate::from_ymd_opt(2025, 1, 10).unwrap());
+            assert_eq!(
+                payload.starts_on,
+                NaiveDate::from_ymd_opt(2025, 1, 10).unwrap()
+            );
             assert!(payload.ends_on.is_none());
         });
     }

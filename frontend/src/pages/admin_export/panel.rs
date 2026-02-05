@@ -221,7 +221,9 @@ mod host_tests {
         let server = server.clone();
         let html = render_to_string(move || {
             provide_auth(Some(admin_user(true)));
-            provide_context(crate::api::ApiClient::new_with_base_url(&server.url("/api")));
+            provide_context(crate::api::ApiClient::new_with_base_url(
+                &server.url("/api"),
+            ));
             view! { <AdminExportPage /> }
         });
         assert!(html.contains("データエクスポート"));

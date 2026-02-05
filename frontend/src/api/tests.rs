@@ -191,7 +191,8 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/archived-users");
-        then.status(200).json_body(json!([archived_user_json("a1")]));
+        then.status(200)
+            .json_body(json!([archived_user_json("a1")]));
     });
     server.mock(|when, then| {
         when.method(POST)
@@ -222,11 +223,13 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/holidays/check");
-        then.status(200).json_body(json!({ "is_holiday": true, "reason": "public holiday" }));
+        then.status(200)
+            .json_body(json!({ "is_holiday": true, "reason": "public holiday" }));
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/holidays/month");
-        then.status(200).json_body(json!([{ "date": "2025-01-01", "reason": "public holiday" }]));
+        then.status(200)
+            .json_body(json!([{ "date": "2025-01-01", "reason": "public holiday" }]));
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/holidays/weekly");
@@ -250,7 +253,8 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/export");
-        then.status(200).json_body(json!({ "filename": "export.csv", "csv_data": "a,b\\n1,2" }));
+        then.status(200)
+            .json_body(json!({ "filename": "export.csv", "csv_data": "a,b\\n1,2" }));
     });
 
     server.mock(|when, then| {
@@ -266,14 +270,21 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     let me = client.get_me().await.unwrap();
     assert_eq!(me.id, "u1");
     assert_eq!(client.get_users().await.unwrap().len(), 1);
-    assert_eq!(client.create_user(CreateUser {
-        username: "bob".into(),
-        password: "secret".into(),
-        full_name: "Bob".into(),
-        email: "bob@example.com".into(),
-        role: "member".into(),
-        is_system_admin: false,
-    }).await.unwrap().id, "u2");
+    assert_eq!(
+        client
+            .create_user(CreateUser {
+                username: "bob".into(),
+                password: "secret".into(),
+                full_name: "Bob".into(),
+                email: "bob@example.com".into(),
+                role: "member".into(),
+                is_system_admin: false,
+            })
+            .await
+            .unwrap()
+            .id,
+        "u2"
+    );
     client.admin_reset_mfa("u1").await.unwrap();
     client.admin_delete_user("u1", false).await.unwrap();
     assert_eq!(client.admin_get_archived_users().await.unwrap().len(), 1);
@@ -282,31 +293,56 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
 
     let holidays = client.admin_list_holidays(1, 50, None, None).await.unwrap();
     assert_eq!(holidays.total, 1);
-    let created = client.admin_create_holiday(&CreateHolidayRequest {
-        holiday_date: chrono::NaiveDate::from_ymd_opt(2025, 2, 1).unwrap(),
-        name: "Test Holiday".into(),
-        description: None,
-    }).await.unwrap();
+    let created = client
+        .admin_create_holiday(&CreateHolidayRequest {
+            holiday_date: chrono::NaiveDate::from_ymd_opt(2025, 2, 1).unwrap(),
+            name: "Test Holiday".into(),
+            description: None,
+        })
+        .await
+        .unwrap();
     assert_eq!(created.id, "h2");
     client.admin_delete_holiday("h2").await.unwrap();
-    let check = client.check_holiday(chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()).await.unwrap();
+    let check = client
+        .check_holiday(chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap())
+        .await
+        .unwrap();
     assert!(check.is_holiday);
     assert_eq!(client.get_monthly_holidays(2025, 1).await.unwrap().len(), 1);
     assert_eq!(client.admin_list_weekly_holidays().await.unwrap().len(), 1);
-    let weekly = client.admin_create_weekly_holiday(&CreateWeeklyHolidayRequest {
-        weekday: 1,
-        starts_on: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
-        ends_on: None,
-    }).await.unwrap();
+    let weekly = client
+        .admin_create_weekly_holiday(&CreateWeeklyHolidayRequest {
+            weekday: 1,
+            starts_on: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            ends_on: None,
+        })
+        .await
+        .unwrap();
     assert_eq!(weekly.id, "wh1");
     client.admin_delete_weekly_holiday("wh1").await.unwrap();
-    assert_eq!(client.admin_fetch_google_holidays(Some(2025)).await.unwrap().len(), 1);
+    assert_eq!(
+        client
+            .admin_fetch_google_holidays(Some(2025))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 
-    let export = client.export_data_filtered(Some("alice"), Some("2025-01-01"), Some("2025-01-31")).await.unwrap();
+    let export = client
+        .export_data_filtered(Some("alice"), Some("2025-01-01"), Some("2025-01-31"))
+        .await
+        .unwrap();
     assert_eq!(export["filename"], "export.csv");
-    let msg = client.request_password_reset("alice@example.com".into()).await.unwrap();
+    let msg = client
+        .request_password_reset("alice@example.com".into())
+        .await
+        .unwrap();
     assert_eq!(msg.message, "sent");
-    let msg = client.reset_password("token".into(), "newpass".into()).await.unwrap();
+    let msg = client
+        .reset_password("token".into(), "newpass".into())
+        .await
+        .unwrap();
     assert_eq!(msg.message, "ok");
 }
 
@@ -332,15 +368,18 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/attendance/me");
-        then.status(200).json_body(json!([attendance_json("att-1")]));
+        then.status(200)
+            .json_body(json!([attendance_json("att-1")]));
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/attendance/status");
-        then.status(200).json_body(attendance_status_json("clocked_in"));
+        then.status(200)
+            .json_body(attendance_status_json("clocked_in"));
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/attendance/att-1/breaks");
-        then.status(200).json_body(json!([break_record_json("br-1")]));
+        then.status(200)
+            .json_body(json!([break_record_json("br-1")]));
     });
     server.mock(|when, then| {
         when.method(PUT).path("/api/admin/attendance");
@@ -356,7 +395,8 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/attendance/export");
-        then.status(200).json_body(json!({ "filename": "me.csv", "csv_data": "a,b\\n1,2" }));
+        then.status(200)
+            .json_body(json!({ "filename": "me.csv", "csv_data": "a,b\\n1,2" }));
     });
 
     server.mock(|when, then| {
@@ -397,9 +437,26 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
     client.clock_out().await.unwrap();
     client.break_start("att-1").await.unwrap();
     client.break_end("br-1").await.unwrap();
-    assert_eq!(client.get_my_attendance_range(None, None).await.unwrap().len(), 1);
-    assert_eq!(client.get_attendance_status(None).await.unwrap().status, "clocked_in");
-    assert_eq!(client.get_breaks_by_attendance("att-1").await.unwrap().len(), 1);
+    assert_eq!(
+        client
+            .get_my_attendance_range(None, None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        client.get_attendance_status(None).await.unwrap().status,
+        "clocked_in"
+    );
+    assert_eq!(
+        client
+            .get_breaks_by_attendance("att-1")
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     client
         .admin_upsert_attendance(AdminAttendanceUpsert {
             user_id: "u1".into(),
@@ -422,22 +479,34 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
         .unwrap();
     assert_eq!(export["filename"], "me.csv");
 
-    client.admin_list_requests(None, None, None, None).await.unwrap();
+    client
+        .admin_list_requests(None, None, None, None)
+        .await
+        .unwrap();
     client.admin_approve_request("req-1", "ok").await.unwrap();
     client.admin_reject_request("req-1", "no").await.unwrap();
-    client.update_request("req-1", json!({ "status": "updated" })).await.unwrap();
+    client
+        .update_request("req-1", json!({ "status": "updated" }))
+        .await
+        .unwrap();
     client.cancel_request("req-1").await.unwrap();
-    client.create_leave_request(CreateLeaveRequest {
-        leave_type: "annual".into(),
-        start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
-        end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
-        reason: None,
-    }).await.unwrap();
-    client.create_overtime_request(CreateOvertimeRequest {
-        date: chrono::NaiveDate::from_ymd_opt(2025, 1, 11).unwrap(),
-        planned_hours: 2.5,
-        reason: None,
-    }).await.unwrap();
+    client
+        .create_leave_request(CreateLeaveRequest {
+            leave_type: "annual".into(),
+            start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+            end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+            reason: None,
+        })
+        .await
+        .unwrap();
+    client
+        .create_overtime_request(CreateOvertimeRequest {
+            date: chrono::NaiveDate::from_ymd_opt(2025, 1, 11).unwrap(),
+            planned_hours: 2.5,
+            reason: None,
+        })
+        .await
+        .unwrap();
     client.get_my_requests().await.unwrap();
 }
 
@@ -451,7 +520,8 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/subject-requests/me");
-        then.status(200).json_body(json!([subject_request_json("sr-1")]));
+        then.status(200)
+            .json_body(json!([subject_request_json("sr-1")]));
     });
     server.mock(|when, then| {
         when.method(DELETE).path("/api/subject-requests/sr-1");
@@ -462,11 +532,13 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
         then.status(200).json_body(json!({ "page": 1, "per_page": 20, "total": 1, "items": [subject_request_json("sr-1")] }));
     });
     server.mock(|when, then| {
-        when.method(PUT).path("/api/admin/subject-requests/sr-1/approve");
+        when.method(PUT)
+            .path("/api/admin/subject-requests/sr-1/approve");
         then.status(200).json_body(json!({}));
     });
     server.mock(|when, then| {
-        when.method(PUT).path("/api/admin/subject-requests/sr-1/reject");
+        when.method(PUT)
+            .path("/api/admin/subject-requests/sr-1/reject");
         then.status(200).json_body(json!({}));
     });
 
@@ -512,8 +584,14 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
         .admin_list_subject_requests(None, None, None, None, None, 1, 50)
         .await
         .unwrap();
-    client.admin_approve_subject_request("sr-1", "ok").await.unwrap();
-    client.admin_reject_subject_request("sr-1", "no").await.unwrap();
+    client
+        .admin_approve_subject_request("sr-1", "ok")
+        .await
+        .unwrap();
+    client
+        .admin_reject_subject_request("sr-1", "no")
+        .await
+        .unwrap();
 
     client
         .list_audit_logs(1, 50, None, None, None, None, None)
@@ -531,7 +609,8 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
 
     server.mock(|when, then| {
         when.method(POST).path("/api/auth/login");
-        then.status(200).json_body(json!({ "user": user_json("u1") }));
+        then.status(200)
+            .json_body(json!({ "user": user_json("u1") }));
     });
     server.mock(|when, then| {
         when.method(POST).path("/api/auth/logout");
@@ -539,11 +618,13 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/auth/mfa");
-        then.status(200).json_body(json!({ "enabled": false, "pending": false }));
+        then.status(200)
+            .json_body(json!({ "enabled": false, "pending": false }));
     });
     server.mock(|when, then| {
         when.method(POST).path("/api/auth/mfa/register");
-        then.status(200).json_body(json!({ "secret": "secret", "otpauth_url": "otpauth://test" }));
+        then.status(200)
+            .json_body(json!({ "secret": "secret", "otpauth_url": "otpauth://test" }));
     });
     server.mock(|when, then| {
         when.method(POST).path("/api/auth/mfa/activate");
@@ -566,21 +647,26 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
         .unwrap();
     assert_eq!(login.user.id, "u1");
 
-    super::auth::queue_refresh_override(Ok(LoginResponse { user: UserResponse {
-        id: "u1".into(),
-        username: "alice".into(),
-        full_name: "Alice Example".into(),
-        role: "admin".into(),
-        is_system_admin: true,
-        mfa_enabled: false,
-    }}));
+    super::auth::queue_refresh_override(Ok(LoginResponse {
+        user: UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice Example".into(),
+            role: "admin".into(),
+            is_system_admin: true,
+            mfa_enabled: false,
+        },
+    }));
     let _ = client.refresh_token().await.unwrap();
 
     client.logout(false).await.unwrap();
     client.get_mfa_status().await.unwrap();
     client.register_mfa().await.unwrap();
     client.activate_mfa("123456").await.unwrap();
-    client.change_password("old".into(), "newpass".into()).await.unwrap();
+    client
+        .change_password("old".into(), "newpass".into())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -589,18 +675,84 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
 
     server.mock(|when, then| {
         when.method(GET).path("/api/auth/me");
-        then.status(401).json_body(json!({ "error": "unauthorized", "code": "UNAUTHORIZED" }));
+        then.status(401)
+            .json_body(json!({ "error": "unauthorized", "code": "UNAUTHORIZED" }));
     });
 
     let client = api_client(&server);
-    super::auth::queue_refresh_override(Ok(LoginResponse { user: UserResponse {
-        id: "u1".into(),
-        username: "alice".into(),
-        full_name: "Alice Example".into(),
-        role: "admin".into(),
-        is_system_admin: true,
-        mfa_enabled: false,
-    }}));
+    super::auth::queue_refresh_override(Ok(LoginResponse {
+        user: UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice Example".into(),
+            role: "admin".into(),
+            is_system_admin: true,
+            mfa_enabled: false,
+        },
+    }));
     let err = client.get_me().await.unwrap_err();
     assert_eq!(err.code, "UNAUTHORIZED");
+}
+
+#[tokio::test]
+async fn api_client_login_surfaces_api_error_payload() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(POST).path("/api/auth/login");
+        then.status(401)
+            .json_body(json!({ "error": "invalid credentials", "code": "UNAUTHORIZED" }));
+    });
+
+    let client = api_client(&server);
+    let err = client
+        .login(LoginRequest {
+            username: "alice".into(),
+            password: "bad-pass".into(),
+            totp_code: None,
+            device_label: Some("test-device".into()),
+        })
+        .await
+        .expect_err("login should fail");
+    assert_eq!(err.code, "UNAUTHORIZED");
+    assert_eq!(err.error, "invalid credentials");
+}
+
+#[tokio::test]
+async fn api_client_refresh_override_can_return_error() {
+    let client = ApiClient::new_with_base_url("http://127.0.0.1:9/api");
+    super::auth::queue_refresh_override(Err(ApiError {
+        error: "forced".into(),
+        code: "UNAUTHORIZED".into(),
+        details: None,
+    }));
+
+    let first = client.refresh_token().await;
+    let err = match first {
+        Err(err) => err,
+        Ok(_) => client
+            .refresh_token()
+            .await
+            .expect_err("queued error override should be returned"),
+    };
+    assert_eq!(err.code, "UNAUTHORIZED");
+    assert_eq!(err.error, "forced");
+}
+
+#[tokio::test]
+async fn api_client_logout_falls_back_when_error_body_is_not_json() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(POST).path("/api/auth/logout");
+        then.status(500);
+    });
+
+    let client = api_client(&server);
+    let err = client
+        .logout(false)
+        .await
+        .expect_err("logout should fail on non-json error body");
+    assert_eq!(err.code, "UNKNOWN");
+    assert_eq!(err.error, "Logout failed");
 }

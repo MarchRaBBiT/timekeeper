@@ -5,6 +5,46 @@ use crate::components::layout::Layout;
 use crate::state::auth::use_auth;
 use leptos::*;
 
+fn update_filter_value(filters: &mut AuditLogFilters, field: &str, value: String) {
+    match field {
+        "from" => filters.from = value,
+        "to" => filters.to = value,
+        "actor_id" => filters.actor_id = value,
+        "event_type" => filters.event_type = value,
+        "result" => filters.result = value,
+        _ => {}
+    }
+}
+
+fn compute_total_pages(total: i64, per_page: i64) -> i64 {
+    if total <= 0 || per_page <= 0 {
+        1
+    } else {
+        ((total + per_page - 1) / per_page).max(1)
+    }
+}
+
+fn can_go_next(page: i64, total: i64, per_page: i64) -> bool {
+    page < compute_total_pages(total, per_page)
+}
+
+fn metadata_preview(value: &serde_json::Value, max_len: usize) -> String {
+    let rendered = value.to_string();
+    if rendered.len() > max_len {
+        format!("{}...", &rendered[0..max_len])
+    } else {
+        rendered
+    }
+}
+
+fn result_badge_class(result: &str) -> &'static str {
+    if result == "success" {
+        "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-success-bg text-status-success-text"
+    } else {
+        "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-error-bg text-status-error-text"
+    }
+}
+
 #[component]
 pub fn AdminAuditLogsPage() -> impl IntoView {
     let vm = use_audit_log_view_model();
@@ -22,14 +62,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
 
     let on_filter_change = move |ev: web_sys::Event, field: &str| {
         let val = event_target_value(&ev);
-        vm.filters.update(|f| match field {
-            "from" => f.from = val,
-            "to" => f.to = val,
-            "actor_id" => f.actor_id = val,
-            "event_type" => f.event_type = val,
-            "result" => f.result = val,
-            _ => {}
-        });
+        vm.filters.update(|f| update_filter_value(f, field, val));
         vm.page.set(1);
     };
 
@@ -159,7 +192,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                                                 {format!("{} {}", log.target_type.unwrap_or_default(), log.target_id.unwrap_or_default())}
                                                             </td>
                                                              <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                                <span class={if log.result == "success" { "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-success-bg text-status-success-text" } else { "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-error-bg text-status-error-text" }}>
+                                                                <span class={result_badge_class(&log.result)}>
                                                                     {log.result.clone()}
                                                                 </span>
                                                                 {log.error_code.clone().map(|c| view! { <span class="block text-xs text-status-error-text">{c}</span> })}
@@ -168,12 +201,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                                                  {
                                                                     let m = log.metadata.clone();
                                                                     m.map(|val| {
-                                                                        let s = val.to_string();
-                                                                        let display = if s.len() > 50 {
-                                                                            format!("{}...", &s[0..50])
-                                                                        } else {
-                                                                            s
-                                                                        };
+                                                                        let display = metadata_preview(&val, 50);
                                                                         let val_clone = val.clone();
                                                                         view! {
                                                                             <button
@@ -208,13 +236,13 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         </button>
                         <div class="text-sm text-fg">
                             "ページ " {move || vm.page.get()}
-                             {move || vm.logs_resource.get().map(|res| if let Ok(r) = res { format!(" / {}", (r.total as f64 / r.per_page as f64).ceil() as i64) } else { "".to_string() })}
+                             {move || vm.logs_resource.get().map(|res| if let Ok(r) = res { format!(" / {}", compute_total_pages(r.total, r.per_page)) } else { "".to_string() })}
                         </div>
                         <button
                             class="px-4 py-2 border border-border rounded disabled:opacity-50 text-sm text-fg"
                             disabled=move || {
                                 vm.logs_resource.get().map(|res| if let Ok(r) = res {
-                                    vm.page.get() >= (r.total as f64 / r.per_page as f64).ceil() as i64
+                                    !can_go_next(vm.page.get(), r.total, r.per_page)
                                 } else {
                                     true
                                 }).unwrap_or(true)
@@ -290,10 +318,36 @@ mod host_tests {
         let server = server.clone();
         let html = render_to_string(move || {
             provide_auth(Some(admin_user(true)));
-            provide_context(crate::api::ApiClient::new_with_base_url(&server.url("/api")));
+            provide_context(crate::api::ApiClient::new_with_base_url(
+                &server.url("/api"),
+            ));
             view! { <AdminAuditLogsPage /> }
         });
         assert!(html.contains("監査ログ"));
         assert!(html.contains("JSONエクスポート"));
+    }
+
+    #[test]
+    fn helper_filter_and_pagination_logic() {
+        let mut filters = AuditLogFilters::default();
+        update_filter_value(&mut filters, "from", "2026-01-01T00:00".into());
+        update_filter_value(&mut filters, "event_type", "admin_user_create".into());
+        update_filter_value(&mut filters, "unknown", "ignored".into());
+        assert_eq!(filters.from, "2026-01-01T00:00");
+        assert_eq!(filters.event_type, "admin_user_create");
+        assert!(compute_total_pages(0, 20) == 1);
+        assert!(compute_total_pages(41, 20) == 3);
+        assert!(can_go_next(1, 41, 20));
+        assert!(!can_go_next(3, 41, 20));
+    }
+
+    #[test]
+    fn helper_metadata_and_badge_logic() {
+        let short = serde_json::json!({"a":"b"});
+        let long = serde_json::json!({"k":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"});
+        assert!(metadata_preview(&short, 50).contains("\"a\""));
+        assert!(metadata_preview(&long, 10).ends_with("..."));
+        assert!(result_badge_class("success").contains("status-success"));
+        assert!(result_badge_class("failure").contains("status-error"));
     }
 }

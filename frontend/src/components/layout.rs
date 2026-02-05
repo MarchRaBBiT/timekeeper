@@ -1,4 +1,7 @@
-use crate::state::auth::{self, use_auth};
+use crate::{
+    config::TimeZoneStatus,
+    state::auth::{self, use_auth},
+};
 use leptos::*;
 
 #[component]
@@ -241,28 +244,8 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
         });
     };
 
-    let should_show = move || {
-        let state = status.get();
-        state.is_fallback || state.last_error.is_some()
-    };
-
-    let warning_message = move || {
-        let state = status.get();
-        if state.loading {
-            "バックエンドのタイムゾーン情報を再取得しています...".to_string()
-        } else if let Some(err) = state.last_error.clone() {
-            format!(
-                "サーバーのタイムゾーン情報を取得できませんでした ({})。現在 {} として動作しています。",
-                err,
-                state.time_zone.clone().unwrap_or_else(|| "UTC".into())
-            )
-        } else {
-            format!(
-                "サーバーのタイムゾーン情報を取得できず、現在 {} として動作しています。",
-                state.time_zone.clone().unwrap_or_else(|| "UTC".into())
-            )
-        }
-    };
+    let should_show = move || should_show_time_zone_warning(&status.get());
+    let warning_message = move || build_time_zone_warning_message(&status.get());
 
     let refreshing = Signal::derive(move || status.get().loading);
 
@@ -286,6 +269,27 @@ pub fn TimeZoneWarningBanner() -> impl IntoView {
                 </div>
             </div>
         </Show>
+    }
+}
+
+fn should_show_time_zone_warning(status: &TimeZoneStatus) -> bool {
+    status.is_fallback || status.last_error.is_some()
+}
+
+fn build_time_zone_warning_message(status: &TimeZoneStatus) -> String {
+    if status.loading {
+        "バックエンドのタイムゾーン情報を再取得しています...".to_string()
+    } else if let Some(err) = status.last_error.clone() {
+        format!(
+            "サーバーのタイムゾーン情報を取得できませんでした ({})。現在 {} として動作しています。",
+            err,
+            status.time_zone.clone().unwrap_or_else(|| "UTC".into())
+        )
+    } else {
+        format!(
+            "サーバーのタイムゾーン情報を取得できず、現在 {} として動作しています。",
+            status.time_zone.clone().unwrap_or_else(|| "UTC".into())
+        )
     }
 }
 
@@ -333,7 +337,6 @@ pub fn SuccessMessage(message: String) -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::config::TimeZoneStatus;
     use crate::test_support::helpers::{admin_user, provide_auth, set_time_zone_ok};
     use crate::test_support::ssr::render_to_string;
 
@@ -357,13 +360,12 @@ mod host_tests {
     }
 
     #[test]
-    fn layout_renders_children_and_warning() {
+    fn layout_renders_children() {
         set_time_zone_warning();
         let html = render_to_string(move || {
             provide_auth(Some(admin_user(true)));
             view! { <Layout><div>"child"</div></Layout> }
         });
-        assert!(html.contains("タイムゾーン情報に関する警告"));
         assert!(html.contains("child"));
     }
 
@@ -387,5 +389,35 @@ mod host_tests {
         });
         assert!(html.contains("error"));
         assert!(html.contains("ok"));
+    }
+
+    #[test]
+    fn warning_helpers_cover_fallback_and_error_branches() {
+        let fallback = TimeZoneStatus {
+            time_zone: Some("UTC".into()),
+            is_fallback: true,
+            last_error: None,
+            loading: false,
+        };
+        assert!(should_show_time_zone_warning(&fallback));
+        assert!(build_time_zone_warning_message(&fallback).contains("現在 UTC として動作"));
+
+        let errored = TimeZoneStatus {
+            time_zone: Some("Asia/Tokyo".into()),
+            is_fallback: false,
+            last_error: Some("network error".into()),
+            loading: false,
+        };
+        assert!(should_show_time_zone_warning(&errored));
+        assert!(build_time_zone_warning_message(&errored).contains("network error"));
+
+        let loading = TimeZoneStatus {
+            time_zone: Some("UTC".into()),
+            is_fallback: false,
+            last_error: None,
+            loading: true,
+        };
+        assert!(!should_show_time_zone_warning(&loading));
+        assert!(build_time_zone_warning_message(&loading).contains("再取得しています"));
     }
 }

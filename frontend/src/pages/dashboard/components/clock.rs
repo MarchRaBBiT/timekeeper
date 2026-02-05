@@ -6,7 +6,9 @@ use crate::utils::time::now_in_app_tz;
 
 #[component]
 pub fn Clock() -> impl IntoView {
-    let (time, _set_time) = create_signal(now_in_app_tz());
+    let (time, set_time) = create_signal(now_in_app_tz());
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = set_time;
 
     // Update time every second
     // We use store_value to keep the Interval alive. It will be dropped (and cancelled) when the component is unmounted.

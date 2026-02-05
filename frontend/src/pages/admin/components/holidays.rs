@@ -12,6 +12,227 @@ use chrono::{Datelike, Duration, NaiveDate};
 use leptos::{ev, *};
 use std::collections::HashSet;
 
+fn compute_total_pages(per_page: i64, total: i64) -> i64 {
+    if total == 0 {
+        1
+    } else {
+        ((total + per_page - 1) / per_page).max(1)
+    }
+}
+
+fn compute_page_bounds(page: i64, per_page: i64, total: i64) -> (i64, i64, i64) {
+    if total == 0 {
+        (0, 0, 0)
+    } else {
+        let start = ((page - 1).max(0) * per_page) + 1;
+        let end = (page * per_page).min(total);
+        (start, end, total)
+    }
+}
+
+fn parse_optional_filter_date(value: &str, label: &str) -> Result<Option<NaiveDate>, ApiError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+        .map(Some)
+        .map_err(|_| {
+            ApiError::validation(format!("{}は YYYY-MM-DD 形式で入力してください。", label))
+        })
+}
+
+fn validate_filter_window(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Result<(), ApiError> {
+    if let (Some(from), Some(to)) = (from, to) {
+        if from > to {
+            return Err(ApiError::validation(
+                "開始日は終了日以前である必要があります。",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_calendar_month_range(month_raw: &str) -> Result<(NaiveDate, NaiveDate), ApiError> {
+    let trimmed = month_raw.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::validation("月を選択してください。"));
+    }
+    let first_day = NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
+        .map_err(|_| ApiError::validation("月は YYYY-MM 形式で入力してください。"))?;
+    let next_month = if first_day.month() == 12 {
+        NaiveDate::from_ymd_opt(first_day.year() + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(first_day.year(), first_day.month() + 1, 1)
+    }
+    .expect("next month boundary must exist");
+    Ok((first_day, next_month - Duration::days(1)))
+}
+
+fn parse_holiday_form(
+    date_raw: &str,
+    name_raw: &str,
+    desc_raw: &str,
+) -> Result<CreateHolidayRequest, ApiError> {
+    if date_raw.trim().is_empty() || name_raw.trim().is_empty() {
+        return Err(ApiError::validation("日付と名称を入力してください。"));
+    }
+    let parsed_date = NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d")
+        .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))?;
+    Ok(CreateHolidayRequest {
+        holiday_date: parsed_date,
+        name: name_raw.trim().to_string(),
+        description: if desc_raw.trim().is_empty() {
+            None
+        } else {
+            Some(desc_raw.trim().to_string())
+        },
+    })
+}
+
+fn parse_google_year(value: &str) -> Option<i32> {
+    value.trim().parse::<i32>().ok()
+}
+
+fn filter_new_google_holidays(
+    existing_dates: impl IntoIterator<Item = NaiveDate>,
+    candidates: Vec<CreateHolidayRequest>,
+) -> Vec<CreateHolidayRequest> {
+    let existing: HashSet<NaiveDate> = existing_dates.into_iter().collect();
+    candidates
+        .into_iter()
+        .filter(|candidate| !existing.contains(&candidate.holiday_date))
+        .collect()
+}
+
+fn parse_per_page_value(raw: &str) -> Option<i64> {
+    raw.parse::<i64>().ok().map(|value| value.max(1))
+}
+
+fn parse_filter_inputs(
+    from_raw: &str,
+    to_raw: &str,
+) -> Result<(Option<NaiveDate>, Option<NaiveDate>), ApiError> {
+    let parsed_from = parse_optional_filter_date(from_raw, "開始日")?;
+    let parsed_to = parse_optional_filter_date(to_raw, "終了日")?;
+    validate_filter_window(parsed_from, parsed_to)?;
+    Ok((parsed_from, parsed_to))
+}
+
+fn import_result_message(count: usize) -> String {
+    if count == 0 {
+        "追加対象の祝日はありません。".into()
+    } else {
+        format!("{} 件の祝日を追加しました。", count)
+    }
+}
+
+fn page_bounds_message(bounds: Option<(i64, i64, i64)>) -> String {
+    bounds
+        .map(|(start, end, total)| match (start, end, total) {
+            (0, 0, 0) => "該当する祝日はありません。".to_string(),
+            _ => format!("{} 件中 {} - {} 件を表示中", total, start, end),
+        })
+        .unwrap_or_else(|| "祝日一覧を取得しています...".into())
+}
+
+fn create_holiday_feedback(
+    result: Result<crate::api::HolidayResponse, ApiError>,
+) -> (Option<String>, Option<ApiError>, bool) {
+    match result {
+        Ok(created) => (
+            Some(format!(
+                "{} ({}) を登録しました。",
+                created.name,
+                created.holiday_date.format("%Y-%m-%d")
+            )),
+            None,
+            true,
+        ),
+        Err(err) => (None, Some(err), false),
+    }
+}
+
+fn delete_holiday_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(_) => (Some("祝日を削除しました。".into()), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
+fn import_holidays_feedback(result: Result<usize, ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(count) => (Some(import_result_message(count)), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
+fn prepare_import_candidates(
+    existing_dates: impl IntoIterator<Item = NaiveDate>,
+    google_holidays: Vec<CreateHolidayRequest>,
+) -> Result<Vec<CreateHolidayRequest>, &'static str> {
+    let candidates = filter_new_google_holidays(existing_dates, google_holidays);
+    if candidates.is_empty() {
+        Err("追加対象の祝日はありません。")
+    } else {
+        Ok(candidates)
+    }
+}
+
+fn build_per_page_query_update(current: &HolidayListQuery, raw: &str) -> Option<HolidayListQuery> {
+    let value = parse_per_page_value(raw)?;
+    let mut next = current.clone();
+    next.per_page = value;
+    next.page = 1;
+    Some(next)
+}
+
+fn build_filter_query_update(
+    current: &HolidayListQuery,
+    from_raw: &str,
+    to_raw: &str,
+) -> Result<HolidayListQuery, ApiError> {
+    let (parsed_from, parsed_to) = parse_filter_inputs(from_raw, to_raw)?;
+    let mut next = current.clone();
+    next.page = 1;
+    next.from = parsed_from;
+    next.to = parsed_to;
+    Ok(next)
+}
+
+fn clear_filter_query(current: &HolidayListQuery) -> HolidayListQuery {
+    let mut next = current.clone();
+    next.page = 1;
+    next.from = None;
+    next.to = None;
+    next
+}
+
+fn build_calendar_range_query_update(
+    current: &HolidayListQuery,
+    month_raw: &str,
+) -> Result<(HolidayListQuery, String, String), ApiError> {
+    let (first_day, last_day) = parse_calendar_month_range(month_raw)?;
+    let mut next = current.clone();
+    next.page = 1;
+    next.from = Some(first_day);
+    next.to = Some(last_day);
+    Ok((
+        next,
+        first_day.format("%Y-%m-%d").to_string(),
+        last_day.format("%Y-%m-%d").to_string(),
+    ))
+}
+
+fn google_fetch_feedback(
+    result: Result<Vec<CreateHolidayRequest>, ApiError>,
+) -> (Vec<CreateHolidayRequest>, Option<ApiError>) {
+    match result {
+        Ok(list) => (list, None),
+        Err(err) => (Vec::new(), Some(err)),
+    }
+}
+
 #[component]
 pub fn HolidayManagementSection(
     repository: AdminRepository,
@@ -76,13 +297,7 @@ pub fn HolidayManagementSection(
     let total_pages = Signal::derive(move || {
         page_total
             .get()
-            .map(|(_, per_page, total)| {
-                if total == 0 {
-                    1
-                } else {
-                    ((total + per_page - 1) / per_page).max(1)
-                }
-            })
+            .map(|(_, per_page, total)| compute_total_pages(per_page, total))
             .unwrap_or(1)
     });
     let can_go_prev = Signal::derive(move || {
@@ -95,25 +310,15 @@ pub fn HolidayManagementSection(
         page_total
             .get()
             .map(|(page, per_page, total)| {
-                let max_page = if total == 0 {
-                    1
-                } else {
-                    ((total + per_page - 1) / per_page).max(1)
-                };
+                let max_page = compute_total_pages(per_page, total);
                 page < max_page
             })
             .unwrap_or(false)
     });
     let page_bounds = Signal::derive(move || {
-        page_total.get().map(|(page, per_page, total)| {
-            if total == 0 {
-                (0, 0, 0)
-            } else {
-                let start = ((page - 1).max(0) * per_page) + 1;
-                let end = (page * per_page).min(total);
-                (start, end, total)
-            }
-        })
+        page_total
+            .get()
+            .map(|(page, per_page, total)| compute_page_bounds(page, per_page, total))
     });
     let on_prev_page = {
         move |_| {
@@ -133,11 +338,11 @@ pub fn HolidayManagementSection(
     };
     let on_per_page_change = {
         move |ev: ev::Event| {
-            if let Ok(value) = event_target_value(&ev).parse::<i64>() {
-                holiday_query.update(|query| {
-                    query.per_page = value.max(1);
-                    query.page = 1;
-                });
+            let raw = event_target_value(&ev);
+            if let Some(next_query) =
+                build_per_page_query_update(&holiday_query.get_untracked(), &raw)
+            {
+                holiday_query.set(next_query);
             }
         }
     };
@@ -145,44 +350,18 @@ pub fn HolidayManagementSection(
         move |_| {
             let from_raw = filter_from_input.get();
             let to_raw = filter_to_input.get();
-            let parse_input = |value: &str, label: &str| -> Result<Option<NaiveDate>, String> {
-                let trimmed = value.trim();
-                if trimmed.is_empty() {
-                    return Ok(None);
-                }
-                NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
-                    .map(Some)
-                    .map_err(|_| format!("{}は YYYY-MM-DD 形式で入力してください。", label))
-            };
-            let parsed_from = match parse_input(&from_raw, "開始日") {
-                Ok(date) => date,
-                Err(err) => {
-                    holiday_error.set(Some(ApiError::validation(&err)));
-                    return;
-                }
-            };
-            let parsed_to = match parse_input(&to_raw, "終了日") {
-                Ok(date) => date,
-                Err(err) => {
-                    holiday_error.set(Some(ApiError::validation(&err)));
-                    return;
-                }
-            };
-            if let (Some(from), Some(to)) = (parsed_from, parsed_to) {
-                if from > to {
-                    holiday_error.set(Some(ApiError::validation(
-                        "開始日は終了日以前である必要があります。",
-                    )));
-                    return;
-                }
-            }
+            let next_query =
+                match build_filter_query_update(&holiday_query.get_untracked(), &from_raw, &to_raw)
+                {
+                    Ok(next_query) => next_query,
+                    Err(err) => {
+                        holiday_error.set(Some(err));
+                        return;
+                    }
+                };
             holiday_error.set(None);
             holiday_message.set(None);
-            holiday_query.update(|query| {
-                query.page = 1;
-                query.from = parsed_from;
-                query.to = parsed_to;
-            });
+            holiday_query.set(next_query);
         }
     };
     let on_clear_filters = {
@@ -191,47 +370,26 @@ pub fn HolidayManagementSection(
             filter_to_input.set(String::new());
             holiday_error.set(None);
             holiday_message.set(None);
-            holiday_query.update(|query| {
-                query.page = 1;
-                query.from = None;
-                query.to = None;
-            });
+            holiday_query.set(clear_filter_query(&holiday_query.get_untracked()));
         }
     };
     let on_apply_calendar_range = {
         move |_| {
-            let month_raw = calendar_month_input.get();
-            let trimmed = month_raw.trim();
-            if trimmed.is_empty() {
-                holiday_error.set(Some(ApiError::validation("月を選択してください。")));
-                return;
-            }
-            let first_day = match NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
-            {
-                Ok(date) => date,
-                Err(_) => {
-                    holiday_error.set(Some(ApiError::validation(
-                        "月は YYYY-MM 形式で入力してください。",
-                    )));
+            let (next_query, from_input, to_input) = match build_calendar_range_query_update(
+                &holiday_query.get_untracked(),
+                &calendar_month_input.get(),
+            ) {
+                Ok(next) => next,
+                Err(err) => {
+                    holiday_error.set(Some(err));
                     return;
                 }
             };
-            let next_month = if first_day.month() == 12 {
-                NaiveDate::from_ymd_opt(first_day.year() + 1, 1, 1)
-            } else {
-                NaiveDate::from_ymd_opt(first_day.year(), first_day.month() + 1, 1)
-            }
-            .expect("next month boundary must exist");
-            let last_day = next_month - Duration::days(1);
-            filter_from_input.set(first_day.format("%Y-%m-%d").to_string());
-            filter_to_input.set(last_day.format("%Y-%m-%d").to_string());
+            filter_from_input.set(from_input);
+            filter_to_input.set(to_input);
             holiday_error.set(None);
             holiday_message.set(None);
-            holiday_query.update(|query| {
-                query.page = 1;
-                query.from = Some(first_day);
-                query.to = Some(last_day);
-            });
+            holiday_query.set(next_query);
         }
     };
 
@@ -245,23 +403,14 @@ pub fn HolidayManagementSection(
     {
         create_effect(move |_| {
             if let Some(result) = create_holiday_action.value().get() {
-                match result {
-                    Ok(created) => {
-                        holiday_message.set(Some(format!(
-                            "{} ({}) を登録しました。",
-                            created.name,
-                            created.holiday_date.format("%Y-%m-%d")
-                        )));
-                        holiday_error.set(None);
-                        holiday_date_input.set(String::new());
-                        holiday_name_input.set(String::new());
-                        holiday_desc_input.set(String::new());
-                        holidays_reload.update(|value| *value = value.wrapping_add(1));
-                    }
-                    Err(err) => {
-                        holiday_message.set(None);
-                        holiday_error.set(Some(err));
-                    }
+                let (message, error, should_reload) = create_holiday_feedback(result);
+                holiday_message.set(message);
+                holiday_error.set(error);
+                if should_reload {
+                    holiday_date_input.set(String::new());
+                    holiday_name_input.set(String::new());
+                    holiday_desc_input.set(String::new());
+                    holidays_reload.update(|value| *value = value.wrapping_add(1));
                 }
             }
         });
@@ -276,18 +425,13 @@ pub fn HolidayManagementSection(
     {
         create_effect(move |_| {
             if let Some(result) = delete_holiday_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        holiday_message.set(Some("祝日を削除しました。".into()));
-                        holiday_error.set(None);
-                        deleting_id.set(None);
-                        holidays_reload.update(|value| *value = value.wrapping_add(1));
-                    }
-                    Err(err) => {
-                        holiday_message.set(None);
-                        holiday_error.set(Some(err));
-                        deleting_id.set(None);
-                    }
+                let (message, error) = delete_holiday_feedback(result);
+                let should_reload = error.is_none();
+                holiday_message.set(message);
+                holiday_error.set(error);
+                deleting_id.set(None);
+                if should_reload {
+                    holidays_reload.update(|value| *value = value.wrapping_add(1));
                 }
             }
         });
@@ -306,16 +450,9 @@ pub fn HolidayManagementSection(
     {
         create_effect(move |_| {
             if let Some(result) = fetch_google_action.value().get() {
-                match result {
-                    Ok(list) => {
-                        google_error.set(None);
-                        google_holidays.set(list);
-                    }
-                    Err(err) => {
-                        google_error.set(Some(err));
-                        google_holidays.set(Vec::new());
-                    }
-                }
+                let (list, error) = google_fetch_feedback(result);
+                google_error.set(error);
+                google_holidays.set(list);
             }
         });
     }
@@ -336,21 +473,12 @@ pub fn HolidayManagementSection(
     {
         create_effect(move |_| {
             if let Some(result) = import_action.value().get() {
-                match result {
-                    Ok(count) => {
-                        if count == 0 {
-                            holiday_message.set(Some("追加対象の祝日はありません。".into()));
-                        } else {
-                            holiday_message
-                                .set(Some(format!("{} 件の祝日を追加しました。", count)));
-                        }
-                        holiday_error.set(None);
-                        holidays_reload.update(|value| *value = value.wrapping_add(1));
-                    }
-                    Err(err) => {
-                        holiday_message.set(None);
-                        holiday_error.set(Some(err));
-                    }
+                let (message, error) = import_holidays_feedback(result);
+                let should_reload = error.is_none();
+                holiday_message.set(message);
+                holiday_error.set(error);
+                if should_reload {
+                    holidays_reload.update(|value| *value = value.wrapping_add(1));
                 }
             }
         });
@@ -358,7 +486,7 @@ pub fn HolidayManagementSection(
 
     let on_fetch_google = {
         move |_| {
-            let parsed_year = google_year_input.get().trim().parse::<i32>().ok();
+            let parsed_year = parse_google_year(&google_year_input.get());
             fetch_google_action.dispatch(parsed_year);
         }
     };
@@ -366,32 +494,17 @@ pub fn HolidayManagementSection(
     let on_create_holiday = {
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
-            let date_raw = holiday_date_input.get();
-            let name_raw = holiday_name_input.get();
-            let desc_raw = holiday_desc_input.get();
-            if date_raw.trim().is_empty() || name_raw.trim().is_empty() {
-                holiday_error.set(Some(ApiError::validation("日付と名称を入力してください。")));
-                holiday_message.set(None);
-                return;
-            }
-            let parsed_date = match NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d") {
-                Ok(date) => date,
-                Err(_) => {
-                    holiday_error.set(Some(ApiError::validation(
-                        "日付は YYYY-MM-DD 形式で入力してください。",
-                    )));
+            let payload = match parse_holiday_form(
+                &holiday_date_input.get(),
+                &holiday_name_input.get(),
+                &holiday_desc_input.get(),
+            ) {
+                Ok(payload) => payload,
+                Err(err) => {
+                    holiday_error.set(Some(err));
                     holiday_message.set(None);
                     return;
                 }
-            };
-            let payload = CreateHolidayRequest {
-                holiday_date: parsed_date,
-                name: name_raw.trim().to_string(),
-                description: if desc_raw.trim().is_empty() {
-                    None
-                } else {
-                    Some(desc_raw.trim().to_string())
-                },
             };
             holiday_error.set(None);
             holiday_message.set(None);
@@ -408,21 +521,16 @@ pub fn HolidayManagementSection(
 
     let on_import_google = {
         move |_| {
-            let existing: HashSet<NaiveDate> = holidays_data
-                .get()
-                .into_iter()
-                .map(|h| h.holiday_date)
-                .collect();
-            let candidates: Vec<CreateHolidayRequest> = google_holidays
-                .get()
-                .into_iter()
-                .filter(|candidate| !existing.contains(&candidate.holiday_date))
-                .collect();
-            if candidates.is_empty() {
-                holiday_message.set(Some("追加対象の祝日はありません。".into()));
-                holiday_error.set(None);
-                return;
-            }
+            let existing_dates = holidays_data.get().into_iter().map(|h| h.holiday_date);
+            let candidates = match prepare_import_candidates(existing_dates, google_holidays.get())
+            {
+                Ok(candidates) => candidates,
+                Err(msg) => {
+                    holiday_message.set(Some(msg.into()));
+                    holiday_error.set(None);
+                    return;
+                }
+            };
             holiday_error.set(None);
             holiday_message.set(None);
             import_action.dispatch(candidates);
@@ -539,17 +647,7 @@ pub fn HolidayManagementSection(
             </Show>
             <div class="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm text-fg lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    {move || {
-                        page_bounds
-                            .get()
-                            .map(|bounds| match bounds {
-                                (0, 0, 0) => "該当する祝日はありません。".to_string(),
-                                (start, end, total) => {
-                                    format!("{} 件中 {} - {} 件を表示中", total, start, end)
-                                }
-                            })
-                            .unwrap_or_else(|| "祝日一覧を取得しています...".into())
-                    }}
+                    {move || page_bounds_message(page_bounds.get())}
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <label class="flex items-center gap-1">
@@ -658,6 +756,7 @@ mod host_tests {
     use super::*;
     use crate::api::ApiClient;
     use crate::test_support::ssr::render_to_string;
+    use chrono::Datelike;
 
     #[test]
     fn holiday_management_section_renders() {
@@ -667,5 +766,264 @@ mod host_tests {
             view! { <HolidayManagementSection repository=repo admin_allowed=allowed /> }
         });
         assert!(html.contains("祝日管理"));
+    }
+
+    #[test]
+    fn pagination_helpers_cover_zero_and_non_zero_totals() {
+        assert_eq!(compute_total_pages(10, 0), 1);
+        assert_eq!(compute_total_pages(10, 21), 3);
+        assert_eq!(compute_page_bounds(1, 10, 0), (0, 0, 0));
+        assert_eq!(compute_page_bounds(2, 10, 35), (11, 20, 35));
+        assert_eq!(compute_page_bounds(4, 10, 35), (31, 35, 35));
+    }
+
+    #[test]
+    fn filter_date_parsing_and_window_validation() {
+        assert_eq!(
+            parse_optional_filter_date("   ", "開始日").expect("empty is none"),
+            None
+        );
+        let from = parse_optional_filter_date("2026-01-01", "開始日").expect("from");
+        let to = parse_optional_filter_date("2026-01-31", "終了日").expect("to");
+        assert!(validate_filter_window(from, to).is_ok());
+        assert!(parse_optional_filter_date("bad", "開始日").is_err());
+        let from = Some(NaiveDate::from_ymd_opt(2026, 2, 1).expect("valid"));
+        let to = Some(NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"));
+        assert!(validate_filter_window(from, to).is_err());
+    }
+
+    #[test]
+    fn calendar_month_range_and_google_year_parsing() {
+        let (first, last) = parse_calendar_month_range("2026-02").expect("month range");
+        assert_eq!(first.to_string(), "2026-02-01");
+        assert_eq!(last.to_string(), "2026-02-28");
+
+        let (first_leap, last_leap) = parse_calendar_month_range("2024-02").expect("leap range");
+        assert_eq!(first_leap.to_string(), "2024-02-01");
+        assert_eq!(last_leap.to_string(), "2024-02-29");
+
+        let (first_dec, last_dec) = parse_calendar_month_range("2025-12").expect("dec range");
+        assert_eq!(first_dec.month(), 12);
+        assert_eq!(last_dec.to_string(), "2025-12-31");
+
+        assert!(parse_calendar_month_range("").is_err());
+        assert!(parse_calendar_month_range("2026/01").is_err());
+
+        assert_eq!(parse_google_year(" 2026 "), Some(2026));
+        assert_eq!(parse_google_year(""), None);
+        assert_eq!(parse_google_year("invalid"), None);
+    }
+
+    #[test]
+    fn holiday_form_and_google_candidate_filtering() {
+        let payload =
+            parse_holiday_form("2026-01-02", "  New Year  ", "  optional  ").expect("payload");
+        assert_eq!(payload.holiday_date.to_string(), "2026-01-02");
+        assert_eq!(payload.name, "New Year");
+        assert_eq!(payload.description.as_deref(), Some("optional"));
+
+        let no_desc = parse_holiday_form("2026-01-03", "Holiday", " ").expect("payload");
+        assert!(no_desc.description.is_none());
+        assert!(parse_holiday_form("", "Holiday", "").is_err());
+        assert!(parse_holiday_form("bad-date", "Holiday", "").is_err());
+
+        let existing = vec![NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid")];
+        let filtered = filter_new_google_holidays(
+            existing,
+            vec![
+                CreateHolidayRequest {
+                    holiday_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"),
+                    name: "Existing".into(),
+                    description: None,
+                },
+                CreateHolidayRequest {
+                    holiday_date: NaiveDate::from_ymd_opt(2026, 1, 2).expect("valid"),
+                    name: "New".into(),
+                    description: None,
+                },
+            ],
+        );
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "New");
+    }
+
+    #[test]
+    fn filter_new_google_holidays_keeps_duplicate_candidates_when_not_existing() {
+        let existing = vec![NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid")];
+        let duplicate_date = NaiveDate::from_ymd_opt(2026, 1, 2).expect("valid");
+        let filtered = filter_new_google_holidays(
+            existing,
+            vec![
+                CreateHolidayRequest {
+                    holiday_date: duplicate_date,
+                    name: "A".into(),
+                    description: None,
+                },
+                CreateHolidayRequest {
+                    holiday_date: duplicate_date,
+                    name: "B".into(),
+                    description: None,
+                },
+            ],
+        );
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].name, "A");
+        assert_eq!(filtered[1].name, "B");
+    }
+
+    #[test]
+    fn helper_parses_per_page_and_filter_inputs() {
+        assert_eq!(parse_per_page_value("25"), Some(25));
+        assert_eq!(parse_per_page_value("0"), Some(1));
+        assert_eq!(parse_per_page_value("bad"), None);
+
+        let parsed = parse_filter_inputs("2026-01-01", "2026-01-31").expect("valid");
+        assert_eq!(parsed.0.expect("from").to_string(), "2026-01-01");
+        assert_eq!(parsed.1.expect("to").to_string(), "2026-01-31");
+        assert!(parse_filter_inputs("bad", "2026-01-31").is_err());
+        assert!(parse_filter_inputs("2026-01-31", "2026-01-01").is_err());
+    }
+
+    #[test]
+    fn helper_import_and_page_bounds_messages_cover_edges() {
+        assert_eq!(import_result_message(0), "追加対象の祝日はありません。");
+        assert_eq!(import_result_message(3), "3 件の祝日を追加しました。");
+
+        assert_eq!(page_bounds_message(None), "祝日一覧を取得しています...");
+        assert_eq!(
+            page_bounds_message(Some((0, 0, 0))),
+            "該当する祝日はありません。"
+        );
+        assert_eq!(
+            page_bounds_message(Some((11, 20, 35))),
+            "35 件中 11 - 20 件を表示中"
+        );
+    }
+
+    #[test]
+    fn helper_feedback_and_import_candidate_selection_cover_branches() {
+        let created = crate::api::HolidayResponse {
+            id: "h1".into(),
+            holiday_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"),
+            name: "New Year".into(),
+            description: None,
+        };
+        let (create_ok_msg, create_ok_err, create_ok_reload) = create_holiday_feedback(Ok(created));
+        assert!(create_ok_msg.expect("msg").contains("New Year"));
+        assert!(create_ok_err.is_none());
+        assert!(create_ok_reload);
+
+        let (create_err_msg, create_err, create_err_reload) =
+            create_holiday_feedback(Err(ApiError::unknown("create failed")));
+        assert!(create_err_msg.is_none());
+        assert_eq!(create_err.expect("error").error, "create failed");
+        assert!(!create_err_reload);
+
+        let (delete_ok_msg, delete_ok_err) = delete_holiday_feedback(Ok(()));
+        assert_eq!(delete_ok_msg.as_deref(), Some("祝日を削除しました。"));
+        assert!(delete_ok_err.is_none());
+
+        let (delete_err_msg, delete_err) =
+            delete_holiday_feedback(Err(ApiError::unknown("delete failed")));
+        assert!(delete_err_msg.is_none());
+        assert_eq!(delete_err.expect("error").error, "delete failed");
+
+        let (import_ok_msg, import_ok_err) = import_holidays_feedback(Ok(2));
+        assert_eq!(import_ok_msg.as_deref(), Some("2 件の祝日を追加しました。"));
+        assert!(import_ok_err.is_none());
+
+        let (import_err_msg, import_err) =
+            import_holidays_feedback(Err(ApiError::unknown("import failed")));
+        assert!(import_err_msg.is_none());
+        assert_eq!(import_err.expect("error").error, "import failed");
+
+        let existing = vec![NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid")];
+        let candidates = prepare_import_candidates(
+            existing.clone(),
+            vec![CreateHolidayRequest {
+                holiday_date: NaiveDate::from_ymd_opt(2026, 1, 2).expect("valid"),
+                name: "new".into(),
+                description: None,
+            }],
+        )
+        .expect("non-empty");
+        assert_eq!(candidates.len(), 1);
+
+        assert!(prepare_import_candidates(
+            existing,
+            vec![CreateHolidayRequest {
+                holiday_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"),
+                name: "existing".into(),
+                description: None,
+            }],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn helper_query_update_builders_cover_success_and_error_paths() {
+        let current = HolidayListQuery {
+            page: 3,
+            per_page: 10,
+            from: Some(NaiveDate::from_ymd_opt(2025, 12, 1).expect("valid")),
+            to: Some(NaiveDate::from_ymd_opt(2025, 12, 31).expect("valid")),
+        };
+
+        let per_page = build_per_page_query_update(&current, "25").expect("valid per-page");
+        assert_eq!(per_page.page, 1);
+        assert_eq!(per_page.per_page, 25);
+        assert_eq!(per_page.from, current.from);
+        assert_eq!(per_page.to, current.to);
+        assert!(build_per_page_query_update(&current, "bad").is_none());
+
+        let filtered =
+            build_filter_query_update(&current, "2026-01-01", "2026-01-31").expect("valid filters");
+        assert_eq!(filtered.page, 1);
+        assert_eq!(
+            filtered.from,
+            Some(NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"))
+        );
+        assert_eq!(
+            filtered.to,
+            Some(NaiveDate::from_ymd_opt(2026, 1, 31).expect("valid"))
+        );
+        assert!(build_filter_query_update(&current, "bad-date", "2026-01-31").is_err());
+
+        let cleared = clear_filter_query(&current);
+        assert_eq!(cleared.page, 1);
+        assert_eq!(cleared.from, None);
+        assert_eq!(cleared.to, None);
+
+        let (calendar_query, from_input, to_input) =
+            build_calendar_range_query_update(&current, "2024-02").expect("calendar update");
+        assert_eq!(
+            calendar_query.from,
+            Some(NaiveDate::from_ymd_opt(2024, 2, 1).expect("valid"))
+        );
+        assert_eq!(
+            calendar_query.to,
+            Some(NaiveDate::from_ymd_opt(2024, 2, 29).expect("valid"))
+        );
+        assert_eq!(from_input, "2024-02-01");
+        assert_eq!(to_input, "2024-02-29");
+        assert!(build_calendar_range_query_update(&current, "").is_err());
+    }
+
+    #[test]
+    fn helper_google_fetch_feedback_maps_success_and_error() {
+        let holiday = CreateHolidayRequest {
+            holiday_date: NaiveDate::from_ymd_opt(2026, 7, 20).expect("valid"),
+            name: "Marine Day".into(),
+            description: None,
+        };
+
+        let (ok_list, ok_error) = google_fetch_feedback(Ok(vec![holiday.clone()]));
+        assert_eq!(ok_list.len(), 1);
+        assert_eq!(ok_list[0].name, holiday.name);
+        assert!(ok_error.is_none());
+
+        let (err_list, err) = google_fetch_feedback(Err(ApiError::unknown("google failed")));
+        assert!(err_list.is_empty());
+        assert_eq!(err.expect("error").error, "google failed");
     }
 }

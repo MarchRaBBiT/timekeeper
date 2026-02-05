@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub mod mock {
     use crate::api::client::{register_mock, MockResponse, TestResponder};
     use crate::api::ApiError;
@@ -57,10 +57,7 @@ pub mod mock {
             let mut then = Then::default();
             f(&mut when, &mut then);
 
-            let method = when
-                .method
-                .clone()
-                .expect("mock requires method");
+            let method = when.method.clone().expect("mock requires method");
             let path = when.path.clone().expect("mock requires path");
             let response = MockResponse::json(
                 then.status.unwrap_or(200),
@@ -80,7 +77,10 @@ pub mod mock {
         fn respond(&self, request: &reqwest::Request) -> Result<MockResponse, ApiError> {
             let method = request.method();
             let path = request.url().path();
-            let inner = self.inner.lock().map_err(|_| ApiError::unknown("mock lock"))?;
+            let inner = self
+                .inner
+                .lock()
+                .map_err(|_| ApiError::unknown("mock lock"))?;
 
             let route = inner
                 .routes

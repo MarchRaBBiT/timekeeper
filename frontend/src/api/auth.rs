@@ -1,6 +1,6 @@
 use serde_json::json;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use std::sync::{Mutex, OnceLock};
 
 use super::{
@@ -40,10 +40,10 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
-    #[cfg(test)]
-    if let Some(result) = next_refresh_override() {
-        return result;
-    }
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        if let Some(result) = next_refresh_override() {
+            return result;
+        }
 
         let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         let device_label = ensure_device_label(&storage)?;
@@ -208,16 +208,16 @@ impl ApiClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 static REFRESH_OVERRIDE: OnceLock<Mutex<Vec<Result<LoginResponse, ApiError>>>> = OnceLock::new();
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) fn queue_refresh_override(result: Result<LoginResponse, ApiError>) {
     let slot = REFRESH_OVERRIDE.get_or_init(|| Mutex::new(Vec::new()));
     slot.lock().unwrap().push(result);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn next_refresh_override() -> Option<Result<LoginResponse, ApiError>> {
     REFRESH_OVERRIDE
         .get()

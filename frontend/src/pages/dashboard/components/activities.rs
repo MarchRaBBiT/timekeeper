@@ -59,9 +59,10 @@ mod host_tests {
     #[test]
     fn activities_section_renders_loading_and_items() {
         let html = render_to_string(move || {
-            let resource = Resource::new(|| ActivityStatusFilter::All, |_| async move {
-                Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new())
-            });
+            let resource = Resource::new(
+                || ActivityStatusFilter::All,
+                |_| async move { Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new()) },
+            );
             resource.set(Ok(vec![DashboardActivity {
                 title: "申請A".into(),
                 detail: Some("1件".into()),
@@ -76,9 +77,10 @@ mod host_tests {
     #[test]
     fn activities_section_renders_error() {
         let html = render_to_string(move || {
-            let resource = Resource::new(|| ActivityStatusFilter::All, |_| async move {
-                Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new())
-            });
+            let resource = Resource::new(
+                || ActivityStatusFilter::All,
+                |_| async move { Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new()) },
+            );
             resource.set(Err(crate::api::ApiError::unknown("activity failed")));
             view! { <ActivitiesSection activities=resource /> }
         });

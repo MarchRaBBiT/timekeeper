@@ -371,23 +371,13 @@ impl AttendanceViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.with(|s| s.today_status.clone()) else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "ステータスを取得できません。",
-                ))));
-                return;
-            };
-            if status.status != "clocked_in" {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "出勤中のみ休憩を開始できます。",
-                ))));
-                return;
-            }
-            let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "出勤レコードが見つかりません。",
-                ))));
-                return;
+            let status = state.with(|s| s.today_status.clone());
+            let att_id = match break_start_attendance_id(status.as_ref()) {
+                Ok(id) => id,
+                Err(err) => {
+                    clock_message.set(Some(ClockMessage::Error(err)));
+                    return;
+                }
             };
             clock_message.set(None);
             last_event.set(Some(ClockEventKind::BreakStart));
@@ -404,29 +394,49 @@ impl AttendanceViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.with(|s| s.today_status.clone()) else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "ステータスを取得できません。",
-                ))));
-                return;
-            };
-            if status.status != "on_break" {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "休憩中のみ休憩を終了できます。",
-                ))));
-                return;
-            }
-            let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "休憩レコードが見つかりません。",
-                ))));
-                return;
+            let status = state.with(|s| s.today_status.clone());
+            let break_id = match break_end_break_id(status.as_ref()) {
+                Ok(id) => id,
+                Err(err) => {
+                    clock_message.set(Some(ClockMessage::Error(err)));
+                    return;
+                }
             };
             clock_message.set(None);
             last_event.set(Some(ClockEventKind::BreakEnd));
             clock_action.dispatch(ClockEventPayload::break_end(break_id));
         }
     }
+}
+
+fn break_start_attendance_id(
+    status: Option<&crate::api::AttendanceStatusResponse>,
+) -> Result<String, ApiError> {
+    let Some(status) = status else {
+        return Err(ApiError::validation("ステータスを取得できません。"));
+    };
+    if status.status != "clocked_in" {
+        return Err(ApiError::validation("出勤中のみ休憩を開始できます。"));
+    }
+    status
+        .attendance_id
+        .clone()
+        .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))
+}
+
+fn break_end_break_id(
+    status: Option<&crate::api::AttendanceStatusResponse>,
+) -> Result<String, ApiError> {
+    let Some(status) = status else {
+        return Err(ApiError::validation("ステータスを取得できません。"));
+    };
+    if status.status != "on_break" {
+        return Err(ApiError::validation("休憩中のみ休憩を終了できます。"));
+    }
+    status
+        .active_break_id
+        .clone()
+        .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))
 }
 
 pub fn use_attendance_view_model() -> AttendanceViewModel {
@@ -467,6 +477,8 @@ mod tests {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::ssr::{with_local_runtime, with_runtime};
 
     #[test]
     fn history_query_refreshes_token() {
@@ -491,5 +503,120 @@ mod host_tests {
         let payload = ExportPayload::from_dates(Some(from), Some(to));
         assert_eq!(payload.from.as_deref(), Some("2025-01-01"));
         assert_eq!(payload.to.as_deref(), Some("2025-01-31"));
+    }
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/status");
+            then.status(200).json_body(serde_json::json!({
+                "status": "clocked_in",
+                "attendance_id": "att-1",
+                "active_break_id": null,
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/holidays/check");
+            then.status(200).json_body(serde_json::json!({
+                "is_holiday": false,
+                "reason": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/holidays/month");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+        server
+    }
+
+    fn status(
+        status: &str,
+        attendance_id: Option<&str>,
+        break_id: Option<&str>,
+    ) -> crate::api::AttendanceStatusResponse {
+        crate::api::AttendanceStatusResponse {
+            status: status.into(),
+            attendance_id: attendance_id.map(|v| v.to_string()),
+            active_break_id: break_id.map(|v| v.to_string()),
+            clock_in_time: None,
+            clock_out_time: None,
+        }
+    }
+
+    #[test]
+    fn refresh_holidays_increments_query_token() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let vm = AttendanceViewModel::new();
+                let before = vm.holiday_query.get().token;
+                let refresh = vm.on_refresh_holidays();
+                refresh(());
+                let after = vm.holiday_query.get().token;
+                assert_eq!(after, before.wrapping_add(1));
+            });
+        });
+    }
+
+    #[test]
+    fn break_start_requires_status_clocked_in_and_attendance_id() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let _vm = AttendanceViewModel::new();
+
+                let no_status = break_start_attendance_id(None).unwrap_err();
+                assert_eq!(no_status.error, "ステータスを取得できません。");
+
+                let wrong_status =
+                    break_start_attendance_id(Some(&status("clocked_out", None, None)))
+                        .unwrap_err();
+                assert_eq!(wrong_status.error, "出勤中のみ休憩を開始できます。");
+
+                let missing_id =
+                    break_start_attendance_id(Some(&status("clocked_in", None, None))).unwrap_err();
+                assert_eq!(missing_id.error, "出勤レコードが見つかりません。");
+
+                let ok =
+                    break_start_attendance_id(Some(&status("clocked_in", Some("att-1"), None)))
+                        .unwrap();
+                assert_eq!(ok, "att-1");
+            });
+        });
+    }
+
+    #[test]
+    fn break_end_requires_status_on_break_and_break_id() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let _vm = AttendanceViewModel::new();
+
+                let no_status = break_end_break_id(None).unwrap_err();
+                assert_eq!(no_status.error, "ステータスを取得できません。");
+
+                let wrong_status =
+                    break_end_break_id(Some(&status("clocked_in", Some("att-1"), None)))
+                        .unwrap_err();
+                assert_eq!(wrong_status.error, "休憩中のみ休憩を終了できます。");
+
+                let missing_id =
+                    break_end_break_id(Some(&status("on_break", Some("att-1"), None))).unwrap_err();
+                assert_eq!(missing_id.error, "休憩レコードが見つかりません。");
+
+                let ok = break_end_break_id(Some(&status("on_break", Some("att-1"), Some("br-1"))))
+                    .unwrap();
+                assert_eq!(ok, "br-1");
+            });
+        });
     }
 }

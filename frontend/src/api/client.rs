@@ -6,29 +6,31 @@ use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::utils::storage as storage_utils;
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
+use crate::utils::storage as storage_utils;
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use std::collections::HashMap;
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: Option<String>,
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     responder: Option<Arc<dyn TestResponder>>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 #[derive(Clone)]
 pub(crate) struct MockResponse {
     status: StatusCode,
     body: serde_json::Value,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 impl MockResponse {
     pub(crate) fn json(status: u16, body: serde_json::Value) -> Self {
         Self {
@@ -48,15 +50,15 @@ impl MockResponse {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) trait TestResponder: Send + Sync {
     fn respond(&self, request: &reqwest::Request) -> Result<MockResponse, ApiError>;
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 static MOCK_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<dyn TestResponder>>>> = OnceLock::new();
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) fn register_mock(base_url: String, responder: Arc<dyn TestResponder>) {
     let registry = MOCK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(mut guard) = registry.lock() {
@@ -64,7 +66,7 @@ pub(crate) fn register_mock(base_url: String, responder: Arc<dyn TestResponder>)
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
     MOCK_REGISTRY
         .get()
@@ -77,21 +79,20 @@ impl ApiClient {
         Self {
             client: Client::new(),
             base_url: None,
-            #[cfg(test)]
+            #[cfg(all(test, not(target_arch = "wasm32")))]
             responder: None,
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     pub(crate) fn new_with_base_url(base_url: &str) -> Self {
         Self {
             client: Client::new(),
             base_url: Some(base_url.to_string()),
-            #[cfg(test)]
+            #[cfg(all(test, not(target_arch = "wasm32")))]
             responder: lookup_mock(base_url),
         }
     }
-
 
     pub(super) async fn resolved_base_url(&self) -> String {
         if let Some(base) = &self.base_url {
@@ -109,7 +110,7 @@ impl ApiClient {
         &self,
         builder: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ApiError> {
-        #[cfg(test)]
+        #[cfg(all(test, not(target_arch = "wasm32")))]
         if let Some(responder) = &self.responder {
             let request = builder
                 .build()

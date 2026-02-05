@@ -171,23 +171,13 @@ impl DashboardViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "ステータスを取得できません。",
-                ))));
-                return;
-            };
-            if status.status != "clocked_in" {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "出勤中のみ休憩を開始できます。",
-                ))));
-                return;
-            }
-            let Some(att_id) = status.attendance_id.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "出勤レコードが見つかりません。",
-                ))));
-                return;
+            let status = state.get().today_status.clone();
+            let att_id = match break_start_attendance_id(status.as_ref()) {
+                Ok(id) => id,
+                Err(err) => {
+                    clock_message.set(Some(ClockMessage::Error(err)));
+                    return;
+                }
             };
             clock_message.set(None);
             last_event.set(Some(ClockEventKind::BreakStart));
@@ -204,29 +194,49 @@ impl DashboardViewModel {
             if clock_action.pending().get_untracked() {
                 return;
             }
-            let Some(status) = state.get().today_status.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "ステータスを取得できません。",
-                ))));
-                return;
-            };
-            if status.status != "on_break" {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "休憩中のみ休憩を終了できます。",
-                ))));
-                return;
-            }
-            let Some(break_id) = status.active_break_id.clone() else {
-                clock_message.set(Some(ClockMessage::Error(ApiError::validation(
-                    "休憩レコードが見つかりません。",
-                ))));
-                return;
+            let status = state.get().today_status.clone();
+            let break_id = match break_end_break_id(status.as_ref()) {
+                Ok(id) => id,
+                Err(err) => {
+                    clock_message.set(Some(ClockMessage::Error(err)));
+                    return;
+                }
             };
             clock_message.set(None);
             last_event.set(Some(ClockEventKind::BreakEnd));
             clock_action.dispatch(ClockEventPayload::break_end(break_id));
         }
     }
+}
+
+fn break_start_attendance_id(
+    status: Option<&crate::api::AttendanceStatusResponse>,
+) -> Result<String, ApiError> {
+    let Some(status) = status else {
+        return Err(ApiError::validation("ステータスを取得できません。"));
+    };
+    if status.status != "clocked_in" {
+        return Err(ApiError::validation("出勤中のみ休憩を開始できます。"));
+    }
+    status
+        .attendance_id
+        .clone()
+        .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))
+}
+
+fn break_end_break_id(
+    status: Option<&crate::api::AttendanceStatusResponse>,
+) -> Result<String, ApiError> {
+    let Some(status) = status else {
+        return Err(ApiError::validation("ステータスを取得できません。"));
+    };
+    if status.status != "on_break" {
+        return Err(ApiError::validation("休憩中のみ休憩を終了できます。"));
+    }
+    status
+        .active_break_id
+        .clone()
+        .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))
 }
 
 pub fn use_dashboard_view_model() -> DashboardViewModel {
@@ -302,5 +312,55 @@ mod host_tests {
                 leptos_reactive::suppress_resource_load(false);
             });
         });
+    }
+
+    fn status(
+        status: &str,
+        attendance_id: Option<&str>,
+        break_id: Option<&str>,
+    ) -> crate::api::AttendanceStatusResponse {
+        crate::api::AttendanceStatusResponse {
+            status: status.into(),
+            attendance_id: attendance_id.map(|v| v.to_string()),
+            active_break_id: break_id.map(|v| v.to_string()),
+            clock_in_time: None,
+            clock_out_time: None,
+        }
+    }
+
+    #[test]
+    fn break_start_validation_covers_error_and_success_paths() {
+        let no_status = break_start_attendance_id(None).unwrap_err();
+        assert_eq!(no_status.error, "ステータスを取得できません。");
+
+        let wrong_status =
+            break_start_attendance_id(Some(&status("clocked_out", None, None))).unwrap_err();
+        assert_eq!(wrong_status.error, "出勤中のみ休憩を開始できます。");
+
+        let missing_id =
+            break_start_attendance_id(Some(&status("clocked_in", None, None))).unwrap_err();
+        assert_eq!(missing_id.error, "出勤レコードが見つかりません。");
+
+        let ok =
+            break_start_attendance_id(Some(&status("clocked_in", Some("att-1"), None))).unwrap();
+        assert_eq!(ok, "att-1");
+    }
+
+    #[test]
+    fn break_end_validation_covers_error_and_success_paths() {
+        let no_status = break_end_break_id(None).unwrap_err();
+        assert_eq!(no_status.error, "ステータスを取得できません。");
+
+        let wrong_status =
+            break_end_break_id(Some(&status("clocked_in", Some("att-1"), None))).unwrap_err();
+        assert_eq!(wrong_status.error, "休憩中のみ休憩を終了できます。");
+
+        let missing_id =
+            break_end_break_id(Some(&status("on_break", Some("att-1"), None))).unwrap_err();
+        assert_eq!(missing_id.error, "休憩レコードが見つかりません。");
+
+        let ok =
+            break_end_break_id(Some(&status("on_break", Some("att-1"), Some("br-1")))).unwrap();
+        assert_eq!(ok, "br-1");
     }
 }

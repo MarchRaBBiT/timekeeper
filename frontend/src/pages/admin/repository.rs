@@ -226,7 +226,8 @@ mod host_tests {
         let server = MockServer::start_async().await;
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/holidays/weekly");
-            then.status(200).json_body(serde_json::json!([weekly_holiday_json()]));
+            then.status(200)
+                .json_body(serde_json::json!([weekly_holiday_json()]));
         });
         server.mock(|when, then| {
             when.method(POST).path("/api/admin/holidays/weekly");
@@ -238,15 +239,18 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/requests");
-            then.status(200).json_body(serde_json::json!({ "items": [] }));
+            then.status(200)
+                .json_body(serde_json::json!({ "items": [] }));
         });
         server.mock(|when, then| {
             when.method(PUT).path("/api/admin/requests/req-1/approve");
-            then.status(200).json_body(serde_json::json!({ "status": "approved" }));
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "approved" }));
         });
         server.mock(|when, then| {
             when.method(PUT).path("/api/admin/requests/req-1/reject");
-            then.status(200).json_body(serde_json::json!({ "status": "rejected" }));
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "rejected" }));
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/subject-requests");
@@ -258,11 +262,13 @@ mod host_tests {
             }));
         });
         server.mock(|when, then| {
-            when.method(PUT).path("/api/admin/subject-requests/sr-1/approve");
+            when.method(PUT)
+                .path("/api/admin/subject-requests/sr-1/approve");
             then.status(200).json_body(serde_json::json!({}));
         });
         server.mock(|when, then| {
-            when.method(PUT).path("/api/admin/subject-requests/sr-1/reject");
+            when.method(PUT)
+                .path("/api/admin/subject-requests/sr-1/reject");
             then.status(200).json_body(serde_json::json!({}));
         });
         server.mock(|when, then| {
@@ -340,12 +346,16 @@ mod host_tests {
             weekday: 1,
             starts_on: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
             ends_on: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         repo.delete_weekly_holiday("wh1").await.unwrap();
         repo.list_requests(None, None, 1, 20).await.unwrap();
         repo.approve_request("req-1", "ok").await.unwrap();
         repo.reject_request("req-1", "no").await.unwrap();
-        repo.list_subject_requests(None, None, None, 1, 20).await.unwrap();
+        repo.list_subject_requests(None, None, None, 1, 20)
+            .await
+            .unwrap();
         repo.approve_subject_request("sr-1", "ok").await.unwrap();
         repo.reject_subject_request("sr-1", "no").await.unwrap();
         repo.reset_mfa("u1").await.unwrap();
@@ -358,15 +368,21 @@ mod host_tests {
                 .unwrap(),
             clock_out_time: None,
             breaks: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         repo.force_end_break("br-1").await.unwrap();
-        repo.list_holidays(HolidayListQuery::default()).await.unwrap();
+        repo.list_holidays(HolidayListQuery::default())
+            .await
+            .unwrap();
         repo.fetch_google_holidays(Some(2025)).await.unwrap();
         repo.create_holiday(CreateHolidayRequest {
             holiday_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 3).unwrap(),
             name: "Imported".into(),
             description: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         repo.delete_holiday("h1").await.unwrap();
         assert_eq!(repo.fetch_users().await.unwrap().len(), 1);
     }

@@ -223,7 +223,7 @@ fn optional_string(value: String) -> Option<String> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::test_support::ssr::with_runtime;
@@ -247,6 +247,102 @@ mod tests {
             assert!(state.to_payload().is_err());
             state.hours_signal().set("2.5".into());
             assert!(state.to_payload().is_ok());
+        });
+    }
+
+    #[test]
+    fn leave_form_load_reset_and_payload_trim_reason() {
+        with_runtime(|| {
+            let state = LeaveFormState::default();
+            state.load_from_value(&serde_json::json!({
+                "leave_type": "sick",
+                "start_date": "2025-02-01",
+                "end_date": "2025-02-02",
+                "reason": "  family matters  "
+            }));
+            let payload = state.to_payload().expect("leave payload");
+            assert_eq!(payload.leave_type, "sick");
+            assert_eq!(payload.start_date.to_string(), "2025-02-01");
+            assert_eq!(payload.end_date.to_string(), "2025-02-02");
+            assert_eq!(payload.reason.as_deref(), Some("family matters"));
+
+            state.reset();
+            assert_eq!(state.leave_type_signal().get(), "annual");
+            assert!(state.start_signal().get().is_empty());
+            assert!(state.end_signal().get().is_empty());
+            assert!(state.reason_signal().get().is_empty());
+        });
+    }
+
+    #[test]
+    fn overtime_form_load_reset_and_payload_trim_reason() {
+        with_runtime(|| {
+            let state = OvertimeFormState::default();
+            state.load_from_value(&serde_json::json!({
+                "date": "2025-03-10",
+                "planned_hours": 1.5,
+                "reason": "  release support  "
+            }));
+            assert_eq!(state.hours_signal().get(), "1.50");
+
+            let payload = state.to_payload().expect("overtime payload");
+            assert_eq!(payload.date.to_string(), "2025-03-10");
+            assert!((payload.planned_hours - 1.5).abs() < f64::EPSILON);
+            assert_eq!(payload.reason.as_deref(), Some("release support"));
+
+            state.reset();
+            assert!(state.date_signal().get().is_empty());
+            assert!(state.hours_signal().get().is_empty());
+            assert!(state.reason_signal().get().is_empty());
+        });
+    }
+
+    #[test]
+    fn overtime_form_rejects_non_numeric_and_upper_bound() {
+        with_runtime(|| {
+            let state = OvertimeFormState::default();
+            state.date_signal().set("2025-04-01".into());
+
+            state.hours_signal().set("abc".into());
+            assert_eq!(
+                state.to_payload().expect_err("invalid number").code,
+                "VALIDATION_ERROR"
+            );
+
+            state.hours_signal().set("24.5".into());
+            assert_eq!(
+                state.to_payload().expect_err("out of range").code,
+                "VALIDATION_ERROR"
+            );
+        });
+    }
+
+    #[test]
+    fn message_state_transitions_and_clear() {
+        let mut state = MessageState::default();
+        state.set_success("done");
+        assert_eq!(state.success.as_deref(), Some("done"));
+        assert!(state.error.is_none());
+
+        state.set_error(ApiError::validation("bad request"));
+        assert!(state.success.is_none());
+        assert_eq!(
+            state.error.as_ref().expect("error exists").code,
+            "VALIDATION_ERROR"
+        );
+
+        state.clear();
+        assert!(state.success.is_none());
+        assert!(state.error.is_none());
+    }
+
+    #[test]
+    fn request_filter_state_exposes_status_signal() {
+        with_runtime(|| {
+            let filter = RequestFilterState::default();
+            assert!(filter.status_filter().is_empty());
+            filter.status_signal().set("pending".into());
+            assert_eq!(filter.status_filter(), "pending");
         });
     }
 }

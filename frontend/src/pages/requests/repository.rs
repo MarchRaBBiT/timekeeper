@@ -41,7 +41,7 @@ impl RequestsRepository {
         self.client.cancel_request(id).await.map(|_| ())
     }
 
-pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {
+    pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {
         let value: Value = self.client.get_my_requests().await?;
         serde_json::from_value(value)
             .map_err(|err| ApiError::unknown(format!("Failed to parse requests response: {}", err)))
@@ -99,11 +99,13 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(PUT).path("/api/requests/req-1");
-            then.status(200).json_body(serde_json::json!({ "status": "updated" }));
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "updated" }));
         });
         server.mock(|when, then| {
             when.method(DELETE).path("/api/requests/req-1");
-            then.status(200).json_body(serde_json::json!({ "status": "cancelled" }));
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "cancelled" }));
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/requests/me");
@@ -120,13 +122,19 @@ mod host_tests {
             start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
             end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
             reason: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         repo.submit_overtime(CreateOvertimeRequest {
             date: chrono::NaiveDate::from_ymd_opt(2025, 1, 11).unwrap(),
             planned_hours: 2.5,
             reason: None,
-        }).await.unwrap();
-        repo.update_request("req-1", serde_json::json!({ "status": "updated" })).await.unwrap();
+        })
+        .await
+        .unwrap();
+        repo.update_request("req-1", serde_json::json!({ "status": "updated" }))
+            .await
+            .unwrap();
         repo.cancel_request("req-1").await.unwrap();
         repo.list_my_requests().await.unwrap();
     }

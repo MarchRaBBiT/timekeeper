@@ -273,9 +273,8 @@ mod host_tests {
             let state = WeeklyHolidayFormState::new("1", "2025-01-02".into());
             let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
             resource.set(Ok(items.clone()));
-            let action = create_action(|_: &CreateWeeklyHolidayRequest| async move {
-                Ok(sample_item())
-            });
+            let action =
+                create_action(|_: &CreateWeeklyHolidayRequest| async move { Ok(sample_item()) });
             let delete_action = create_action(|_: &String| async move { Ok(()) });
             let reload = create_rw_signal(0u32);
             let message = create_rw_signal(None::<String>);

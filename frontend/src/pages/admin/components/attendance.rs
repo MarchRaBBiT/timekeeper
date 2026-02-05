@@ -17,6 +17,87 @@ fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
     }
 }
 
+fn build_break_items(raw_breaks: Vec<(String, String)>) -> Vec<AdminBreakItem> {
+    let mut break_items: Vec<AdminBreakItem> = vec![];
+    for (start, end) in raw_breaks {
+        if start.trim().is_empty() {
+            continue;
+        }
+        let start_dt = parse_dt_local(&start);
+        let end_dt = if end.trim().is_empty() {
+            None
+        } else {
+            parse_dt_local(&end)
+        };
+        if let Some(start_dt) = start_dt {
+            break_items.push(AdminBreakItem {
+                break_start_time: start_dt,
+                break_end_time: end_dt,
+            });
+        }
+    }
+    break_items
+}
+
+fn build_attendance_payload(
+    user_id_raw: &str,
+    date_raw: &str,
+    clock_in_raw: &str,
+    clock_out_raw: &str,
+    raw_breaks: Vec<(String, String)>,
+) -> Result<AdminAttendanceUpsert, ApiError> {
+    let user_id = user_id_raw.trim();
+    let date_raw = date_raw.trim();
+    let clock_in = parse_dt_local(clock_in_raw.trim());
+    if user_id.is_empty() || date_raw.is_empty() || clock_in.is_none() {
+        return Err(ApiError::validation(
+            "ユーザーID・日付・出勤時刻を入力してください。",
+        ));
+    }
+    let date = NaiveDate::parse_from_str(date_raw, "%Y-%m-%d")
+        .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))?;
+    let clock_out = if clock_out_raw.trim().is_empty() {
+        None
+    } else {
+        parse_dt_local(clock_out_raw.trim())
+    };
+    let break_items = build_break_items(raw_breaks);
+    Ok(AdminAttendanceUpsert {
+        user_id: user_id.to_string(),
+        date,
+        clock_in_time: clock_in.expect("clock in checked above"),
+        clock_out_time: clock_out,
+        breaks: if break_items.is_empty() {
+            None
+        } else {
+            Some(break_items)
+        },
+    })
+}
+
+fn validate_force_break_id(break_id_raw: &str) -> Result<String, ApiError> {
+    let id = break_id_raw.trim();
+    if id.is_empty() {
+        Err(ApiError::validation("Break ID を入力してください。"))
+    } else {
+        Ok(id.to_string())
+    }
+}
+
+fn attendance_upsert_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(_) => (Some("勤怠データを登録しました。".into()), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
+fn force_break_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(_) => (Some("休憩を強制終了しました。".into()), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
 #[component]
 pub fn AdminAttendanceToolsSection(
     repository: AdminRepository,
@@ -57,32 +138,18 @@ pub fn AdminAttendanceToolsSection(
     {
         create_effect(move |_| {
             if let Some(result) = attendance_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        message.set(Some("勤怠データを登録しました。".into()));
-                        error.set(None);
-                    }
-                    Err(err) => {
-                        message.set(None);
-                        error.set(Some(err));
-                    }
-                }
+                let (next_message, next_error) = attendance_upsert_feedback(result);
+                message.set(next_message);
+                error.set(next_error);
             }
         });
     }
     {
         create_effect(move |_| {
             if let Some(result) = force_break_action.value().get() {
-                match result {
-                    Ok(_) => {
-                        message.set(Some("休憩を強制終了しました。".into()));
-                        error.set(None);
-                    }
-                    Err(err) => {
-                        message.set(None);
-                        error.set(Some(err));
-                    }
-                }
+                let (next_message, next_error) = force_break_feedback(result);
+                message.set(next_message);
+                error.set(next_error);
             }
         });
     }
@@ -93,57 +160,19 @@ pub fn AdminAttendanceToolsSection(
             if !system_admin_allowed.get_untracked() {
                 return;
             }
-            let user_id = att_user.get();
-            let date_raw = att_date.get();
-            let clock_in = parse_dt_local(&att_in.get());
-            if user_id.trim().is_empty() || date_raw.trim().is_empty() || clock_in.is_none() {
-                error.set(Some(ApiError::validation(
-                    "ユーザーID・日付・出勤時刻を入力してください。",
-                )));
-                message.set(None);
-                return;
-            }
-            let clock_out = if att_out.get().trim().is_empty() {
-                None
-            } else {
-                parse_dt_local(&att_out.get())
-            };
-            let date = NaiveDate::parse_from_str(&date_raw, "%Y-%m-%d").ok();
-            if date.is_none() {
-                error.set(Some(ApiError::validation(
-                    "日付は YYYY-MM-DD 形式で入力してください。",
-                )));
-                message.set(None);
-                return;
-            }
-            let mut break_items: Vec<AdminBreakItem> = vec![];
-            for (start, end) in breaks.get() {
-                if start.trim().is_empty() {
-                    continue;
+            let payload = match build_attendance_payload(
+                &att_user.get(),
+                &att_date.get(),
+                &att_in.get(),
+                &att_out.get(),
+                breaks.get(),
+            ) {
+                Ok(payload) => payload,
+                Err(err) => {
+                    error.set(Some(err));
+                    message.set(None);
+                    return;
                 }
-                let start_dt = parse_dt_local(&start);
-                let end_dt = if end.trim().is_empty() {
-                    None
-                } else {
-                    parse_dt_local(&end)
-                };
-                if let Some(start_dt) = start_dt {
-                    break_items.push(AdminBreakItem {
-                        break_start_time: start_dt,
-                        break_end_time: end_dt,
-                    });
-                }
-            }
-            let payload = AdminAttendanceUpsert {
-                user_id,
-                date: date.unwrap(),
-                clock_in_time: clock_in.unwrap(),
-                clock_out_time: clock_out,
-                breaks: if break_items.is_empty() {
-                    None
-                } else {
-                    Some(break_items)
-                },
             };
             message.set(None);
             error.set(None);
@@ -156,12 +185,14 @@ pub fn AdminAttendanceToolsSection(
             if !system_admin_allowed.get_untracked() {
                 return;
             }
-            let id = break_force_id.get();
-            if id.trim().is_empty() {
-                error.set(Some(ApiError::validation("Break ID を入力してください。")));
-                message.set(None);
-                return;
-            }
+            let id = match validate_force_break_id(&break_force_id.get()) {
+                Ok(id) => id,
+                Err(err) => {
+                    error.set(Some(err));
+                    message.set(None);
+                    return;
+                }
+            };
             error.set(None);
             message.set(None);
             force_break_action.dispatch(id);
@@ -300,6 +331,125 @@ mod host_tests {
     }
 
     #[test]
+    fn parse_dt_local_rejects_invalid_input() {
+        assert!(parse_dt_local("not-a-datetime").is_none());
+        assert!(parse_dt_local("2025-01-02").is_none());
+    }
+
+    #[test]
+    fn helper_build_break_items_skips_blank_and_invalid_rows() {
+        let items = build_break_items(vec![
+            ("".into(), "2025-01-01T13:00".into()),
+            ("invalid".into(), "".into()),
+            ("2025-01-01T12:00".into(), "invalid".into()),
+            ("2025-01-01T15:00".into(), "2025-01-01T15:30".into()),
+        ]);
+        assert_eq!(items.len(), 2);
+        assert!(items[0].break_end_time.is_none());
+        assert!(items[1].break_end_time.is_some());
+    }
+
+    #[test]
+    fn helper_build_attendance_payload_validates_inputs() {
+        assert!(
+            build_attendance_payload("", "2025-01-01", "2025-01-01T09:00", "", vec![]).is_err()
+        );
+        assert!(
+            build_attendance_payload("u1", "bad-date", "2025-01-01T09:00", "", vec![]).is_err()
+        );
+        assert!(build_attendance_payload("u1", "2025-01-01", "bad-time", "", vec![]).is_err());
+    }
+
+    #[test]
+    fn helper_build_attendance_payload_parses_breaks() {
+        let payload = build_attendance_payload(
+            "u1",
+            "2025-01-01",
+            "2025-01-01T09:00",
+            "2025-01-01T18:00",
+            vec![
+                ("2025-01-01T12:00".into(), "2025-01-01T13:00".into()),
+                ("".into(), "".into()),
+                ("invalid".into(), "".into()),
+            ],
+        )
+        .expect("payload");
+        assert_eq!(payload.user_id, "u1");
+        assert_eq!(payload.date.to_string(), "2025-01-01");
+        assert_eq!(payload.breaks.as_ref().map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn helper_build_attendance_payload_sets_optional_fields_to_none() {
+        let payload = build_attendance_payload("u1", "2025-01-01", "2025-01-01T09:00", "", vec![])
+            .expect("payload");
+        assert!(payload.clock_out_time.is_none());
+        assert!(payload.breaks.is_none());
+    }
+
+    #[test]
+    fn helper_force_break_id_validation() {
+        assert!(validate_force_break_id("").is_err());
+        assert!(validate_force_break_id("   ").is_err());
+        assert_eq!(
+            validate_force_break_id("  break-1 ").expect("id"),
+            "break-1"
+        );
+    }
+
+    #[test]
+    fn helper_build_attendance_payload_trims_and_accepts_second_precision() {
+        let payload = build_attendance_payload(
+            "  u1  ",
+            " 2025-01-01 ",
+            "2025-01-01T09:00:30",
+            "2025-01-01T18:00:15",
+            vec![],
+        )
+        .expect("payload");
+        assert_eq!(payload.user_id, "u1");
+        assert_eq!(payload.date.to_string(), "2025-01-01");
+        assert_eq!(
+            payload.clock_out_time.map(|dt| dt.to_string()),
+            Some("2025-01-01 18:00:15".to_string())
+        );
+    }
+
+    #[test]
+    fn helper_build_attendance_payload_treats_invalid_clock_out_as_none() {
+        let payload = build_attendance_payload(
+            "u1",
+            "2025-01-01",
+            "2025-01-01T09:00",
+            "invalid-clock-out",
+            vec![],
+        )
+        .expect("payload");
+        assert!(payload.clock_out_time.is_none());
+    }
+
+    #[test]
+    fn helper_feedback_mappings_cover_success_and_error() {
+        let (upsert_ok_msg, upsert_ok_err) = attendance_upsert_feedback(Ok(()));
+        assert_eq!(upsert_ok_msg.as_deref(), Some("勤怠データを登録しました。"));
+        assert!(upsert_ok_err.is_none());
+
+        let (upsert_err_msg, upsert_err) =
+            attendance_upsert_feedback(Err(ApiError::unknown("upsert failed")));
+        assert!(upsert_err_msg.is_none());
+        assert_eq!(upsert_err.expect("error").error, "upsert failed");
+
+        let (force_ok_msg, force_ok_err) = force_break_feedback(Ok(()));
+        assert_eq!(force_ok_msg.as_deref(), Some("休憩を強制終了しました。"));
+        assert!(force_ok_err.is_none());
+
+        let (force_err_msg, force_err) =
+            force_break_feedback(Err(ApiError::unknown("force failed")));
+        assert!(force_err_msg.is_none());
+        assert_eq!(force_err.expect("error").error, "force failed");
+    }
+
+    #[test]
     fn attendance_tools_section_renders() {
         let html = render_to_string(move || {
             let api = ApiClient::new();
@@ -309,5 +459,18 @@ mod host_tests {
             view! { <AdminAttendanceToolsSection repository=repo system_admin_allowed=allowed users=users /> }
         });
         assert!(html.contains("勤怠ツール"));
+    }
+
+    #[test]
+    fn attendance_tools_section_hidden_when_not_system_admin() {
+        let html = render_to_string(move || {
+            let api = ApiClient::new();
+            let repo = AdminRepository::new_with_client(std::rc::Rc::new(api));
+            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            let allowed = create_memo(|_| false);
+            view! { <AdminAttendanceToolsSection repository=repo system_admin_allowed=allowed users=users /> }
+        });
+        assert!(!html.contains("勤怠ツール"));
+        assert!(!html.contains("休憩の強制終了"));
     }
 }

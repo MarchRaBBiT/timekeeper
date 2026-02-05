@@ -14,6 +14,46 @@ use crate::api::{
     ApiError, DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse,
 };
 
+fn build_subject_action_payload(
+    modal_request: Option<DataSubjectRequestResponse>,
+    comment: &str,
+    approve: bool,
+) -> Result<SubjectRequestActionPayload, ApiError> {
+    if comment.trim().is_empty() {
+        return Err(ApiError::validation("コメントを入力してください。"));
+    }
+    let request =
+        modal_request.ok_or_else(|| ApiError::validation("申請情報を取得できませんでした。"))?;
+    Ok(SubjectRequestActionPayload {
+        id: request.id,
+        comment: comment.to_string(),
+        approve,
+    })
+}
+
+fn modal_detail_json(request: Option<&DataSubjectRequestResponse>) -> String {
+    request
+        .and_then(|request| to_string_pretty(request).ok())
+        .unwrap_or_default()
+}
+
+fn is_pending_request(request: Option<&DataSubjectRequestResponse>) -> bool {
+    request
+        .map(|request| request.status == "pending")
+        .unwrap_or(false)
+}
+
+fn is_modal_action_disabled(action_pending: bool, modal_pending: bool) -> bool {
+    action_pending || !modal_pending
+}
+
+fn subject_action_feedback(result: Result<(), ApiError>) -> (bool, Option<ApiError>, bool) {
+    match result {
+        Ok(_) => (true, None, true),
+        Err(err) => (false, Some(err), false),
+    }
+}
+
 #[component]
 pub fn AdminSubjectRequestsSection(
     users: UsersResource,
@@ -34,18 +74,8 @@ pub fn AdminSubjectRequestsSection(
     let modal_request = create_rw_signal(None::<DataSubjectRequestResponse>);
     let modal_comment = create_rw_signal(String::new());
 
-    let modal_detail = Signal::derive(move || {
-        modal_request
-            .get()
-            .and_then(|request| to_string_pretty(&request).ok())
-            .unwrap_or_default()
-    });
-    let modal_pending = Signal::derive(move || {
-        modal_request
-            .get()
-            .map(|request| request.status == "pending")
-            .unwrap_or(false)
-    });
+    let modal_detail = Signal::derive(move || modal_detail_json(modal_request.get().as_ref()));
+    let modal_pending = Signal::derive(move || is_pending_request(modal_request.get().as_ref()));
 
     let loading = resource.loading();
     let data = Signal::derive(move || resource.get().and_then(|result| result.ok()));
@@ -55,15 +85,16 @@ pub fn AdminSubjectRequestsSection(
 
     create_effect(move |_| {
         if let Some(result) = action.value().get() {
-            match result {
-                Ok(_) => {
-                    modal_open.set(false);
-                    modal_request.set(None);
-                    modal_comment.set(String::new());
-                    action_error.set(None);
-                    reload.update(|value| *value = value.wrapping_add(1));
-                }
-                Err(err) => action_error.set(Some(err)),
+            let (should_close_modal, next_action_error, should_reload) =
+                subject_action_feedback(result);
+            action_error.set(next_action_error);
+            if should_close_modal {
+                modal_open.set(false);
+                modal_request.set(None);
+                modal_comment.set(String::new());
+            }
+            if should_reload {
+                reload.update(|value| *value = value.wrapping_add(1));
             }
         }
     });
@@ -95,22 +126,18 @@ pub fn AdminSubjectRequestsSection(
     });
 
     let on_action = move |approve: bool| {
-        let comment = modal_comment.get();
-        if comment.trim().is_empty() {
-            action_error.set(Some(ApiError::validation("コメントを入力してください。")));
-            return;
-        }
-        let Some(request) = modal_request.get() else {
-            action_error.set(Some(ApiError::validation(
-                "申請情報を取得できませんでした。",
-            )));
-            return;
-        };
-        action.dispatch(SubjectRequestActionPayload {
-            id: request.id,
-            comment,
+        let payload = match build_subject_action_payload(
+            modal_request.get(),
+            &modal_comment.get(),
             approve,
-        });
+        ) {
+            Ok(payload) => payload,
+            Err(err) => {
+                action_error.set(Some(err));
+                return;
+            }
+        };
+        action.dispatch(payload);
     };
 
     view! {
@@ -245,14 +272,18 @@ pub fn AdminSubjectRequestsSection(
                             <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
                             <button
                                 class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
-                                disabled={move || action_pending.get() || !modal_pending.get()}
+                                disabled={move || {
+                                    is_modal_action_disabled(action_pending.get(), modal_pending.get())
+                                }}
                                 on:click=move |_| on_action(false)
                             >
                                 {"却下"}
                             </button>
                             <button
                                 class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
-                                disabled={move || action_pending.get() || !modal_pending.get()}
+                                disabled={move || {
+                                    is_modal_action_disabled(action_pending.get(), modal_pending.get())
+                                }}
                                 on:click=move |_| on_action(true)
                             >
                                 {"承認"}
@@ -330,6 +361,139 @@ mod host_tests {
         }]);
         assert!(html.contains("開示"));
         assert!(html.contains("pending"));
+    }
+
+    #[test]
+    fn helper_build_subject_action_payload_validates_inputs() {
+        let request = DataSubjectRequestResponse {
+            id: "sr-1".into(),
+            user_id: "u1".into(),
+            request_type: DataSubjectRequestType::Access,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        assert!(build_subject_action_payload(None, "comment", true).is_err());
+        assert!(build_subject_action_payload(Some(request.clone()), " ", true).is_err());
+        let payload = build_subject_action_payload(Some(request), "ok", false).expect("payload");
+        assert_eq!(payload.id, "sr-1");
+        assert_eq!(payload.comment, "ok");
+        assert!(!payload.approve);
+    }
+
+    #[test]
+    fn helper_type_and_datetime_formatting() {
+        assert_eq!(type_label(&DataSubjectRequestType::Access), "開示");
+        assert_eq!(type_label(&DataSubjectRequestType::Rectify), "訂正");
+        assert_eq!(type_label(&DataSubjectRequestType::Delete), "削除");
+        assert_eq!(type_label(&DataSubjectRequestType::Stop), "停止");
+
+        let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
+            .expect("valid datetime")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(format_datetime(dt), "2026-01-16 12:34");
+    }
+
+    #[test]
+    fn helper_modal_pending_and_disable_logic() {
+        let pending_request = DataSubjectRequestResponse {
+            id: "sr-1".into(),
+            user_id: "u1".into(),
+            request_type: DataSubjectRequestType::Access,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let approved_request = DataSubjectRequestResponse {
+            status: "approved".into(),
+            ..pending_request.clone()
+        };
+
+        assert!(is_pending_request(Some(&pending_request)));
+        assert!(!is_pending_request(Some(&approved_request)));
+        assert!(!is_pending_request(None));
+
+        assert!(is_modal_action_disabled(true, true));
+        assert!(is_modal_action_disabled(false, false));
+        assert!(!is_modal_action_disabled(false, true));
+    }
+
+    #[test]
+    fn helper_modal_detail_json_handles_none_and_some() {
+        assert_eq!(modal_detail_json(None), "");
+
+        let request = DataSubjectRequestResponse {
+            id: "sr-1".into(),
+            user_id: "u1".into(),
+            request_type: DataSubjectRequestType::Access,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let rendered = modal_detail_json(Some(&request));
+        assert!(rendered.contains("\"id\": \"sr-1\""));
+        assert!(rendered.contains("\"status\": \"pending\""));
+    }
+
+    #[test]
+    fn helper_subject_action_feedback_maps_success_and_error() {
+        let (ok_close, ok_error, ok_reload) = subject_action_feedback(Ok(()));
+        assert!(ok_close);
+        assert!(ok_error.is_none());
+        assert!(ok_reload);
+
+        let (err_close, err_error, err_reload) =
+            subject_action_feedback(Err(ApiError::unknown("action failed")));
+        assert!(!err_close);
+        assert_eq!(err_error.expect("error").error, "action failed");
+        assert!(!err_reload);
+    }
+
+    #[test]
+    fn helper_build_subject_action_payload_preserves_comment_and_approve_flag() {
+        let request = DataSubjectRequestResponse {
+            id: "sr-approve".into(),
+            user_id: "u-approve".into(),
+            request_type: DataSubjectRequestType::Rectify,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let payload =
+            build_subject_action_payload(Some(request), "  keep-spaces  ", true).expect("payload");
+        assert_eq!(payload.id, "sr-approve");
+        assert_eq!(payload.comment, "  keep-spaces  ");
+        assert!(payload.approve);
     }
 }
 

@@ -445,3 +445,116 @@ mod tests {
         assert_eq!(entry.reason, "public holiday");
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use leptos::IntoView;
+
+    #[test]
+    fn api_error_helpers_set_expected_codes() {
+        let validation = ApiError::validation("invalid payload");
+        assert_eq!(validation.code, "VALIDATION_ERROR");
+        assert_eq!(validation.error, "invalid payload");
+        assert!(validation.details.is_none());
+
+        let unknown = ApiError::unknown("something failed");
+        assert_eq!(unknown.code, "UNKNOWN");
+
+        let request_failed = ApiError::request_failed("network error");
+        assert_eq!(request_failed.code, "REQUEST_FAILED");
+    }
+
+    #[test]
+    fn api_error_display_and_string_conversion_match_error_text() {
+        let error = ApiError::unknown("boom");
+        assert_eq!(format!("{}", error), "boom");
+
+        let raw: String = ApiError::validation("bad input").into();
+        assert_eq!(raw, "bad input");
+    }
+
+    #[test]
+    fn api_error_can_be_converted_to_view() {
+        let _: View = ApiError::request_failed("request failed").into_view();
+    }
+
+    #[test]
+    fn deserialize_admin_holiday_list_item_with_all_optional_fields() {
+        let raw = serde_json::json!({
+            "id": "holiday-1",
+            "kind": "public",
+            "applies_from": "2026-01-01",
+            "applies_to": "2026-01-31",
+            "date": "2026-01-11",
+            "weekday": 0,
+            "starts_on": "2026-01-01",
+            "ends_on": "2026-01-31",
+            "name": "National Day",
+            "description": "Official holiday",
+            "user_id": null,
+            "reason": "public",
+            "created_by": "admin-1",
+            "created_at": "2026-01-01T00:00:00Z",
+            "is_override": false
+        });
+        let item: AdminHolidayListItem = serde_json::from_value(raw).unwrap();
+        assert_eq!(item.id, "holiday-1");
+        assert_eq!(item.kind, AdminHolidayKind::Public);
+        assert_eq!(item.weekday, Some(0));
+        assert_eq!(item.is_override, Some(false));
+    }
+
+    #[test]
+    fn serialize_and_deserialize_subject_request_types() {
+        let payload = CreateDataSubjectRequest {
+            request_type: DataSubjectRequestType::Delete,
+            details: Some("erase all records".into()),
+        };
+        let value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(value["request_type"], serde_json::json!("delete"));
+        assert_eq!(value["details"], serde_json::json!("erase all records"));
+
+        let item: DataSubjectRequestResponse = serde_json::from_value(serde_json::json!({
+            "id": "sr-1",
+            "user_id": "u1",
+            "request_type": "access",
+            "status": "pending",
+            "details": null,
+            "approved_by": null,
+            "approved_at": null,
+            "rejected_by": null,
+            "rejected_at": null,
+            "cancelled_at": null,
+            "decision_comment": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(item.request_type, DataSubjectRequestType::Access);
+    }
+
+    #[test]
+    fn deserialize_attendance_status_and_break_record() {
+        let status: AttendanceStatusResponse = serde_json::from_value(serde_json::json!({
+            "status": "clocked_in",
+            "attendance_id": "att-1",
+            "active_break_id": "break-1",
+            "clock_in_time": "2026-01-10T09:00:00",
+            "clock_out_time": null
+        }))
+        .unwrap();
+        assert_eq!(status.status, "clocked_in");
+        assert_eq!(status.attendance_id.as_deref(), Some("att-1"));
+
+        let break_record: BreakRecordResponse = serde_json::from_value(serde_json::json!({
+            "id": "break-1",
+            "attendance_id": "att-1",
+            "break_start_time": "2026-01-10T12:00:00",
+            "break_end_time": "2026-01-10T12:30:00",
+            "duration_minutes": 30
+        }))
+        .unwrap();
+        assert_eq!(break_record.duration_minutes, Some(30));
+    }
+}

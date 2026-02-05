@@ -10,6 +10,107 @@ use crate::{
 use leptos::*;
 use serde_json::{json, Value};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AdminRequestRow {
+    kind: String,
+    kind_label: String,
+    target: String,
+    user_id: String,
+    status: String,
+    data: Value,
+}
+
+fn request_kind_label(kind: &str) -> &'static str {
+    if kind == "leave" {
+        "休暇"
+    } else {
+        "残業"
+    }
+}
+
+fn request_target(kind: &str, data: &Value) -> String {
+    if kind == "leave" {
+        format!(
+            "{} - {}",
+            data.get("start_date")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+            data.get("end_date").and_then(|v| v.as_str()).unwrap_or("")
+        )
+    } else {
+        data.get("date")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+}
+
+fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
+    let leaves = data.get("leave_requests").cloned().unwrap_or(json!([]));
+    let ots = data.get("overtime_requests").cloned().unwrap_or(json!([]));
+    let mut rows: Vec<AdminRequestRow> = vec![];
+    if let Some(arr) = leaves.as_array() {
+        for item in arr {
+            let data = item.clone();
+            rows.push(AdminRequestRow {
+                kind: "leave".into(),
+                kind_label: request_kind_label("leave").to_string(),
+                target: request_target("leave", &data),
+                user_id: data
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                status: data
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                data,
+            });
+        }
+    }
+    if let Some(arr) = ots.as_array() {
+        for item in arr {
+            let data = item.clone();
+            rows.push(AdminRequestRow {
+                kind: "overtime".into(),
+                kind_label: request_kind_label("overtime").to_string(),
+                target: request_target("overtime", &data),
+                user_id: data
+                    .get("user_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                status: data
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                data,
+            });
+        }
+    }
+    rows
+}
+
+fn build_request_action_payload(
+    modal_data: &Value,
+    comment: String,
+    approve: bool,
+) -> RequestActionPayload {
+    let id = modal_data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    RequestActionPayload {
+        id,
+        comment,
+        approve,
+    }
+}
+
 #[component]
 pub fn AdminRequestsSection(
     users: UsersResource,
@@ -71,18 +172,8 @@ pub fn AdminRequestsSection(
     };
 
     let on_action = move |approve: bool| {
-        let id = modal_data
-            .get()
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let comment = modal_comment.get();
-        action.dispatch(RequestActionPayload {
-            id,
-            comment,
-            approve,
-        });
+        let payload = build_request_action_payload(&modal_data.get(), modal_comment.get(), approve);
+        action.dispatch(payload);
     };
 
     view! {
@@ -143,19 +234,7 @@ pub fn AdminRequestsSection(
                     <tbody class="bg-surface-elevated divide-y divide-border">
                         <Show when=move || requests_data.get().is_object()>
                             {let data = requests_data.get();
-                                let leaves = data.get("leave_requests").cloned().unwrap_or(json!([]));
-                                let ots = data.get("overtime_requests").cloned().unwrap_or(json!([]));
-                                let mut rows: Vec<Value> = vec![];
-                                if let Some(arr) = leaves.as_array() {
-                                    for r in arr {
-                                        rows.push(json!({"kind":"leave","data": r}));
-                                    }
-                                }
-                                if let Some(arr) = ots.as_array() {
-                                    for r in arr {
-                                        rows.push(json!({"kind":"overtime","data": r}));
-                                    }
-                                }
+                                let rows = flatten_request_rows(&data);
                                 if rows.is_empty() {
                                     view! {
                                         <tr>
@@ -170,24 +249,15 @@ pub fn AdminRequestsSection(
                                 } else {
                                     view! { <>
                                         {rows.into_iter().map(|row| {
-                                        let kind = row.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                        let data = row.get("data").cloned().unwrap_or(json!({}));
-                                        let statusv = data.get("status").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                        let user = data.get("user_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                        let target = if kind == "leave" {
-                                            format!(
-                                                "{} - {}",
-                                                data.get("start_date").and_then(|v| v.as_str()).unwrap_or(""),
-                                                data.get("end_date").and_then(|v| v.as_str()).unwrap_or("")
-                                            )
-                                        } else {
-                                            data.get("date").and_then(|v| v.as_str()).unwrap_or("").to_string()
-                                        };
+                                        let data = row.data.clone();
+                                        let statusv = row.status.clone();
+                                        let user = row.user_id.clone();
+                                        let target = row.target.clone();
                                         let open = {
                                             let data = data.clone();
                                             move |_| open_modal(data.clone())
                                         };
-                                        let kind_label = if kind == "leave" { "休暇" } else { "残業" };
+                                        let kind_label = row.kind_label;
                                         view! {
                                             <tr>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{kind_label}</td>
@@ -303,5 +373,38 @@ mod host_tests {
         }));
         assert!(html.contains("休暇"));
         assert!(html.contains("pending"));
+    }
+
+    #[test]
+    fn helper_flatten_rows_combines_leave_and_overtime() {
+        let rows = flatten_request_rows(&json!({
+            "leave_requests": [{
+                "id": "leave-1",
+                "user_id": "u1",
+                "status": "pending",
+                "start_date": "2025-01-01",
+                "end_date": "2025-01-02"
+            }],
+            "overtime_requests": [{
+                "id": "ot-1",
+                "user_id": "u2",
+                "status": "approved",
+                "date": "2025-01-03"
+            }]
+        }));
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].kind_label, "休暇");
+        assert_eq!(rows[0].target, "2025-01-01 - 2025-01-02");
+        assert_eq!(rows[1].kind_label, "残業");
+        assert_eq!(rows[1].target, "2025-01-03");
+    }
+
+    #[test]
+    fn helper_build_action_payload_extracts_id_and_comment() {
+        let payload =
+            build_request_action_payload(&json!({ "id": "req-1" }), "ok".to_string(), true);
+        assert_eq!(payload.id, "req-1");
+        assert_eq!(payload.comment, "ok");
+        assert!(payload.approve);
     }
 }

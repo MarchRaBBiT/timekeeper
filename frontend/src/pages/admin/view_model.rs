@@ -289,7 +289,8 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/requests");
-            then.status(200).json_body(serde_json::json!({ "items": [] }));
+            then.status(200)
+                .json_body(serde_json::json!({ "items": [] }));
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/subject-requests");

@@ -63,8 +63,6 @@ fn normalize_email(value: &str) -> Result<String, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::test_support::mock::*;
-    use crate::test_support::ssr::with_local_runtime_async;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -84,6 +82,13 @@ mod tests {
         let err = normalize_email("").expect_err("should fail");
         assert_eq!(err.code, "VALIDATION_ERROR");
     }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::ssr::with_local_runtime_async;
 
     #[test]
     fn forgot_password_submit_sets_success() {

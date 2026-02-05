@@ -191,7 +191,13 @@ mod host_tests {
             vm.activate_action.dispatch("123456".into());
             for _ in 0..10 {
                 let (auth, _) = use_auth();
-                if auth.get().user.as_ref().map(|u| u.mfa_enabled).unwrap_or(false) {
+                if auth
+                    .get()
+                    .user
+                    .as_ref()
+                    .map(|u| u.mfa_enabled)
+                    .unwrap_or(false)
+                {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;

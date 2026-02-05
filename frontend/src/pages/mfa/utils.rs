@@ -42,7 +42,6 @@ pub fn svg_to_data_url(svg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::ssr::with_runtime;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -68,6 +67,12 @@ mod tests {
         let result = svg_to_data_url("");
         assert_eq!(result, "data:image/svg+xml;base64,");
     }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::with_runtime;
 
     #[test]
     fn validate_totp_code_rejects_short_values_on_host() {

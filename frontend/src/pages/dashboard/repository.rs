@@ -108,7 +108,7 @@ fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i3
         .count() as i32
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::api::test_support::mock::*;

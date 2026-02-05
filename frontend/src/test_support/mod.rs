@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 pub mod ssr;
 
 #[cfg(test)]
@@ -30,7 +30,9 @@ pub mod helpers {
         }
     }
 
-    pub fn provide_auth(user: Option<UserResponse>) -> (ReadSignal<AuthState>, WriteSignal<AuthState>) {
+    pub fn provide_auth(
+        user: Option<UserResponse>,
+    ) -> (ReadSignal<AuthState>, WriteSignal<AuthState>) {
         let (auth, set_auth) = create_signal(AuthState {
             user,
             is_authenticated: true,

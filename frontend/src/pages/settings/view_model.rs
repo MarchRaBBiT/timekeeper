@@ -110,7 +110,8 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/subject-requests/me");
-            then.status(200).json_body(json!([subject_request_json("sr-1")]));
+            then.status(200)
+                .json_body(json!([subject_request_json("sr-1")]));
         });
         server.mock(|when, then| {
             when.method(POST).path("/api/subject-requests");
@@ -160,11 +161,7 @@ mod host_tests {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
-            let _ = vm
-                .subject_request_view_model
-                .create_action
-                .value()
-                .get();
+            let _ = vm.subject_request_view_model.create_action.value().get();
 
             vm.subject_request_view_model
                 .cancel_action
@@ -181,14 +178,15 @@ mod host_tests {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
-            let _ = vm
-                .subject_request_view_model
-                .cancel_action
-                .value()
-                .get();
+            let _ = vm.subject_request_view_model.cancel_action.value().get();
 
             for _ in 0..10 {
-                if vm.subject_request_view_model.requests_resource.get().is_some() {
+                if vm
+                    .subject_request_view_model
+                    .requests_resource
+                    .get()
+                    .is_some()
+                {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;

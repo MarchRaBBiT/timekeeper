@@ -6,6 +6,19 @@ use crate::{
 use leptos::{ev, *};
 use wasm_bindgen::JsCast;
 
+fn prepare_invite_submission(
+    is_system_admin: bool,
+    form_state: InviteFormState,
+) -> Result<CreateUser, ApiError> {
+    if !is_system_admin {
+        return Err(ApiError::unknown("システム管理者のみ操作できます。"));
+    }
+    if !form_state.is_valid() {
+        return Err(ApiError::validation("すべての必須項目を入力してください。"));
+    }
+    Ok(form_state.to_request())
+}
+
 #[component]
 pub fn InviteForm(
     form_state: InviteFormState,
@@ -18,15 +31,10 @@ pub fn InviteForm(
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             messages.clear();
-            if !is_system_admin.get_untracked() {
-                messages.set_error(ApiError::unknown("システム管理者のみ操作できます。"));
-                return;
+            match prepare_invite_submission(is_system_admin.get_untracked(), form_state) {
+                Ok(payload) => invite_action.dispatch(payload),
+                Err(err) => messages.set_error(err),
             }
-            if !form_state.is_valid() {
-                messages.set_error(ApiError::validation("すべての必須項目を入力してください。"));
-                return;
-            }
-            invite_action.dispatch(form_state.to_request());
         }
     };
 
@@ -132,9 +140,8 @@ mod host_tests {
         let html = render_to_string(move || {
             let form_state = InviteFormState::default();
             let messages = MessageState::default();
-            let invite_action = create_action(|_: &CreateUser| async move {
-                Err(ApiError::validation("failed"))
-            });
+            let invite_action =
+                create_action(|_: &CreateUser| async move { Err(ApiError::validation("failed")) });
             let is_system_admin = create_memo(|_| true);
             view! {
                 <InviteForm
@@ -147,5 +154,38 @@ mod host_tests {
         });
         assert!(html.contains("ユーザー招待"));
         assert!(html.contains("ユーザーを作成"));
+    }
+
+    #[test]
+    fn prepare_invite_submission_validates_permissions_and_required_fields() {
+        let runtime = create_runtime();
+        let form_state = InviteFormState::default();
+
+        let non_admin_err =
+            prepare_invite_submission(false, form_state).expect_err("must require admin");
+        assert_eq!(non_admin_err.error, "システム管理者のみ操作できます。");
+
+        let form_state = InviteFormState::default();
+        let invalid_err =
+            prepare_invite_submission(true, form_state).expect_err("must require all fields");
+        assert_eq!(invalid_err.code, "VALIDATION_ERROR");
+
+        let form_state = InviteFormState::default();
+        form_state.username.set("alice".into());
+        form_state.full_name.set("Alice Example".into());
+        form_state.email.set("alice@example.com".into());
+        form_state.password.set("Password123".into());
+        form_state.role.set("admin".into());
+        form_state.is_system_admin.set(true);
+
+        let payload =
+            prepare_invite_submission(true, form_state).expect("valid payload should be returned");
+        assert_eq!(payload.username, "alice");
+        assert_eq!(payload.full_name, "Alice Example");
+        assert_eq!(payload.email, "alice@example.com");
+        assert_eq!(payload.role, "admin");
+        assert!(payload.is_system_admin);
+
+        runtime.dispose();
     }
 }

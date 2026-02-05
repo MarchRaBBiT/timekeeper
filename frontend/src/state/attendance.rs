@@ -297,7 +297,6 @@ mod host_tests {
         })
     }
 
-
     #[tokio::test]
     async fn clock_in_updates_state_on_success() {
         let server = MockServer::start_async().await;
@@ -322,11 +321,13 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/attendance/me");
-            then.status(200).json_body(serde_json::json!([attendance_json("att-1")]));
+            then.status(200)
+                .json_body(serde_json::json!([attendance_json("att-1")]));
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/holidays/check");
-            then.status(200).json_body(serde_json::json!({ "is_holiday": false, "reason": null }));
+            then.status(200)
+                .json_body(serde_json::json!({ "is_holiday": false, "reason": null }));
         });
         let api = ApiClient::new_with_base_url(&server.url("/api"));
         let runtime = leptos::create_runtime();
