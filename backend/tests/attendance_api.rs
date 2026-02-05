@@ -20,7 +20,10 @@ use tower::ServiceExt;
 
 mod support;
 
-use support::{create_test_token, seed_public_holiday, seed_user, test_config, test_pool};
+use support::{
+    create_test_token, seed_attendance, seed_break_record, seed_public_holiday, seed_user,
+    test_config, test_pool,
+};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -59,6 +62,18 @@ fn test_router_with_state(pool: PgPool, user: User) -> Router {
         .route(
             "/api/attendance/me",
             axum::routing::get(attendance::get_my_attendance),
+        )
+        .route(
+            "/api/attendance/me/summary",
+            axum::routing::get(attendance::get_my_summary),
+        )
+        .route(
+            "/api/attendance/{id}/breaks",
+            axum::routing::get(attendance::get_breaks_by_attendance),
+        )
+        .route(
+            "/api/attendance/export",
+            axum::routing::get(attendance::export_my_attendance),
         )
         .layer(Extension(user))
         .layer(Extension(holiday_service))
@@ -365,6 +380,136 @@ async fn test_get_attendance_status_returns_correct_status() {
         .unwrap();
     let json2: serde_json::Value = serde_json::from_slice(&body2).unwrap();
     assert_eq!(json2["status"], "clocked_in");
+}
+
+#[tokio::test]
+async fn test_get_my_summary_rejects_invalid_month() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let request = Request::builder()
+        .uri("/api/attendance/me/summary?year=2026&month=13")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_get_breaks_by_attendance_requires_ownership() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let owner = seed_user(&pool, UserRole::Employee, false).await;
+    let other = seed_user(&pool, UserRole::Employee, false).await;
+
+    let date = chrono::NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+    let clock_in =
+        chrono::NaiveDateTime::parse_from_str("2026-02-04T09:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("clock in");
+    let attendance = seed_attendance(&pool, owner.id, date, Some(clock_in), None).await;
+    let break_start =
+        chrono::NaiveDateTime::parse_from_str("2026-02-04T10:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("break start");
+    seed_break_record(&pool, attendance.id, break_start, None).await;
+
+    let owner_token = create_test_token(owner.id, owner.role.clone());
+    let owner_app = test_router_with_state(pool.clone(), owner.clone());
+    let owner_request = Request::builder()
+        .uri(format!("/api/attendance/{}/breaks", attendance.id))
+        .header("Authorization", format!("Bearer {}", owner_token))
+        .body(Body::empty())
+        .unwrap();
+    let owner_response = owner_app.oneshot(owner_request).await.unwrap();
+    assert_eq!(owner_response.status(), StatusCode::OK);
+
+    let other_token = create_test_token(other.id, other.role.clone());
+    let other_app = test_router_with_state(pool.clone(), other.clone());
+    let other_request = Request::builder()
+        .uri(format!("/api/attendance/{}/breaks", attendance.id))
+        .header("Authorization", format!("Bearer {}", other_token))
+        .body(Body::empty())
+        .unwrap();
+    let other_response = other_app.oneshot(other_request).await.unwrap();
+    assert_eq!(other_response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_export_my_attendance_rejects_invalid_range() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let request = Request::builder()
+        .uri("/api/attendance/export?from=2026-02-10&to=2026-02-01")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_export_my_attendance_returns_csv_payload() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let date = chrono::NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+    let clock_in =
+        chrono::NaiveDateTime::parse_from_str("2026-02-04T09:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("clock in");
+    let clock_out =
+        chrono::NaiveDateTime::parse_from_str("2026-02-04T18:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("clock out");
+    seed_attendance(&pool, employee.id, date, Some(clock_in), Some(clock_out)).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let request = Request::builder()
+        .uri("/api/attendance/export?from=2026-02-01&to=2026-02-28")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let csv_data = json["csv_data"].as_str().unwrap_or_default();
+    assert!(csv_data.contains("Username"));
+    assert!(csv_data.contains("2026-02-04"));
+    assert!(json["filename"]
+        .as_str()
+        .unwrap_or_default()
+        .starts_with("my_attendance_export_"));
 }
 
 #[tokio::test]
