@@ -451,3 +451,50 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::api::ApiClient;
+    use crate::test_support::ssr::with_local_runtime_async;
+    use serde_json::json;
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/auth/mfa");
+            then.status(200).json_body(json!({
+                "enabled": false,
+                "pending": false
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/subject-requests/me");
+            then.status(200).json_body(json!([]));
+        });
+        server
+    }
+
+    #[test]
+    fn settings_page_renders_sections() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+
+            leptos_reactive::suppress_resource_load(true);
+            let html = view! { <SettingsPage /> }
+                .into_view()
+                .render_to_string()
+                .to_string();
+            leptos_reactive::suppress_resource_load(false);
+
+            assert!(html.contains("パスワード変更"));
+            assert!(html.contains("本人対応申請"));
+            assert!(html.contains("MFA 設定"));
+
+            runtime.dispose();
+        });
+    }
+}
