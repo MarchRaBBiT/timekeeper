@@ -41,10 +41,10 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
-        #[cfg(test)]
-        if let Some(result) = next_refresh_override() {
-            return result;
-        }
+    #[cfg(all(test, not(coverage)))]
+    if let Some(result) = next_refresh_override() {
+        return result;
+    }
 
         let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         let device_label = ensure_device_label(&storage)?;
@@ -210,16 +210,16 @@ impl ApiClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(coverage)))]
 static REFRESH_OVERRIDE: OnceLock<Mutex<Vec<Result<LoginResponse, ApiError>>>> = OnceLock::new();
 
-#[cfg(test)]
+#[cfg(all(test, not(coverage)))]
 pub(crate) fn queue_refresh_override(result: Result<LoginResponse, ApiError>) {
     let slot = REFRESH_OVERRIDE.get_or_init(|| Mutex::new(Vec::new()));
     slot.lock().unwrap().push(result);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(coverage)))]
 fn next_refresh_override() -> Option<Result<LoginResponse, ApiError>> {
     REFRESH_OVERRIDE
         .get()

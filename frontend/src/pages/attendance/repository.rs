@@ -15,7 +15,7 @@ pub async fn fetch_breaks_by_attendance(
     api.get_breaks_by_attendance(attendance_id).await
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
 mod host_tests {
     use super::*;
     use httpmock::prelude::*;

@@ -57,6 +57,9 @@ futures = "0.3"
 httpmock = "0.7"
 tokio = { version = "1.49", features = ["macros", "rt-multi-thread"] }
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Server-side integration (excluded from WASM build)
 leptos_axum = { version = "0.6" }

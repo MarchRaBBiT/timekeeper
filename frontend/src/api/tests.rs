@@ -1,3 +1,5 @@
+#![cfg(not(coverage))]
+
 use super::*;
 use httpmock::prelude::*;
 use serde_json::json;

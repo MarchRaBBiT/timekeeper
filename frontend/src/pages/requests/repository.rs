@@ -48,7 +48,7 @@ pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
 mod host_tests {
     use super::*;
     use httpmock::prelude::*;

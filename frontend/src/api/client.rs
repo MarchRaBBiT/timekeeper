@@ -23,7 +23,7 @@ impl ApiClient {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, not(coverage)))]
     pub(crate) fn new_with_base_url(base_url: &str) -> Self {
         Self {
             client: Client::new(),
