@@ -14,3 +14,23 @@ pub fn UnauthorizedMessage() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn dashboard_frame_wraps_children() {
+        let html = render_to_string(move || {
+            view! { <DashboardFrame><div>{"child"}</div></DashboardFrame> }
+        });
+        assert!(html.contains("child"));
+    }
+
+    #[test]
+    fn unauthorized_message_renders_copy() {
+        let html = render_to_string(move || view! { <UnauthorizedMessage /> });
+        assert!(html.contains("権限が必要"));
+    }
+}
