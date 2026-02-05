@@ -44,3 +44,15 @@ pub async fn delete_consent_logs_before(
         .await?;
     Ok(result.rows_affected())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn consent_log_functions_exist() {
+        let _insert_consent_log = insert_consent_log;
+        let _list_consent_logs_for_user = list_consent_logs_for_user;
+        let _delete_consent_logs_before = delete_consent_logs_before;
+    }
+}

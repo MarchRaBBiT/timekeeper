@@ -105,3 +105,36 @@ impl Repository<WeeklyHoliday> for WeeklyHolidayRepository {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weekly_holiday_repository_new_returns_instance() {
+        let repo = WeeklyHolidayRepository::new();
+        let _repo = repo;
+    }
+
+    #[test]
+    fn base_select_query_contains_table_name() {
+        let query = WeeklyHolidayRepository::base_select_query();
+        assert!(query.contains("SELECT"));
+        assert!(query.contains(TABLE_NAME));
+    }
+
+    #[test]
+    fn base_select_query_contains_columns() {
+        let query = WeeklyHolidayRepository::base_select_query();
+        assert!(query.contains("weekday"));
+        assert!(query.contains("enforced_from"));
+        assert!(query.contains("enforced_to"));
+    }
+
+    #[test]
+    fn constants_are_defined() {
+        assert_eq!(TABLE_NAME, "weekly_holidays");
+        assert!(SELECT_COLUMNS.contains("weekday"));
+        assert!(SELECT_COLUMNS.contains("starts_on"));
+    }
+}

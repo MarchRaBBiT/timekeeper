@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
 
-use crate::repositories::attendance::AttendanceRepository;
+use crate::repositories::attendance::{AttendanceRepository, AttendanceRepositoryTrait};
 use crate::repositories::break_record::BreakRecordRepository;
 use crate::repositories::repository::Repository;
 use crate::repositories::transaction;

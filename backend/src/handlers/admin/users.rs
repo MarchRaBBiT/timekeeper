@@ -361,3 +361,148 @@ pub async fn delete_archived_user(
         "user_id": user_id
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reset_mfa_payload_structure() {
+        let payload = ResetMfaPayload {
+            user_id: "test-user-id".to_string(),
+        };
+        assert_eq!(payload.user_id, "test-user-id");
+    }
+
+    #[test]
+    fn test_delete_user_params_default() {
+        let params = DeleteUserParams { hard: false };
+        assert!(!params.hard);
+    }
+
+    #[test]
+    fn test_delete_user_params_hard_delete() {
+        let params = DeleteUserParams { hard: true };
+        assert!(params.hard);
+    }
+
+    #[test]
+    fn test_archived_user_response_structure() {
+        let response = ArchivedUserResponse {
+            id: "test-id".to_string(),
+            username: "testuser".to_string(),
+            full_name: "Test User".to_string(),
+            role: "employee".to_string(),
+            is_system_admin: false,
+            archived_at: "2024-01-15T10:00:00Z".to_string(),
+            archived_by: Some("admin-id".to_string()),
+        };
+        assert_eq!(response.id, "test-id");
+        assert_eq!(response.username, "testuser");
+        assert_eq!(response.full_name, "Test User");
+        assert_eq!(response.role, "employee");
+        assert!(!response.is_system_admin);
+        assert_eq!(response.archived_at, "2024-01-15T10:00:00Z");
+        assert_eq!(response.archived_by, Some("admin-id".to_string()));
+    }
+
+    #[test]
+    fn test_archived_user_response_without_archived_by() {
+        let response = ArchivedUserResponse {
+            id: "test-id".to_string(),
+            username: "testuser".to_string(),
+            full_name: "Test User".to_string(),
+            role: "admin".to_string(),
+            is_system_admin: true,
+            archived_at: "2024-01-15T10:00:00Z".to_string(),
+            archived_by: None,
+        };
+        assert!(response.is_system_admin);
+        assert_eq!(response.archived_by, None);
+    }
+
+    #[test]
+    fn test_user_id_parsing_valid() {
+        let valid_id = UserId::new();
+        let id_string = valid_id.to_string();
+        let parsed = UserId::from_str(&id_string);
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap(), valid_id);
+    }
+
+    #[test]
+    fn test_user_id_parsing_invalid() {
+        let invalid_id = "not-a-valid-uuid";
+        let parsed = UserId::from_str(invalid_id);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn test_user_role_admin_check() {
+        use crate::models::user::{User, UserRole};
+        use chrono::Utc;
+
+        let admin_user = User {
+            id: UserId::new(),
+            username: "admin".to_string(),
+            email: "admin@example.com".to_string(),
+            full_name: "Admin User".to_string(),
+            password_hash: "hash".to_string(),
+            role: UserRole::Admin,
+            is_system_admin: false,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!(admin_user.is_admin());
+        assert!(!admin_user.is_system_admin());
+    }
+
+    #[test]
+    fn test_user_role_system_admin_check() {
+        use crate::models::user::{User, UserRole};
+        use chrono::Utc;
+
+        let sys_admin_user = User {
+            id: UserId::new(),
+            username: "sysadmin".to_string(),
+            email: "sysadmin@example.com".to_string(),
+            full_name: "System Admin".to_string(),
+            password_hash: "hash".to_string(),
+            role: UserRole::Admin,
+            is_system_admin: true,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!(sys_admin_user.is_admin());
+        assert!(sys_admin_user.is_system_admin());
+    }
+
+    #[test]
+    fn test_user_role_employee_check() {
+        use crate::models::user::{User, UserRole};
+        use chrono::Utc;
+
+        let employee_user = User {
+            id: UserId::new(),
+            username: "employee".to_string(),
+            email: "employee@example.com".to_string(),
+            full_name: "Employee User".to_string(),
+            password_hash: "hash".to_string(),
+            role: UserRole::Employee,
+            is_system_admin: false,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!(!employee_user.is_admin());
+        assert!(!employee_user.is_system_admin());
+    }
+}

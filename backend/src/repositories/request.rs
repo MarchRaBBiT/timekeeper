@@ -5,7 +5,10 @@ use std::str::FromStr;
 use crate::error::AppError;
 use crate::models::{leave_request::LeaveRequest, overtime_request::OvertimeRequest};
 use crate::repositories::{
-    common::push_clause, repository::Repository, LeaveRequestRepository, OvertimeRequestRepository,
+    common::push_clause,
+    leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
+    overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
+    repository::Repository,
 };
 use crate::types::{LeaveRequestId, OvertimeRequestId, UserId};
 
@@ -346,5 +349,32 @@ fn apply_request_filters<'a>(
     if let Some(to) = filters.to.as_ref() {
         push_clause(builder, &mut has_clause);
         builder.push("created_at <= ").push_bind(*to);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use sqlx::{postgres::Postgres, QueryBuilder};
+
+    #[test]
+    fn apply_request_filters_without_filters_is_noop() {
+        let mut builder = QueryBuilder::<Postgres>::new("SELECT 1");
+        let filters = RequestListFilters::default();
+        apply_request_filters(&mut builder, &filters);
+    }
+
+    #[test]
+    fn apply_request_filters_with_all_fields_appends_clauses() {
+        let mut builder = QueryBuilder::<Postgres>::new("SELECT 1");
+        let now = Utc::now();
+        let filters = RequestListFilters {
+            user_id: Some("user-id".to_string()),
+            status: Some("pending".to_string()),
+            from: Some(now - Duration::days(1)),
+            to: Some(now),
+        };
+        apply_request_filters(&mut builder, &filters);
     }
 }

@@ -259,3 +259,65 @@ pub async fn delete_all_refresh_tokens_for_user(
         .await
         .map(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn fetch_recent_password_hashes_returns_empty_for_zero_limit() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://127.0.0.1:1/timekeeper")
+            .expect("create lazy pool");
+
+        let result = fetch_recent_password_hashes(&pool, UserId::new(), 0).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn active_access_token_struct_has_fields() {
+        let jti = "test-jti";
+        let user_id = UserId::new();
+        let expires_at = chrono::Utc::now();
+        let context = Some("test-context");
+
+        let token = ActiveAccessToken {
+            jti,
+            user_id: user_id.clone(),
+            expires_at,
+            context,
+        };
+
+        assert_eq!(token.jti, jti);
+        assert_eq!(token.user_id, user_id);
+        assert_eq!(token.expires_at, expires_at);
+        assert_eq!(token.context, context);
+    }
+
+    #[test]
+    fn active_access_token_struct_allows_none_context() {
+        let token = ActiveAccessToken {
+            jti: "test-jti",
+            user_id: UserId::new(),
+            expires_at: chrono::Utc::now(),
+            context: None,
+        };
+
+        assert!(token.context.is_none());
+    }
+
+    #[test]
+    fn stored_refresh_token_struct_derives_debug() {
+        let token = StoredRefreshToken {
+            id: "test-id".to_string(),
+            user_id: UserId::new(),
+            token_hash: "hash".to_string(),
+            expires_at: chrono::Utc::now(),
+        };
+
+        let debug_str = format!("{:?}", token);
+        assert!(debug_str.contains("StoredRefreshToken"));
+    }
+}

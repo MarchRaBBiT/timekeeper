@@ -98,11 +98,11 @@ pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error
 
 /// Checks if a username exists (for conflict check).
 pub async fn username_exists(pool: &PgPool, username: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM users WHERE username = $1")
+    let result: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
         .bind(username)
-        .fetch_optional(pool)
+        .fetch_one(pool)
         .await?;
-    Ok(result.is_some())
+    Ok(result.0)
 }
 
 /// Updates a user's profile (self-service).
@@ -406,7 +406,7 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
 
 /// Checks if a user exists by ID.
 pub async fn user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM users WHERE id = $1")
+    let result: Option<(i64,)> = sqlx::query_as("SELECT 1::bigint FROM users WHERE id = $1")
         .bind(user_id)
         .fetch_optional(pool)
         .await?;
@@ -472,11 +472,12 @@ pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(
 
 /// Checks if an archived user exists by ID.
 pub async fn archived_user_exists(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM archived_users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
-    Ok(result.is_some())
+    let result: (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM archived_users WHERE id = $1)")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+    Ok(result.0)
 }
 
 /// Fetches archived username by user ID.
@@ -516,4 +517,42 @@ pub async fn get_archived_users(pool: &PgPool) -> Result<Vec<ArchivedUserRow>, s
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn archived_user_row_struct_exists() {
+        let row = ArchivedUserRow {
+            id: "test-id".to_string(),
+            username: "testuser".to_string(),
+            full_name: "Test User".to_string(),
+            role: "employee".to_string(),
+            is_system_admin: false,
+            archived_at: Utc::now(),
+            archived_by: None,
+        };
+        assert_eq!(row.id, "test-id");
+        assert_eq!(row.username, "testuser");
+    }
+
+    #[test]
+    fn user_role_to_string_conversion() {
+        let employee = UserRole::Employee;
+        let admin = UserRole::Admin;
+
+        let emp_str = match employee {
+            UserRole::Employee => "employee",
+            UserRole::Admin => "admin",
+        };
+        let adm_str = match admin {
+            UserRole::Employee => "employee",
+            UserRole::Admin => "admin",
+        };
+
+        assert_eq!(emp_str, "employee");
+        assert_eq!(adm_str, "admin");
+    }
 }

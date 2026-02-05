@@ -2,7 +2,7 @@ use chrono::{NaiveDate, Utc};
 use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{holiday::Holiday, user::UserRole},
-    repositories::{repository::Repository, HolidayRepository},
+    repositories::{HolidayRepository, HolidayRepositoryTrait},
 };
 use tokio::sync::Mutex;
 

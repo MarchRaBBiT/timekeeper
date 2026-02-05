@@ -1148,6 +1148,226 @@ async fn ensure_password_not_reused(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{header, HeaderMap};
+    use base32::Alphabet::RFC4648;
+    use chrono::{Duration, Utc};
+    use chrono_tz::UTC;
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use totp_rs::{Algorithm, TOTP};
+
+    fn config_stub() -> Config {
+        Config {
+            database_url: "postgres://127.0.0.1/timekeeper_test".to_string(),
+            read_database_url: None,
+            jwt_secret: "0123456789abcdef0123456789abcdef".to_string(),
+            jwt_expiration_hours: 1,
+            refresh_token_expiration_days: 7,
+            max_concurrent_sessions: 3,
+            audit_log_retention_days: 1825,
+            audit_log_retention_forever: false,
+            consent_log_retention_days: 1825,
+            consent_log_retention_forever: false,
+            aws_region: "ap-northeast-1".into(),
+            aws_kms_key_id: "alias/timekeeper-test".into(),
+            aws_audit_log_bucket: "timekeeper-audit-logs".into(),
+            aws_cloudtrail_enabled: true,
+            cookie_secure: true,
+            cookie_same_site: crate::utils::cookies::SameSite::Lax,
+            cors_allow_origins: vec!["http://localhost:8000".into()],
+            time_zone: UTC,
+            mfa_issuer: "Timekeeper".into(),
+            rate_limit_ip_max_requests: 15,
+            rate_limit_ip_window_seconds: 900,
+            rate_limit_user_max_requests: 20,
+            rate_limit_user_window_seconds: 3600,
+            redis_url: None,
+            redis_pool_size: 5,
+            redis_connect_timeout: 5,
+            feature_redis_cache_enabled: true,
+            feature_read_replica_enabled: true,
+            password_min_length: 12,
+            password_require_uppercase: true,
+            password_require_lowercase: true,
+            password_require_numbers: true,
+            password_require_symbols: true,
+            password_expiration_days: 30,
+            password_history_count: 5,
+            production_mode: false,
+        }
+    }
+
+    fn build_user() -> User {
+        let password_hash = hash_password("Secret123!").expect("hash password for tests");
+        User::new(
+            "tester".into(),
+            password_hash,
+            "Test User".into(),
+            "test@example.com".into(),
+            crate::models::user::UserRole::Employee,
+            false,
+        )
+    }
+
+    fn current_totp_code(secret: &str) -> String {
+        let cleaned = secret.trim().replace(' ', "").to_uppercase();
+        let secret_bytes =
+            base32::decode(RFC4648 { padding: false }, cleaned.as_str()).expect("decode secret");
+        let totp = TOTP::new(
+            Algorithm::SHA1,
+            6,
+            1,
+            30,
+            secret_bytes,
+            None,
+            "".to_string(),
+        )
+        .expect("build totp");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_secs();
+        totp.generate(now)
+    }
+
+    #[tokio::test]
+    async fn ensure_password_matches_accepts_correct_password() {
+        let user = build_user();
+        ensure_password_matches("Secret123!", &user.password_hash, "invalid")
+            .await
+            .expect("password should match");
+    }
+
+    #[tokio::test]
+    async fn ensure_password_matches_rejects_wrong_password() {
+        let user = build_user();
+        let err = ensure_password_matches("wrong", &user.password_hash, "invalid")
+            .await
+            .expect_err("should fail");
+        assert!(matches!(err, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn enforce_mfa_accepts_valid_code() {
+        let mut user = build_user();
+        let secret = generate_totp_secret();
+        user.mfa_secret = Some(secret.clone());
+        user.mfa_enabled_at = Some(Utc::now());
+        let code = current_totp_code(&secret);
+        enforce_mfa(&user, Some(&code)).expect("valid mfa code should pass");
+    }
+
+    #[test]
+    fn enforce_mfa_rejects_missing_code() {
+        let mut user = build_user();
+        user.mfa_secret = Some(generate_totp_secret());
+        user.mfa_enabled_at = Some(Utc::now());
+        let err = enforce_mfa(&user, None).expect_err("code required");
+        assert!(matches!(err, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn enforce_password_expiration_behaves_as_expected() {
+        let mut user = build_user();
+        let mut config = config_stub();
+        config.password_expiration_days = 1;
+        user.password_changed_at = Utc::now() - Duration::days(2);
+        assert!(enforce_password_expiration(&user, &config).is_err());
+        user.password_changed_at = Utc::now();
+        assert!(enforce_password_expiration(&user, &config).is_ok());
+        config.password_expiration_days = 0;
+        assert!(enforce_password_expiration(&user, &config).is_ok());
+    }
+
+    #[tokio::test]
+    async fn ensure_password_not_reused_allows_history_zero() {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://127.0.0.1:1/timekeeper")
+            .expect("create lazy pool");
+        ensure_password_not_reused(&pool, UserId::new(), "candidate", "hash", 0)
+            .await
+            .expect("history limit zero should skip db");
+    }
+
+    #[tokio::test]
+    async fn auth_session_exposes_claims_and_refresh_token_data() {
+        let mut user = build_user();
+        user.mfa_enabled_at = Some(Utc::now());
+        user.mfa_secret = Some(generate_totp_secret());
+        let config = config_stub();
+        let session = create_auth_session(&user, &config)
+            .await
+            .expect("create session");
+        let claims = session
+            .access_claims(&config.jwt_secret)
+            .expect("claims decode");
+        assert_eq!(claims.sub, user.id.to_string());
+        let refresh_data = session
+            .refresh_token_data(config.refresh_token_expiration_days)
+            .expect("refresh data");
+        assert_eq!(refresh_data.user_id, user.id.to_string());
+    }
+
+    #[test]
+    fn sanitize_device_label_trims_and_limits_length() {
+        assert!(sanitize_device_label(Some("   ".into())).is_none());
+        assert_eq!(
+            sanitize_device_label(Some("foo".into())),
+            Some("foo".to_string())
+        );
+        let long = "x".repeat(200);
+        assert_eq!(
+            sanitize_device_label(Some(long.clone())),
+            Some(long.chars().take(128).collect())
+        );
+    }
+
+    #[test]
+    fn extract_ip_prefers_forwarded_for_and_falls_back_to_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", " 1.2.3.4 , 5.6.7.8 ".parse().unwrap());
+        headers.insert("x-real-ip", "9.9.9.9".parse().unwrap());
+        assert_eq!(extract_ip(&headers), Some("1.2.3.4".to_string()));
+        headers.remove("x-forwarded-for");
+        assert_eq!(extract_ip(&headers), Some("9.9.9.9".to_string()));
+    }
+
+    #[test]
+    fn extract_user_agent_trims_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::USER_AGENT, "  TestAgent/1.0 ".parse().unwrap());
+        assert_eq!(
+            extract_user_agent(&headers),
+            Some("TestAgent/1.0".to_string())
+        );
+    }
+
+    #[test]
+    fn cookie_header_value_reads_cookie_string() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "foo=bar; baz=qux".parse().unwrap());
+        assert_eq!(cookie_header_value(&headers), Some("foo=bar; baz=qux"));
+    }
+
+    #[tokio::test]
+    async fn set_and_clear_auth_cookies_append_expected_headers() {
+        let mut headers = HeaderMap::new();
+        let user = build_user();
+        let config = config_stub();
+        let session = create_auth_session(&user, &config)
+            .await
+            .expect("create session");
+        set_auth_cookies(&mut headers, &session, &config);
+        assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 2);
+        clear_auth_cookies(&mut headers, &config);
+        assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 4);
+    }
+}
+
 fn bad_request(message: impl Into<String>) -> AppError {
     AppError::BadRequest(message.into())
 }

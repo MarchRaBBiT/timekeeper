@@ -69,3 +69,15 @@ pub async fn delete_holiday_exception(
     .await
     .map(|res| res.rows_affected())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn holiday_exception_functions_exist() {
+        let _insert_holiday_exception = insert_holiday_exception;
+        let _list_holiday_exceptions_for_user = list_holiday_exceptions_for_user;
+        let _delete_holiday_exception = delete_holiday_exception;
+    }
+}

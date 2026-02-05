@@ -201,4 +201,15 @@ mod tests {
         assert!(SELECT_COLUMNS.contains("break_start_time"));
         assert!(SELECT_COLUMNS.contains("duration_minutes"));
     }
+
+    #[test]
+    fn break_record_repository_new_creates_instance() {
+        let repo = BreakRecordRepository::new();
+        let _repo = repo;
+    }
+
+    #[test]
+    fn table_name_is_correct() {
+        assert_eq!(TABLE_NAME, "break_records");
+    }
 }
