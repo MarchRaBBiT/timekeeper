@@ -1,7 +1,7 @@
-#![cfg(not(coverage))]
+#![cfg(not(target_arch = "wasm32"))]
 
 use super::*;
-use httpmock::prelude::*;
+use crate::api::test_support::mock::*;
 use serde_json::json;
 
 fn user_json(id: &str) -> serde_json::Value {

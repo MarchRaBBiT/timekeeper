@@ -199,10 +199,10 @@ impl AdminRepository {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use httpmock::prelude::*;
+    use crate::api::test_support::mock::*;
 
     fn repo(server: &MockServer) -> AdminRepository {
         AdminRepository::new_with_client(std::rc::Rc::new(ApiClient::new_with_base_url(

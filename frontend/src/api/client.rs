@@ -8,11 +8,68 @@ use web_sys::Storage;
 
 #[cfg(test)]
 use crate::utils::storage as storage_utils;
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: Option<String>,
+    #[cfg(test)]
+    responder: Option<Arc<dyn TestResponder>>,
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct MockResponse {
+    status: StatusCode,
+    body: serde_json::Value,
+}
+
+#[cfg(test)]
+impl MockResponse {
+    pub(crate) fn json(status: u16, body: serde_json::Value) -> Self {
+        Self {
+            status: StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+            body,
+        }
+    }
+
+    fn into_response(self) -> reqwest::Response {
+        let body = serde_json::to_vec(&self.body).unwrap_or_default();
+        let response = http::Response::builder()
+            .status(self.status)
+            .header("content-type", "application/json")
+            .body(reqwest::Body::from(body))
+            .unwrap();
+        response.into()
+    }
+}
+
+#[cfg(test)]
+pub(crate) trait TestResponder: Send + Sync {
+    fn respond(&self, request: &reqwest::Request) -> Result<MockResponse, ApiError>;
+}
+
+#[cfg(test)]
+static MOCK_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<dyn TestResponder>>>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn register_mock(base_url: String, responder: Arc<dyn TestResponder>) {
+    let registry = MOCK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut guard) = registry.lock() {
+        guard.insert(base_url, responder);
+    }
+}
+
+#[cfg(test)]
+fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
+    MOCK_REGISTRY
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|guard| guard.get(base_url).cloned())
 }
 
 impl ApiClient {
@@ -20,16 +77,21 @@ impl ApiClient {
         Self {
             client: Client::new(),
             base_url: None,
+            #[cfg(test)]
+            responder: None,
         }
     }
 
-    #[cfg(all(test, not(coverage)))]
+    #[cfg(test)]
     pub(crate) fn new_with_base_url(base_url: &str) -> Self {
         Self {
             client: Client::new(),
             base_url: Some(base_url.to_string()),
+            #[cfg(test)]
+            responder: lookup_mock(base_url),
         }
     }
+
 
     pub(super) async fn resolved_base_url(&self) -> String {
         if let Some(base) = &self.base_url {
@@ -41,6 +103,25 @@ impl ApiClient {
 
     pub(super) fn http_client(&self) -> &Client {
         &self.client
+    }
+
+    pub(super) async fn send_request(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ApiError> {
+        #[cfg(test)]
+        if let Some(responder) = &self.responder {
+            let request = builder
+                .build()
+                .map_err(|e| ApiError::unknown(format!("Failed to build request: {}", e)))?;
+            let mock = responder.respond(&request)?;
+            return Ok(mock.into_response());
+        }
+
+        builder
+            .send()
+            .await
+            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -66,20 +147,18 @@ impl ApiClient {
     where
         F: Fn() -> Result<reqwest::RequestBuilder, ApiError>,
     {
-        let response = Self::with_credentials(build_request()?)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(Self::with_credentials(build_request()?))
+            .await?;
 
         if response.status() != StatusCode::UNAUTHORIZED {
             return Ok(response);
         }
 
         if self.refresh_token().await.is_ok() {
-            let retry_response = Self::with_credentials(build_request()?)
-                .send()
-                .await
-                .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            let retry_response = self
+                .send_request(Self::with_credentials(build_request()?))
+                .await?;
             return Ok(retry_response);
         }
 
@@ -630,12 +709,12 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let request = RequestPasswordResetRequest { email };
         let response = self
-            .client
-            .post(format!("{}/auth/request-password-reset", base_url))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            .send_request(
+                self.client
+                    .post(format!("{}/auth/request-password-reset", base_url))
+                    .json(&request),
+            )
+            .await?;
 
         let status = response.status();
         if status.is_success() {
@@ -663,12 +742,12 @@ impl ApiClient {
             new_password,
         };
         let response = self
-            .client
-            .post(format!("{}/auth/reset-password", base_url))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            .send_request(
+                self.client
+                    .post(format!("{}/auth/reset-password", base_url))
+                    .json(&request),
+            )
+            .await?;
 
         let status = response.status();
         if status.is_success() {

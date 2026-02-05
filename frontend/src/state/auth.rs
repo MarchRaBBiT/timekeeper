@@ -138,10 +138,10 @@ mod tests {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use httpmock::prelude::*;
+    use crate::api::test_support::mock::*;
 
     #[tokio::test]
     async fn login_and_logout_update_auth_state() {

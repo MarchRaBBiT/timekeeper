@@ -111,8 +111,7 @@ fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i3
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(not(coverage))]
-    use httpmock::prelude::*;
+    use crate::api::test_support::mock::*;
 
     #[test]
     fn alerts_warn_when_no_workdays() {
@@ -134,7 +133,6 @@ mod tests {
         assert_eq!(count_by(&summaries, RequestKind::Leave, "pending"), 0);
     }
 
-    #[cfg(not(coverage))]
     #[tokio::test]
     async fn fetch_summary_and_activities_from_api() {
         let server = MockServer::start_async().await;

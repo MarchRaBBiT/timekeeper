@@ -269,10 +269,10 @@ mod tests {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use httpmock::prelude::*;
+    use crate::api::test_support::mock::*;
 
     fn attendance_json(id: &str) -> serde_json::Value {
         serde_json::json!({

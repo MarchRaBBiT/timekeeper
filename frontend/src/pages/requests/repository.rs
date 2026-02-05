@@ -48,10 +48,10 @@ pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32"), not(coverage)))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use httpmock::prelude::*;
+    use crate::api::test_support::mock::*;
 
     fn repo(server: &MockServer) -> RequestsRepository {
         RequestsRepository::new(ApiClient::new_with_base_url(&server.url("/api")))

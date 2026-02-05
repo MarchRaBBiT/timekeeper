@@ -1,6 +1,6 @@
 use serde_json::json;
 
-#[cfg(all(test, not(coverage)))]
+#[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 
 use super::{
@@ -16,14 +16,13 @@ impl ApiClient {
             request.device_label = Some(ensure_device_label(&storage)?);
         }
         let base_url = self.resolved_base_url().await;
-        let response = ApiClient::with_credentials(
-            self.http_client()
-                .post(format!("{}/auth/login", base_url))
-                .json(&request),
-        )
-        .send()
-        .await
-        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(ApiClient::with_credentials(
+                self.http_client()
+                    .post(format!("{}/auth/login", base_url))
+                    .json(&request),
+            ))
+            .await?;
 
         if response.status().is_success() {
             let login_response: LoginResponse = response
@@ -41,7 +40,7 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
-    #[cfg(all(test, not(coverage)))]
+    #[cfg(test)]
     if let Some(result) = next_refresh_override() {
         return result;
     }
@@ -54,14 +53,13 @@ impl ApiClient {
             "device_label": device_label
         });
 
-        let response = ApiClient::with_credentials(
-            self.http_client()
-                .post(format!("{}/auth/refresh", base_url))
-                .json(&payload),
-        )
-        .send()
-        .await
-        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(ApiClient::with_credentials(
+                self.http_client()
+                    .post(format!("{}/auth/refresh", base_url))
+                    .json(&payload),
+            ))
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -210,16 +208,16 @@ impl ApiClient {
     }
 }
 
-#[cfg(all(test, not(coverage)))]
+#[cfg(test)]
 static REFRESH_OVERRIDE: OnceLock<Mutex<Vec<Result<LoginResponse, ApiError>>>> = OnceLock::new();
 
-#[cfg(all(test, not(coverage)))]
+#[cfg(test)]
 pub(crate) fn queue_refresh_override(result: Result<LoginResponse, ApiError>) {
     let slot = REFRESH_OVERRIDE.get_or_init(|| Mutex::new(Vec::new()));
     slot.lock().unwrap().push(result);
 }
 
-#[cfg(all(test, not(coverage)))]
+#[cfg(test)]
 fn next_refresh_override() -> Option<Result<LoginResponse, ApiError>> {
     REFRESH_OVERRIDE
         .get()
