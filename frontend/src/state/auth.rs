@@ -137,3 +137,59 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use httpmock::prelude::*;
+
+    #[tokio::test]
+    async fn login_and_logout_update_auth_state() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(POST).path("/api/auth/login");
+            then.status(200).json_body(serde_json::json!({
+                "user": {
+                    "id": "u1",
+                    "username": "alice",
+                    "full_name": "Alice Example",
+                    "role": "admin",
+                    "is_system_admin": true,
+                    "mfa_enabled": false
+                }
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/auth/logout");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+
+        let runtime = create_runtime();
+        let (state, set_state) = create_signal(AuthState::default());
+        let api = ApiClient::new_with_base_url(&server.url("/api"));
+        let repo = login_repository::LoginRepository::new_with_client(std::rc::Rc::new(api));
+
+        login_request(
+            LoginRequest {
+                username: "alice".into(),
+                password: "secret".into(),
+                totp_code: None,
+                device_label: Some("test-device".into()),
+            },
+            &repo,
+            set_state,
+        )
+        .await
+        .unwrap();
+
+        let snapshot = state.get();
+        assert!(snapshot.is_authenticated);
+        assert!(snapshot.user.is_some());
+
+        logout(false, &repo, set_state).await.unwrap();
+        let snapshot = state.get();
+        assert!(!snapshot.is_authenticated);
+        assert!(snapshot.user.is_none());
+        runtime.dispose();
+    }
+}

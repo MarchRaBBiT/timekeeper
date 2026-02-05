@@ -463,3 +463,33 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+
+    #[test]
+    fn history_query_refreshes_token() {
+        let query = HistoryQuery::new(None, None);
+        let updated = query.with_range(Some(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()), None);
+        assert_eq!(updated.token, query.token.wrapping_add(1));
+    }
+
+    #[test]
+    fn holiday_query_refreshes_token() {
+        let query = HolidayQuery::new(2025, 1);
+        let updated = query.with_period(2025, 2);
+        assert_eq!(updated.token, query.token.wrapping_add(1));
+        let refreshed = updated.refresh();
+        assert_eq!(refreshed.token, updated.token.wrapping_add(1));
+    }
+
+    #[test]
+    fn export_payload_formats_dates() {
+        let from = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        let to = NaiveDate::from_ymd_opt(2025, 1, 31).unwrap();
+        let payload = ExportPayload::from_dates(Some(from), Some(to));
+        assert_eq!(payload.from.as_deref(), Some("2025-01-01"));
+        assert_eq!(payload.to.as_deref(), Some("2025-01-31"));
+    }
+}

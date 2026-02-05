@@ -479,7 +479,21 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
     });
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/audit-logs/export");
-        then.status(200).json_body(json!({ "filename": "audit.csv", "csv_data": "a,b\\n1,2" }));
+        then.status(200).json_body(json!([{
+            "id": "log-1",
+            "occurred_at": "2025-01-01T00:00:00Z",
+            "actor_id": null,
+            "actor_type": "system",
+            "event_type": "export",
+            "target_type": null,
+            "target_id": null,
+            "result": "success",
+            "error_code": null,
+            "metadata": null,
+            "ip": null,
+            "user_agent": null,
+            "request_id": null
+        }]));
     });
 
     let client = api_client(&server);

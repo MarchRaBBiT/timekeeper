@@ -87,6 +87,12 @@ impl ApiClient {
     }
 
     fn redirect_to_login_if_needed() {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            return;
+        }
+
+        #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
             let location = window.location();
             if let Ok(pathname) = location.pathname() {

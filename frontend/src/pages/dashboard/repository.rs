@@ -111,6 +111,7 @@ fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
 
     #[test]
     fn alerts_warn_when_no_workdays() {
@@ -130,5 +131,36 @@ mod tests {
         let empty: crate::pages::requests::types::MyRequestsResponse = Default::default();
         let summaries = flatten_requests(&empty);
         assert_eq!(count_by(&summaries, RequestKind::Leave, "pending"), 0);
+    }
+
+    #[tokio::test]
+    async fn fetch_summary_and_activities_from_api() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me/summary");
+            then.status(200).json_body(serde_json::json!({
+                "month": 1,
+                "year": 2025,
+                "total_work_hours": 160.0,
+                "total_work_days": 20,
+                "average_daily_hours": 8.0
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/requests/me");
+            then.status(200).json_body(serde_json::json!({
+                "leave_requests": [],
+                "overtime_requests": []
+            }));
+        });
+
+        let api = ApiClient::new_with_base_url(&server.url("/api"));
+        let summary = fetch_summary(&api).await.unwrap();
+        assert_eq!(summary.total_work_days, Some(20));
+
+        let activities = fetch_recent_activities(&api, ActivityStatusFilter::All)
+            .await
+            .unwrap();
+        assert_eq!(activities.len(), 4);
     }
 }
