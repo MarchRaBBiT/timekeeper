@@ -1,8 +1,3 @@
-use js_sys::Date;
-use leptos::*;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::console;
-
 mod api;
 mod components;
 pub mod config;
@@ -12,8 +7,14 @@ mod state;
 pub mod theme;
 pub mod utils;
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
+    use js_sys::Date;
+    use leptos::*;
+    use wasm_bindgen_futures::spawn_local;
+    use web_sys::console;
+
     console_error_panic_hook::set_once();
     theme::init_system_theme();
     let t0 = Date::now();
@@ -26,4 +27,17 @@ pub fn start() {
         web_sys::console::log_1(&msg.into());
         router::mount_app();
     });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn start() {}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::start;
+
+    #[test]
+    fn start_is_noop_on_host() {
+        start();
+    }
 }

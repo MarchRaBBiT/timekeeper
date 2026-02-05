@@ -23,6 +23,14 @@ impl ApiClient {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_with_base_url(base_url: &str) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: Some(base_url.to_string()),
+        }
+    }
+
     pub(super) async fn resolved_base_url(&self) -> String {
         if let Some(base) = &self.base_url {
             base.clone()

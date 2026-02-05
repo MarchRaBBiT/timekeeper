@@ -269,4 +269,83 @@ mod tests {
     }
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use httpmock::prelude::*;
+
+    fn attendance_json(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "user_id": "u1",
+            "date": "2025-01-02",
+            "clock_in_time": "2025-01-02T09:00:00",
+            "clock_out_time": null,
+            "status": "clocked_in",
+            "total_work_hours": null,
+            "break_records": []
+        })
+    }
+
+    fn status_json(status: &str) -> serde_json::Value {
+        serde_json::json!({
+            "status": status,
+            "attendance_id": "att-1",
+            "active_break_id": null,
+            "clock_in_time": "2025-01-02T09:00:00",
+            "clock_out_time": null
+        })
+    }
+
+
+    #[tokio::test]
+    async fn clock_in_updates_state_on_success() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/clock-in");
+            then.status(200).json_body(attendance_json("att-1"));
+        });
+        let api = ApiClient::new_with_base_url(&server.url("/api"));
+        let runtime = leptos::create_runtime();
+        let (state, set_state) = use_attendance();
+        clock_in(&api, set_state).await.unwrap();
+        assert!(state.get().current_attendance.is_some());
+        runtime.dispose();
+    }
+
+    #[tokio::test]
+    async fn load_and_refresh_context_updates_state() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/status");
+            then.status(200).json_body(status_json("clocked_in"));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me");
+            then.status(200).json_body(serde_json::json!([attendance_json("att-1")]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/holidays/check");
+            then.status(200).json_body(serde_json::json!({ "is_holiday": false, "reason": null }));
+        });
+        let api = ApiClient::new_with_base_url(&server.url("/api"));
+        let runtime = leptos::create_runtime();
+        let (state, set_state) = use_attendance();
+        refresh_today_context(&api, set_state).await.unwrap();
+        let snapshot = state.get();
+        assert!(snapshot.today_status.is_some());
+        assert!(snapshot.attendance_history.len() == 1);
+        assert!(snapshot.today_holiday_reason.is_none());
+        runtime.dispose();
+    }
+
+    #[test]
+    fn describe_reason_maps_values_on_host() {
+        assert_eq!(describe_holiday_reason("public holiday"), "祝日");
+        assert_eq!(describe_holiday_reason("weekly holiday"), "定休日");
+        assert_eq!(describe_holiday_reason("forced holiday"), "特別休日");
+        assert_eq!(describe_holiday_reason("unknown"), "休日");
+    }
+}
+
 // load_attendance_summary was unused; consider adding a call site before reintroducing.

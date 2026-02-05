@@ -1,5 +1,7 @@
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
+#[cfg(target_arch = "wasm32")]
 pub fn trigger_csv_download(filename: &str, csv_data: &str) -> Result<(), String> {
     let array = js_sys::Array::new();
     array.push(&wasm_bindgen::JsValue::from_str(csv_data));
@@ -32,6 +34,11 @@ pub fn trigger_csv_download(filename: &str, csv_data: &str) -> Result<(), String
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn trigger_csv_download(_filename: &str, _csv_data: &str) -> Result<(), String> {
+    Err("CSV download is only available in wasm".to_string())
+}
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
@@ -43,5 +50,16 @@ mod tests {
     fn trigger_csv_download_succeeds() {
         let result = trigger_csv_download("test.csv", "a,b\n1,2\n");
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+
+    #[test]
+    fn trigger_csv_download_returns_error_on_host() {
+        let result = trigger_csv_download("test.csv", "a,b\n1,2\n");
+        assert!(result.is_err());
     }
 }

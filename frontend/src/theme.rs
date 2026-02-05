@@ -99,3 +99,13 @@ pub use wasm::init as init_system_theme;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn init_system_theme() {}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::init_system_theme;
+
+    #[test]
+    fn init_system_theme_is_noop_on_host() {
+        init_system_theme();
+    }
+}

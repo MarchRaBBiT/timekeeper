@@ -1,5 +1,8 @@
 use serde_json::json;
 
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
 use super::{
     client::{ensure_device_label, ApiClient},
     types::{ApiError, LoginRequest, LoginResponse, MfaSetupResponse, MfaStatusResponse},
@@ -8,8 +11,8 @@ use crate::utils::storage as storage_utils;
 
 impl ApiClient {
     pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, ApiError> {
-        let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         if request.device_label.is_none() {
+            let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
             request.device_label = Some(ensure_device_label(&storage)?);
         }
         let base_url = self.resolved_base_url().await;
@@ -38,6 +41,11 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
+        #[cfg(test)]
+        if let Some(result) = next_refresh_override() {
+            return result;
+        }
+
         let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         let device_label = ensure_device_label(&storage)?;
 
@@ -200,4 +208,20 @@ impl ApiClient {
             Err(error)
         }
     }
+}
+
+#[cfg(test)]
+static REFRESH_OVERRIDE: OnceLock<Mutex<Vec<Result<LoginResponse, ApiError>>>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn queue_refresh_override(result: Result<LoginResponse, ApiError>) {
+    let slot = REFRESH_OVERRIDE.get_or_init(|| Mutex::new(Vec::new()));
+    slot.lock().unwrap().push(result);
+}
+
+#[cfg(test)]
+fn next_refresh_override() -> Option<Result<LoginResponse, ApiError>> {
+    REFRESH_OVERRIDE
+        .get()
+        .and_then(|slot| slot.lock().ok().and_then(|mut stack| stack.pop()))
 }
