@@ -71,3 +71,46 @@ pub fn RangeFormSection(
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::ApiError;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn range_form_renders_buttons_and_errors() {
+        let html = render_to_string(move || {
+            let from = create_rw_signal("2025-01-01".to_string());
+            let to = create_rw_signal("2025-01-31".to_string());
+            let (exporting, _) = create_signal(false);
+            let export_error = create_rw_signal(Some(ApiError::unknown("export failed")));
+            let export_success = create_rw_signal(Some("ok".to_string()));
+            let (history_loading, _) = create_signal(false);
+            let (history_error, _) = create_signal(Some(ApiError::unknown("history failed")));
+            let range_error = create_rw_signal(Some("range invalid".to_string()));
+            let (last_refresh_error, _) = create_signal(Some(ApiError::unknown("refresh failed")));
+            view! {
+                <RangeFormSection
+                    from_input=from
+                    to_input=to
+                    exporting=exporting.into()
+                    export_error=export_error.read_only()
+                    export_success=export_success.read_only()
+                    history_loading=history_loading.into()
+                    history_error=history_error.into()
+                    range_error=range_error.read_only()
+                    last_refresh_error=last_refresh_error.into()
+                    on_select_current_month=Callback::new(|_| {})
+                    on_load_range=Callback::new(|_| {})
+                    on_export_csv=Callback::new(|_| {})
+                />
+            }
+        });
+        assert!(html.contains("CSVダウンロード"));
+        assert!(html.contains("export failed"));
+        assert!(html.contains("range invalid"));
+        assert!(html.contains("history failed"));
+        assert!(html.contains("refresh failed"));
+    }
+}

@@ -78,3 +78,20 @@ pub fn AdminPanel() -> impl IntoView {
         </layout::AdminDashboardScaffold>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn admin_panel_renders_sections_for_admin() {
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <AdminPanel /> }
+        });
+        assert!(html.contains("管理者ツール"));
+        assert!(html.contains("週次休日"));
+    }
+}

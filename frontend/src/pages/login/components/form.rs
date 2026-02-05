@@ -139,3 +139,30 @@ pub fn LoginForm(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
+
+    #[test]
+    fn login_form_renders_fields() {
+        let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
+            let form = LoginFormState::default();
+            let error = create_rw_signal(None::<ApiError>);
+            let action = create_action(|_| async move { Ok(()) });
+            view! {
+                <Router>
+                    <LoginForm form=form error=error login_action=action />
+                </Router>
+            }
+        });
+        assert!(html.contains("Timekeeper にログイン"));
+        assert!(html.contains("ユーザー名"));
+        assert!(html.contains("パスワード"));
+    }
+}

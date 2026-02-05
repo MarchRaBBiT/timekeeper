@@ -64,3 +64,53 @@ fn render_badge(level: &DashboardAlertLevel) -> View {
     }
     .into_view()
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::pages::dashboard::repository::{DashboardAlert, DashboardAlertLevel};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn alerts_section_renders_alerts() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || {
+                    Some(Ok(DashboardSummary {
+                        total_work_hours: None,
+                        total_work_days: None,
+                        average_daily_hours: None,
+                    }))
+                },
+                |_| async move { Ok::<Vec<DashboardAlert>, crate::api::ApiError>(Vec::new()) },
+            );
+            resource.set(Ok(vec![DashboardAlert {
+                level: DashboardAlertLevel::Warning,
+                message: "注意".into(),
+            }]));
+            view! { <AlertsSection alerts=resource /> }
+        });
+        assert!(html.contains("アラート"));
+        assert!(html.contains("注意"));
+        assert!(html.contains("WARN"));
+    }
+
+    #[test]
+    fn alerts_section_renders_error() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || {
+                    Some(Ok(DashboardSummary {
+                        total_work_hours: None,
+                        total_work_days: None,
+                        average_daily_hours: None,
+                    }))
+                },
+                |_| async move { Ok::<Vec<DashboardAlert>, crate::api::ApiError>(Vec::new()) },
+            );
+            resource.set(Err(crate::api::ApiError::unknown("alert failed")));
+            view! { <AlertsSection alerts=resource /> }
+        });
+        assert!(html.contains("alert failed"));
+    }
+}

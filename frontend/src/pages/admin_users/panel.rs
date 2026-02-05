@@ -131,3 +131,20 @@ pub fn AdminUsersPage() -> impl IntoView {
         </Layout>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn admin_users_page_renders_for_system_admin() {
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <AdminUsersPage /> }
+        });
+        assert!(html.contains("ユーザー管理"));
+        assert!(html.contains("アクティブユーザー"));
+    }
+}

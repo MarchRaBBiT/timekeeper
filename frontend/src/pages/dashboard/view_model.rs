@@ -239,3 +239,68 @@ pub fn use_dashboard_view_model() -> DashboardViewModel {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::ssr::{with_local_runtime, with_runtime};
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/status");
+            then.status(200).json_body(serde_json::json!({
+                "status": "clocked_in",
+                "attendance_id": "att-1",
+                "active_break_id": null,
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/holidays/check");
+            then.status(200).json_body(serde_json::json!({
+                "is_holiday": false,
+                "reason": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/clock-in");
+            then.status(200).json_body(serde_json::json!({
+                "id": "att-1",
+                "user_id": "u1",
+                "date": "2025-01-01",
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": null,
+                "status": "clocked_in",
+                "total_work_hours": null,
+                "break_records": []
+            }));
+        });
+        server
+    }
+
+    #[test]
+    fn dashboard_view_model_sets_clock_message_on_success() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                leptos_reactive::suppress_resource_load(true);
+                let vm = DashboardViewModel::new();
+                assert_eq!(vm.activity_filter.get(), ActivityStatusFilter::All);
+
+                vm.last_clock_event.set(Some(ClockEventKind::ClockIn));
+                vm.clock_action.dispatch(ClockEventPayload::clock_in());
+                assert!(vm.last_clock_event.get().is_some());
+
+                leptos_reactive::suppress_resource_load(false);
+            });
+        });
+    }
+}

@@ -263,3 +263,168 @@ pub fn use_requests_view_model() -> RequestsViewModel {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::ssr::{with_local_runtime_async, with_runtime};
+    use chrono::NaiveDate;
+    use serde_json::json;
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/requests/me");
+            then.status(200).json_body(json!({
+                "leave_requests": [],
+                "overtime_requests": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/requests/leave");
+            then.status(200).json_body(json!({
+                "id": "leave-1",
+                "user_id": "u1",
+                "leave_type": "annual",
+                "start_date": "2025-01-10",
+                "end_date": "2025-01-12",
+                "reason": null,
+                "status": "pending",
+                "approved_by": null,
+                "approved_at": null,
+                "rejected_by": null,
+                "rejected_at": null,
+                "cancelled_at": null,
+                "decision_comment": null,
+                "created_at": "2025-01-01T00:00:00Z"
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/requests/overtime");
+            then.status(200).json_body(json!({
+                "id": "ot-1",
+                "user_id": "u1",
+                "date": "2025-01-11",
+                "planned_hours": 2.5,
+                "reason": null,
+                "status": "pending",
+                "approved_by": null,
+                "approved_at": null,
+                "rejected_by": null,
+                "rejected_at": null,
+                "cancelled_at": null,
+                "decision_comment": null,
+                "created_at": "2025-01-01T00:00:00Z"
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(PUT).path("/api/requests/req-1");
+            then.status(200).json_body(json!({ "status": "updated" }));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/requests/req-1");
+            then.status(200).json_body(json!({ "status": "cancelled" }));
+        });
+        server
+    }
+
+    #[test]
+    fn requests_view_model_filters_summaries() {
+        with_runtime(|| {
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            leptos_reactive::suppress_resource_load(true);
+            let vm = RequestsViewModel::new();
+            let response = MyRequestsResponse {
+                leave_requests: vec![json!({
+                    "id": "leave-1",
+                    "status": "approved",
+                    "start_date": "2025-01-10",
+                    "end_date": "2025-01-10",
+                    "leave_type": "annual",
+                    "created_at": "2025-01-05T10:00:00Z"
+                })],
+                overtime_requests: vec![json!({
+                    "id": "ot-1",
+                    "status": "pending",
+                    "date": "2025-01-11",
+                    "planned_hours": 2.5,
+                    "created_at": "2025-01-06T10:00:00Z"
+                })],
+            };
+            vm.requests_resource.set(Ok(response));
+            let all = vm.filtered_summaries().get();
+            assert_eq!(all.len(), 2);
+
+            vm.filter_state.status_signal().set("approved".into());
+            let filtered = vm.filtered_summaries().get();
+            assert_eq!(filtered.len(), 1);
+            leptos_reactive::suppress_resource_load(false);
+        });
+    }
+
+    #[test]
+    fn requests_view_model_actions_update_messages() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = RequestsViewModel::new();
+
+            vm.leave_action.dispatch(CreateLeaveRequest {
+                leave_type: "annual".into(),
+                start_date: NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+                end_date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                reason: None,
+            });
+            for _ in 0..10 {
+                if vm.leave_message.get().success.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.leave_message.get();
+
+            vm.overtime_action.dispatch(CreateOvertimeRequest {
+                date: NaiveDate::from_ymd_opt(2025, 1, 11).unwrap(),
+                planned_hours: 2.5,
+                reason: None,
+            });
+            for _ in 0..10 {
+                if vm.overtime_message.get().success.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.overtime_message.get();
+
+            vm.editing_request.set(Some(EditTarget {
+                id: "req-1".into(),
+                kind: crate::pages::requests::types::RequestKind::Leave,
+            }));
+            vm.update_action.dispatch(EditPayload::from((
+                "req-1".to_string(),
+                json!({ "status": "updated" }),
+            )));
+            for _ in 0..10 {
+                if vm.editing_request.get().is_none() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.editing_request.get();
+            let _ = vm.list_message.get();
+
+            vm.cancel_action.dispatch("req-1".into());
+            for _ in 0..10 {
+                if vm.list_message.get().success.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.list_message.get();
+            runtime.dispose();
+        });
+    }
+}

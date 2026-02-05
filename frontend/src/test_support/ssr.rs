@@ -7,6 +7,28 @@ pub fn with_runtime<T>(f: impl FnOnce() -> T) -> T {
     result
 }
 
+pub fn with_local_runtime<T>(f: impl FnOnce() -> T) -> T {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let local = tokio::task::LocalSet::new();
+    local.block_on(&rt, async move { f() })
+}
+
+pub fn with_local_runtime_async<F, Fut, T>(f: F) -> T
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let local = tokio::task::LocalSet::new();
+    local.block_on(&rt, f())
+}
+
 pub fn render_to_string<F, N>(view: F) -> String
 where
     F: FnOnce() -> N + 'static,

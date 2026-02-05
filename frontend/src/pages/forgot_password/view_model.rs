@@ -63,6 +63,8 @@ fn normalize_email(value: &str) -> Result<String, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::ssr::with_local_runtime_async;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -75,5 +77,35 @@ mod tests {
     fn normalize_email_trims_whitespace() {
         let email = normalize_email("  test@example.com  ").expect("valid");
         assert_eq!(email, "test@example.com");
+    }
+
+    #[test]
+    fn normalize_email_rejects_empty_on_host() {
+        let err = normalize_email("").expect_err("should fail");
+        assert_eq!(err.code, "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn forgot_password_submit_sets_success() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = MockServer::start();
+            server.mock(|when, then| {
+                when.method(POST).path("/api/auth/request-password-reset");
+                then.status(200)
+                    .json_body(serde_json::json!({ "message": "sent" }));
+            });
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_forgot_password_view_model();
+            vm.submit_action.dispatch("user@example.com".into());
+            for _ in 0..10 {
+                if vm.success.get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.success.get();
+            runtime.dispose();
+        });
     }
 }

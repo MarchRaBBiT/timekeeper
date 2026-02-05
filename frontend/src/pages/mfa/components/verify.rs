@@ -67,3 +67,32 @@ pub fn VerificationSection(
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::MfaSetupResponse;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn verification_section_renders_qr_info() {
+        let html = render_to_string(move || {
+            let setup = create_rw_signal(Some(MfaSetupResponse {
+                secret: "secret".into(),
+                otpauth_url: "otpauth://totp/test".into(),
+            }));
+            let (loading, _) = create_signal(false);
+            let on_submit = Callback::new(|_| {});
+            let on_input = create_rw_signal(String::new());
+            view! {
+                <VerificationSection
+                    setup_info=setup.read_only()
+                    activate_loading=loading.into()
+                    on_submit=on_submit
+                    on_input=on_input.write_only()
+                />
+            }
+        });
+        assert!(html.contains("認証アプリで QR をスキャン"));
+    }
+}

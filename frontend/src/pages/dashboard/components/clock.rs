@@ -1,3 +1,4 @@
+#[cfg(target_arch = "wasm32")]
 use gloo_timers::callback::Interval;
 use leptos::*;
 
@@ -5,10 +6,11 @@ use crate::utils::time::now_in_app_tz;
 
 #[component]
 pub fn Clock() -> impl IntoView {
-    let (time, set_time) = create_signal(now_in_app_tz());
+    let (time, _set_time) = create_signal(now_in_app_tz());
 
     // Update time every second
     // We use store_value to keep the Interval alive. It will be dropped (and cancelled) when the component is unmounted.
+    #[cfg(target_arch = "wasm32")]
     let _interval = store_value(Interval::new(1000, move || {
         set_time.set(now_in_app_tz());
     }));
@@ -51,5 +53,18 @@ pub fn Clock() -> impl IntoView {
                 </div>
             </div>
         </div>
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn clock_renders_time() {
+        let html = render_to_string(move || view! { <Clock /> });
+        assert!(html.contains("年"));
+        assert!(html.contains(":"));
     }
 }

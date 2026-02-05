@@ -42,6 +42,7 @@ pub fn svg_to_data_url(svg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::ssr::with_runtime;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -66,5 +67,22 @@ mod tests {
     fn svg_to_data_url_handles_empty_input() {
         let result = svg_to_data_url("");
         assert_eq!(result, "data:image/svg+xml;base64,");
+    }
+
+    #[test]
+    fn validate_totp_code_rejects_short_values_on_host() {
+        let result = validate_totp_code("123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn message_state_clear_resets_signals() {
+        with_runtime(|| {
+            let message = MessageState::default();
+            message.set_success("ok".into());
+            message.clear();
+            assert!(message.success.get().is_none());
+            assert!(message.error.get().is_none());
+        });
     }
 }

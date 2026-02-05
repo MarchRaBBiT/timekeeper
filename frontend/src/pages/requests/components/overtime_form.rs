@@ -115,3 +115,37 @@ pub fn OvertimeRequestForm(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn overtime_request_form_renders_editing_state() {
+        let html = render_to_string(move || {
+            let state = OvertimeFormState::default();
+            let message = create_rw_signal(MessageState::default());
+            message.update(|msg| msg.set_success("ok".to_string()));
+            let action = create_action(|_| async move { Ok::<(), ApiError>(()) });
+            let update_action = create_action(|_| async move { Ok::<(), ApiError>(()) });
+            let editing = create_rw_signal(Some(EditTarget {
+                id: "req-1".into(),
+                kind: RequestKind::Overtime,
+            }));
+            view! {
+                <OvertimeRequestForm
+                    state=state
+                    message=message
+                    action=action
+                    update_action=update_action
+                    editing=editing
+                    on_cancel_edit=Callback::new(|_| {})
+                />
+            }
+        });
+        assert!(html.contains("残業申請"));
+        assert!(html.contains("編集中"));
+        assert!(html.contains("残業申請を更新"));
+    }
+}

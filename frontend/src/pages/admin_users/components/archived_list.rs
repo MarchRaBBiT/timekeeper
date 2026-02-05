@@ -85,3 +85,77 @@ pub fn ArchivedUserList(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::ArchivedUserResponse;
+    use crate::test_support::ssr::render_to_string;
+
+    fn sample_user() -> ArchivedUserResponse {
+        ArchivedUserResponse {
+            id: "arch-1".into(),
+            username: "archived".into(),
+            full_name: "Archived User".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            archived_at: "2025-01-10T00:00:00Z".into(),
+            archived_by: Some("admin".into()),
+        }
+    }
+
+    #[test]
+    fn archived_list_renders_empty_state() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            resource.set(Ok(Vec::new()));
+            let (loading, _) = create_signal(false);
+            let on_select = Callback::new(|_: ArchivedUserResponse| {});
+            view! {
+                <ArchivedUserList
+                    archived_users_resource=resource
+                    loading=loading.into()
+                    on_select=on_select
+                />
+            }
+        });
+        assert!(html.contains("退職ユーザーはいません。"));
+    }
+
+    #[test]
+    fn archived_list_renders_rows() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            resource.set(Ok(vec![sample_user()]));
+            let (loading, _) = create_signal(false);
+            let on_select = Callback::new(|_: ArchivedUserResponse| {});
+            view! {
+                <ArchivedUserList
+                    archived_users_resource=resource
+                    loading=loading.into()
+                    on_select=on_select
+                />
+            }
+        });
+        assert!(html.contains("Archived User"));
+        assert!(html.contains("退職日"));
+    }
+
+    #[test]
+    fn archived_list_renders_error() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            resource.set(Err(ApiError::unknown("boom")));
+            let (loading, _) = create_signal(false);
+            let on_select = Callback::new(|_: ArchivedUserResponse| {});
+            view! {
+                <ArchivedUserList
+                    archived_users_resource=resource
+                    loading=loading.into()
+                    on_select=on_select
+                />
+            }
+        });
+        assert!(html.contains("boom"));
+    }
+}

@@ -68,3 +68,54 @@ where
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::MfaStatusResponse;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn setup_section_renders_enabled_message() {
+        let html = render_to_string(move || {
+            let status = create_rw_signal(Some(MfaStatusResponse {
+                enabled: true,
+                pending: false,
+            }));
+            let status_loading = create_rw_signal(false);
+            let (register_loading, _) = create_signal(false);
+            view! {
+                <SetupSection
+                    status=status.read_only()
+                    status_loading=status_loading.read_only()
+                    register_loading=register_loading.into()
+                    on_register=move || {}
+                    on_refresh=move || {}
+                />
+            }
+        });
+        assert!(html.contains("MFA は有効です"));
+    }
+
+    #[test]
+    fn setup_section_renders_pending_message() {
+        let html = render_to_string(move || {
+            let status = create_rw_signal(Some(MfaStatusResponse {
+                enabled: false,
+                pending: true,
+            }));
+            let status_loading = create_rw_signal(false);
+            let (register_loading, _) = create_signal(false);
+            view! {
+                <SetupSection
+                    status=status.read_only()
+                    status_loading=status_loading.read_only()
+                    register_loading=register_loading.into()
+                    on_register=move || {}
+                    on_refresh=move || {}
+                />
+            }
+        });
+        assert!(html.contains("確認コードを入力して有効化"));
+    }
+}

@@ -72,6 +72,7 @@ fn validate_reset_input(token: &str, new_password: &str) -> Result<(String, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::ssr::with_runtime;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -92,5 +93,13 @@ mod tests {
             validate_reset_input("  token  ", "  NewPass123!  ").expect("valid");
         assert_eq!(token, "token");
         assert_eq!(password, "NewPass123!");
+    }
+
+    #[test]
+    fn validate_reset_input_rejects_empty_on_host() {
+        with_runtime(|| {
+            let err = validate_reset_input("", "password").expect_err("should fail");
+            assert_eq!(err.code, "VALIDATION_ERROR");
+        });
     }
 }

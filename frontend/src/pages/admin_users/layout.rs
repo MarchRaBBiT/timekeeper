@@ -27,3 +27,28 @@ pub fn AdminUsersFrame(children: Children) -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn unauthorized_message_renders_copy() {
+        let html = render_to_string(move || view! { <UnauthorizedAdminUsersMessage /> });
+        assert!(html.contains("このページはシステム管理者のみ利用できます。"));
+    }
+
+    #[test]
+    fn admin_users_frame_renders_header() {
+        let html = render_to_string(move || {
+            view! {
+                <AdminUsersFrame>
+                    <div>{"child"}</div>
+                </AdminUsersFrame>
+            }
+        });
+        assert!(html.contains("ユーザー管理"));
+        assert!(html.contains("child"));
+    }
+}

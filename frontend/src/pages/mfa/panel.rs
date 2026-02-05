@@ -75,3 +75,31 @@ pub fn MfaRegisterPanel() -> impl IntoView {
         </Layout>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn mfa_register_panel_renders_sections() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/auth/mfa");
+            then.status(200).json_body(serde_json::json!({
+                "enabled": false,
+                "pending": false
+            }));
+        });
+
+        let server = server.clone();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            provide_context(crate::api::ApiClient::new_with_base_url(&server.url("/api")));
+            view! { <MfaRegisterPanel /> }
+        });
+        assert!(html.contains("MFA 設定"));
+    }
+}
