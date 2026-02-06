@@ -13,6 +13,23 @@ use crate::state::auth::use_auth;
 use crate::utils::time::today_in_app_tz;
 use leptos::*;
 
+fn is_admin_user(user: Option<&UserResponse>) -> bool {
+    user.map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+        .unwrap_or(false)
+}
+
+fn is_system_admin_user(user: Option<&UserResponse>) -> bool {
+    user.map(|user| user.is_system_admin).unwrap_or(false)
+}
+
+fn validate_action_id(id: &str) -> Result<(), ApiError> {
+    if id.trim().is_empty() {
+        Err(ApiError::validation("リクエストIDを取得できませんでした。"))
+    } else {
+        Ok(())
+    }
+}
+
 #[derive(Clone)]
 pub struct AdminViewModel {
     pub users_resource: Resource<bool, Result<Vec<UserResponse>, ApiError>>,
@@ -53,21 +70,9 @@ pub fn use_admin_view_model() -> AdminViewModel {
     let repo = AdminRepository::new_with_client(std::rc::Rc::new(api));
 
     // Admin Access Check
-    let admin_allowed = create_memo(move |_| {
-        auth.get()
-            .user
-            .as_ref()
-            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
-            .unwrap_or(false)
-    });
+    let admin_allowed = create_memo(move |_| is_admin_user(auth.get().user.as_ref()));
 
-    let system_admin_allowed = create_memo(move |_| {
-        auth.get()
-            .user
-            .as_ref()
-            .map(|user| user.is_system_admin)
-            .unwrap_or(false)
-    });
+    let system_admin_allowed = create_memo(move |_| is_system_admin_user(auth.get().user.as_ref()));
 
     // Resources
     let repo_users = repo.clone();
@@ -158,8 +163,8 @@ pub fn use_admin_view_model() -> AdminViewModel {
         let repo = repo_action.clone();
         let payload = payload.clone();
         async move {
-            if payload.id.trim().is_empty() {
-                Err(ApiError::validation("リクエストIDを取得できませんでした。"))
+            if let Err(err) = validate_action_id(&payload.id) {
+                Err(err)
             } else if payload.approve {
                 repo.approve_request(&payload.id, &payload.comment).await
             } else {
@@ -213,8 +218,8 @@ pub fn use_admin_view_model() -> AdminViewModel {
         let repo = repo_subject_action.clone();
         let payload = payload.clone();
         async move {
-            if payload.id.trim().is_empty() {
-                Err(ApiError::validation("リクエストIDを取得できませんでした。"))
+            if let Err(err) = validate_action_id(&payload.id) {
+                Err(err)
             } else if payload.approve {
                 repo.approve_subject_request(&payload.id, &payload.comment)
                     .await
@@ -311,5 +316,44 @@ mod host_tests {
             view! { <div>{vm.requests_filter.snapshot().per_page}</div> }
         });
         assert!(html.contains("20"));
+    }
+
+    #[test]
+    fn helper_auth_and_action_validation_cover_paths() {
+        let system_admin = UserResponse {
+            id: "u1".into(),
+            username: "system".into(),
+            full_name: "System Admin".into(),
+            role: "user".into(),
+            is_system_admin: true,
+            mfa_enabled: true,
+        };
+        let role_admin = UserResponse {
+            id: "u2".into(),
+            username: "admin".into(),
+            full_name: "Role Admin".into(),
+            role: "admin".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+        };
+        let normal_user = UserResponse {
+            id: "u3".into(),
+            username: "member".into(),
+            full_name: "Member".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+        };
+
+        assert!(is_admin_user(Some(&system_admin)));
+        assert!(is_system_admin_user(Some(&system_admin)));
+        assert!(is_admin_user(Some(&role_admin)));
+        assert!(!is_system_admin_user(Some(&role_admin)));
+        assert!(!is_admin_user(Some(&normal_user)));
+        assert!(!is_admin_user(None));
+        assert!(!is_system_admin_user(None));
+
+        assert!(validate_action_id("req-1").is_ok());
+        assert!(validate_action_id("   ").is_err());
     }
 }

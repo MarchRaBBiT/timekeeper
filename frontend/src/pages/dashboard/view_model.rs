@@ -22,6 +22,26 @@ pub struct DashboardViewModel {
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
 }
 
+fn clock_success_message(last_event: Option<ClockEventKind>) -> &'static str {
+    match last_event {
+        Some(ClockEventKind::ClockIn) => "出勤しました。",
+        Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
+        Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
+        Some(ClockEventKind::ClockOut) => "退勤しました。",
+        None => "操作が完了しました。",
+    }
+}
+
+fn map_clock_action_result(
+    last_event: Option<ClockEventKind>,
+    result: Result<(), ApiError>,
+) -> ClockMessage {
+    match result {
+        Ok(_) => ClockMessage::Success(clock_success_message(last_event).to_string()),
+        Err(err) => ClockMessage::Error(err),
+    }
+}
+
 impl DashboardViewModel {
     pub fn new() -> Self {
         let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
@@ -95,19 +115,8 @@ impl DashboardViewModel {
         {
             create_effect(move |_| {
                 if let Some(result) = clock_action.value().get() {
-                    match result {
-                        Ok(_) => {
-                            let success = match last_clock_event.get_untracked() {
-                                Some(ClockEventKind::ClockIn) => "出勤しました。",
-                                Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
-                                Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
-                                Some(ClockEventKind::ClockOut) => "退勤しました。",
-                                None => "操作が完了しました。",
-                            };
-                            clock_message.set(Some(ClockMessage::Success(success.to_string())));
-                        }
-                        Err(err) => clock_message.set(Some(ClockMessage::Error(err))),
-                    }
+                    let mapped = map_clock_action_result(last_clock_event.get_untracked(), result);
+                    clock_message.set(Some(mapped));
                 }
             });
         }
@@ -362,5 +371,38 @@ mod host_tests {
         let ok =
             break_end_break_id(Some(&status("on_break", Some("att-1"), Some("br-1")))).unwrap();
         assert_eq!(ok, "br-1");
+    }
+
+    #[test]
+    fn helper_clock_message_mapping_covers_success_and_error_paths() {
+        assert_eq!(
+            clock_success_message(Some(ClockEventKind::ClockIn)),
+            "出勤しました。"
+        );
+        assert_eq!(
+            clock_success_message(Some(ClockEventKind::BreakStart)),
+            "休憩を開始しました。"
+        );
+        assert_eq!(
+            clock_success_message(Some(ClockEventKind::BreakEnd)),
+            "休憩を終了しました。"
+        );
+        assert_eq!(
+            clock_success_message(Some(ClockEventKind::ClockOut)),
+            "退勤しました。"
+        );
+        assert_eq!(clock_success_message(None), "操作が完了しました。");
+
+        let success = map_clock_action_result(Some(ClockEventKind::ClockOut), Ok(()));
+        match success {
+            ClockMessage::Success(msg) => assert_eq!(msg, "退勤しました。"),
+            ClockMessage::Error(_) => panic!("expected success"),
+        }
+
+        let failure = map_clock_action_result(None, Err(ApiError::unknown("dashboard failed")));
+        match failure {
+            ClockMessage::Success(_) => panic!("expected error"),
+            ClockMessage::Error(err) => assert_eq!(err.error, "dashboard failed"),
+        }
     }
 }

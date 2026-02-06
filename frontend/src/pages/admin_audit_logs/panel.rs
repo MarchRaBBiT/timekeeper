@@ -30,8 +30,10 @@ fn can_go_next(page: i64, total: i64, per_page: i64) -> bool {
 
 fn metadata_preview(value: &serde_json::Value, max_len: usize) -> String {
     let rendered = value.to_string();
-    if rendered.len() > max_len {
-        format!("{}...", &rendered[0..max_len])
+    let rendered_len = rendered.chars().count();
+    if rendered_len > max_len {
+        let truncated: String = rendered.chars().take(max_len).collect();
+        format!("{truncated}...")
     } else {
         rendered
     }
@@ -43,6 +45,10 @@ fn result_badge_class(result: &str) -> &'static str {
     } else {
         "px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-error-bg text-status-error-text"
     }
+}
+
+fn page_summary_label(total: i64, per_page: i64) -> String {
+    format!(" / {}", compute_total_pages(total, per_page))
 }
 
 #[component]
@@ -236,7 +242,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         </button>
                         <div class="text-sm text-fg">
                             "ページ " {move || vm.page.get()}
-                             {move || vm.logs_resource.get().map(|res| if let Ok(r) = res { format!(" / {}", compute_total_pages(r.total, r.per_page)) } else { "".to_string() })}
+                             {move || vm.logs_resource.get().map(|res| if let Ok(r) = res { page_summary_label(r.total, r.per_page) } else { "".to_string() })}
                         </div>
                         <button
                             class="px-4 py-2 border border-border rounded disabled:opacity-50 text-sm text-fg"
@@ -331,22 +337,32 @@ mod host_tests {
     fn helper_filter_and_pagination_logic() {
         let mut filters = AuditLogFilters::default();
         update_filter_value(&mut filters, "from", "2026-01-01T00:00".into());
+        update_filter_value(&mut filters, "to", "2026-01-31T23:59".into());
+        update_filter_value(&mut filters, "actor_id", "admin-1".into());
         update_filter_value(&mut filters, "event_type", "admin_user_create".into());
+        update_filter_value(&mut filters, "result", "success".into());
         update_filter_value(&mut filters, "unknown", "ignored".into());
         assert_eq!(filters.from, "2026-01-01T00:00");
+        assert_eq!(filters.to, "2026-01-31T23:59");
+        assert_eq!(filters.actor_id, "admin-1");
         assert_eq!(filters.event_type, "admin_user_create");
+        assert_eq!(filters.result, "success");
         assert!(compute_total_pages(0, 20) == 1);
+        assert!(compute_total_pages(10, 0) == 1);
         assert!(compute_total_pages(41, 20) == 3);
         assert!(can_go_next(1, 41, 20));
         assert!(!can_go_next(3, 41, 20));
+        assert_eq!(page_summary_label(41, 20), " / 3");
     }
 
     #[test]
     fn helper_metadata_and_badge_logic() {
         let short = serde_json::json!({"a":"b"});
         let long = serde_json::json!({"k":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"});
+        let unicode = serde_json::json!({"message":"こんにちは世界こんにちは世界"});
         assert!(metadata_preview(&short, 50).contains("\"a\""));
         assert!(metadata_preview(&long, 10).ends_with("..."));
+        assert!(metadata_preview(&unicode, 8).ends_with("..."));
         assert!(result_badge_class("success").contains("status-success"));
         assert!(result_badge_class("failure").contains("status-error"));
     }

@@ -1,4 +1,5 @@
 use crate::{
+    api::ApiError,
     components::{
         error::InlineErrorMessage,
         layout::{Layout, SuccessMessage},
@@ -10,6 +11,18 @@ use crate::{
 };
 use leptos::{ev::SubmitEvent, Callback, *};
 
+fn prepare_registration(pending: bool) -> bool {
+    !pending
+}
+
+fn prepare_activation_submission(pending: bool, code: &str) -> Result<Option<String>, ApiError> {
+    if pending {
+        return Ok(None);
+    }
+    let trimmed = utils::validate_totp_code(code)?;
+    Ok(Some(trimmed))
+}
+
 #[component]
 pub fn MfaRegisterPanel() -> impl IntoView {
     let vm = crate::pages::mfa::view_model::use_mfa_view_model();
@@ -19,7 +32,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
 
     let start_registration = {
         move || {
-            if register_loading.get() {
+            if !prepare_registration(register_loading.get()) {
                 return;
             }
             vm.messages.clear();
@@ -31,12 +44,11 @@ pub fn MfaRegisterPanel() -> impl IntoView {
     let handle_activate = {
         move |ev: SubmitEvent| {
             ev.prevent_default();
-            if activate_loading.get() {
-                return;
-            }
             let code_value = vm.totp_code.get();
-            let trimmed = match utils::validate_totp_code(&code_value) {
-                Ok(code) => code,
+            let prepared = match prepare_activation_submission(activate_loading.get(), &code_value)
+            {
+                Ok(Some(code)) => code,
+                Ok(None) => return,
                 Err(msg) => {
                     vm.messages.set_error(msg);
                     return;
@@ -44,7 +56,7 @@ pub fn MfaRegisterPanel() -> impl IntoView {
             };
 
             vm.messages.clear();
-            vm.activate_action.dispatch(trimmed);
+            vm.activate_action.dispatch(prepared);
         }
     };
     let handle_activate = Callback::new(handle_activate);
@@ -103,5 +115,22 @@ mod host_tests {
             view! { <MfaRegisterPanel /> }
         });
         assert!(html.contains("MFA 設定"));
+    }
+
+    #[test]
+    fn helper_prepare_registration_and_activation_cover_branches() {
+        assert!(prepare_registration(false));
+        assert!(!prepare_registration(true));
+
+        assert!(prepare_activation_submission(true, "123456")
+            .expect("pending should short-circuit")
+            .is_none());
+        assert!(prepare_activation_submission(false, "123").is_err());
+        assert_eq!(
+            prepare_activation_submission(false, " 654321 ")
+                .expect("valid code")
+                .expect("dispatch payload"),
+            "654321"
+        );
     }
 }

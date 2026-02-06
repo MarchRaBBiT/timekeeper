@@ -5,6 +5,20 @@ use crate::{
 };
 use leptos::*;
 
+fn is_self_user(current_user_id: Option<&str>, target_user_id: &str) -> bool {
+    current_user_id
+        .map(|id| id == target_user_id)
+        .unwrap_or(false)
+}
+
+fn delete_confirm_message(hard_delete_mode: bool) -> &'static str {
+    if hard_delete_mode {
+        "このユーザーと全ての関連データを完全に削除しますか？この操作は取り消せません。"
+    } else {
+        "このユーザーを退職処理（アーカイブ）しますか？"
+    }
+}
+
 #[component]
 pub fn UserDetailDrawer(
     selected_user: RwSignal<Option<UserResponse>>,
@@ -31,7 +45,8 @@ pub fn UserDetailDrawer(
                     .get()
                     .map(|user| {
                         let user_id = user.id.clone();
-                        let is_self = current_user_id.get().map(|id| id == user_id).unwrap_or(false);
+                        let is_self =
+                            is_self_user(current_user_id.get().as_deref(), user_id.as_str());
 
                         let overlay_close = {
                             move |_| {
@@ -132,11 +147,7 @@ pub fn UserDetailDrawer(
                                                     view! {
                                                         <div class="border border-status-error-border rounded p-4 bg-status-error-bg text-status-error-text">
                                                             <p class="text-sm text-status-error-text mb-3">
-                                                                {move || if hard_delete_mode.get() {
-                                                                    "このユーザーと全ての関連データを完全に削除しますか？この操作は取り消せません。"
-                                                                } else {
-                                                                    "このユーザーを退職処理（アーカイブ）しますか？"
-                                                                }}
+                                                                {move || delete_confirm_message(hard_delete_mode.get())}
                                                             </p>
                                                             <div class="flex gap-2">
                                                                 <button
@@ -226,5 +237,44 @@ mod host_tests {
         });
         assert!(html.contains("Alice Example"));
         assert!(html.contains("MFA"));
+    }
+
+    #[test]
+    fn helper_is_self_and_delete_message_cover_branches() {
+        assert!(is_self_user(Some("u1"), "u1"));
+        assert!(!is_self_user(Some("u2"), "u1"));
+        assert!(!is_self_user(None, "u1"));
+
+        assert_eq!(
+            delete_confirm_message(true),
+            "このユーザーと全ての関連データを完全に削除しますか？この操作は取り消せません。"
+        );
+        assert_eq!(
+            delete_confirm_message(false),
+            "このユーザーを退職処理（アーカイブ）しますか？"
+        );
+    }
+
+    #[test]
+    fn user_detail_drawer_hides_delete_actions_for_self_user() {
+        let html = render_to_string(move || {
+            let selected = create_rw_signal(Some(user()));
+            let messages = MessageState::default();
+            let reset_action = create_action(|_: &String| async move { Ok(()) });
+            let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
+            let current_user_id = Signal::derive(|| Some("u1".to_string()));
+            view! {
+                <UserDetailDrawer
+                    selected_user=selected
+                    messages=messages
+                    reset_mfa_action=reset_action
+                    delete_user_action=delete_action
+                    current_user_id=current_user_id
+                />
+            }
+        });
+        assert!(html.contains("自分自身は削除できません。"));
+        assert!(!html.contains("退職処理（アーカイブ）"));
+        assert!(!html.contains("完全削除"));
     }
 }

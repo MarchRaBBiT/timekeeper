@@ -142,6 +142,9 @@ mod host_tests {
             let err = validate_reset_input("token", "   ").expect_err("should fail");
             assert_eq!(err.code, "VALIDATION_ERROR");
 
+            let token_err = validate_reset_input("   ", "pass1234").expect_err("blank token");
+            assert_eq!(token_err.code, "VALIDATION_ERROR");
+
             let (token, password) =
                 validate_reset_input("  token ", " pass1234 ").expect("valid input");
             assert_eq!(token, "token");
@@ -168,6 +171,16 @@ mod host_tests {
             apply_submit_result(&success, &error, Err(ApiError::validation("Invalid token")));
             assert!(success.get().is_none());
             assert!(error.get().unwrap_or_default().contains("Invalid token"));
+
+            apply_submit_result(
+                &success,
+                &error,
+                Ok(MessageResponse {
+                    message: "再設定完了".into(),
+                }),
+            );
+            assert_eq!(success.get().as_deref(), Some("再設定完了"));
+            assert!(error.get().is_none());
         });
     }
 }
