@@ -198,4 +198,40 @@ mod tests {
         assert_eq!(AttendanceStatus::Late.db_value(), "late");
         assert_eq!(AttendanceStatus::HalfDay.db_value(), "half_day");
     }
+
+    #[test]
+    fn calculate_work_hours_respects_breaks_and_bounds() {
+        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+        let now = Utc::now();
+        let mut attendance = Attendance::new(UserId::new(), date, now);
+
+        attendance.clock_in_time = Some(date.and_hms_opt(9, 0, 0).unwrap());
+        attendance.clock_out_time = Some(date.and_hms_opt(18, 0, 0).unwrap());
+        attendance.calculate_work_hours(60);
+        assert_eq!(attendance.total_work_hours, Some(8.0));
+
+        attendance.calculate_work_hours(0);
+        assert_eq!(attendance.total_work_hours, Some(9.0));
+
+        attendance.calculate_work_hours(600);
+        assert_eq!(attendance.total_work_hours, Some(0.0));
+    }
+
+    #[test]
+    fn calculate_work_hours_noops_when_missing_times() {
+        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+        let now = Utc::now();
+        let mut attendance = Attendance::new(UserId::new(), date, now);
+        attendance.calculate_work_hours(30);
+        assert!(attendance.total_work_hours.is_none());
+    }
+
+    #[test]
+    fn attendance_response_from_attendance_sets_breaks_empty() {
+        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+        let now = Utc::now();
+        let attendance = Attendance::new(UserId::new(), date, now);
+        let response = AttendanceResponse::from(attendance);
+        assert!(response.break_records.is_empty());
+    }
 }

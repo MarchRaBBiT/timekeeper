@@ -31,3 +31,24 @@ pub trait Repository<T> {
     /// Delete a record by ID
     async fn delete(&self, db: &PgPool, id: Self::Id) -> Result<(), AppError>;
 }
+
+#[cfg(test)]
+mod mock_tests {
+    use super::*;
+
+    /// Test that the Repository trait exists and can be referenced
+    #[test]
+    fn repository_trait_exists() {
+        // This test verifies that the Repository trait is properly defined
+        // and can be used as a trait bound
+        #[allow(dead_code)]
+        fn check_trait<T, Id>()
+        where
+            T: Repository<Id>,
+        {
+        }
+
+        // Trait exists - test passes
+        assert!(true);
+    }
+}

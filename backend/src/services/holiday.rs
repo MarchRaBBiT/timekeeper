@@ -386,3 +386,226 @@ fn align_weekday_on_or_after(date: NaiveDate, weekday: u32) -> NaiveDate {
     let diff = (weekday + 7 - current) % 7;
     date + Duration::days(diff as i64)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn holiday_reason_label_returns_correct_strings() {
+        assert_eq!(HolidayReason::PublicHoliday.label(), "public holiday");
+        assert_eq!(HolidayReason::WeeklyHoliday.label(), "weekly holiday");
+        assert_eq!(HolidayReason::ExceptionOverride.label(), "forced holiday");
+        assert_eq!(HolidayReason::None.label(), "working day");
+    }
+
+    #[test]
+    fn month_bounds_returns_correct_range() {
+        let result = month_bounds(2024, 1).unwrap();
+        assert_eq!(result.0, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert_eq!(result.1, NaiveDate::from_ymd_opt(2024, 2, 1).unwrap());
+    }
+
+    #[test]
+    fn month_bounds_handles_december() {
+        let result = month_bounds(2024, 12).unwrap();
+        assert_eq!(result.0, NaiveDate::from_ymd_opt(2024, 12, 1).unwrap());
+        assert_eq!(result.1, NaiveDate::from_ymd_opt(2025, 1, 1).unwrap());
+    }
+
+    #[test]
+    fn month_bounds_invalid_month_returns_error() {
+        let result = month_bounds(2024, 13);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ensure_valid_window_accepts_valid_range() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        assert!(ensure_valid_window(start, end).is_ok());
+    }
+
+    #[test]
+    fn ensure_valid_window_rejects_invalid_range() {
+        let start = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        assert!(ensure_valid_window(start, end).is_err());
+    }
+
+    #[test]
+    fn ensure_valid_window_rejects_equal_dates() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        assert!(ensure_valid_window(date, date).is_err());
+    }
+
+    #[test]
+    fn align_weekday_on_or_after_same_day() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+        let result = align_weekday_on_or_after(date, 1);
+        assert_eq!(result, date);
+    }
+
+    #[test]
+    fn align_weekday_on_or_after_future_day() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+        let result = align_weekday_on_or_after(date, 3);
+        assert_eq!(result, NaiveDate::from_ymd_opt(2024, 1, 10).unwrap());
+    }
+
+    #[test]
+    fn align_weekday_on_or_after_previous_day() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 8).unwrap();
+        let result = align_weekday_on_or_after(date, 0);
+        assert_eq!(result, NaiveDate::from_ymd_opt(2024, 1, 14).unwrap());
+    }
+
+    #[test]
+    fn expand_weekly_dates_empty_window() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let result = expand_weekly_dates(0, start, None, start, end);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn expand_weekly_dates_no_matches() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+        let enforced_from = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        let result = expand_weekly_dates(0, enforced_from, None, start, end);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn holiday_sources_decision_for_exception_override_true() {
+        let mut sources = HolidaySources::default();
+        sources
+            .exception_overrides
+            .insert(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), true);
+
+        let decision = sources.decision_for(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(decision.is_holiday);
+        assert_eq!(decision.reason, HolidayReason::ExceptionOverride);
+    }
+
+    #[test]
+    fn holiday_sources_decision_for_exception_override_false() {
+        let mut sources = HolidaySources::default();
+        sources
+            .exception_overrides
+            .insert(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), false);
+
+        let decision = sources.decision_for(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(!decision.is_holiday);
+        assert_eq!(decision.reason, HolidayReason::ExceptionOverride);
+    }
+
+    #[test]
+    fn holiday_sources_decision_for_public_holiday() {
+        let mut sources = HolidaySources::default();
+        sources
+            .public_holidays
+            .insert(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+
+        let decision = sources.decision_for(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(decision.is_holiday);
+        assert_eq!(decision.reason, HolidayReason::PublicHoliday);
+    }
+
+    #[test]
+    fn holiday_sources_decision_for_weekly_holiday() {
+        let mut sources = HolidaySources::default();
+        sources
+            .weekly_holidays
+            .insert(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+
+        let decision = sources.decision_for(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(decision.is_holiday);
+        assert_eq!(decision.reason, HolidayReason::WeeklyHoliday);
+    }
+
+    #[test]
+    fn holiday_sources_decision_for_working_day() {
+        let sources = HolidaySources::default();
+
+        let decision = sources.decision_for(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap());
+        assert!(!decision.is_holiday);
+        assert_eq!(decision.reason, HolidayReason::None);
+    }
+
+    #[test]
+    fn holiday_sources_entry_for_returns_some_for_holiday() {
+        let mut sources = HolidaySources::default();
+        sources
+            .public_holidays
+            .insert(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+
+        let entry = sources.entry_for(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert!(entry.is_holiday);
+        assert_eq!(entry.date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+    }
+
+    #[test]
+    fn holiday_sources_entry_for_returns_none_for_working_day() {
+        let sources = HolidaySources::default();
+
+        let entry = sources.entry_for(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap());
+        assert!(entry.is_none());
+    }
+
+    #[test]
+    fn holiday_service_stub_new_creates_stub() {
+        let stub = HolidayServiceStub::new(
+            vec![NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()],
+            vec![],
+            vec![],
+        );
+
+        let service = stub.service();
+        let _service = service;
+        let _stub = stub;
+    }
+
+    #[test]
+    fn holiday_decision_implements_partial_eq() {
+        let decision1 = HolidayDecision {
+            is_holiday: true,
+            reason: HolidayReason::PublicHoliday,
+        };
+        let decision2 = HolidayDecision {
+            is_holiday: true,
+            reason: HolidayReason::PublicHoliday,
+        };
+
+        assert_eq!(decision1, decision2);
+    }
+
+    #[test]
+    fn holiday_calendar_entry_has_fields() {
+        let entry = HolidayCalendarEntry {
+            date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            is_holiday: true,
+            reason: HolidayReason::PublicHoliday,
+        };
+
+        assert_eq!(entry.date, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap());
+        assert!(entry.is_holiday);
+        assert_eq!(entry.reason, HolidayReason::PublicHoliday);
+    }
+
+    #[test]
+    fn expand_weekly_dates_with_enforced_to() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
+        let enforced_from = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let enforced_to = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let result = expand_weekly_dates(0, enforced_from, Some(enforced_to), start, end);
+
+        assert!(!result.is_empty());
+        assert!(result.len() <= 3);
+        assert!(result.iter().all(|d| *d >= start && *d < enforced_to));
+    }
+}

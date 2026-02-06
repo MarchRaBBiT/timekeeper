@@ -57,6 +57,7 @@ timekeeper/
   2. 対象テストを実行（例: `cargo test --test auth_flow_api`）
   3. テスト成功を確認
   4. `jj commit -m "<message>"` でスナップショット作成
+
 - コミットメッセージ規則:
   - テスト追加・更新のみ: `chore(test): add coverage for <module_or_endpoint>`
   - テスト成功ごとのスナップショット: `chore(test): snapshot after <test_target> pass`

@@ -100,3 +100,68 @@ impl From<validator::ValidationErrors> for AppError {
         AppError::Validation(messages)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn response_json(response: Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&bytes).expect("json")
+    }
+
+    #[tokio::test]
+    async fn app_error_into_response_maps_status_and_body() {
+        let response = AppError::BadRequest("bad".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "bad");
+        assert_eq!(json["code"], "BAD_REQUEST");
+
+        let response = AppError::Unauthorized("nope".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "nope");
+        assert_eq!(json["code"], "UNAUTHORIZED");
+
+        let response = AppError::Forbidden("denied".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "denied");
+        assert_eq!(json["code"], "FORBIDDEN");
+
+        let response = AppError::Conflict("conflict".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "conflict");
+        assert_eq!(json["code"], "CONFLICT");
+
+        let response = AppError::NotFound("missing".to_string()).into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "missing");
+        assert_eq!(json["code"], "NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn app_error_validation_includes_details() {
+        let response = AppError::Validation(vec!["field: invalid".to_string()]).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "Validation failed");
+        assert_eq!(json["code"], "VALIDATION_ERROR");
+        assert_eq!(json["details"]["errors"][0], "field: invalid");
+    }
+
+    #[tokio::test]
+    async fn app_error_internal_maps_to_generic_message() {
+        let response = AppError::InternalServerError(anyhow::anyhow!("boom")).into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "Internal server error");
+        assert_eq!(json["code"], "INTERNAL_SERVER_ERROR");
+        assert!(json["details"].is_null());
+    }
+}

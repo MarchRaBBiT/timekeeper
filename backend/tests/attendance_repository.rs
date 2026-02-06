@@ -6,7 +6,10 @@ use timekeeper_backend::{
         break_record::BreakRecord,
         user::UserRole,
     },
-    repositories::{repository::Repository, AttendanceRepository, BreakRecordRepository},
+    repositories::{
+        repository::Repository, AttendanceRepository, AttendanceRepositoryTrait,
+        BreakRecordRepository,
+    },
 };
 use tokio::sync::Mutex;
 
