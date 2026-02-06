@@ -790,6 +790,11 @@ mod host_tests {
         let from = Some(NaiveDate::from_ymd_opt(2026, 2, 1).expect("valid"));
         let to = Some(NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"));
         assert!(validate_filter_window(from, to).is_err());
+
+        let from_only = Some(NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"));
+        assert!(validate_filter_window(from_only, None).is_ok());
+        let to_only = Some(NaiveDate::from_ymd_opt(2026, 1, 31).expect("valid"));
+        assert!(validate_filter_window(None, to_only).is_ok());
     }
 
     #[test]
@@ -875,6 +880,7 @@ mod host_tests {
     fn helper_parses_per_page_and_filter_inputs() {
         assert_eq!(parse_per_page_value("25"), Some(25));
         assert_eq!(parse_per_page_value("0"), Some(1));
+        assert_eq!(parse_per_page_value("-10"), Some(1));
         assert_eq!(parse_per_page_value("bad"), None);
 
         let parsed = parse_filter_inputs("2026-01-01", "2026-01-31").expect("valid");
@@ -976,6 +982,9 @@ mod host_tests {
         assert_eq!(per_page.to, current.to);
         assert!(build_per_page_query_update(&current, "bad").is_none());
 
+        let per_page_min = build_per_page_query_update(&current, "0").expect("min per-page");
+        assert_eq!(per_page_min.per_page, 1);
+
         let filtered =
             build_filter_query_update(&current, "2026-01-01", "2026-01-31").expect("valid filters");
         assert_eq!(filtered.page, 1);
@@ -1006,6 +1015,7 @@ mod host_tests {
         );
         assert_eq!(from_input, "2024-02-01");
         assert_eq!(to_input, "2024-02-29");
+        assert_eq!(calendar_query.page, 1);
         assert!(build_calendar_range_query_update(&current, "").is_err());
     }
 

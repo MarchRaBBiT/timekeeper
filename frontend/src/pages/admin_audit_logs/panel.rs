@@ -349,10 +349,14 @@ mod host_tests {
         assert_eq!(filters.result, "success");
         assert!(compute_total_pages(0, 20) == 1);
         assert!(compute_total_pages(10, 0) == 1);
+        assert!(compute_total_pages(10, -5) == 1);
         assert!(compute_total_pages(41, 20) == 3);
         assert!(can_go_next(1, 41, 20));
         assert!(!can_go_next(3, 41, 20));
+        assert!(!can_go_next(1, 0, 20));
+        assert!(!can_go_next(1, 10, 0));
         assert_eq!(page_summary_label(41, 20), " / 3");
+        assert_eq!(page_summary_label(10, 0), " / 1");
     }
 
     #[test]
@@ -363,6 +367,7 @@ mod host_tests {
         assert!(metadata_preview(&short, 50).contains("\"a\""));
         assert!(metadata_preview(&long, 10).ends_with("..."));
         assert!(metadata_preview(&unicode, 8).ends_with("..."));
+        assert_eq!(metadata_preview(&short, 0), "...");
         assert!(result_badge_class("success").contains("status-success"));
         assert!(result_badge_class("failure").contains("status-error"));
     }

@@ -130,6 +130,34 @@ fn is_subject_cancel_disabled(cancel_loading: bool, can_cancel: bool) -> bool {
     cancel_loading || !can_cancel
 }
 
+fn should_start_registration(register_loading: bool) -> bool {
+    !register_loading
+}
+
+fn apply_password_change_effect(
+    result: Result<(), ApiError>,
+) -> (Option<String>, Option<ApiError>, bool) {
+    let (success_msg, error_msg) = password_change_feedback(result);
+    let should_clear_inputs = error_msg.is_none();
+    (success_msg, error_msg, should_clear_inputs)
+}
+
+fn apply_subject_create_effect<T>(
+    result: Result<T, ApiError>,
+) -> (Option<String>, Option<String>, bool) {
+    let (success_msg, error_msg) = subject_create_feedback(result);
+    let should_reload = error_msg.is_none();
+    (success_msg, error_msg, should_reload)
+}
+
+fn apply_subject_cancel_effect(
+    result: Result<(), ApiError>,
+) -> (Option<String>, Option<String>, bool) {
+    let (success_msg, error_msg) = subject_cancel_feedback(result);
+    let should_reload = error_msg.is_none();
+    (success_msg, error_msg, should_reload)
+}
+
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let vm = use_settings_view_model();
@@ -145,10 +173,11 @@ pub fn SettingsPage() -> impl IntoView {
 
     create_effect(move |_| {
         if let Some(result) = vm.change_password_action.value().get() {
-            let (success_msg, error_msg) = password_change_feedback(result);
+            let (success_msg, error_msg, should_clear_inputs) =
+                apply_password_change_effect(result);
             set_password_success_msg.set(success_msg);
             set_password_error_msg.set(error_msg);
-            if password_error_msg.get_untracked().is_none() {
+            if should_clear_inputs {
                 // Clear inputs only on success.
                 set_current_password.set(String::new());
                 set_new_password.set(String::new());
@@ -183,7 +212,7 @@ pub fn SettingsPage() -> impl IntoView {
     // Logic adapted from MfaRegisterPanel for reuse
     let start_registration = {
         move || {
-            if register_loading.get() {
+            if !should_start_registration(register_loading.get()) {
                 return;
             }
             mfa_vm.messages.clear();
@@ -233,8 +262,7 @@ pub fn SettingsPage() -> impl IntoView {
 
     create_effect(move |_| {
         if let Some(result) = subject_vm.create_action.value().get() {
-            let (success_msg, error_msg) = subject_create_feedback(result);
-            let should_reload = error_msg.is_none();
+            let (success_msg, error_msg, should_reload) = apply_subject_create_effect(result);
             set_subject_success_msg.set(success_msg);
             set_subject_error_msg.set(error_msg);
             if should_reload {
@@ -248,8 +276,7 @@ pub fn SettingsPage() -> impl IntoView {
 
     create_effect(move |_| {
         if let Some(result) = subject_vm.cancel_action.value().get() {
-            let (success_msg, error_msg) = subject_cancel_feedback(result);
-            let should_reload = error_msg.is_none();
+            let (success_msg, error_msg, should_reload) = apply_subject_cancel_effect(result);
             set_subject_success_msg.set(success_msg);
             set_subject_error_msg.set(error_msg);
             if should_reload {
@@ -482,7 +509,7 @@ fn format_subject_datetime(value: DateTime<Utc>) -> String {
     value.format("%Y-%m-%d %H:%M").to_string()
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::{
         map_change_password_error, normalize_subject_details, parse_subject_request_type,
@@ -774,6 +801,53 @@ mod host_tests {
     }
 
     #[test]
+    fn helper_effect_state_decisions_cover_branches() {
+        let (password_ok_msg, password_ok_err, clear_ok) = apply_password_change_effect(Ok(()));
+        assert_eq!(
+            password_ok_msg.as_deref(),
+            Some("パスワードを変更しました。")
+        );
+        assert!(password_ok_err.is_none());
+        assert!(clear_ok);
+
+        let (password_fail_msg, password_fail_err, clear_fail) =
+            apply_password_change_effect(Err(ApiError::unknown("x")));
+        assert!(password_fail_msg.is_none());
+        assert!(password_fail_err.is_some());
+        assert!(!clear_fail);
+
+        let (subject_create_ok_msg, subject_create_ok_err, subject_create_reload_ok) =
+            apply_subject_create_effect::<()>(Ok(()));
+        assert_eq!(
+            subject_create_ok_msg.as_deref(),
+            Some("本人対応申請を送信しました。")
+        );
+        assert!(subject_create_ok_err.is_none());
+        assert!(subject_create_reload_ok);
+
+        let (subject_create_fail_msg, subject_create_fail_err, subject_create_reload_fail) =
+            apply_subject_create_effect::<()>(Err(ApiError::unknown("create failed")));
+        assert!(subject_create_fail_msg.is_none());
+        assert_eq!(subject_create_fail_err.as_deref(), Some("create failed"));
+        assert!(!subject_create_reload_fail);
+
+        let (subject_cancel_ok_msg, subject_cancel_ok_err, subject_cancel_reload_ok) =
+            apply_subject_cancel_effect(Ok(()));
+        assert_eq!(
+            subject_cancel_ok_msg.as_deref(),
+            Some("本人対応申請を取消しました。")
+        );
+        assert!(subject_cancel_ok_err.is_none());
+        assert!(subject_cancel_reload_ok);
+
+        let (subject_cancel_fail_msg, subject_cancel_fail_err, subject_cancel_reload_fail) =
+            apply_subject_cancel_effect(Err(ApiError::unknown("cancel failed")));
+        assert!(subject_cancel_fail_msg.is_none());
+        assert_eq!(subject_cancel_fail_err.as_deref(), Some("cancel failed"));
+        assert!(!subject_cancel_reload_fail);
+    }
+
+    #[test]
     fn helper_subject_request_type_parsing_covers_all_known_values() {
         assert!(matches!(
             parse_subject_request_type("access"),
@@ -798,5 +872,7 @@ mod host_tests {
         assert!(is_subject_cancel_disabled(true, true));
         assert!(is_subject_cancel_disabled(false, false));
         assert!(!is_subject_cancel_disabled(false, true));
+        assert!(should_start_registration(false));
+        assert!(!should_start_registration(true));
     }
 }

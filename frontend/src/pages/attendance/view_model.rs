@@ -118,6 +118,31 @@ fn map_clock_action_result(
     }
 }
 
+fn map_export_action_result(result: Result<Value, ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(payload) => {
+            let filename = payload
+                .get("filename")
+                .and_then(|v| v.as_str())
+                .unwrap_or("my_attendance.csv");
+            let csv = payload
+                .get("csv_data")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            match crate::utils::trigger_csv_download(filename, csv) {
+                Ok(_) => (Some(format!("{filename} をダウンロードしました。")), None),
+                Err(err) => (
+                    None,
+                    Some(ApiError::unknown(format!(
+                        "CSVのダウンロードに失敗しました: {err}"
+                    ))),
+                ),
+            }
+        }
+        Err(err) => (None, Some(err)),
+    }
+}
+
 impl AttendanceViewModel {
     pub fn new() -> Self {
         let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
@@ -218,30 +243,9 @@ impl AttendanceViewModel {
         {
             create_effect(move |_| {
                 if let Some(result) = export_action.value().get() {
-                    match result {
-                        Ok(payload) => {
-                            let filename = payload
-                                .get("filename")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("my_attendance.csv");
-                            let csv = payload
-                                .get("csv_data")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            match crate::utils::trigger_csv_download(filename, csv) {
-                                Ok(_) => {
-                                    export_success
-                                        .set(Some(format!("{filename} をダウンロードしました。")));
-                                }
-                                Err(err) => {
-                                    export_error.set(Some(ApiError::unknown(format!(
-                                        "CSVのダウンロードに失敗しました: {err}"
-                                    ))));
-                                }
-                            }
-                        }
-                        Err(err) => export_error.set(Some(err)),
-                    }
+                    let (success, error) = map_export_action_result(result);
+                    export_success.set(success);
+                    export_error.set(error);
                 }
             });
         }
@@ -487,7 +491,17 @@ mod tests {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::ssr::{with_local_runtime, with_runtime};
+    use crate::test_support::ssr::{with_local_runtime, with_local_runtime_async, with_runtime};
+
+    async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        for _ in 0..100 {
+            if condition() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        false
+    }
 
     #[test]
     fn history_query_refreshes_token() {
@@ -544,6 +558,59 @@ mod host_tests {
         server.mock(|when, then| {
             when.method(GET).path("/api/holidays/month");
             then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/clock-in");
+            then.status(200).json_body(serde_json::json!({
+                "id": "att-1",
+                "user_id": "u1",
+                "date": "2025-01-01",
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": null,
+                "status": "clocked_in",
+                "total_work_hours": null,
+                "break_records": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/clock-out");
+            then.status(200).json_body(serde_json::json!({
+                "id": "att-1",
+                "user_id": "u1",
+                "date": "2025-01-01",
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": "2025-01-01T18:00:00",
+                "status": "clocked_out",
+                "total_work_hours": 8.0,
+                "break_records": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/break-start");
+            then.status(200).json_body(serde_json::json!({
+                "id": "br-1",
+                "attendance_id": "att-1",
+                "break_start_time": "2025-01-01T12:00:00",
+                "break_end_time": null,
+                "duration_minutes": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/break-end");
+            then.status(200).json_body(serde_json::json!({
+                "id": "br-1",
+                "attendance_id": "att-1",
+                "break_start_time": "2025-01-01T12:00:00",
+                "break_end_time": "2025-01-01T12:30:00",
+                "duration_minutes": 30
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/export");
+            then.status(200).json_body(serde_json::json!({
+                "filename": "attendance.csv",
+                "csv_data": "date,hours\n2025-01-01,8"
+            }));
         });
         server
     }
@@ -663,6 +730,151 @@ mod host_tests {
         match failure {
             ClockMessage::Success(_) => panic!("expected error"),
             ClockMessage::Error(err) => assert_eq!(err.error, "clock failed"),
+        }
+
+        let default_success = map_clock_action_result(None, Ok(()));
+        match default_success {
+            ClockMessage::Success(msg) => assert_eq!(msg, "操作が完了しました。"),
+            ClockMessage::Error(_) => panic!("expected success"),
+        }
+    }
+
+    #[test]
+    fn use_attendance_view_model_reuses_existing_context() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let vm = AttendanceViewModel::new();
+                vm.range_error.set(Some("context-error".to_string()));
+                provide_context(vm);
+
+                let used = use_attendance_view_model();
+                assert_eq!(used.range_error.get().as_deref(), Some("context-error"));
+            });
+        });
+    }
+
+    #[test]
+    fn clock_action_dispatch_covers_event_variants_and_validation() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = AttendanceViewModel::new();
+
+            vm.clock_action.dispatch(ClockEventPayload::clock_in());
+            assert!(
+                wait_until(|| vm.clock_action.value().get().is_some()).await,
+                "clock_in result timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Ok(())) => {}
+                other => panic!("expected clock_in success, got {:?}", other),
+            }
+
+            vm.clock_action.dispatch(ClockEventPayload::clock_out());
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "clock_out pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "clock_out completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Ok(())) => {}
+                other => panic!("expected clock_out success, got {:?}", other),
+            }
+
+            vm.clock_action
+                .dispatch(ClockEventPayload::break_start("att-1".to_string()));
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "break_start pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "break_start completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Ok(())) => {}
+                other => panic!("expected break_start success, got {:?}", other),
+            }
+
+            vm.clock_action
+                .dispatch(ClockEventPayload::break_end("br-1".to_string()));
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "break_end pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "break_end completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Ok(())) => {}
+                other => panic!("expected break_end success, got {:?}", other),
+            }
+
+            vm.clock_action.dispatch(ClockEventPayload {
+                kind: ClockEventKind::BreakStart,
+                attendance_id: None,
+                break_id: None,
+            });
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "missing-break-start-id pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "missing-break-start-id completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "出勤レコードが見つかりません。"),
+                other => panic!("expected break-start validation error, got {:?}", other),
+            }
+
+            vm.clock_action.dispatch(ClockEventPayload {
+                kind: ClockEventKind::BreakEnd,
+                attendance_id: None,
+                break_id: None,
+            });
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "missing-break-end-id pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "missing-break-end-id completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "休憩レコードが見つかりません。"),
+                other => panic!("expected break-end validation error, got {:?}", other),
+            }
+
+            runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn helper_export_result_mapping_covers_success_and_error_paths() {
+        let (success_msg, success_err) = map_export_action_result(Ok(serde_json::json!({
+            "filename": "attendance.csv",
+            "csv_data": "date,hours\n2025-01-01,8"
+        })));
+        assert!(success_msg.is_none());
+        match success_err {
+            Some(err) => assert!(err.error.contains("CSVのダウンロードに失敗しました")),
+            None => panic!("expected host download error"),
+        }
+
+        let (api_fail_msg, api_fail_err) =
+            map_export_action_result(Err(ApiError::unknown("export failed")));
+        assert!(api_fail_msg.is_none());
+        match api_fail_err {
+            Some(err) => assert_eq!(err.error, "export failed"),
+            None => panic!("expected api error"),
         }
     }
 }

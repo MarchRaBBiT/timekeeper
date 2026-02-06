@@ -98,6 +98,56 @@ fn force_break_feedback(result: Result<(), ApiError>) -> (Option<String>, Option
     }
 }
 
+fn append_empty_break_row(rows: &mut Vec<(String, String)>) {
+    rows.push((String::new(), String::new()));
+}
+
+fn break_start_value(rows: &[(String, String)], idx: usize) -> String {
+    rows.get(idx).map(|item| item.0.clone()).unwrap_or_default()
+}
+
+fn break_end_value(rows: &[(String, String)], idx: usize) -> String {
+    rows.get(idx).map(|item| item.1.clone()).unwrap_or_default()
+}
+
+fn update_break_start(rows: &mut [(String, String)], idx: usize, value: String) {
+    if let Some(item) = rows.get_mut(idx) {
+        item.0 = value;
+    }
+}
+
+fn update_break_end(rows: &mut [(String, String)], idx: usize, value: String) {
+    if let Some(item) = rows.get_mut(idx) {
+        item.1 = value;
+    }
+}
+
+fn prepare_attendance_submission(
+    system_admin_allowed: bool,
+    user_id: &str,
+    date: &str,
+    clock_in: &str,
+    clock_out: &str,
+    breaks: Vec<(String, String)>,
+) -> Result<Option<AdminAttendanceUpsert>, ApiError> {
+    if !system_admin_allowed {
+        Ok(None)
+    } else {
+        build_attendance_payload(user_id, date, clock_in, clock_out, breaks).map(Some)
+    }
+}
+
+fn prepare_force_break_submission(
+    system_admin_allowed: bool,
+    break_id_raw: &str,
+) -> Result<Option<String>, ApiError> {
+    if !system_admin_allowed {
+        Ok(None)
+    } else {
+        validate_force_break_id(break_id_raw).map(Some)
+    }
+}
+
 #[component]
 pub fn AdminAttendanceToolsSection(
     repository: AdminRepository,
@@ -115,7 +165,7 @@ pub fn AdminAttendanceToolsSection(
 
     let add_break = {
         move |_| {
-            breaks.update(|list| list.push((String::new(), String::new())));
+            breaks.update(append_empty_break_row);
         }
     };
 
@@ -157,17 +207,16 @@ pub fn AdminAttendanceToolsSection(
     let on_submit_attendance = {
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
-            if !system_admin_allowed.get_untracked() {
-                return;
-            }
-            let payload = match build_attendance_payload(
+            let payload = match prepare_attendance_submission(
+                system_admin_allowed.get_untracked(),
                 &att_user.get(),
                 &att_date.get(),
                 &att_in.get(),
                 &att_out.get(),
                 breaks.get(),
             ) {
-                Ok(payload) => payload,
+                Ok(Some(payload)) => payload,
+                Ok(None) => return,
                 Err(err) => {
                     error.set(Some(err));
                     message.set(None);
@@ -182,11 +231,12 @@ pub fn AdminAttendanceToolsSection(
 
     let on_force_end = {
         move |_| {
-            if !system_admin_allowed.get_untracked() {
-                return;
-            }
-            let id = match validate_force_break_id(&break_force_id.get()) {
-                Ok(id) => id,
+            let id = match prepare_force_break_submission(
+                system_admin_allowed.get_untracked(),
+                &break_force_id.get(),
+            ) {
+                Ok(Some(id)) => id,
+                Ok(None) => return,
                 Err(err) => {
                     error.set(Some(err));
                     message.set(None);
@@ -227,44 +277,24 @@ pub fn AdminAttendanceToolsSection(
                             children=move |(idx, _)| {
                                 let start_value = {
                                     let breaks = breaks;
-                                    move || {
-                                        breaks
-                                            .with(|list| {
-                                                list.get(idx).map(|item| item.0.clone())
-                                            })
-                                            .unwrap_or_default()
-                                    }
+                                    move || breaks.with(|list| break_start_value(list, idx))
                                 };
                                 let end_value = {
                                     let breaks = breaks;
-                                    move || {
-                                        breaks
-                                            .with(|list| {
-                                                list.get(idx).map(|item| item.1.clone())
-                                            })
-                                            .unwrap_or_default()
-                                    }
+                                    move || breaks.with(|list| break_end_value(list, idx))
                                 };
                                 let on_start = {
                                     let breaks = breaks;
                                     move |ev| {
                                         let value = event_target_value(&ev);
-                                        breaks.update(|list| {
-                                            if let Some(item) = list.get_mut(idx) {
-                                                item.0 = value;
-                                            }
-                                        });
+                                        breaks.update(|list| update_break_start(list, idx, value));
                                     }
                                 };
                                 let on_end = {
                                     let breaks = breaks;
                                     move |ev| {
                                         let value = event_target_value(&ev);
-                                        breaks.update(|list| {
-                                            if let Some(item) = list.get_mut(idx) {
-                                                item.1 = value;
-                                            }
-                                        });
+                                        breaks.update(|list| update_break_end(list, idx, value));
                                     }
                                 };
                                 view! {
@@ -334,6 +364,7 @@ mod host_tests {
     fn parse_dt_local_rejects_invalid_input() {
         assert!(parse_dt_local("not-a-datetime").is_none());
         assert!(parse_dt_local("2025-01-02").is_none());
+        assert!(parse_dt_local("2025-13-02T09:30").is_none());
     }
 
     #[test]
@@ -447,6 +478,61 @@ mod host_tests {
             force_break_feedback(Err(ApiError::unknown("force failed")));
         assert!(force_err_msg.is_none());
         assert_eq!(force_err.expect("error").error, "force failed");
+    }
+
+    #[test]
+    fn helper_break_row_access_and_update_cover_paths() {
+        let mut rows = vec![(
+            "2025-01-01T12:00".to_string(),
+            "2025-01-01T13:00".to_string(),
+        )];
+        append_empty_break_row(&mut rows);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(break_start_value(&rows, 0), "2025-01-01T12:00");
+        assert_eq!(break_end_value(&rows, 0), "2025-01-01T13:00");
+        assert_eq!(break_start_value(&rows, 9), "");
+        assert_eq!(break_end_value(&rows, 9), "");
+
+        update_break_start(&mut rows, 1, "2025-01-01T14:00".to_string());
+        update_break_end(&mut rows, 1, "2025-01-01T14:30".to_string());
+        assert_eq!(rows[1].0, "2025-01-01T14:00");
+        assert_eq!(rows[1].1, "2025-01-01T14:30");
+    }
+
+    #[test]
+    fn helper_prepare_submission_handles_permission_and_validation() {
+        let blocked = prepare_attendance_submission(
+            false,
+            "u1",
+            "2025-01-01",
+            "2025-01-01T09:00",
+            "",
+            vec![],
+        )
+        .expect("admin check should return none");
+        assert!(blocked.is_none());
+
+        let accepted =
+            prepare_attendance_submission(true, "u1", "2025-01-01", "2025-01-01T09:00", "", vec![])
+                .expect("valid payload")
+                .expect("dispatch payload");
+        assert_eq!(accepted.user_id, "u1");
+
+        let invalid =
+            prepare_attendance_submission(true, "", "2025-01-01", "2025-01-01T09:00", "", vec![]);
+        assert!(invalid.is_err());
+
+        let force_blocked =
+            prepare_force_break_submission(false, "br-1").expect("admin check should return none");
+        assert!(force_blocked.is_none());
+
+        let force_ok = prepare_force_break_submission(true, "  br-1 ")
+            .expect("valid id")
+            .expect("dispatch id");
+        assert_eq!(force_ok, "br-1");
+
+        let force_err = prepare_force_break_submission(true, "   ");
+        assert!(force_err.is_err());
     }
 
     #[test]

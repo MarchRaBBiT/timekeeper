@@ -263,7 +263,18 @@ pub fn use_dashboard_view_model() -> DashboardViewModel {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::ssr::{with_local_runtime, with_runtime};
+    use crate::pages::dashboard::utils::ActivityStatusFilter;
+    use crate::test_support::ssr::{with_local_runtime, with_local_runtime_async, with_runtime};
+
+    async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        for _ in 0..100 {
+            if condition() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        false
+    }
 
     fn mock_server() -> MockServer {
         let server = MockServer::start();
@@ -289,6 +300,23 @@ mod host_tests {
             }));
         });
         server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me/summary");
+            then.status(200).json_body(serde_json::json!({
+                "month": 1,
+                "year": 2025,
+                "total_work_hours": 160.0,
+                "total_work_days": 20,
+                "average_daily_hours": 8.0
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/requests/me");
+            then.status(200).json_body(serde_json::json!({
+                "leave_requests": [],
+                "overtime_requests": []
+            }));
+        });
+        server.mock(|when, then| {
             when.method(POST).path("/api/attendance/clock-in");
             then.status(200).json_body(serde_json::json!({
                 "id": "att-1",
@@ -299,6 +327,39 @@ mod host_tests {
                 "status": "clocked_in",
                 "total_work_hours": null,
                 "break_records": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/clock-out");
+            then.status(200).json_body(serde_json::json!({
+                "id": "att-1",
+                "user_id": "u1",
+                "date": "2025-01-01",
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": "2025-01-01T18:00:00",
+                "status": "clocked_out",
+                "total_work_hours": 8.0,
+                "break_records": []
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/break-start");
+            then.status(200).json_body(serde_json::json!({
+                "id": "br-1",
+                "attendance_id": "att-1",
+                "break_start_time": "2025-01-01T12:00:00",
+                "break_end_time": null,
+                "duration_minutes": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/attendance/break-end");
+            then.status(200).json_body(serde_json::json!({
+                "id": "br-1",
+                "attendance_id": "att-1",
+                "break_start_time": "2025-01-01T12:00:00",
+                "break_end_time": "2025-01-01T12:30:00",
+                "duration_minutes": 30
             }));
         });
         server
@@ -404,5 +465,169 @@ mod host_tests {
             ClockMessage::Success(_) => panic!("expected error"),
             ClockMessage::Error(err) => assert_eq!(err.error, "dashboard failed"),
         }
+
+        let default_success = map_clock_action_result(None, Ok(()));
+        match default_success {
+            ClockMessage::Success(msg) => assert_eq!(msg, "操作が完了しました。"),
+            ClockMessage::Error(_) => panic!("expected success"),
+        }
+    }
+
+    #[test]
+    fn use_dashboard_view_model_reuses_existing_context() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let vm = DashboardViewModel::new();
+                vm.clock_message
+                    .set(Some(ClockMessage::Success("context".to_string())));
+                provide_context(vm);
+
+                let used = use_dashboard_view_model();
+                match used.clock_message.get() {
+                    Some(ClockMessage::Success(msg)) => assert_eq!(msg, "context"),
+                    Some(ClockMessage::Error(_)) => panic!("expected success message"),
+                    None => panic!("expected message"),
+                }
+            });
+        });
+    }
+
+    #[test]
+    fn dashboard_resources_and_clock_action_cover_runtime_paths() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = DashboardViewModel::new();
+
+            assert!(
+                wait_until(|| {
+                    vm.summary_resource.get().is_some()
+                        && vm.alerts_resource.get().is_some()
+                        && vm.activities_resource.get().is_some()
+                })
+                .await,
+                "initial dashboard resources timeout"
+            );
+
+            match vm.summary_resource.get() {
+                Some(Ok(summary)) => assert_eq!(summary.total_work_days, Some(20)),
+                other => panic!("summary_resource not ready: {:?}", other),
+            }
+            match vm.alerts_resource.get() {
+                Some(Ok(alerts)) => assert!(!alerts.is_empty()),
+                other => panic!("alerts_resource not ready: {:?}", other),
+            }
+            match vm.activities_resource.get() {
+                Some(Ok(items)) => assert_eq!(items.len(), 4),
+                other => panic!("activities_resource not ready: {:?}", other),
+            }
+
+            vm.activity_filter.set(ActivityStatusFilter::PendingOnly);
+            assert!(
+                wait_until(|| {
+                    matches!(
+                        vm.activities_resource.get(),
+                        Some(Ok(ref items)) if items.len() == 2
+                    )
+                })
+                .await,
+                "pending-only activities timeout"
+            );
+
+            vm.activity_filter.set(ActivityStatusFilter::ApprovedOnly);
+            assert!(
+                wait_until(|| {
+                    matches!(
+                        vm.activities_resource.get(),
+                        Some(Ok(ref items)) if items.len() == 2
+                    )
+                })
+                .await,
+                "approved-only activities timeout"
+            );
+
+            vm.clock_action.dispatch(ClockEventPayload::clock_in());
+            assert!(
+                wait_until(|| vm.clock_action.value().get().is_some()).await,
+                "clock_in result timeout"
+            );
+            assert!(matches!(vm.clock_action.value().get(), Some(Ok(()))));
+
+            vm.clock_action.dispatch(ClockEventPayload::clock_out());
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "clock_out pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "clock_out completion timeout"
+            );
+            assert!(matches!(vm.clock_action.value().get(), Some(Ok(()))));
+
+            vm.clock_action
+                .dispatch(ClockEventPayload::break_start("att-1".to_string()));
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "break_start pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "break_start completion timeout"
+            );
+            assert!(matches!(vm.clock_action.value().get(), Some(Ok(()))));
+
+            vm.clock_action
+                .dispatch(ClockEventPayload::break_end("br-1".to_string()));
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "break_end pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "break_end completion timeout"
+            );
+            assert!(matches!(vm.clock_action.value().get(), Some(Ok(()))));
+
+            vm.clock_action.dispatch(ClockEventPayload {
+                kind: ClockEventKind::BreakStart,
+                attendance_id: None,
+                break_id: None,
+            });
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "missing-break-start-id pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "missing-break-start-id completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "出勤レコードが見つかりません。"),
+                other => panic!("expected break-start validation error, got {:?}", other),
+            }
+
+            vm.clock_action.dispatch(ClockEventPayload {
+                kind: ClockEventKind::BreakEnd,
+                attendance_id: None,
+                break_id: None,
+            });
+            assert!(
+                wait_until(|| vm.clock_action.pending().get_untracked()).await,
+                "missing-break-end-id pending timeout"
+            );
+            assert!(
+                wait_until(|| !vm.clock_action.pending().get_untracked()).await,
+                "missing-break-end-id completion timeout"
+            );
+            match vm.clock_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "休憩レコードが見つかりません。"),
+                other => panic!("expected break-end validation error, got {:?}", other),
+            }
+
+            runtime.dispose();
+        });
     }
 }

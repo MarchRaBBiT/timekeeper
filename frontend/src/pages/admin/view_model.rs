@@ -271,8 +271,18 @@ pub struct SubjectRequestActionPayload {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::helpers::{admin_user, provide_auth};
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
+    use crate::test_support::ssr::{render_to_string, with_local_runtime_async};
+    use chrono::NaiveDate;
+
+    async fn wait_until(mut condition: impl FnMut() -> bool) {
+        for _ in 0..30 {
+            if condition() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
 
     #[test]
     fn admin_view_model_initializes_with_admin_context() {
@@ -336,6 +346,10 @@ mod host_tests {
             is_system_admin: false,
             mfa_enabled: false,
         };
+        let role_admin_upper = UserResponse {
+            role: "ADMIN".into(),
+            ..role_admin.clone()
+        };
         let normal_user = UserResponse {
             id: "u3".into(),
             username: "member".into(),
@@ -348,12 +362,286 @@ mod host_tests {
         assert!(is_admin_user(Some(&system_admin)));
         assert!(is_system_admin_user(Some(&system_admin)));
         assert!(is_admin_user(Some(&role_admin)));
+        assert!(is_admin_user(Some(&role_admin_upper)));
         assert!(!is_system_admin_user(Some(&role_admin)));
         assert!(!is_admin_user(Some(&normal_user)));
         assert!(!is_admin_user(None));
         assert!(!is_system_admin_user(None));
 
         assert!(validate_action_id("req-1").is_ok());
+        assert!(validate_action_id("  req-2 ").is_ok());
         assert!(validate_action_id("   ").is_err());
+    }
+
+    #[test]
+    fn admin_view_model_resources_and_actions_cover_runtime_paths() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = MockServer::start();
+            server.mock(|when, then| {
+                when.method(GET).path("/api/admin/users");
+                then.status(200).json_body(serde_json::json!([{
+                    "id": "u1",
+                    "username": "alice",
+                    "full_name": "Alice Example",
+                    "role": "admin",
+                    "is_system_admin": true,
+                    "mfa_enabled": true
+                }]));
+            });
+            server.mock(|when, then| {
+                when.method(GET).path("/api/admin/holidays/weekly");
+                then.status(200).json_body(serde_json::json!([{
+                    "id": "wh1",
+                    "weekday": 1,
+                    "starts_on": "2025-01-01",
+                    "ends_on": null,
+                    "enforced_from": "2025-01-01",
+                    "enforced_to": null
+                }]));
+            });
+            server.mock(|when, then| {
+                when.method(GET).path("/api/admin/requests");
+                then.status(200)
+                    .json_body(serde_json::json!({ "items": [{ "id": "req-1" }] }));
+            });
+            server.mock(|when, then| {
+                when.method(GET).path("/api/admin/subject-requests");
+                then.status(200).json_body(serde_json::json!({
+                    "page": 1,
+                    "per_page": 20,
+                    "total": 1,
+                    "items": [{
+                        "id": "sr-1",
+                        "user_id": "u1",
+                        "request_type": "access",
+                        "status": "pending",
+                        "details": null,
+                        "created_at": "2025-01-01T00:00:00Z",
+                        "updated_at": "2025-01-01T00:00:00Z"
+                    }]
+                }));
+            });
+            server.mock(|when, then| {
+                when.method(POST).path("/api/admin/holidays/weekly");
+                then.status(200).json_body(serde_json::json!({
+                    "id": "wh1",
+                    "weekday": 1,
+                    "starts_on": "2025-01-01",
+                    "ends_on": null,
+                    "enforced_from": "2025-01-01",
+                    "enforced_to": null
+                }));
+            });
+            server.mock(|when, then| {
+                when.method(DELETE).path("/api/admin/holidays/weekly/wh1");
+                then.status(200).json_body(serde_json::json!({}));
+            });
+            server.mock(|when, then| {
+                when.method(PUT).path("/api/admin/requests/req-1/approve");
+                then.status(200)
+                    .json_body(serde_json::json!({ "status": "approved" }));
+            });
+            server.mock(|when, then| {
+                when.method(PUT).path("/api/admin/requests/req-1/reject");
+                then.status(400).json_body(serde_json::json!({
+                    "error": "reject failed",
+                    "code": "UNKNOWN"
+                }));
+            });
+            server.mock(|when, then| {
+                when.method(PUT)
+                    .path("/api/admin/subject-requests/sr-1/approve");
+                then.status(200).json_body(serde_json::json!({}));
+            });
+            server.mock(|when, then| {
+                when.method(PUT)
+                    .path("/api/admin/subject-requests/sr-1/reject");
+                then.status(400).json_body(serde_json::json!({
+                    "error": "subject reject failed",
+                    "code": "UNKNOWN"
+                }));
+            });
+
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_admin_view_model();
+
+            wait_until(|| {
+                vm.users_resource.get().is_some()
+                    && vm.weekly_holidays_resource.get().is_some()
+                    && vm.requests_resource.get().is_some()
+                    && vm.subject_requests_resource.get().is_some()
+            })
+            .await;
+
+            let users = vm.users_resource.get();
+            match users {
+                Some(Ok(rows)) => assert_eq!(rows.len(), 1),
+                other => panic!("users_resource not ready: {:?}", other),
+            }
+
+            let weekly = vm.weekly_holidays_resource.get();
+            match weekly {
+                Some(Ok(rows)) => assert_eq!(rows.len(), 1),
+                other => panic!("weekly_holidays_resource not ready: {:?}", other),
+            }
+
+            let requests = vm.requests_resource.get();
+            match requests {
+                Some(Ok(rows)) => assert!(rows.get("items").is_some()),
+                other => panic!("requests_resource not ready: {:?}", other),
+            }
+
+            let subject_requests = vm.subject_requests_resource.get();
+            match subject_requests {
+                Some(Ok(rows)) => assert_eq!(rows.total, 1),
+                other => panic!("subject_requests_resource not ready: {:?}", other),
+            }
+
+            vm.create_weekly_action
+                .dispatch(CreateWeeklyHolidayRequest {
+                    weekday: 1,
+                    starts_on: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    ends_on: None,
+                });
+            wait_until(|| vm.create_weekly_action.value().get().is_some()).await;
+            assert!(matches!(vm.create_weekly_action.value().get(), Some(Ok(_))));
+
+            vm.delete_weekly_action.dispatch("wh1".to_string());
+            wait_until(|| vm.delete_weekly_action.value().get().is_some()).await;
+            assert!(matches!(
+                vm.delete_weekly_action.value().get(),
+                Some(Ok(()))
+            ));
+
+            vm.request_action.dispatch(RequestActionPayload {
+                id: "req-1".to_string(),
+                comment: "ok".to_string(),
+                approve: true,
+            });
+            wait_until(|| vm.request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.request_action.pending().get_untracked()).await;
+            assert!(matches!(vm.request_action.value().get(), Some(Ok(()))));
+
+            vm.request_action.dispatch(RequestActionPayload {
+                id: "req-1".to_string(),
+                comment: "deny".to_string(),
+                approve: false,
+            });
+            wait_until(|| vm.request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.request_action.pending().get_untracked()).await;
+            match vm.request_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "reject failed"),
+                other => panic!("expected reject_request error, got {:?}", other),
+            }
+
+            vm.request_action.dispatch(RequestActionPayload {
+                id: "   ".to_string(),
+                comment: "".to_string(),
+                approve: true,
+            });
+            wait_until(|| vm.request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.request_action.pending().get_untracked()).await;
+            match vm.request_action.value().get() {
+                Some(Err(err)) => {
+                    assert_eq!(err.error, "リクエストIDを取得できませんでした。");
+                    assert_eq!(err.code, "VALIDATION_ERROR");
+                }
+                other => panic!("expected request validation error, got {:?}", other),
+            }
+
+            vm.subject_request_action
+                .dispatch(SubjectRequestActionPayload {
+                    id: "sr-1".to_string(),
+                    comment: "ok".to_string(),
+                    approve: true,
+                });
+            wait_until(|| vm.subject_request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.subject_request_action.pending().get_untracked()).await;
+            assert!(matches!(
+                vm.subject_request_action.value().get(),
+                Some(Ok(()))
+            ));
+
+            vm.subject_request_action
+                .dispatch(SubjectRequestActionPayload {
+                    id: "sr-1".to_string(),
+                    comment: "deny".to_string(),
+                    approve: false,
+                });
+            wait_until(|| vm.subject_request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.subject_request_action.pending().get_untracked()).await;
+            match vm.subject_request_action.value().get() {
+                Some(Err(err)) => assert_eq!(err.error, "subject reject failed"),
+                other => panic!("expected subject_request reject error, got {:?}", other),
+            }
+
+            vm.subject_request_action
+                .dispatch(SubjectRequestActionPayload {
+                    id: "   ".to_string(),
+                    comment: "".to_string(),
+                    approve: true,
+                });
+            wait_until(|| vm.subject_request_action.pending().get_untracked()).await;
+            wait_until(|| !vm.subject_request_action.pending().get_untracked()).await;
+            match vm.subject_request_action.value().get() {
+                Some(Err(err)) => {
+                    assert_eq!(err.error, "リクエストIDを取得できませんでした。");
+                    assert_eq!(err.code, "VALIDATION_ERROR");
+                }
+                other => panic!("expected subject_request validation error, got {:?}", other),
+            }
+
+            runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn admin_view_model_uses_default_payloads_for_non_admin() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            provide_auth(Some(regular_user()));
+            let vm = use_admin_view_model();
+
+            wait_until(|| {
+                vm.users_resource.get().is_some()
+                    && vm.weekly_holidays_resource.get().is_some()
+                    && vm.requests_resource.get().is_some()
+                    && vm.subject_requests_resource.get().is_some()
+            })
+            .await;
+
+            match vm.users_resource.get() {
+                Some(Ok(rows)) => assert!(rows.is_empty()),
+                other => panic!("users_resource should be empty for non-admin: {:?}", other),
+            }
+            match vm.weekly_holidays_resource.get() {
+                Some(Ok(rows)) => assert!(rows.is_empty()),
+                other => panic!(
+                    "weekly_holidays_resource should be empty for non-admin: {:?}",
+                    other
+                ),
+            }
+            match vm.requests_resource.get() {
+                Some(Ok(value)) => assert!(value.is_null()),
+                other => panic!(
+                    "requests_resource should return null for non-admin: {:?}",
+                    other
+                ),
+            }
+            match vm.subject_requests_resource.get() {
+                Some(Ok(value)) => {
+                    assert_eq!(value.total, 0);
+                    assert!(value.items.is_empty());
+                }
+                other => panic!(
+                    "subject_requests_resource should return empty list for non-admin: {:?}",
+                    other
+                ),
+            }
+
+            runtime.dispose();
+        });
     }
 }

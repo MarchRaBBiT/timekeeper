@@ -54,6 +54,38 @@ fn subject_action_feedback(result: Result<(), ApiError>) -> (bool, Option<ApiErr
     }
 }
 
+fn bump_reload(reload: RwSignal<u32>) {
+    reload.update(|value| *value = value.wrapping_add(1));
+}
+
+fn apply_status_filter_change(filter: &SubjectRequestFilterState, value: String) {
+    filter.status_signal().set(value);
+    filter.reset_page();
+}
+
+fn apply_type_filter_change(filter: &SubjectRequestFilterState, value: String) {
+    filter.request_type_signal().set(value);
+    filter.reset_page();
+}
+
+fn reset_page_and_reload(filter: &SubjectRequestFilterState, reload: RwSignal<u32>) {
+    filter.reset_page();
+    bump_reload(reload);
+}
+
+fn open_modal_state(
+    modal_open: RwSignal<bool>,
+    modal_request: RwSignal<Option<DataSubjectRequestResponse>>,
+    modal_comment: RwSignal<String>,
+    action_error: RwSignal<Option<ApiError>>,
+    request: DataSubjectRequestResponse,
+) {
+    modal_request.set(Some(request));
+    modal_comment.set(String::new());
+    modal_open.set(true);
+    action_error.set(None);
+}
+
 #[component]
 pub fn AdminSubjectRequestsSection(
     users: UsersResource,
@@ -94,35 +126,35 @@ pub fn AdminSubjectRequestsSection(
                 modal_comment.set(String::new());
             }
             if should_reload {
-                reload.update(|value| *value = value.wrapping_add(1));
+                bump_reload(reload);
             }
         }
     });
 
-    let trigger_reload = move || reload.update(|value| *value = value.wrapping_add(1));
+    let trigger_reload = move || bump_reload(reload);
 
     let on_status_change = move |value: String| {
-        filter.status_signal().set(value);
-        filter.reset_page();
+        apply_status_filter_change(&filter, value);
         trigger_reload();
     };
 
     let on_type_change = move |value: String| {
-        filter.request_type_signal().set(value);
-        filter.reset_page();
+        apply_type_filter_change(&filter, value);
         trigger_reload();
     };
 
     let on_search = move |_| {
-        filter.reset_page();
-        trigger_reload();
+        reset_page_and_reload(&filter, reload);
     };
 
     let open_modal = Callback::new(move |request: DataSubjectRequestResponse| {
-        modal_request.set(Some(request));
-        modal_comment.set(String::new());
-        modal_open.set(true);
-        action_error.set(None);
+        open_modal_state(
+            modal_open,
+            modal_request,
+            modal_comment,
+            action_error,
+            request,
+        );
     });
 
     let on_action = move |approve: bool| {
@@ -299,8 +331,26 @@ pub fn AdminSubjectRequestsSection(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::{render_to_string, with_runtime};
     use chrono::Utc;
+
+    fn sample_request() -> DataSubjectRequestResponse {
+        DataSubjectRequestResponse {
+            id: "sr-1".into(),
+            user_id: "u1".into(),
+            request_type: DataSubjectRequestType::Access,
+            status: "pending".into(),
+            details: None,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
 
     fn render_with_items(items: Vec<DataSubjectRequestResponse>) -> String {
         render_to_string(move || {
@@ -365,21 +415,7 @@ mod host_tests {
 
     #[test]
     fn helper_build_subject_action_payload_validates_inputs() {
-        let request = DataSubjectRequestResponse {
-            id: "sr-1".into(),
-            user_id: "u1".into(),
-            request_type: DataSubjectRequestType::Access,
-            status: "pending".into(),
-            details: None,
-            approved_by: None,
-            approved_at: None,
-            rejected_by: None,
-            rejected_at: None,
-            cancelled_at: None,
-            decision_comment: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let request = sample_request();
 
         assert!(build_subject_action_payload(None, "comment", true).is_err());
         assert!(build_subject_action_payload(Some(request.clone()), " ", true).is_err());
@@ -404,21 +440,7 @@ mod host_tests {
 
     #[test]
     fn helper_modal_pending_and_disable_logic() {
-        let pending_request = DataSubjectRequestResponse {
-            id: "sr-1".into(),
-            user_id: "u1".into(),
-            request_type: DataSubjectRequestType::Access,
-            status: "pending".into(),
-            details: None,
-            approved_by: None,
-            approved_at: None,
-            rejected_by: None,
-            rejected_at: None,
-            cancelled_at: None,
-            decision_comment: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let pending_request = sample_request();
         let approved_request = DataSubjectRequestResponse {
             status: "approved".into(),
             ..pending_request.clone()
@@ -429,6 +451,7 @@ mod host_tests {
         assert!(!is_pending_request(None));
 
         assert!(is_modal_action_disabled(true, true));
+        assert!(is_modal_action_disabled(true, false));
         assert!(is_modal_action_disabled(false, false));
         assert!(!is_modal_action_disabled(false, true));
     }
@@ -437,21 +460,7 @@ mod host_tests {
     fn helper_modal_detail_json_handles_none_and_some() {
         assert_eq!(modal_detail_json(None), "");
 
-        let request = DataSubjectRequestResponse {
-            id: "sr-1".into(),
-            user_id: "u1".into(),
-            request_type: DataSubjectRequestType::Access,
-            status: "pending".into(),
-            details: None,
-            approved_by: None,
-            approved_at: None,
-            rejected_by: None,
-            rejected_at: None,
-            cancelled_at: None,
-            decision_comment: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let request = sample_request();
         let rendered = modal_detail_json(Some(&request));
         assert!(rendered.contains("\"id\": \"sr-1\""));
         assert!(rendered.contains("\"status\": \"pending\""));
@@ -494,6 +503,45 @@ mod host_tests {
         assert_eq!(payload.id, "sr-approve");
         assert_eq!(payload.comment, "  keep-spaces  ");
         assert!(payload.approve);
+    }
+
+    #[test]
+    fn helper_filter_reload_and_modal_state_updates_cover_paths() {
+        with_runtime(|| {
+            let filter = SubjectRequestFilterState::new();
+            let reload = create_rw_signal(0u32);
+            let modal_open = create_rw_signal(false);
+            let modal_request = create_rw_signal(None::<DataSubjectRequestResponse>);
+            let modal_comment = create_rw_signal("preset".to_string());
+            let action_error = create_rw_signal(Some(ApiError::unknown("prev-error")));
+
+            apply_status_filter_change(&filter, "pending".to_string());
+            assert_eq!(filter.status_signal().get(), "pending");
+            assert_eq!(filter.snapshot().page, 1);
+
+            apply_type_filter_change(&filter, "access".to_string());
+            assert_eq!(filter.request_type_signal().get(), "access");
+            assert_eq!(filter.snapshot().page, 1);
+
+            bump_reload(reload);
+            assert_eq!(reload.get(), 1);
+
+            reset_page_and_reload(&filter, reload);
+            assert_eq!(reload.get(), 2);
+            assert_eq!(filter.snapshot().page, 1);
+
+            open_modal_state(
+                modal_open,
+                modal_request,
+                modal_comment,
+                action_error,
+                sample_request(),
+            );
+            assert!(modal_open.get());
+            assert!(modal_request.get().is_some());
+            assert_eq!(modal_comment.get(), "");
+            assert!(action_error.get().is_none());
+        });
     }
 }
 
