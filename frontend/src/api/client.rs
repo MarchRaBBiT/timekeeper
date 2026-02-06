@@ -21,6 +21,8 @@ pub struct ApiClient {
     base_url: Option<String>,
     #[cfg(all(test, not(target_arch = "wasm32")))]
     responder: Option<Arc<dyn TestResponder>>,
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    refresh_overrides: Arc<Mutex<Vec<Result<LoginResponse, ApiError>>>>,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -81,6 +83,8 @@ impl ApiClient {
             base_url: None,
             #[cfg(all(test, not(target_arch = "wasm32")))]
             responder: None,
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            refresh_overrides: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -91,7 +95,24 @@ impl ApiClient {
             base_url: Some(base_url.to_string()),
             #[cfg(all(test, not(target_arch = "wasm32")))]
             responder: lookup_mock(base_url),
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            refresh_overrides: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn queue_refresh_override(&self, result: Result<LoginResponse, ApiError>) {
+        if let Ok(mut stack) = self.refresh_overrides.lock() {
+            stack.push(result);
+        }
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn next_refresh_override(&self) -> Option<Result<LoginResponse, ApiError>> {
+        self.refresh_overrides
+            .lock()
+            .ok()
+            .and_then(|mut stack| stack.pop())
     }
 
     pub(super) async fn resolved_base_url(&self) -> String {

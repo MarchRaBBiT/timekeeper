@@ -647,7 +647,7 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
         .unwrap();
     assert_eq!(login.user.id, "u1");
 
-    super::auth::queue_refresh_override(Ok(LoginResponse {
+    super::auth::queue_refresh_override(&client, Ok(LoginResponse {
         user: UserResponse {
             id: "u1".into(),
             username: "alice".into(),
@@ -680,7 +680,7 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
     });
 
     let client = api_client(&server);
-    super::auth::queue_refresh_override(Ok(LoginResponse {
+    super::auth::queue_refresh_override(&client, Ok(LoginResponse {
         user: UserResponse {
             id: "u1".into(),
             username: "alice".into(),
@@ -721,7 +721,7 @@ async fn api_client_login_surfaces_api_error_payload() {
 #[tokio::test]
 async fn api_client_refresh_override_can_return_error() {
     let client = ApiClient::new_with_base_url("http://127.0.0.1:9/api");
-    super::auth::queue_refresh_override(Err(ApiError {
+    super::auth::queue_refresh_override(&client, Err(ApiError {
         error: "forced".into(),
         code: "UNAUTHORIZED".into(),
         details: None,
