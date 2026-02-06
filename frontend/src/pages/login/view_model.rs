@@ -37,3 +37,18 @@ pub fn use_login_view_model() -> LoginViewModel {
         login_action,
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::with_runtime;
+
+    #[test]
+    fn login_view_model_defaults_empty() {
+        with_runtime(|| {
+            let vm = use_login_view_model();
+            assert!(vm.error.get().is_none());
+            assert!(vm.form.username.get().is_empty());
+        });
+    }
+}

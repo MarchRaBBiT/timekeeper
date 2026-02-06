@@ -160,3 +160,42 @@ pub fn ArchivedUserDetailDrawer(
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use chrono::Utc;
+
+    fn archived_user() -> ArchivedUserResponse {
+        ArchivedUserResponse {
+            id: "a1".into(),
+            username: "archived".into(),
+            full_name: "Archived User".into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            archived_at: Utc::now().to_rfc3339(),
+            archived_by: Some("admin".into()),
+        }
+    }
+
+    #[test]
+    fn archived_detail_drawer_renders() {
+        let html = render_to_string(move || {
+            let selected = create_rw_signal(Some(archived_user()));
+            let messages = MessageState::default();
+            let restore_action = create_action(|_: &String| async move { Ok(()) });
+            let delete_action = create_action(|_: &String| async move { Ok(()) });
+            view! {
+                <ArchivedUserDetailDrawer
+                    selected_archived_user=selected
+                    messages=messages
+                    restore_action=restore_action
+                    delete_action=delete_action
+                />
+            }
+        });
+        assert!(html.contains("Archived User"));
+        assert!(html.contains("完全削除"));
+    }
+}

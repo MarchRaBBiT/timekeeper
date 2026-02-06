@@ -93,3 +93,37 @@ mod tests {
         assert_eq!(end.day(), 28);
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::with_runtime;
+
+    #[test]
+    fn form_state_to_payload_accepts_blank_on_host() {
+        with_runtime(|| {
+            let state = AttendanceFormState::new();
+            let result = state.to_payload().unwrap();
+            assert!(result.0.is_none());
+            assert!(result.1.is_none());
+        });
+    }
+
+    #[test]
+    fn form_state_validates_order_on_host() {
+        with_runtime(|| {
+            let state = AttendanceFormState::new();
+            state.start_date_signal().set("2025-02-10".into());
+            state.end_date_signal().set("2025-02-01".into());
+            assert!(state.to_payload().is_err());
+        });
+    }
+
+    #[test]
+    fn month_bounds_returns_expected_range_on_host() {
+        let date = NaiveDate::from_ymd_opt(2025, 2, 18).unwrap();
+        let (start, end) = month_bounds(date).unwrap();
+        assert_eq!(start.day(), 1);
+        assert_eq!(end.day(), 28);
+    }
+}

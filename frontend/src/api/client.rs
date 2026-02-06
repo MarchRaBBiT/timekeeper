@@ -6,13 +6,74 @@ use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::utils::storage as storage_utils;
+#[cfg(all(test, target_arch = "wasm32"))]
+use crate::utils::storage as storage_utils;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use std::collections::HashMap;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: Option<String>,
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    responder: Option<Arc<dyn TestResponder>>,
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    refresh_overrides: Arc<Mutex<Vec<Result<LoginResponse, ApiError>>>>,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[derive(Clone)]
+pub(crate) struct MockResponse {
+    status: StatusCode,
+    body: serde_json::Value,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+impl MockResponse {
+    pub(crate) fn json(status: u16, body: serde_json::Value) -> Self {
+        Self {
+            status: StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+            body,
+        }
+    }
+
+    fn into_response(self) -> reqwest::Response {
+        let body = serde_json::to_vec(&self.body).unwrap_or_default();
+        let response = http::Response::builder()
+            .status(self.status)
+            .header("content-type", "application/json")
+            .body(reqwest::Body::from(body))
+            .unwrap();
+        response.into()
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) trait TestResponder: Send + Sync {
+    fn respond(&self, request: &reqwest::Request) -> Result<MockResponse, ApiError>;
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+static MOCK_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<dyn TestResponder>>>> = OnceLock::new();
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) fn register_mock(base_url: String, responder: Arc<dyn TestResponder>) {
+    let registry = MOCK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut guard) = registry.lock() {
+        guard.insert(base_url, responder);
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
+    MOCK_REGISTRY
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|guard| guard.get(base_url).cloned())
 }
 
 impl ApiClient {
@@ -20,7 +81,38 @@ impl ApiClient {
         Self {
             client: Client::new(),
             base_url: None,
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            responder: None,
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            refresh_overrides: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn new_with_base_url(base_url: &str) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: Some(base_url.to_string()),
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            responder: lookup_mock(base_url),
+            #[cfg(all(test, not(target_arch = "wasm32")))]
+            refresh_overrides: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn queue_refresh_override(&self, result: Result<LoginResponse, ApiError>) {
+        if let Ok(mut stack) = self.refresh_overrides.lock() {
+            stack.push(result);
+        }
+    }
+
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn next_refresh_override(&self) -> Option<Result<LoginResponse, ApiError>> {
+        self.refresh_overrides
+            .lock()
+            .ok()
+            .and_then(|mut stack| stack.pop())
     }
 
     pub(super) async fn resolved_base_url(&self) -> String {
@@ -33,6 +125,25 @@ impl ApiClient {
 
     pub(super) fn http_client(&self) -> &Client {
         &self.client
+    }
+
+    pub(super) async fn send_request(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ApiError> {
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        if let Some(responder) = &self.responder {
+            let request = builder
+                .build()
+                .map_err(|e| ApiError::unknown(format!("Failed to build request: {}", e)))?;
+            let mock = responder.respond(&request)?;
+            return Ok(mock.into_response());
+        }
+
+        builder
+            .send()
+            .await
+            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -58,20 +169,18 @@ impl ApiClient {
     where
         F: Fn() -> Result<reqwest::RequestBuilder, ApiError>,
     {
-        let response = Self::with_credentials(build_request()?)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(Self::with_credentials(build_request()?))
+            .await?;
 
         if response.status() != StatusCode::UNAUTHORIZED {
             return Ok(response);
         }
 
         if self.refresh_token().await.is_ok() {
-            let retry_response = Self::with_credentials(build_request()?)
-                .send()
-                .await
-                .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            let retry_response = self
+                .send_request(Self::with_credentials(build_request()?))
+                .await?;
             return Ok(retry_response);
         }
 
@@ -79,6 +188,12 @@ impl ApiClient {
     }
 
     fn redirect_to_login_if_needed() {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            return;
+        }
+
+        #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
             let location = window.location();
             if let Ok(pathname) = location.pathname() {
@@ -616,12 +731,12 @@ impl ApiClient {
         let base_url = self.resolved_base_url().await;
         let request = RequestPasswordResetRequest { email };
         let response = self
-            .client
-            .post(format!("{}/auth/request-password-reset", base_url))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            .send_request(
+                self.client
+                    .post(format!("{}/auth/request-password-reset", base_url))
+                    .json(&request),
+            )
+            .await?;
 
         let status = response.status();
         if status.is_success() {
@@ -649,12 +764,12 @@ impl ApiClient {
             new_password,
         };
         let response = self
-            .client
-            .post(format!("{}/auth/reset-password", base_url))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+            .send_request(
+                self.client
+                    .post(format!("{}/auth/reset-password", base_url))
+                    .json(&request),
+            )
+            .await?;
 
         let status = response.status();
         if status.is_success() {

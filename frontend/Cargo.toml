@@ -14,10 +14,6 @@ name = "timekeeper-frontend"
 path = "src/main.rs"
 
 [dependencies]
-# Web framework (CSR-only on WASM)
-leptos = { version = "0.6", default-features = false, features = ["csr"] }
-leptos_meta = { version = "0.6", default-features = false }
-leptos_router = { version = "0.6", default-features = false, features = ["csr"] }
 
 # HTTP client (WASM)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -54,12 +50,28 @@ qrcode = { version = "0.13", features = ["svg"] }
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 futures = "0.3"
+http = "1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Server-side integration (excluded from WASM build)
 leptos_axum = { version = "0.6" }
+leptos = { version = "0.6", default-features = false, features = ["ssr"] }
+leptos_meta = { version = "0.6", default-features = false, features = ["ssr"] }
+leptos_router = { version = "0.6", default-features = false, features = ["ssr"] }
 
 # State management
 leptos_reactive = { version = "0.6", default-features = false }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1.49", features = ["macros", "rt-multi-thread"] }
+
 # Styling: handled via CSS toolchain outside Rust
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Web framework (CSR-only on WASM)
+leptos = { version = "0.6", default-features = false, features = ["csr"] }
+leptos_meta = { version = "0.6", default-features = false, features = ["csr"] }
+leptos_router = { version = "0.6", default-features = false, features = ["csr"] }

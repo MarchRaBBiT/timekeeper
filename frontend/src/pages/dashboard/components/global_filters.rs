@@ -32,3 +32,20 @@ pub fn GlobalFilters(filter: RwSignal<ActivityStatusFilter>) -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn global_filters_renders_options() {
+        let html = render_to_string(move || {
+            let filter = create_rw_signal(ActivityStatusFilter::All);
+            view! { <GlobalFilters filter=filter /> }
+        });
+        assert!(html.contains("フィルター"));
+        assert!(html.contains("承認待ちのみ"));
+        assert!(html.contains("承認済みのみ"));
+    }
+}

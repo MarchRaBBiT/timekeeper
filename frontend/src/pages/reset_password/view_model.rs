@@ -36,16 +36,7 @@ pub fn use_reset_password_view_model() -> ResetPasswordViewModel {
 
     create_effect(move |_| {
         if let Some(result) = submit_action.value().get() {
-            match result {
-                Ok(resp) => {
-                    success.set(Some(resp.message));
-                    error.set(None);
-                }
-                Err(err) => {
-                    error.set(Some(err.to_string()));
-                    success.set(None);
-                }
-            }
+            apply_submit_result(&success, &error, result);
         }
     });
 
@@ -69,9 +60,26 @@ fn validate_reset_input(token: &str, new_password: &str) -> Result<(String, Stri
     Ok((token.to_string(), new_password.to_string()))
 }
 
+fn apply_submit_result(
+    success: &RwSignal<Option<String>>,
+    error: &RwSignal<Option<String>>,
+    result: Result<MessageResponse, ApiError>,
+) {
+    match result {
+        Ok(resp) => {
+            success.set(Some(resp.message));
+            error.set(None);
+        }
+        Err(err) => {
+            error.set(Some(err.to_string()));
+            success.set(None);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{apply_submit_result, *};
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
@@ -92,5 +100,87 @@ mod tests {
             validate_reset_input("  token  ", "  NewPass123!  ").expect("valid");
         assert_eq!(token, "token");
         assert_eq!(password, "NewPass123!");
+    }
+
+    #[wasm_bindgen_test]
+    fn apply_submit_result_sets_success_or_error() {
+        let success = create_rw_signal(None::<String>);
+        let error = create_rw_signal(None::<String>);
+
+        apply_submit_result(
+            &success,
+            &error,
+            Ok(MessageResponse {
+                message: "updated".into(),
+            }),
+        );
+        assert_eq!(success.get(), Some("updated".into()));
+        assert!(error.get().is_none());
+
+        apply_submit_result(&success, &error, Err(ApiError::validation("invalid token")));
+        assert!(success.get().is_none());
+        assert!(error.get().unwrap_or_default().contains("invalid token"));
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::{apply_submit_result, *};
+    use crate::test_support::ssr::with_runtime;
+
+    #[test]
+    fn validate_reset_input_rejects_empty_on_host() {
+        with_runtime(|| {
+            let err = validate_reset_input("", "password").expect_err("should fail");
+            assert_eq!(err.code, "VALIDATION_ERROR");
+        });
+    }
+
+    #[test]
+    fn validate_reset_input_host_covers_trim_and_empty_password() {
+        with_runtime(|| {
+            let err = validate_reset_input("token", "   ").expect_err("should fail");
+            assert_eq!(err.code, "VALIDATION_ERROR");
+
+            let token_err = validate_reset_input("   ", "pass1234").expect_err("blank token");
+            assert_eq!(token_err.code, "VALIDATION_ERROR");
+
+            let (token, password) =
+                validate_reset_input("  token ", " pass1234 ").expect("valid input");
+            assert_eq!(token, "token");
+            assert_eq!(password, "pass1234");
+        });
+    }
+
+    #[test]
+    fn apply_submit_result_updates_signals() {
+        with_runtime(|| {
+            let success = create_rw_signal(None::<String>);
+            let error = create_rw_signal(None::<String>);
+
+            apply_submit_result(
+                &success,
+                &error,
+                Ok(MessageResponse {
+                    message: "パスワードを変更しました".into(),
+                }),
+            );
+            assert_eq!(success.get(), Some("パスワードを変更しました".into()));
+            assert!(error.get().is_none());
+
+            apply_submit_result(&success, &error, Err(ApiError::validation("Invalid token")));
+            assert!(success.get().is_none());
+            assert!(error.get().unwrap_or_default().contains("Invalid token"));
+
+            apply_submit_result(
+                &success,
+                &error,
+                Ok(MessageResponse {
+                    message: "再設定完了".into(),
+                }),
+            );
+            assert_eq!(success.get().as_deref(), Some("再設定完了"));
+            assert!(error.get().is_none());
+        });
     }
 }

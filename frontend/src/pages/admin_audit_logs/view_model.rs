@@ -63,6 +63,14 @@ pub struct AuditLogFilters {
     pub result: String,
 }
 
+type AuditLogQueryParams = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 impl Default for AuditLogFilters {
     fn default() -> Self {
         Self {
@@ -72,6 +80,18 @@ impl Default for AuditLogFilters {
             event_type: "".to_string(),
             result: "".to_string(),
         }
+    }
+}
+
+impl AuditLogFilters {
+    fn into_query_params(self) -> AuditLogQueryParams {
+        (
+            optional_param(self.from),
+            optional_param(self.to),
+            optional_param(self.actor_id),
+            optional_param(self.event_type),
+            optional_param(self.result),
+        )
     }
 }
 
@@ -94,32 +114,9 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
         move |(p, f)| {
             let api = api.clone();
             async move {
-                api.list_audit_logs(
-                    p,
-                    20,
-                    if f.from.is_empty() {
-                        None
-                    } else {
-                        Some(f.from)
-                    },
-                    if f.to.is_empty() { None } else { Some(f.to) },
-                    if f.actor_id.is_empty() {
-                        None
-                    } else {
-                        Some(f.actor_id)
-                    },
-                    if f.event_type.is_empty() {
-                        None
-                    } else {
-                        Some(f.event_type)
-                    },
-                    if f.result.is_empty() {
-                        None
-                    } else {
-                        Some(f.result)
-                    },
-                )
-                .await
+                let (from, to, actor_id, event_type, result) = f.into_query_params();
+                api.list_audit_logs(p, 20, from, to, actor_id, event_type, result)
+                    .await
             }
         },
     );
@@ -129,30 +126,9 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
         let api = api_export.clone();
         let f = filters.get_untracked();
         async move {
+            let (from, to, actor_id, event_type, result) = f.into_query_params();
             let result_data = api
-                .export_audit_logs(
-                    if f.from.is_empty() {
-                        None
-                    } else {
-                        Some(f.from)
-                    },
-                    if f.to.is_empty() { None } else { Some(f.to) },
-                    if f.actor_id.is_empty() {
-                        None
-                    } else {
-                        Some(f.actor_id)
-                    },
-                    if f.event_type.is_empty() {
-                        None
-                    } else {
-                        Some(f.event_type)
-                    },
-                    if f.result.is_empty() {
-                        None
-                    } else {
-                        Some(f.result)
-                    },
-                )
+                .export_audit_logs(from, to, actor_id, event_type, result)
                 .await;
 
             match result_data {
@@ -191,6 +167,14 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
     }
 }
 
+fn optional_param(value: String) -> Option<String> {
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 fn trigger_download(filename: &str, content: &str) {
     use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
     if let Some(window) = web_sys::window() {
@@ -212,5 +196,80 @@ fn trigger_download(filename: &str, content: &str) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filters_default_is_empty() {
+        let filters = AuditLogFilters::default();
+        assert_eq!(filters.from, "");
+        assert_eq!(filters.to, "");
+        assert_eq!(filters.actor_id, "");
+        assert_eq!(filters.event_type, "");
+        assert_eq!(filters.result, "");
+    }
+
+    #[test]
+    fn filters_convert_empty_values_to_none() {
+        let params = AuditLogFilters::default().into_query_params();
+        assert_eq!(params, (None, None, None, None, None));
+    }
+
+    #[test]
+    fn filters_convert_non_empty_values_to_some() {
+        let params = AuditLogFilters {
+            from: "2026-01-01".to_string(),
+            to: "2026-01-31".to_string(),
+            actor_id: "12".to_string(),
+            event_type: "admin_user_create".to_string(),
+            result: "success".to_string(),
+        }
+        .into_query_params();
+
+        assert_eq!(
+            params,
+            (
+                Some("2026-01-01".to_string()),
+                Some("2026-01-31".to_string()),
+                Some("12".to_string()),
+                Some("admin_user_create".to_string()),
+                Some("success".to_string()),
+            )
+        );
+    }
+
+    #[test]
+    fn optional_param_keeps_whitespace_input_as_some() {
+        assert_eq!(optional_param(" ".to_string()), Some(" ".to_string()));
+    }
+
+    #[test]
+    fn audit_event_types_keys_are_unique_and_labels_not_empty() {
+        use std::collections::HashSet;
+
+        let mut keys = HashSet::new();
+        for (key, label) in AUDIT_EVENT_TYPES {
+            assert!(
+                keys.insert(*key),
+                "duplicate audit event type key found: {key}"
+            );
+            assert!(
+                !label.trim().is_empty(),
+                "audit event type label must not be empty for key: {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn audit_event_types_include_core_admin_and_auth_events() {
+        let keys: Vec<&str> = AUDIT_EVENT_TYPES.iter().map(|(key, _)| *key).collect();
+        assert!(keys.contains(&"auth_login"));
+        assert!(keys.contains(&"auth_logout"));
+        assert!(keys.contains(&"admin_audit_log_list"));
+        assert!(keys.contains(&"admin_request_approve"));
     }
 }

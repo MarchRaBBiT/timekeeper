@@ -32,3 +32,33 @@ pub fn RequestsFilter(filter_state: RequestFilterState) -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn requests_filter_renders_labels_and_options() {
+        let html = render_to_string(move || {
+            let filter = RequestFilterState::default();
+            view! { <RequestsFilter filter_state=filter /> }
+        });
+        assert!(html.contains("申請の絞り込み"));
+        assert!(html.contains("保留"));
+        assert!(html.contains("承認済み"));
+        assert!(html.contains("却下"));
+        assert!(html.contains("取消"));
+        assert!(html.contains("クリア"));
+    }
+
+    #[test]
+    fn requests_filter_reflects_current_filter_value() {
+        let html = render_to_string(move || {
+            let filter = RequestFilterState::default();
+            filter.status_signal().set("pending".into());
+            view! { <RequestsFilter filter_state=filter /> }
+        });
+        assert!(html.contains("pending"));
+    }
+}

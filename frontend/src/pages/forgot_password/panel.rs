@@ -160,3 +160,26 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
+
+    #[test]
+    fn forgot_password_panel_renders_form() {
+        let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
+            view! {
+                <Router>
+                    <ForgotPasswordPanel />
+                </Router>
+            }
+        });
+        assert!(html.contains("Reset your password"));
+        assert!(html.contains("Send Reset Link"));
+    }
+}

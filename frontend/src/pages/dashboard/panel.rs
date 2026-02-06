@@ -38,3 +38,76 @@ pub fn DashboardPage() -> impl IntoView {
         </DashboardFrame>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::api::ApiClient;
+    use crate::test_support::ssr::with_local_runtime_async;
+    use serde_json::json;
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/status");
+            then.status(200).json_body(json!({
+                "status": "clocked_in",
+                "attendance_id": "att-1",
+                "active_break_id": null,
+                "clock_in_time": "2025-01-01T09:00:00",
+                "clock_out_time": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me");
+            then.status(200).json_body(json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/holidays/check");
+            then.status(200).json_body(json!({
+                "is_holiday": false,
+                "reason": null
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/attendance/me/summary");
+            then.status(200).json_body(json!({
+                "month": 1,
+                "year": 2025,
+                "total_work_hours": 160.0,
+                "total_work_days": 20,
+                "average_daily_hours": 8.0
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/requests/me");
+            then.status(200).json_body(json!({
+                "leave_requests": [],
+                "overtime_requests": []
+            }));
+        });
+        server
+    }
+
+    #[test]
+    fn dashboard_page_renders_sections() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+
+            leptos_reactive::suppress_resource_load(true);
+            let html = view! { <DashboardPage /> }
+                .into_view()
+                .render_to_string()
+                .to_string();
+            leptos_reactive::suppress_resource_load(false);
+
+            assert!(html.contains("フィルター"));
+            assert!(html.contains("出勤"));
+
+            runtime.dispose();
+        });
+    }
+}

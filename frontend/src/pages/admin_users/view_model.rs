@@ -217,3 +217,170 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         is_system_admin,
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::{render_to_string, with_local_runtime_async};
+
+    #[test]
+    fn admin_users_view_model_initializes() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "u1",
+                "username": "alice",
+                "full_name": "Alice Example",
+                "role": "admin",
+                "is_system_admin": true,
+                "mfa_enabled": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/archived-users");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+
+        let server = server.clone();
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_admin_users_view_model();
+            assert!(matches!(vm.active_tab.get_untracked(), UserTab::Active));
+            view! { <div>{vm.invite_form.role.get()}</div> }
+        });
+        assert!(html.contains("employee"));
+    }
+
+    fn mock_server_for_actions() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "u1",
+                "username": "alice",
+                "full_name": "Alice Example",
+                "role": "member",
+                "is_system_admin": false,
+                "mfa_enabled": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/archived-users");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "a1",
+                "username": "retired",
+                "full_name": "Retired User",
+                "role": "member",
+                "is_system_admin": false,
+                "archived_at": "2026-01-01T00:00:00Z",
+                "archived_by": "u-admin"
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/admin/users");
+            then.status(200).json_body(serde_json::json!({
+                "id": "u2",
+                "username": "new-user",
+                "full_name": "New User",
+                "role": "member",
+                "is_system_admin": false,
+                "mfa_enabled": false
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/admin/mfa/reset");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/admin/users/u1");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/admin/archived-users/a1/restore");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/admin/archived-users/a1");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server
+    }
+
+    #[test]
+    fn admin_users_actions_update_messages() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server_for_actions();
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_admin_users_view_model();
+
+            vm.invite_action.dispatch(CreateUser {
+                username: "new-user".into(),
+                password: "password".into(),
+                full_name: "New User".into(),
+                email: "new@example.com".into(),
+                role: "member".into(),
+                is_system_admin: false,
+            });
+            for _ in 0..10 {
+                if vm.invite_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let invite_result = vm.invite_action.value().get();
+            match invite_result {
+                Some(Ok(user)) => assert_eq!(user.username, "new-user"),
+                other => panic!("invite action did not succeed: {:?}", other),
+            }
+
+            vm.reset_mfa_action.dispatch("u1".into());
+            for _ in 0..10 {
+                if vm.reset_mfa_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let reset_result = vm.reset_mfa_action.value().get();
+            assert!(matches!(reset_result, Some(Ok(()))));
+
+            vm.delete_user_action.dispatch(("u1".into(), false));
+            for _ in 0..10 {
+                if vm.delete_user_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let delete_result = vm.delete_user_action.value().get();
+            assert!(matches!(delete_result, Some(Ok(()))));
+
+            vm.restore_archived_action.dispatch("a1".into());
+            for _ in 0..10 {
+                if vm.restore_archived_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let restore_result = vm.restore_archived_action.value().get();
+            assert!(matches!(restore_result, Some(Ok(()))));
+
+            vm.delete_archived_action.dispatch("a1".into());
+            for _ in 0..10 {
+                if vm.delete_archived_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let delete_archived_result = vm.delete_archived_action.value().get();
+            assert!(matches!(delete_archived_result, Some(Ok(()))));
+
+            runtime.dispose();
+        });
+    }
+}

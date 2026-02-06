@@ -7,6 +7,27 @@ use leptos::{ev::SubmitEvent, *};
 use leptos_router::A;
 use web_sys::HtmlInputElement;
 
+fn build_login_request(form: &LoginFormState) -> LoginRequest {
+    LoginRequest {
+        username: form.username.get_untracked(),
+        password: form.password.get_untracked(),
+        totp_code: form.normalize_totp(),
+        device_label: None,
+    }
+}
+
+fn prepare_login_submit(
+    pending: bool,
+    form: &LoginFormState,
+) -> Result<Option<LoginRequest>, ApiError> {
+    if pending {
+        return Ok(None);
+    }
+
+    form.validate()?;
+    Ok(Some(build_login_request(form)))
+}
+
 #[component]
 pub fn LoginForm(
     form: LoginFormState,
@@ -17,23 +38,14 @@ pub fn LoginForm(
 
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
-        if pending.get_untracked() {
-            return;
+        match prepare_login_submit(pending.get_untracked(), &form) {
+            Ok(Some(request)) => {
+                error.set(None);
+                login_action.dispatch(request);
+            }
+            Ok(None) => {}
+            Err(msg) => error.set(Some(msg)),
         }
-
-        if let Err(msg) = form.validate() {
-            error.set(Some(msg));
-            return;
-        }
-
-        let request = LoginRequest {
-            username: form.username.get_untracked(),
-            password: form.password.get_untracked(),
-            totp_code: form.normalize_totp(),
-            device_label: None,
-        };
-        error.set(None);
-        login_action.dispatch(request);
     };
 
     view! {
@@ -137,5 +149,76 @@ pub fn LoginForm(
                 </form>
             </div>
         </div>
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
+
+    #[test]
+    fn login_form_renders_fields() {
+        let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
+            let form = LoginFormState::default();
+            let error = create_rw_signal(None::<ApiError>);
+            let action = create_action(|_| async move { Ok(()) });
+            view! {
+                <Router>
+                    <LoginForm form=form error=error login_action=action />
+                </Router>
+            }
+        });
+        assert!(html.contains("Timekeeper にログイン"));
+        assert!(html.contains("ユーザー名"));
+        assert!(html.contains("パスワード"));
+    }
+
+    #[test]
+    fn prepare_login_submit_validates_pending_and_payload() {
+        let runtime = create_runtime();
+        let form = LoginFormState::default();
+
+        assert!(prepare_login_submit(true, &form)
+            .expect("pending path should be ok")
+            .is_none());
+        assert!(prepare_login_submit(false, &form).is_err());
+
+        form.username.set("alice".to_string());
+        form.password.set("secret".to_string());
+        form.totp_code.set(" 123456 ".to_string());
+
+        let request = prepare_login_submit(false, &form)
+            .expect("valid submit")
+            .expect("request should exist");
+        assert_eq!(request.username, "alice");
+        assert_eq!(request.password, "secret");
+        assert_eq!(request.totp_code.as_deref(), Some("123456"));
+        assert!(request.device_label.is_none());
+
+        runtime.dispose();
+    }
+
+    #[test]
+    fn login_form_renders_inline_error_message() {
+        let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
+            let form = LoginFormState::default();
+            let error = create_rw_signal(Some(ApiError::validation("ログイン失敗")));
+            let action = create_action(|_| async move { Ok(()) });
+            view! {
+                <Router>
+                    <LoginForm form=form error=error login_action=action />
+                </Router>
+            }
+        });
+
+        assert!(html.contains("ログイン失敗"));
     }
 }

@@ -63,3 +63,30 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use serde_json::json;
+
+    #[test]
+    fn request_detail_modal_renders_summary() {
+        let html = render_to_string(move || {
+            let summary = RequestSummary::from_leave(&json!({
+                "id": "req-1",
+                "status": "pending",
+                "start_date": "2025-01-10",
+                "end_date": "2025-01-12",
+                "leave_type": "annual",
+                "reason": "family",
+                "created_at": "2025-01-05T10:00:00Z"
+            }));
+            let selected = create_rw_signal(Some(summary));
+            view! { <RequestDetailModal selected=selected /> }
+        });
+        assert!(html.contains("休暇申請"));
+        assert!(html.contains("pending"));
+        assert!(html.contains("family"));
+    }
+}

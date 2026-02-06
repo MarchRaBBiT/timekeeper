@@ -158,7 +158,7 @@ pub fn needs_specific_user_selection(use_specific_user: bool, username: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use super::needs_specific_user_selection;
+    use super::{needs_specific_user_selection, ExportFilters};
 
     #[test]
     fn specific_user_requires_selection() {
@@ -166,5 +166,73 @@ mod tests {
         assert!(needs_specific_user_selection(true, "   "));
         assert!(!needs_specific_user_selection(true, "admin"));
         assert!(!needs_specific_user_selection(false, ""));
+    }
+
+    #[test]
+    fn export_filters_normalize_blank_params_to_none() {
+        let filters = ExportFilters {
+            username: "   ".into(),
+            from_date: "".into(),
+            to_date: "  ".into(),
+        };
+        assert_eq!(filters.username_param(), None);
+        assert_eq!(filters.start_date_param(), None);
+        assert_eq!(filters.end_date_param(), None);
+    }
+
+    #[test]
+    fn export_filters_trim_valid_params() {
+        let filters = ExportFilters {
+            username: " alice ".into(),
+            from_date: " 2026-01-01 ".into(),
+            to_date: " 2026-01-31 ".into(),
+        };
+        assert_eq!(filters.username_param(), Some("alice"));
+        assert_eq!(filters.start_date_param(), Some("2026-01-01"));
+        assert_eq!(filters.end_date_param(), Some("2026-01-31"));
+    }
+
+    #[test]
+    fn export_filters_validate_rejects_invalid_date_format() {
+        let filters = ExportFilters {
+            username: "alice".into(),
+            from_date: "2026/01/01".into(),
+            to_date: "2026-01-31".into(),
+        };
+        let error = filters.validate().expect_err("invalid format must fail");
+        assert_eq!(error.code, "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn export_filters_validate_rejects_reversed_date_range() {
+        let filters = ExportFilters {
+            username: "alice".into(),
+            from_date: "2026-02-01".into(),
+            to_date: "2026-01-01".into(),
+        };
+        let error = filters
+            .validate()
+            .expect_err("from date after to date must fail");
+        assert_eq!(error.code, "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn export_filters_validate_accepts_partial_or_empty_ranges() {
+        let only_from = ExportFilters {
+            username: "".into(),
+            from_date: "2026-01-01".into(),
+            to_date: "".into(),
+        };
+        only_from.validate().expect("from only should be valid");
+
+        let only_to = ExportFilters {
+            username: "".into(),
+            from_date: "".into(),
+            to_date: "2026-01-31".into(),
+        };
+        only_to.validate().expect("to only should be valid");
+
+        let empty = ExportFilters::default();
+        empty.validate().expect("empty range should be valid");
     }
 }

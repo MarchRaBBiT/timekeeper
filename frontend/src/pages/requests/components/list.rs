@@ -156,3 +156,69 @@ pub fn RequestsList(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::pages::requests::utils::MessageState;
+    use crate::test_support::ssr::render_to_string;
+    use serde_json::json;
+
+    fn summary() -> RequestSummary {
+        RequestSummary::from_leave(&json!({
+            "id": "req-1",
+            "status": "pending",
+            "start_date": "2025-01-10",
+            "end_date": "2025-01-12",
+            "leave_type": "annual",
+            "reason": "family",
+            "created_at": "2025-01-05T10:00:00Z"
+        }))
+    }
+
+    #[test]
+    fn requests_list_renders_empty_state() {
+        let html = render_to_string(move || {
+            let (summaries, _) = create_signal(Vec::<RequestSummary>::new());
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(None::<ApiError>);
+            let message = create_rw_signal(MessageState::default());
+            view! {
+                <RequestsList
+                    summaries=summaries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    on_select=Callback::new(|_| {})
+                    on_edit=Callback::new(|_| {})
+                    on_cancel=Callback::new(|_| {})
+                    message=message
+                />
+            }
+        });
+        assert!(html.contains("表示できる申請がありません"));
+    }
+
+    #[test]
+    fn requests_list_renders_rows() {
+        let html = render_to_string(move || {
+            let (summaries, _) = create_signal(vec![summary()]);
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(None::<ApiError>);
+            let message = create_rw_signal(MessageState::default());
+            view! {
+                <RequestsList
+                    summaries=summaries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    on_select=Callback::new(|_| {})
+                    on_edit=Callback::new(|_| {})
+                    on_cancel=Callback::new(|_| {})
+                    message=message
+                />
+            }
+        });
+        assert!(html.contains("申請一覧"));
+        assert!(html.contains("pending"));
+        assert!(html.contains("休暇"));
+    }
+}

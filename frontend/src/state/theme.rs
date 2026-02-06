@@ -100,3 +100,36 @@ pub fn provide_theme() -> ThemeState {
 
     state
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+
+    #[test]
+    fn theme_class_mapping_on_host() {
+        assert_eq!(Theme::Light.as_class(), "");
+        assert_eq!(Theme::Dark.as_class(), "dark");
+        assert_eq!(Theme::HighContrast.as_class(), "contrast-high");
+    }
+
+    #[test]
+    fn theme_state_toggles_between_light_and_dark() {
+        let runtime = create_runtime();
+        let state = ThemeState::new();
+        assert_eq!(state.current().get(), Theme::Light);
+        state.toggle();
+        assert_eq!(state.current().get(), Theme::Dark);
+        state.toggle();
+        assert_eq!(state.current().get(), Theme::Light);
+        runtime.dispose();
+    }
+
+    #[test]
+    fn provide_theme_makes_context_available() {
+        let runtime = create_runtime();
+        let provided = provide_theme();
+        let ctx = use_theme();
+        assert_eq!(ctx.current().get(), provided.current().get());
+        runtime.dispose();
+    }
+}

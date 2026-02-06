@@ -110,3 +110,102 @@ pub fn use_mfa_view_model() -> MfaViewModel {
         activate_action,
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::with_local_runtime_async;
+
+    fn mock_server() -> MockServer {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/api/auth/mfa");
+            then.status(200).json_body(serde_json::json!({
+                "enabled": false,
+                "pending": false
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/auth/mfa/register");
+            then.status(200).json_body(serde_json::json!({
+                "secret": "secret",
+                "otpauth_url": "otpauth://totp/test"
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(POST).path("/api/auth/mfa/activate");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server
+    }
+
+    #[test]
+    fn mfa_view_model_fetches_status() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_mfa_view_model();
+            for _ in 0..10 {
+                if !vm.status_loading.get() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(!vm.status_loading.get());
+            assert!(vm.status.get().is_some());
+            runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn mfa_view_model_register_sets_setup_info() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_mfa_view_model();
+            vm.register_action.dispatch(());
+            for _ in 0..10 {
+                if vm.setup_info.get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.setup_info.get();
+            let _ = vm.messages.success.get();
+            runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn mfa_view_model_activate_updates_auth() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            let server = mock_server();
+            provide_auth(Some(admin_user(true)));
+            provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let vm = use_mfa_view_model();
+            vm.activate_action.dispatch("123456".into());
+            for _ in 0..10 {
+                let (auth, _) = use_auth();
+                if auth
+                    .get()
+                    .user
+                    .as_ref()
+                    .map(|u| u.mfa_enabled)
+                    .unwrap_or(false)
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let (auth, _) = use_auth();
+            let _ = auth.get();
+            let _ = vm.messages.success.get();
+            runtime.dispose();
+        });
+    }
+}

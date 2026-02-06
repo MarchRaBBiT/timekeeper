@@ -85,3 +85,20 @@ pub fn AttendancePanel() -> impl IntoView {
         </AttendanceFrame>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn attendance_panel_renders_sections() {
+        let html = render_to_string(move || {
+            provide_auth(Some(admin_user(true)));
+            view! { <AttendancePanel /> }
+        });
+        assert!(html.contains("勤怠管理"));
+        assert!(html.contains("CSVダウンロード"));
+    }
+}

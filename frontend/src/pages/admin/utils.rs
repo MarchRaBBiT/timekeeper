@@ -261,3 +261,72 @@ mod tests {
         assert!(state.to_payload(min).is_err());
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[test]
+    fn weekly_form_payload_succeeds_with_valid_data() {
+        with_runtime(|| {
+            let state = WeeklyHolidayFormState::new("1", "2025-01-10".into());
+            let min = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
+            let payload = state.to_payload(min).unwrap();
+            assert_eq!(payload.weekday, 1);
+            assert_eq!(
+                payload.starts_on,
+                NaiveDate::from_ymd_opt(2025, 1, 10).unwrap()
+            );
+            assert!(payload.ends_on.is_none());
+        });
+    }
+
+    #[test]
+    fn weekly_form_rejects_invalid_weekday() {
+        with_runtime(|| {
+            let state = WeeklyHolidayFormState::new("9", "2025-01-10".into());
+            let min = NaiveDate::from_ymd_opt(2025, 1, 10).unwrap();
+            assert!(state.to_payload(min).is_err());
+        });
+    }
+
+    #[test]
+    fn request_filter_snapshot_includes_values() {
+        with_runtime(|| {
+            let state = RequestFilterState::new();
+            state.status_signal().set("approved".into());
+            state.user_id_signal().set("u1".into());
+            let snapshot = state.snapshot();
+            assert_eq!(snapshot.status.as_deref(), Some("approved"));
+            assert_eq!(snapshot.user_id.as_deref(), Some("u1"));
+        });
+    }
+
+    #[test]
+    fn subject_request_filter_snapshot_defaults() {
+        with_runtime(|| {
+            let state = SubjectRequestFilterState::new();
+            let snapshot = state.snapshot();
+            assert!(snapshot.status.is_none());
+            assert!(snapshot.request_type.is_none());
+            assert!(snapshot.user_id.is_none());
+            assert_eq!(snapshot.page, 1);
+            assert_eq!(snapshot.per_page, 20);
+        });
+    }
+
+    #[test]
+    fn weekday_label_maps_values() {
+        assert_eq!(weekday_label(0), "日");
+        assert_eq!(weekday_label(6), "土");
+        assert_eq!(weekday_label(9), "-");
+    }
+}
