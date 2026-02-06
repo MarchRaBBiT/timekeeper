@@ -47,6 +47,115 @@ impl From<(String, serde_json::Value)> for EditPayload {
     }
 }
 
+fn apply_optional_update_action_result(
+    result: Option<Result<(), ApiError>>,
+    list_message: RwSignal<MessageState>,
+    editing_request: RwSignal<Option<EditTarget>>,
+    leave_state: LeaveFormState,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        match result {
+            Ok(_) => {
+                list_message.update(|msg| msg.set_success("申請内容を更新しました。"));
+                editing_request.set(None);
+                leave_state.reset();
+                reload.update(|value| *value = value.wrapping_add(1));
+            }
+            Err(err) => list_message.update(|msg| msg.set_error(err)),
+        }
+    }
+}
+
+fn apply_optional_cancel_action_result(
+    result: Option<Result<(), ApiError>>,
+    list_message: RwSignal<MessageState>,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        match result {
+            Ok(_) => {
+                list_message.update(|msg| msg.set_success("申請を取消しました。"));
+                reload.update(|value| *value = value.wrapping_add(1));
+            }
+            Err(err) => list_message.update(|msg| msg.set_error(err)),
+        }
+    }
+}
+
+fn apply_optional_leave_action_result(
+    result: Option<Result<(), ApiError>>,
+    leave_message: RwSignal<MessageState>,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        match result {
+            Ok(_) => {
+                leave_message.update(|msg| msg.set_success("休暇申請を送信しました。"));
+                reload.update(|value| *value = value.wrapping_add(1));
+            }
+            Err(err) => leave_message.update(|msg| msg.set_error(err)),
+        }
+    }
+}
+
+fn apply_optional_overtime_action_result(
+    result: Option<Result<(), ApiError>>,
+    overtime_message: RwSignal<MessageState>,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        match result {
+            Ok(_) => {
+                overtime_message.update(|msg| msg.set_success("残業申請を送信しました。"));
+                reload.update(|value| *value = value.wrapping_add(1));
+            }
+            Err(err) => overtime_message.update(|msg| msg.set_error(err)),
+        }
+    }
+}
+
+fn apply_edit_selection(
+    summary: RequestSummary,
+    leave_state: LeaveFormState,
+    overtime_state: OvertimeFormState,
+    list_message: RwSignal<MessageState>,
+    editing_request: RwSignal<Option<EditTarget>>,
+    set_active_form: WriteSignal<RequestFormKind>,
+) {
+    list_message.update(|msg| msg.clear());
+    let target = EditTarget {
+        id: summary.id.clone(),
+        kind: summary.kind,
+    };
+    editing_request.set(Some(target));
+    match summary.kind {
+        crate::pages::requests::types::RequestKind::Leave => {
+            leave_state.load_from_value(&summary.details);
+            set_active_form.set(RequestFormKind::Leave);
+        }
+        crate::pages::requests::types::RequestKind::Overtime => {
+            overtime_state.load_from_value(&summary.details);
+            set_active_form.set(RequestFormKind::Overtime);
+        }
+    }
+}
+
+fn apply_cancel_selection<F>(
+    summary: RequestSummary,
+    leave_state: LeaveFormState,
+    overtime_state: OvertimeFormState,
+    editing_request: RwSignal<Option<EditTarget>>,
+    dispatch_cancel: F,
+) where
+    F: FnOnce(String),
+{
+    editing_request.set(None);
+    leave_state.reset();
+    overtime_state.reset();
+    dispatch_cancel(summary.id);
+}
+
 impl RequestsViewModel {
     pub fn new() -> Self {
         let api = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
@@ -74,23 +183,13 @@ impl RequestsViewModel {
         let leave_action = create_action(move |payload: &CreateLeaveRequest| {
             let repo = repository.get_value();
             let payload = payload.clone();
-            async move {
-                match repo.submit_leave(payload).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e),
-                }
-            }
+            async move { repo.submit_leave(payload).await.map(|_| ()) }
         });
 
         let overtime_action = create_action(move |payload: &CreateOvertimeRequest| {
             let repo = repository.get_value();
             let payload = payload.clone();
-            async move {
-                match repo.submit_overtime(payload).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e),
-                }
-            }
+            async move { repo.submit_overtime(payload).await.map(|_| ()) }
         });
 
         let update_action = create_action(move |payload: &EditPayload| {
@@ -108,62 +207,43 @@ impl RequestsViewModel {
         // Setup effects for actions
         {
             create_effect(move |_| {
-                if let Some(result) = update_action.value().get() {
-                    match result {
-                        Ok(_) => {
-                            list_message.update(|msg| msg.set_success("申請内容を更新しました。"));
-                            editing_request.set(None);
-                            leave_state.reset();
-                            // Note: reset() for overtime_state is handled by the caller or needed here?
-                            // In original code it was both.
-                            reload.update(|value| *value = value.wrapping_add(1));
-                        }
-                        Err(err) => list_message.update(|msg| msg.set_error(err)),
-                    }
-                }
+                apply_optional_update_action_result(
+                    update_action.value().get(),
+                    list_message,
+                    editing_request,
+                    leave_state,
+                    reload,
+                );
             });
         }
 
         {
             create_effect(move |_| {
-                if let Some(result) = cancel_action.value().get() {
-                    match result {
-                        Ok(_) => {
-                            list_message.update(|msg| msg.set_success("申請を取消しました。"));
-                            reload.update(|value| *value = value.wrapping_add(1));
-                        }
-                        Err(err) => list_message.update(|msg| msg.set_error(err)),
-                    }
-                }
+                apply_optional_cancel_action_result(
+                    cancel_action.value().get(),
+                    list_message,
+                    reload,
+                );
             });
         }
 
         {
             create_effect(move |_| {
-                if let Some(result) = leave_action.value().get() {
-                    match result {
-                        Ok(_) => {
-                            leave_message.update(|msg| msg.set_success("休暇申請を送信しました。"));
-                            reload.update(|value| *value = value.wrapping_add(1));
-                        }
-                        Err(err) => leave_message.update(|msg| msg.set_error(err)),
-                    }
-                }
+                apply_optional_leave_action_result(
+                    leave_action.value().get(),
+                    leave_message,
+                    reload,
+                );
             });
         }
 
         {
             create_effect(move |_| {
-                if let Some(result) = overtime_action.value().get() {
-                    match result {
-                        Ok(_) => {
-                            overtime_message
-                                .update(|msg| msg.set_success("残業申請を送信しました。"));
-                            reload.update(|value| *value = value.wrapping_add(1));
-                        }
-                        Err(err) => overtime_message.update(|msg| msg.set_error(err)),
-                    }
-                }
+                apply_optional_overtime_action_result(
+                    overtime_action.value().get(),
+                    overtime_message,
+                    reload,
+                );
             });
         }
 
@@ -219,22 +299,14 @@ impl RequestsViewModel {
         let set_active_form = self.set_active_form;
 
         Callback::new(move |summary: RequestSummary| {
-            list_message.update(|msg| msg.clear());
-            let target = EditTarget {
-                id: summary.id.clone(),
-                kind: summary.kind,
-            };
-            editing_request.set(Some(target));
-            match summary.kind {
-                crate::pages::requests::types::RequestKind::Leave => {
-                    leave_state.load_from_value(&summary.details);
-                    set_active_form.set(RequestFormKind::Leave);
-                }
-                crate::pages::requests::types::RequestKind::Overtime => {
-                    overtime_state.load_from_value(&summary.details);
-                    set_active_form.set(RequestFormKind::Overtime);
-                }
-            }
+            apply_edit_selection(
+                summary,
+                leave_state,
+                overtime_state,
+                list_message,
+                editing_request,
+                set_active_form,
+            );
         })
     }
 
@@ -245,10 +317,13 @@ impl RequestsViewModel {
         let cancel_action = self.cancel_action;
 
         Callback::new(move |summary: RequestSummary| {
-            editing_request.set(None);
-            leave_state.reset();
-            overtime_state.reset();
-            cancel_action.dispatch(summary.id.clone());
+            apply_cancel_selection(
+                summary,
+                leave_state,
+                overtime_state,
+                editing_request,
+                |id| cancel_action.dispatch(id),
+            );
         })
     }
 }
@@ -268,7 +343,7 @@ pub fn use_requests_view_model() -> RequestsViewModel {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::ssr::{with_local_runtime_async, with_runtime};
+    use crate::test_support::ssr::{with_local_runtime, with_local_runtime_async, with_runtime};
     use chrono::NaiveDate;
     use serde_json::json;
 
@@ -329,6 +404,16 @@ mod host_tests {
         server
     }
 
+    async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
+        for _ in 0..100 {
+            if condition() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        false
+    }
+
     #[test]
     fn requests_view_model_filters_summaries() {
         with_runtime(|| {
@@ -378,12 +463,11 @@ mod host_tests {
                 end_date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
                 reason: None,
             });
-            for _ in 0..10 {
-                if vm.leave_message.get().success.is_some() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
+            assert!(
+                wait_until(|| vm.leave_action.value().get().is_some()).await,
+                "leave action should complete"
+            );
+            assert!(matches!(vm.leave_action.value().get(), Some(Ok(()))));
             let _ = vm.leave_message.get();
 
             vm.overtime_action.dispatch(CreateOvertimeRequest {
@@ -391,12 +475,11 @@ mod host_tests {
                 planned_hours: 2.5,
                 reason: None,
             });
-            for _ in 0..10 {
-                if vm.overtime_message.get().success.is_some() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
+            assert!(
+                wait_until(|| vm.overtime_action.value().get().is_some()).await,
+                "overtime action should complete"
+            );
+            assert!(matches!(vm.overtime_action.value().get(), Some(Ok(()))));
             let _ = vm.overtime_message.get();
 
             vm.editing_request.set(Some(EditTarget {
@@ -407,24 +490,209 @@ mod host_tests {
                 "req-1".to_string(),
                 json!({ "status": "updated" }),
             )));
-            for _ in 0..10 {
-                if vm.editing_request.get().is_none() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
+            assert!(
+                wait_until(|| vm.update_action.value().get().is_some()).await,
+                "update action should complete"
+            );
+            assert!(matches!(vm.update_action.value().get(), Some(Ok(()))));
             let _ = vm.editing_request.get();
             let _ = vm.list_message.get();
 
             vm.cancel_action.dispatch("req-1".into());
-            for _ in 0..10 {
-                if vm.list_message.get().success.is_some() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
+            assert!(
+                wait_until(|| vm.cancel_action.value().get().is_some()).await,
+                "cancel action should complete"
+            );
+            assert!(matches!(vm.cancel_action.value().get(), Some(Ok(()))));
             let _ = vm.list_message.get();
             runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn helper_effect_and_selection_paths_cover_branches() {
+        with_runtime(|| {
+            let leave_state = LeaveFormState::default();
+            let overtime_state = OvertimeFormState::default();
+            let list_message = create_rw_signal(MessageState::default());
+            let leave_message = create_rw_signal(MessageState::default());
+            let overtime_message = create_rw_signal(MessageState::default());
+            let editing_request = create_rw_signal(Some(EditTarget {
+                id: "req-old".to_string(),
+                kind: crate::pages::requests::types::RequestKind::Leave,
+            }));
+            let reload = create_rw_signal(0u32);
+            let (active_form, set_active_form) = create_signal(RequestFormKind::Leave);
+
+            leave_state.start_signal().set("2025-01-10".to_string());
+            apply_optional_update_action_result(
+                Some(Ok(())),
+                list_message,
+                editing_request,
+                leave_state,
+                reload,
+            );
+            assert_eq!(
+                list_message.get().success.as_deref(),
+                Some("申請内容を更新しました。")
+            );
+            assert!(editing_request.get().is_none());
+            assert_eq!(leave_state.start_signal().get(), "");
+            assert_eq!(reload.get(), 1);
+
+            apply_optional_update_action_result(
+                Some(Err(ApiError::unknown("update failed"))),
+                list_message,
+                editing_request,
+                leave_state,
+                reload,
+            );
+            assert_eq!(
+                list_message.get().error.map(|err| err.error),
+                Some("update failed".to_string())
+            );
+            assert_eq!(reload.get(), 1);
+
+            apply_optional_cancel_action_result(Some(Ok(())), list_message, reload);
+            assert_eq!(
+                list_message.get().success.as_deref(),
+                Some("申請を取消しました。")
+            );
+            assert_eq!(reload.get(), 2);
+            apply_optional_cancel_action_result(
+                Some(Err(ApiError::unknown("cancel failed"))),
+                list_message,
+                reload,
+            );
+            assert_eq!(
+                list_message.get().error.map(|err| err.error),
+                Some("cancel failed".to_string())
+            );
+
+            apply_optional_leave_action_result(Some(Ok(())), leave_message, reload);
+            assert_eq!(
+                leave_message.get().success.as_deref(),
+                Some("休暇申請を送信しました。")
+            );
+            assert_eq!(reload.get(), 3);
+            apply_optional_leave_action_result(
+                Some(Err(ApiError::unknown("leave failed"))),
+                leave_message,
+                reload,
+            );
+            assert_eq!(
+                leave_message.get().error.map(|err| err.error),
+                Some("leave failed".to_string())
+            );
+
+            apply_optional_overtime_action_result(Some(Ok(())), overtime_message, reload);
+            assert_eq!(
+                overtime_message.get().success.as_deref(),
+                Some("残業申請を送信しました。")
+            );
+            assert_eq!(reload.get(), 4);
+            apply_optional_overtime_action_result(
+                Some(Err(ApiError::unknown("overtime failed"))),
+                overtime_message,
+                reload,
+            );
+            assert_eq!(
+                overtime_message.get().error.map(|err| err.error),
+                Some("overtime failed".to_string())
+            );
+
+            list_message.set(MessageState {
+                success: Some("old".to_string()),
+                error: None,
+            });
+            let leave_summary = RequestSummary {
+                id: "leave-1".to_string(),
+                kind: crate::pages::requests::types::RequestKind::Leave,
+                status: "pending".to_string(),
+                submitted_at: None,
+                primary_label: None,
+                secondary_label: None,
+                reason: None,
+                details: json!({
+                    "leave_type": "sick",
+                    "start_date": "2025-03-01",
+                    "end_date": "2025-03-02",
+                    "reason": "private"
+                }),
+            };
+            apply_edit_selection(
+                leave_summary,
+                leave_state,
+                overtime_state,
+                list_message,
+                editing_request,
+                set_active_form,
+            );
+            assert!(list_message.get().success.is_none());
+            assert_eq!(active_form.get(), RequestFormKind::Leave);
+            assert_eq!(leave_state.leave_type_signal().get(), "sick");
+            assert_eq!(leave_state.start_signal().get(), "2025-03-01");
+            assert!(matches!(
+                editing_request.get(),
+                Some(EditTarget { id, kind: crate::pages::requests::types::RequestKind::Leave }) if id == "leave-1"
+            ));
+
+            let overtime_summary = RequestSummary {
+                id: "ot-1".to_string(),
+                kind: crate::pages::requests::types::RequestKind::Overtime,
+                status: "pending".to_string(),
+                submitted_at: None,
+                primary_label: None,
+                secondary_label: None,
+                reason: None,
+                details: json!({
+                    "date": "2025-04-01",
+                    "planned_hours": 3.5,
+                    "reason": "deploy"
+                }),
+            };
+            apply_edit_selection(
+                overtime_summary.clone(),
+                leave_state,
+                overtime_state,
+                list_message,
+                editing_request,
+                set_active_form,
+            );
+            assert_eq!(active_form.get(), RequestFormKind::Overtime);
+            assert_eq!(overtime_state.date_signal().get(), "2025-04-01");
+            assert_eq!(overtime_state.hours_signal().get(), "3.50");
+
+            leave_state.start_signal().set("2025-05-01".to_string());
+            overtime_state.date_signal().set("2025-05-02".to_string());
+            let mut cancelled_id = None;
+            apply_cancel_selection(
+                overtime_summary,
+                leave_state,
+                overtime_state,
+                editing_request,
+                |id| cancelled_id = Some(id),
+            );
+            assert!(editing_request.get().is_none());
+            assert_eq!(leave_state.start_signal().get(), "");
+            assert_eq!(overtime_state.date_signal().get(), "");
+            assert_eq!(cancelled_id.as_deref(), Some("ot-1"));
+        });
+    }
+
+    #[test]
+    fn use_requests_view_model_reuses_context() {
+        with_local_runtime(|| {
+            with_runtime(|| {
+                let server = mock_server();
+                provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+                let vm = RequestsViewModel::new();
+                vm.filter_state.status_signal().set("approved".to_string());
+                provide_context(vm);
+
+                let used = use_requests_view_model();
+                assert_eq!(used.filter_state.status_filter(), "approved");
+            });
         });
     }
 }
