@@ -148,6 +148,125 @@ fn prepare_force_break_submission(
     }
 }
 
+fn add_break_row_signal(breaks: RwSignal<Vec<(String, String)>>) {
+    breaks.update(append_empty_break_row);
+}
+
+async fn upsert_attendance_with_repo(
+    repository: AdminRepository,
+    payload: AdminAttendanceUpsert,
+) -> Result<(), ApiError> {
+    repository.upsert_attendance(payload).await
+}
+
+async fn force_end_break_with_repo(
+    repository: AdminRepository,
+    break_id: String,
+) -> Result<(), ApiError> {
+    repository.force_end_break(&break_id).await
+}
+
+fn apply_attendance_action_result(
+    result: Result<(), ApiError>,
+    message: RwSignal<Option<String>>,
+    error: RwSignal<Option<ApiError>>,
+) {
+    let (next_message, next_error) = attendance_upsert_feedback(result);
+    message.set(next_message);
+    error.set(next_error);
+}
+
+fn apply_force_break_action_result(
+    result: Result<(), ApiError>,
+    message: RwSignal<Option<String>>,
+    error: RwSignal<Option<ApiError>>,
+) {
+    let (next_message, next_error) = force_break_feedback(result);
+    message.set(next_message);
+    error.set(next_error);
+}
+
+fn resolve_attendance_dispatch_payload(
+    system_admin_allowed: bool,
+    user_id: &str,
+    date: &str,
+    clock_in: &str,
+    clock_out: &str,
+    breaks: Vec<(String, String)>,
+    message: RwSignal<Option<String>>,
+    error: RwSignal<Option<ApiError>>,
+) -> Option<AdminAttendanceUpsert> {
+    match prepare_attendance_submission(
+        system_admin_allowed,
+        user_id,
+        date,
+        clock_in,
+        clock_out,
+        breaks,
+    ) {
+        Ok(Some(payload)) => {
+            message.set(None);
+            error.set(None);
+            Some(payload)
+        }
+        Ok(None) => None,
+        Err(err) => {
+            error.set(Some(err));
+            message.set(None);
+            None
+        }
+    }
+}
+
+fn resolve_force_break_dispatch_id(
+    system_admin_allowed: bool,
+    break_id_raw: &str,
+    message: RwSignal<Option<String>>,
+    error: RwSignal<Option<ApiError>>,
+) -> Option<String> {
+    match prepare_force_break_submission(system_admin_allowed, break_id_raw) {
+        Ok(Some(id)) => {
+            message.set(None);
+            error.set(None);
+            Some(id)
+        }
+        Ok(None) => None,
+        Err(err) => {
+            error.set(Some(err));
+            message.set(None);
+            None
+        }
+    }
+}
+
+fn set_input_signal(signal: RwSignal<String>, value: String) {
+    signal.set(value);
+}
+
+fn update_break_start_signal(breaks: RwSignal<Vec<(String, String)>>, idx: usize, value: String) {
+    breaks.update(|list| update_break_start(list, idx, value));
+}
+
+fn update_break_end_signal(breaks: RwSignal<Vec<(String, String)>>, idx: usize, value: String) {
+    breaks.update(|list| update_break_end(list, idx, value));
+}
+
+fn attendance_submit_label(pending: bool) -> &'static str {
+    if pending {
+        "登録中..."
+    } else {
+        "勤怠を登録"
+    }
+}
+
+fn force_break_button_label(pending: bool) -> &'static str {
+    if pending {
+        "終了中..."
+    } else {
+        "強制終了"
+    }
+}
+
 #[component]
 pub fn AdminAttendanceToolsSection(
     repository: AdminRepository,
@@ -163,17 +282,13 @@ pub fn AdminAttendanceToolsSection(
     let message = create_rw_signal(None::<String>);
     let error = create_rw_signal(None::<ApiError>);
 
-    let add_break = {
-        move |_| {
-            breaks.update(append_empty_break_row);
-        }
-    };
+    let add_break = { move |_| add_break_row_signal(breaks) };
 
     let repo_for_attendance = repository.clone();
     let attendance_action = create_action(move |payload: &AdminAttendanceUpsert| {
         let repo = repo_for_attendance.clone();
         let payload = payload.clone();
-        async move { repo.upsert_attendance(payload).await }
+        async move { upsert_attendance_with_repo(repo, payload).await }
     });
     let attendance_pending = attendance_action.pending();
 
@@ -181,25 +296,21 @@ pub fn AdminAttendanceToolsSection(
     let force_break_action = create_action(move |break_id: &String| {
         let repo = repo_for_break.clone();
         let break_id = break_id.clone();
-        async move { repo.force_end_break(&break_id).await }
+        async move { force_end_break_with_repo(repo, break_id).await }
     });
     let force_pending = force_break_action.pending();
 
     {
         create_effect(move |_| {
             if let Some(result) = attendance_action.value().get() {
-                let (next_message, next_error) = attendance_upsert_feedback(result);
-                message.set(next_message);
-                error.set(next_error);
+                apply_attendance_action_result(result, message, error);
             }
         });
     }
     {
         create_effect(move |_| {
             if let Some(result) = force_break_action.value().get() {
-                let (next_message, next_error) = force_break_feedback(result);
-                message.set(next_message);
-                error.set(next_error);
+                apply_force_break_action_result(result, message, error);
             }
         });
     }
@@ -207,44 +318,32 @@ pub fn AdminAttendanceToolsSection(
     let on_submit_attendance = {
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
-            let payload = match prepare_attendance_submission(
+            let Some(payload) = resolve_attendance_dispatch_payload(
                 system_admin_allowed.get_untracked(),
                 &att_user.get(),
                 &att_date.get(),
                 &att_in.get(),
                 &att_out.get(),
                 breaks.get(),
-            ) {
-                Ok(Some(payload)) => payload,
-                Ok(None) => return,
-                Err(err) => {
-                    error.set(Some(err));
-                    message.set(None);
-                    return;
-                }
+                message,
+                error,
+            ) else {
+                return;
             };
-            message.set(None);
-            error.set(None);
             attendance_action.dispatch(payload);
         }
     };
 
     let on_force_end = {
         move |_| {
-            let id = match prepare_force_break_submission(
+            let Some(id) = resolve_force_break_dispatch_id(
                 system_admin_allowed.get_untracked(),
                 &break_force_id.get(),
-            ) {
-                Ok(Some(id)) => id,
-                Ok(None) => return,
-                Err(err) => {
-                    error.set(Some(err));
-                    message.set(None);
-                    return;
-                }
+                message,
+                error,
+            ) else {
+                return;
             };
-            error.set(None);
-            message.set(None);
             force_break_action.dispatch(id);
         }
     };
@@ -264,8 +363,8 @@ pub fn AdminAttendanceToolsSection(
                         label=Some("対象日")
                         value=att_date
                     />
-                    <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| att_in.set(event_target_value(&ev)) />
-                    <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| att_out.set(event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_in, event_target_value(&ev)) />
+                    <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_out, event_target_value(&ev)) />
                     <div>
                         <div class="flex items-center justify-between mb-1">
                             <span class="text-sm text-fg-muted">{"休憩（任意）"}</span>
@@ -286,15 +385,13 @@ pub fn AdminAttendanceToolsSection(
                                 let on_start = {
                                     let breaks = breaks;
                                     move |ev| {
-                                        let value = event_target_value(&ev);
-                                        breaks.update(|list| update_break_start(list, idx, value));
+                                        update_break_start_signal(breaks, idx, event_target_value(&ev));
                                     }
                                 };
                                 let on_end = {
                                     let breaks = breaks;
                                     move |ev| {
-                                        let value = event_target_value(&ev);
-                                        breaks.update(|list| update_break_end(list, idx, value));
+                                        update_break_end_signal(breaks, idx, event_target_value(&ev));
                                     }
                                 };
                                 view! {
@@ -311,7 +408,7 @@ pub fn AdminAttendanceToolsSection(
                         class="w-full bg-action-primary-bg text-action-primary-text rounded py-2 disabled:opacity-50"
                         disabled={move || attendance_pending.get()}
                     >
-                        {move || if attendance_pending.get() { "登録中..." } else { "勤怠を登録" }}
+                        {move || attendance_submit_label(attendance_pending.get())}
                     </button>
                 </form>
                 <div class="mt-4">
@@ -320,14 +417,14 @@ pub fn AdminAttendanceToolsSection(
                         <input
                             placeholder="Break ID"
                             class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full"
-                            on:input=move |ev| break_force_id.set(event_target_value(&ev))
+                            on:input=move |ev| set_input_signal(break_force_id, event_target_value(&ev))
                         />
                         <button
                             class="px-3 py-1 bg-action-danger-bg text-action-danger-text rounded disabled:opacity-50"
                             disabled={move || force_pending.get()}
                             on:click=on_force_end
                         >
-                            {move || if force_pending.get() { "終了中..." } else { "強制終了" }}
+                            {move || force_break_button_label(force_pending.get())}
                         </button>
                     </div>
                 </div>
@@ -345,8 +442,9 @@ pub fn AdminAttendanceToolsSection(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::api::test_support::mock::*;
     use crate::api::ApiClient;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::{render_to_string, with_local_runtime_async, with_runtime};
 
     #[test]
     fn parse_dt_local_accepts_minute_precision() {
@@ -533,6 +631,192 @@ mod host_tests {
 
         let force_err = prepare_force_break_submission(true, "   ");
         assert!(force_err.is_err());
+    }
+
+    #[test]
+    fn helper_signal_and_label_logic_cover_paths() {
+        with_runtime(|| {
+            let breaks_signal = create_rw_signal(Vec::<(String, String)>::new());
+            add_break_row_signal(breaks_signal);
+            assert_eq!(breaks_signal.get().len(), 1);
+
+            update_break_start_signal(breaks_signal, 0, "2025-01-01T12:00".to_string());
+            update_break_end_signal(breaks_signal, 0, "2025-01-01T12:30".to_string());
+            assert_eq!(
+                break_start_value(&breaks_signal.get(), 0),
+                "2025-01-01T12:00"
+            );
+            assert_eq!(break_end_value(&breaks_signal.get(), 0), "2025-01-01T12:30");
+
+            update_break_start_signal(breaks_signal, 99, "ignored".to_string());
+            update_break_end_signal(breaks_signal, 99, "ignored".to_string());
+            assert_eq!(breaks_signal.get().len(), 1);
+
+            let text_signal = create_rw_signal(String::new());
+            set_input_signal(text_signal, "updated".to_string());
+            assert_eq!(text_signal.get(), "updated");
+
+            assert_eq!(attendance_submit_label(true), "登録中...");
+            assert_eq!(attendance_submit_label(false), "勤怠を登録");
+            assert_eq!(force_break_button_label(true), "終了中...");
+            assert_eq!(force_break_button_label(false), "強制終了");
+        });
+    }
+
+    #[test]
+    fn helper_resolve_dispatch_payload_paths_cover_permission_and_validation() {
+        with_runtime(|| {
+            let message = create_rw_signal(Some("old".to_string()));
+            let error = create_rw_signal(None::<ApiError>);
+
+            let blocked = resolve_attendance_dispatch_payload(
+                false,
+                "u1",
+                "2025-01-01",
+                "2025-01-01T09:00",
+                "",
+                vec![],
+                message,
+                error,
+            );
+            assert!(blocked.is_none());
+            assert_eq!(message.get().as_deref(), Some("old"));
+            assert!(error.get().is_none());
+
+            let invalid = resolve_attendance_dispatch_payload(
+                true,
+                "",
+                "2025-01-01",
+                "2025-01-01T09:00",
+                "",
+                vec![],
+                message,
+                error,
+            );
+            assert!(invalid.is_none());
+            assert_eq!(message.get(), None);
+            assert_eq!(
+                error.get().as_ref().expect("validation").code,
+                "VALIDATION_ERROR"
+            );
+
+            message.set(Some("to-clear".to_string()));
+            error.set(Some(ApiError::unknown("to-clear")));
+            let valid = resolve_attendance_dispatch_payload(
+                true,
+                "u1",
+                "2025-01-01",
+                "2025-01-01T09:00",
+                "",
+                vec![],
+                message,
+                error,
+            )
+            .expect("payload");
+            assert_eq!(valid.user_id, "u1");
+            assert!(message.get().is_none());
+            assert!(error.get().is_none());
+
+            message.set(Some("old-break".to_string()));
+            let blocked_break = resolve_force_break_dispatch_id(false, "br-1", message, error);
+            assert!(blocked_break.is_none());
+            assert_eq!(message.get().as_deref(), Some("old-break"));
+
+            let invalid_break = resolve_force_break_dispatch_id(true, "   ", message, error);
+            assert!(invalid_break.is_none());
+            assert_eq!(message.get(), None);
+            assert_eq!(
+                error.get().as_ref().expect("validation").code,
+                "VALIDATION_ERROR"
+            );
+
+            message.set(Some("to-clear".to_string()));
+            error.set(Some(ApiError::unknown("to-clear")));
+            let valid_break =
+                resolve_force_break_dispatch_id(true, "  br-1 ", message, error).expect("id");
+            assert_eq!(valid_break, "br-1");
+            assert!(message.get().is_none());
+            assert!(error.get().is_none());
+        });
+    }
+
+    #[test]
+    fn helper_apply_action_result_updates_message_and_error_signals() {
+        with_runtime(|| {
+            let message = create_rw_signal(None::<String>);
+            let error = create_rw_signal(None::<ApiError>);
+
+            apply_attendance_action_result(Ok(()), message, error);
+            assert_eq!(message.get().as_deref(), Some("勤怠データを登録しました。"));
+            assert!(error.get().is_none());
+
+            apply_attendance_action_result(Err(ApiError::unknown("upsert failed")), message, error);
+            assert!(message.get().is_none());
+            assert_eq!(error.get().as_ref().expect("error").error, "upsert failed");
+
+            apply_force_break_action_result(Ok(()), message, error);
+            assert_eq!(message.get().as_deref(), Some("休憩を強制終了しました。"));
+            assert!(error.get().is_none());
+
+            apply_force_break_action_result(Err(ApiError::unknown("force failed")), message, error);
+            assert!(message.get().is_none());
+            assert_eq!(error.get().as_ref().expect("error").error, "force failed");
+        });
+    }
+
+    #[test]
+    fn helper_repo_async_wrappers_cover_success_and_error() {
+        with_local_runtime_async(|| async {
+            let server = MockServer::start_async().await;
+            server.mock(|when, then| {
+                when.method(PUT).path("/api/admin/attendance");
+                then.status(200).json_body(serde_json::json!({
+                    "id": "att-1",
+                    "user_id": "u1",
+                    "date": "2025-01-02",
+                    "clock_in_time": "2025-01-02T09:00:00",
+                    "clock_out_time": null,
+                    "status": "clocked_in",
+                    "total_work_hours": null,
+                    "break_records": []
+                }));
+            });
+            server.mock(|when, then| {
+                when.method(PUT).path("/api/admin/breaks/br-1/force-end");
+                then.status(200).json_body(serde_json::json!({
+                    "id": "br-1",
+                    "attendance_id": "att-1",
+                    "break_start_time": "2025-01-02T12:00:00",
+                    "break_end_time": null,
+                    "duration_minutes": null
+                }));
+            });
+
+            let repo = AdminRepository::new_with_client(std::rc::Rc::new(
+                ApiClient::new_with_base_url(&server.url("/api")),
+            ));
+            let payload = AdminAttendanceUpsert {
+                user_id: "u1".to_string(),
+                date: NaiveDate::from_ymd_opt(2025, 1, 2).expect("valid date"),
+                clock_in_time: NaiveDateTime::parse_from_str(
+                    "2025-01-02T09:00:00",
+                    "%Y-%m-%dT%H:%M:%S",
+                )
+                .expect("valid datetime"),
+                clock_out_time: None,
+                breaks: None,
+            };
+
+            assert!(upsert_attendance_with_repo(repo.clone(), payload)
+                .await
+                .is_ok());
+            assert!(force_end_break_with_repo(repo.clone(), "br-1".to_string())
+                .await
+                .is_ok());
+            assert!(force_end_break_with_repo(repo, "br-missing".to_string())
+                .await
+                .is_err());
+        });
     }
 
     #[test]
