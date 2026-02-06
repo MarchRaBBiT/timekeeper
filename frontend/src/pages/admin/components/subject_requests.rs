@@ -86,6 +86,128 @@ fn open_modal_state(
     action_error.set(None);
 }
 
+fn apply_action_result_state(
+    result: Result<(), ApiError>,
+    modal_open: RwSignal<bool>,
+    modal_request: RwSignal<Option<DataSubjectRequestResponse>>,
+    modal_comment: RwSignal<String>,
+    action_error: RwSignal<Option<ApiError>>,
+    reload: RwSignal<u32>,
+) {
+    let (should_close_modal, next_action_error, should_reload) = subject_action_feedback(result);
+    action_error.set(next_action_error);
+    if should_close_modal {
+        modal_open.set(false);
+        modal_request.set(None);
+        modal_comment.set(String::new());
+    }
+    if should_reload {
+        bump_reload(reload);
+    }
+}
+
+fn apply_status_change_and_reload(
+    filter: &SubjectRequestFilterState,
+    reload: RwSignal<u32>,
+    value: String,
+) {
+    apply_status_filter_change(filter, value);
+    bump_reload(reload);
+}
+
+fn apply_type_change_and_reload(
+    filter: &SubjectRequestFilterState,
+    reload: RwSignal<u32>,
+    value: String,
+) {
+    apply_type_filter_change(filter, value);
+    bump_reload(reload);
+}
+
+fn perform_search_and_reload(filter: &SubjectRequestFilterState, reload: RwSignal<u32>) {
+    reset_page_and_reload(filter, reload);
+}
+
+fn resolve_subject_action_payload(
+    modal_request: Option<DataSubjectRequestResponse>,
+    comment: &str,
+    approve: bool,
+    action_error: RwSignal<Option<ApiError>>,
+) -> Option<SubjectRequestActionPayload> {
+    match build_subject_action_payload(modal_request, comment, approve) {
+        Ok(payload) => Some(payload),
+        Err(err) => {
+            action_error.set(Some(err));
+            None
+        }
+    }
+}
+
+fn subject_request_error_message(error: Option<ApiError>) -> String {
+    error.map(|err| err.to_string()).unwrap_or_default()
+}
+
+fn modal_error_message(action_error: Option<ApiError>) -> String {
+    subject_request_error_message(action_error)
+}
+
+fn close_modal(modal_open: RwSignal<bool>) {
+    modal_open.set(false);
+}
+
+fn update_modal_comment(modal_comment: RwSignal<String>, value: String) {
+    modal_comment.set(value);
+}
+
+fn modal_action_disabled_for_request(
+    action_pending: bool,
+    request: Option<&DataSubjectRequestResponse>,
+) -> bool {
+    is_modal_action_disabled(action_pending, is_pending_request(request))
+}
+
+fn render_subject_request_rows(
+    payload: Option<SubjectRequestListResponse>,
+    open_modal: Callback<DataSubjectRequestResponse>,
+) -> Vec<View> {
+    payload
+        .map(|payload| {
+            payload
+                .items
+                .into_iter()
+                .map(|item| {
+                    let status_label = item.status.clone();
+                    let created_label = format_datetime(item.created_at);
+                    let type_label = type_label(&item.request_type);
+                    let id = item.id.clone();
+                    let open = {
+                        let item = item.clone();
+                        let open_modal = open_modal.clone();
+                        move |_| open_modal.call(item.clone())
+                    };
+                    view! {
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{type_label}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{item.user_id}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-neutral-bg text-status-neutral-text">
+                                    {status_label}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{created_label}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                <button class="text-link hover:text-link-hover" on:click=open>{"詳細"}</button>
+                                <span class="sr-only">{id}</span>
+                            </td>
+                        </tr>
+                    }
+                    .into_view()
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
 #[component]
 pub fn AdminSubjectRequestsSection(
     users: UsersResource,
@@ -107,7 +229,6 @@ pub fn AdminSubjectRequestsSection(
     let modal_comment = create_rw_signal(String::new());
 
     let modal_detail = Signal::derive(move || modal_detail_json(modal_request.get().as_ref()));
-    let modal_pending = Signal::derive(move || is_pending_request(modal_request.get().as_ref()));
 
     let loading = resource.loading();
     let data = Signal::derive(move || resource.get().and_then(|result| result.ok()));
@@ -117,34 +238,27 @@ pub fn AdminSubjectRequestsSection(
 
     create_effect(move |_| {
         if let Some(result) = action.value().get() {
-            let (should_close_modal, next_action_error, should_reload) =
-                subject_action_feedback(result);
-            action_error.set(next_action_error);
-            if should_close_modal {
-                modal_open.set(false);
-                modal_request.set(None);
-                modal_comment.set(String::new());
-            }
-            if should_reload {
-                bump_reload(reload);
-            }
+            apply_action_result_state(
+                result,
+                modal_open,
+                modal_request,
+                modal_comment,
+                action_error,
+                reload,
+            );
         }
     });
 
-    let trigger_reload = move || bump_reload(reload);
-
     let on_status_change = move |value: String| {
-        apply_status_filter_change(&filter, value);
-        trigger_reload();
+        apply_status_change_and_reload(&filter, reload, value);
     };
 
     let on_type_change = move |value: String| {
-        apply_type_filter_change(&filter, value);
-        trigger_reload();
+        apply_type_change_and_reload(&filter, reload, value);
     };
 
     let on_search = move |_| {
-        reset_page_and_reload(&filter, reload);
+        perform_search_and_reload(&filter, reload);
     };
 
     let open_modal = Callback::new(move |request: DataSubjectRequestResponse| {
@@ -158,16 +272,13 @@ pub fn AdminSubjectRequestsSection(
     });
 
     let on_action = move |approve: bool| {
-        let payload = match build_subject_action_payload(
+        let Some(payload) = resolve_subject_action_payload(
             modal_request.get(),
             &modal_comment.get(),
             approve,
-        ) {
-            Ok(payload) => payload,
-            Err(err) => {
-                action_error.set(Some(err));
-                return;
-            }
+            action_error,
+        ) else {
+            return;
         };
         action.dispatch(payload);
     };
@@ -218,7 +329,7 @@ pub fn AdminSubjectRequestsSection(
                 </button>
             </div>
             <Show when=move || error.get().is_some()>
-                <ErrorMessage message={error.get().map(|err| err.to_string()).unwrap_or_default()} />
+                <ErrorMessage message={subject_request_error_message(error.get())} />
             </Show>
             <Show when=move || loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
@@ -239,43 +350,7 @@ pub fn AdminSubjectRequestsSection(
                     </thead>
                     <tbody class="bg-surface-elevated divide-y divide-border">
                         <Show when=move || data.get().is_some()>
-                            {move || {
-                                data.get()
-                                    .map(|payload| {
-                                        payload
-                                            .items
-                                            .into_iter()
-                                            .map(|item| {
-                                                let status_label = item.status.clone();
-                                                let created_label = format_datetime(item.created_at);
-                                                let type_label = type_label(&item.request_type);
-                                                let id = item.id.clone();
-                                                let open = {
-                                                    let item = item.clone();
-                                                    let open_modal = open_modal.clone();
-                                                    move |_| open_modal.call(item.clone())
-                                                };
-                                                view! {
-                                                    <tr>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{type_label}</td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{item.user_id}</td>
-                                                        <td class="px-6 py-4 whitespace-nowrap">
-                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-neutral-bg text-status-neutral-text">
-                                                                {status_label}
-                                                            </span>
-                                                        </td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{created_label}</td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                                            <button class="text-link hover:text-link-hover" on:click=open>{"詳細"}</button>
-                                                            <span class="sr-only">{id}</span>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            })
-                                            .collect::<Vec<_>>()
-                                    })
-                                    .unwrap_or_default()
-                            }}
+                            {move || render_subject_request_rows(data.get(), open_modal.clone())}
                         </Show>
                     </tbody>
                 </table>
@@ -289,23 +364,30 @@ pub fn AdminSubjectRequestsSection(
                             <label class="block text-sm font-medium text-fg-muted">{"コメント"}</label>
                             <textarea
                                 class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
-                                on:input=move |ev| modal_comment.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    update_modal_comment(modal_comment, event_target_value(&ev))
+                                }
                             ></textarea>
                         </div>
                         <Show when=move || action_error.get().is_some()>
                             <ErrorMessage
-                                message={action_error
-                                    .get()
-                                    .map(|err| err.to_string())
-                                    .unwrap_or_default()}
+                                message={modal_error_message(action_error.get())}
                             />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
-                            <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
+                            <button
+                                class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover"
+                                on:click=move |_| close_modal(modal_open)
+                            >
+                                {"閉じる"}
+                            </button>
                             <button
                                 class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                 disabled={move || {
-                                    is_modal_action_disabled(action_pending.get(), modal_pending.get())
+                                    modal_action_disabled_for_request(
+                                        action_pending.get(),
+                                        modal_request.get().as_ref(),
+                                    )
                                 }}
                                 on:click=move |_| on_action(false)
                             >
@@ -314,7 +396,10 @@ pub fn AdminSubjectRequestsSection(
                             <button
                                 class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                                 disabled={move || {
-                                    is_modal_action_disabled(action_pending.get(), modal_pending.get())
+                                    modal_action_disabled_for_request(
+                                        action_pending.get(),
+                                        modal_request.get().as_ref(),
+                                    )
                                 }}
                                 on:click=move |_| on_action(true)
                             >
@@ -356,20 +441,24 @@ mod host_tests {
         render_to_string(move || {
             let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             let filter = SubjectRequestFilterState::new();
+            let total = items.len() as i64;
             let resource = Resource::new(
                 move || (true, filter.snapshot(), 0u32),
-                move |_| {
-                    let items = items.clone();
-                    async move {
-                        Ok(SubjectRequestListResponse {
-                            page: 1,
-                            per_page: 20,
-                            total: items.len() as i64,
-                            items,
-                        })
-                    }
+                |_| async move {
+                    Ok(SubjectRequestListResponse {
+                        page: 1,
+                        per_page: 20,
+                        total: 0,
+                        items: Vec::new(),
+                    })
                 },
             );
+            resource.set(Ok(SubjectRequestListResponse {
+                page: 1,
+                per_page: 20,
+                total,
+                items,
+            }));
             let action = create_action(|_: &SubjectRequestActionPayload| async move { Ok(()) });
             let action_error = create_rw_signal(None::<ApiError>);
             let reload = create_rw_signal(0u32);
@@ -541,6 +630,148 @@ mod host_tests {
             assert!(modal_request.get().is_some());
             assert_eq!(modal_comment.get(), "");
             assert!(action_error.get().is_none());
+        });
+    }
+
+    #[test]
+    fn helper_action_state_and_payload_resolution_cover_paths() {
+        with_runtime(|| {
+            let modal_open = create_rw_signal(true);
+            let modal_request = create_rw_signal(Some(sample_request()));
+            let modal_comment = create_rw_signal("memo".to_string());
+            let action_error = create_rw_signal(None::<ApiError>);
+            let reload = create_rw_signal(0u32);
+
+            apply_action_result_state(
+                Ok(()),
+                modal_open,
+                modal_request,
+                modal_comment,
+                action_error,
+                reload,
+            );
+            assert!(!modal_open.get());
+            assert!(modal_request.get().is_none());
+            assert_eq!(modal_comment.get(), "");
+            assert!(action_error.get().is_none());
+            assert_eq!(reload.get(), 1);
+
+            modal_open.set(true);
+            modal_request.set(Some(sample_request()));
+            modal_comment.set("memo".to_string());
+            apply_action_result_state(
+                Err(ApiError::unknown("dispatch failed")),
+                modal_open,
+                modal_request,
+                modal_comment,
+                action_error,
+                reload,
+            );
+            assert!(modal_open.get());
+            assert!(modal_request.get().is_some());
+            assert_eq!(modal_comment.get(), "memo");
+            assert_eq!(
+                action_error.get().as_ref().expect("error").error,
+                "dispatch failed"
+            );
+            assert_eq!(reload.get(), 1);
+
+            let payload = resolve_subject_action_payload(
+                Some(sample_request()),
+                "approved",
+                true,
+                action_error,
+            )
+            .expect("payload");
+            assert_eq!(payload.id, "sr-1");
+            assert_eq!(payload.comment, "approved");
+            assert!(payload.approve);
+
+            let invalid =
+                resolve_subject_action_payload(Some(sample_request()), "   ", false, action_error);
+            assert!(invalid.is_none());
+            assert_eq!(
+                action_error.get().as_ref().expect("validation").code,
+                "VALIDATION_ERROR"
+            );
+        });
+    }
+
+    #[test]
+    fn helper_filter_reload_render_and_modal_helpers_cover_paths() {
+        with_runtime(|| {
+            let filter = SubjectRequestFilterState::new();
+            let reload = create_rw_signal(0u32);
+            apply_status_change_and_reload(&filter, reload, "pending".to_string());
+            assert_eq!(filter.status_signal().get(), "pending");
+            assert_eq!(reload.get(), 1);
+
+            apply_type_change_and_reload(&filter, reload, "delete".to_string());
+            assert_eq!(filter.request_type_signal().get(), "delete");
+            assert_eq!(reload.get(), 2);
+
+            perform_search_and_reload(&filter, reload);
+            assert_eq!(reload.get(), 3);
+            assert_eq!(filter.snapshot().page, 1);
+
+            let rows = render_subject_request_rows(
+                Some(SubjectRequestListResponse {
+                    page: 1,
+                    per_page: 20,
+                    total: 1,
+                    items: vec![sample_request()],
+                }),
+                Callback::new(|_: DataSubjectRequestResponse| {}),
+            );
+            assert_eq!(rows.len(), 1);
+            let html = rows[0].clone().render_to_string().to_string();
+            assert!(html.contains("開示"));
+            assert!(html.contains("u1"));
+            assert!(html.contains("pending"));
+            assert!(html.contains("sr-1"));
+            assert!(render_subject_request_rows(
+                None,
+                Callback::new(|_: DataSubjectRequestResponse| {})
+            )
+            .is_empty());
+
+            assert_eq!(subject_request_error_message(None), "");
+            assert_eq!(modal_error_message(None), "");
+            assert_eq!(
+                subject_request_error_message(Some(ApiError::unknown("err"))),
+                "err"
+            );
+            assert_eq!(
+                modal_error_message(Some(ApiError::unknown("modal err"))),
+                "modal err"
+            );
+
+            let modal_comment = create_rw_signal(String::new());
+            update_modal_comment(modal_comment, "note".to_string());
+            assert_eq!(modal_comment.get(), "note");
+
+            let modal_open = create_rw_signal(true);
+            close_modal(modal_open);
+            assert!(!modal_open.get());
+
+            let pending_request = sample_request();
+            let approved_request = DataSubjectRequestResponse {
+                status: "approved".to_string(),
+                ..pending_request.clone()
+            };
+            assert!(modal_action_disabled_for_request(
+                true,
+                Some(&pending_request)
+            ));
+            assert!(!modal_action_disabled_for_request(
+                false,
+                Some(&pending_request)
+            ));
+            assert!(modal_action_disabled_for_request(
+                false,
+                Some(&approved_request)
+            ));
+            assert!(modal_action_disabled_for_request(false, None));
         });
     }
 }
