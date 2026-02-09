@@ -53,3 +53,53 @@ fn Metric(label: String, value: String) -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::pages::dashboard::repository::DashboardSummary;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn summary_section_renders_metrics() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || (),
+                |_| async move {
+                    Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
+                        total_work_hours: Some(160.0),
+                        total_work_days: Some(20),
+                        average_daily_hours: Some(8.0),
+                    })
+                },
+            );
+            resource.set(Ok(DashboardSummary {
+                total_work_hours: Some(160.0),
+                total_work_days: Some(20),
+                average_daily_hours: Some(8.0),
+            }));
+            view! { <SummarySection summary=resource /> }
+        });
+        assert!(html.contains("勤務サマリー"));
+        assert!(html.contains("総労働時間"));
+    }
+
+    #[test]
+    fn summary_section_renders_error() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || (),
+                |_| async move {
+                    Ok::<DashboardSummary, crate::api::ApiError>(DashboardSummary {
+                        total_work_hours: None,
+                        total_work_days: None,
+                        average_daily_hours: None,
+                    })
+                },
+            );
+            resource.set(Err(crate::api::ApiError::unknown("summary failed")));
+            view! { <SummarySection summary=resource /> }
+        });
+        assert!(html.contains("summary failed"));
+    }
+}

@@ -140,3 +140,55 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+
+    fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
+        let runtime = create_runtime();
+        let result = test();
+        runtime.dispose();
+        result
+    }
+
+    #[test]
+    fn invite_form_state_validation_on_host() {
+        with_runtime(|| {
+            let state = InviteFormState::default();
+            assert!(!state.is_valid());
+
+            state.username.set("admin".into());
+            state.full_name.set("System 管理者".into());
+            state.email.set("admin@example.com".into());
+            state.password.set("Password123!".into());
+
+            assert!(state.is_valid());
+
+            let request = state.to_request();
+            assert_eq!(request.username, "admin");
+            assert_eq!(request.full_name, "System 管理者");
+            assert_eq!(request.email, "admin@example.com");
+            assert_eq!(request.role, "employee");
+            assert!(!request.is_system_admin);
+        });
+    }
+
+    #[test]
+    fn message_state_resets_flags_on_host() {
+        with_runtime(|| {
+            let state = MessageState::default();
+            state.set_error(crate::api::ApiError::validation("NG"));
+            assert!(state.error.get().is_some());
+            assert!(state.success.get().is_none());
+
+            state.set_success("OK");
+            assert!(state.success.get().is_some());
+            assert!(state.error.get().is_none());
+
+            state.clear();
+            assert!(state.success.get().is_none());
+            assert!(state.error.get().is_none());
+        });
+    }
+}

@@ -1,15 +1,14 @@
 #![allow(dead_code)]
-use chrono::{Datelike, Duration as ChronoDuration, NaiveDate};
+use chrono::{Datelike, Duration as ChronoDuration, NaiveDate, NaiveDateTime};
 use chrono_tz::Asia::Tokyo;
 use ctor::{ctor, dtor};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{
-    env,
-    fs,
+    env, fs,
+    net::TcpListener,
     path::Path,
     path::PathBuf,
     process::Command,
-    net::TcpListener,
     sync::{Mutex, OnceLock},
     time::Duration as StdDuration,
 };
@@ -22,13 +21,15 @@ use timekeeper_backend::{
         leave_request::{LeaveRequest, LeaveType},
         overtime_request::OvertimeRequest,
     },
+    state::AppState,
     types::{HolidayExceptionId, UserId, WeeklyHolidayId},
     utils::{cookies::SameSite, password::hash_password},
 };
 use uuid::Uuid;
 
 static TESTCONTAINERS_DOCKER: OnceLock<&'static Cli> = OnceLock::new();
-static TESTCONTAINERS_PG: OnceLock<Mutex<Option<Container<'static, GenericImage>>>> = OnceLock::new();
+static TESTCONTAINERS_PG: OnceLock<Mutex<Option<Container<'static, GenericImage>>>> =
+    OnceLock::new();
 static TESTCONTAINERS_DB_URL: OnceLock<String> = OnceLock::new();
 static DOCKER_WRAPPER_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -53,8 +54,7 @@ fn env_guard() -> std::sync::MutexGuard<'static, ()> {
 fn start_testcontainer_postgres() -> String {
     let url = TESTCONTAINERS_DB_URL.get().cloned().unwrap_or_else(|| {
         ensure_docker_cli();
-        let docker = TESTCONTAINERS_DOCKER
-            .get_or_init(|| Box::leak(Box::new(Cli::default())));
+        let docker = TESTCONTAINERS_DOCKER.get_or_init(|| Box::leak(Box::new(Cli::default())));
         let image_ref = env::var("TESTCONTAINERS_POSTGRES_IMAGE")
             .unwrap_or_else(|_| "postgres:15-alpine".to_string());
         let (image_name, image_tag) = image_ref
@@ -95,14 +95,6 @@ fn shutdown_testcontainer_postgres() {
             let _ = guard.take();
         }
     }
-}
-
-fn allocate_ephemeral_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind ephemeral port")
-        .local_addr()
-        .expect("read socket addr")
-        .port()
 }
 
 fn ensure_docker_cli() {
@@ -195,16 +187,37 @@ pub fn test_config() -> Config {
 pub async fn test_pool() -> PgPool {
     let database_url = test_database_url();
     let mut retry_count = 0;
-    let max_retries = 3;
+    let max_retries = 10;
 
     loop {
         match PgPoolOptions::new()
-            .max_connections(5)
+            .max_connections(1)
+            .min_connections(1)
+            .test_before_acquire(true)
             .acquire_timeout(StdDuration::from_secs(30))
             .connect(&database_url)
             .await
         {
-            Ok(pool) => return pool,
+            Ok(pool) => {
+                let mut readiness_retries = 0;
+                loop {
+                    match sqlx::query("SELECT 1").execute(&pool).await {
+                        Ok(_) => return pool,
+                        Err(e) if readiness_retries < max_retries => {
+                            readiness_retries += 1;
+                            eprintln!(
+                                "Retrying DB readiness check (attempt {}/{}): {}",
+                                readiness_retries, max_retries, e
+                            );
+                            tokio::time::sleep(StdDuration::from_secs(2)).await;
+                        }
+                        Err(e) => panic!(
+                            "Failed readiness check after {} retries: {}",
+                            max_retries, e
+                        ),
+                    }
+                }
+            }
             Err(e) if retry_count < max_retries => {
                 retry_count += 1;
                 eprintln!(
@@ -226,6 +239,14 @@ fn test_database_url() -> String {
     env::var("TEST_DATABASE_URL")
         .or_else(|_| env::var("DATABASE_URL"))
         .unwrap_or_else(|_| start_testcontainer_postgres())
+}
+
+fn allocate_ephemeral_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .expect("bind ephemeral port")
+        .local_addr()
+        .expect("read socket addr")
+        .port()
 }
 
 async fn insert_user_with_password_hash(
@@ -433,6 +454,290 @@ pub async fn seed_holiday_exception(
     .execute(pool)
     .await
     .expect("insert holiday exception");
+}
+
+pub async fn seed_attendance(
+    pool: &PgPool,
+    user_id: UserId,
+    date: NaiveDate,
+    clock_in: Option<NaiveDateTime>,
+    clock_out: Option<NaiveDateTime>,
+) -> timekeeper_backend::models::attendance::Attendance {
+    use chrono::Utc;
+    use timekeeper_backend::models::attendance::{Attendance, AttendanceStatus};
+    use timekeeper_backend::repositories::attendance::AttendanceRepository;
+    use timekeeper_backend::repositories::attendance::AttendanceRepositoryTrait;
+
+    let now = Utc::now();
+    let attendance = Attendance {
+        id: timekeeper_backend::types::AttendanceId::new(),
+        user_id,
+        date,
+        clock_in_time: clock_in,
+        clock_out_time: clock_out,
+        status: AttendanceStatus::Present,
+        total_work_hours: None,
+        created_at: now,
+        updated_at: now,
+    };
+
+    let repo = AttendanceRepository::new();
+    repo.create(pool, &attendance)
+        .await
+        .expect("create attendance")
+}
+
+pub async fn seed_break_record(
+    pool: &PgPool,
+    attendance_id: timekeeper_backend::types::AttendanceId,
+    start_time: NaiveDateTime,
+    end_time: Option<NaiveDateTime>,
+) -> timekeeper_backend::models::break_record::BreakRecord {
+    use chrono::Utc;
+    use timekeeper_backend::models::break_record::BreakRecord;
+    use timekeeper_backend::repositories::break_record::BreakRecordRepository;
+    use timekeeper_backend::repositories::repository::Repository;
+
+    let now = Utc::now();
+    let duration_minutes = end_time.map(|end| (end - start_time).num_minutes() as i32);
+    let break_record = BreakRecord {
+        id: timekeeper_backend::types::BreakRecordId::new(),
+        attendance_id,
+        break_start_time: start_time,
+        break_end_time: end_time,
+        duration_minutes,
+        created_at: now,
+        updated_at: now,
+    };
+
+    let repo = BreakRecordRepository::new();
+    repo.create(pool, &break_record)
+        .await
+        .expect("create break record")
+}
+
+pub async fn seed_audit_log(pool: &PgPool, user_id: UserId, action: &str, resource: &str) {
+    use sqlx::types::Json;
+
+    let id = timekeeper_backend::types::AuditLogId::new();
+    let now = chrono::Utc::now();
+    let metadata = Json(serde_json::json!({"test": true}));
+    sqlx::query(
+        "INSERT INTO audit_logs \
+            (id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result, error_code, metadata, ip, user_agent, request_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+    )
+    .bind(id.to_string())
+    .bind(now)
+    .bind(Some(user_id))
+    .bind("user")
+    .bind(action)
+    .bind(Some(resource.to_string()))
+    .bind(Some("test-resource-id".to_string()))
+    .bind("success")
+    .bind(None::<String>)
+    .bind(metadata)
+    .bind(Some("127.0.0.1".to_string()))
+    .bind(Some("test-agent".to_string()))
+    .bind(Some("req-test".to_string()))
+    .execute(pool)
+    .await
+    .expect("insert audit log");
+}
+
+pub async fn seed_consent_log(pool: &PgPool, user_id: UserId, purpose: &str, policy_version: &str) {
+    use chrono::Utc;
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    sqlx::query(
+        "INSERT INTO consent_logs \
+            (id, user_id, purpose, policy_version, consented_at, ip, user_agent, request_id, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(&id)
+    .bind(user_id.to_string())
+    .bind(purpose)
+    .bind(policy_version)
+    .bind(now)
+    .bind(Some("127.0.0.1".to_string()))
+    .bind(Some("test-agent".to_string()))
+    .bind(None::<String>)
+    .bind(now)
+    .execute(pool)
+    .await
+    .expect("insert consent log");
+}
+
+pub async fn seed_active_session(
+    pool: &PgPool,
+    user_id: UserId,
+    refresh_token_id: &str,
+    access_jti: Option<&str>,
+) -> String {
+    use chrono::{Duration, Utc};
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let refresh_expires_at = now + Duration::days(7);
+    let expires_at = Utc::now() + Duration::hours(1);
+
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(refresh_token_id)
+    .bind(user_id.to_string())
+    .bind("test-refresh-token-hash")
+    .bind(refresh_expires_at)
+    .bind(now)
+    .execute(pool)
+    .await
+    .expect("insert refresh token");
+
+    sqlx::query(
+        "INSERT INTO active_sessions \
+            (id, user_id, refresh_token_id, access_jti, device_label, created_at, last_seen_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)",
+    )
+    .bind(&id)
+    .bind(user_id.to_string())
+    .bind(refresh_token_id)
+    .bind(access_jti)
+    .bind(Some("test-device".to_string()))
+    .bind(None::<chrono::DateTime<chrono::Utc>>)
+    .bind(expires_at)
+    .execute(pool)
+    .await
+    .expect("insert active session");
+
+    id
+}
+
+pub async fn seed_subject_request(
+    pool: &PgPool,
+    user_id: UserId,
+    request_type: &str,
+    status: &str,
+) -> timekeeper_backend::models::subject_request::DataSubjectRequest {
+    use chrono::Utc;
+    use timekeeper_backend::models::request::RequestStatus;
+    use timekeeper_backend::models::subject_request::{DataSubjectRequest, DataSubjectRequestType};
+    use timekeeper_backend::repositories::subject_request::insert_subject_request;
+
+    let now = Utc::now();
+    let request_type = match request_type {
+        "access" => DataSubjectRequestType::Access,
+        "rectify" => DataSubjectRequestType::Rectify,
+        "delete" => DataSubjectRequestType::Delete,
+        "stop" => DataSubjectRequestType::Stop,
+        other => panic!("invalid request type: {other}"),
+    };
+    let status = match status {
+        "pending" => RequestStatus::Pending,
+        "approved" => RequestStatus::Approved,
+        "rejected" => RequestStatus::Rejected,
+        "cancelled" => RequestStatus::Cancelled,
+        other => panic!("invalid status: {other}"),
+    };
+    let mut request = DataSubjectRequest::new(
+        user_id.to_string(),
+        request_type,
+        Some("Test subject request".to_string()),
+        now,
+    );
+    request.status = status;
+
+    insert_subject_request(pool, &request)
+        .await
+        .expect("create subject request");
+    request
+}
+
+use axum::{
+    body::Body,
+    extract::Request,
+    http::{header, StatusCode},
+    response::Response,
+    Extension, Router,
+};
+
+pub fn test_router_with_user<F>(
+    handler: F,
+    user: timekeeper_backend::models::user::User,
+    pool: PgPool,
+) -> Router<AppState>
+where
+    F: axum::handler::Handler<(), AppState>,
+{
+    let state = AppState::new(pool, None, None, None, test_config());
+    Router::new()
+        .route("/", axum::routing::any(handler))
+        .layer(Extension(user))
+        .with_state(state)
+}
+
+pub fn create_test_token(user_id: UserId, role: UserRole) -> String {
+    use timekeeper_backend::utils::jwt::create_access_token;
+
+    let username = "testuser".to_string();
+    let role_str = format!("{:?}", role);
+    let secret = test_config().jwt_secret;
+    let (token, _claims) = create_access_token(user_id.to_string(), username, role_str, &secret, 1)
+        .expect("create test token");
+
+    token
+}
+
+pub fn build_auth_request(
+    method: &str,
+    uri: &str,
+    token: &str,
+    body: Option<Body>,
+) -> Request<Body> {
+    let builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {}", token));
+
+    match body {
+        Some(b) => builder.body(b).expect("build request with body"),
+        None => builder.body(Body::empty()).expect("build request"),
+    }
+}
+
+pub fn build_json_request(
+    method: &str,
+    uri: &str,
+    token: &str,
+    json_body: serde_json::Value,
+) -> Request<Body> {
+    let body = Body::from(json_body.to_string());
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .expect("build json request")
+}
+
+pub async fn response_json(response: Response) -> serde_json::Value {
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read body bytes");
+    serde_json::from_slice(&body).expect("parse json")
+}
+
+pub fn assert_status(response: &Response, expected: StatusCode) {
+    assert_eq!(
+        response.status(),
+        expected,
+        "Expected status {:?}, got {:?}",
+        expected,
+        response.status()
+    );
 }
 
 #[cfg(test)]

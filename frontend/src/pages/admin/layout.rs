@@ -45,3 +45,52 @@ pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> 
         </Layout>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn unauthorized_message_renders_copy() {
+        let html = render_to_string(move || view! { <UnauthorizedMessage /> });
+        assert!(html.contains("このページは管理者以上の権限が必要です。"));
+    }
+
+    #[test]
+    fn admin_dashboard_frame_renders_header() {
+        let html = render_to_string(move || {
+            view! {
+                <AdminDashboardFrame>
+                    <div>{"child"}</div>
+                </AdminDashboardFrame>
+            }
+        });
+        assert!(html.contains("管理者ツール"));
+        assert!(html.contains("child"));
+    }
+
+    #[test]
+    fn admin_dashboard_scaffold_switches_content() {
+        let allowed_html = render_to_string(move || {
+            let allowed = create_memo(|_| true);
+            view! {
+                <AdminDashboardScaffold admin_allowed=allowed>
+                    <div>{"allowed"}</div>
+                </AdminDashboardScaffold>
+            }
+        });
+        assert!(allowed_html.contains("管理者ツール"));
+        assert!(allowed_html.contains("allowed"));
+
+        let denied_html = render_to_string(move || {
+            let allowed = create_memo(|_| false);
+            view! {
+                <AdminDashboardScaffold admin_allowed=allowed>
+                    <div>{"denied"}</div>
+                </AdminDashboardScaffold>
+            }
+        });
+        assert!(denied_html.contains("このページは管理者以上の権限が必要です。"));
+    }
+}

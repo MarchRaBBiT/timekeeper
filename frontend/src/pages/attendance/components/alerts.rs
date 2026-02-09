@@ -67,3 +67,79 @@ pub fn HolidayAlerts(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::{ApiError, HolidayCalendarEntry};
+    use crate::test_support::ssr::render_to_string;
+    use chrono::NaiveDate;
+
+    fn entry() -> HolidayCalendarEntry {
+        HolidayCalendarEntry {
+            date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            reason: "public holiday".into(),
+        }
+    }
+
+    #[test]
+    fn holiday_alerts_renders_empty_state() {
+        let html = render_to_string(move || {
+            let (entries, _) = create_signal(Vec::<HolidayCalendarEntry>::new());
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(None::<ApiError>);
+            let (period, _) = create_signal((2025, 1));
+            view! {
+                <HolidayAlerts
+                    holiday_entries=entries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    active_period=period.into()
+                    on_refresh=Callback::new(|_| {})
+                />
+            }
+        });
+        assert!(html.contains("登録された休日はありません。"));
+    }
+
+    #[test]
+    fn holiday_alerts_renders_list() {
+        let html = render_to_string(move || {
+            let (entries, _) = create_signal(vec![entry()]);
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(None::<ApiError>);
+            let (period, _) = create_signal((2025, 1));
+            view! {
+                <HolidayAlerts
+                    holiday_entries=entries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    active_period=period.into()
+                    on_refresh=Callback::new(|_| {})
+                />
+            }
+        });
+        assert!(html.contains("2025-01-01"));
+        assert!(html.contains("祝日"));
+    }
+
+    #[test]
+    fn holiday_alerts_renders_error() {
+        let html = render_to_string(move || {
+            let (entries, _) = create_signal(Vec::<HolidayCalendarEntry>::new());
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(Some(ApiError::unknown("load failed")));
+            let (period, _) = create_signal((2025, 1));
+            view! {
+                <HolidayAlerts
+                    holiday_entries=entries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    active_period=period.into()
+                    on_refresh=Callback::new(|_| {})
+                />
+            }
+        });
+        assert!(html.contains("load failed"));
+    }
+}

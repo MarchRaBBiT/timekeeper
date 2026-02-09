@@ -8,19 +8,18 @@ use crate::utils::storage as storage_utils;
 
 impl ApiClient {
     pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, ApiError> {
-        let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         if request.device_label.is_none() {
+            let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
             request.device_label = Some(ensure_device_label(&storage)?);
         }
         let base_url = self.resolved_base_url().await;
-        let response = ApiClient::with_credentials(
-            self.http_client()
-                .post(format!("{}/auth/login", base_url))
-                .json(&request),
-        )
-        .send()
-        .await
-        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(ApiClient::with_credentials(
+                self.http_client()
+                    .post(format!("{}/auth/login", base_url))
+                    .json(&request),
+            ))
+            .await?;
 
         if response.status().is_success() {
             let login_response: LoginResponse = response
@@ -38,6 +37,11 @@ impl ApiClient {
     }
 
     pub async fn refresh_token(&self) -> Result<LoginResponse, ApiError> {
+        #[cfg(all(test, not(target_arch = "wasm32")))]
+        if let Some(result) = self.next_refresh_override() {
+            return result;
+        }
+
         let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
         let device_label = ensure_device_label(&storage)?;
 
@@ -46,14 +50,13 @@ impl ApiClient {
             "device_label": device_label
         });
 
-        let response = ApiClient::with_credentials(
-            self.http_client()
-                .post(format!("{}/auth/refresh", base_url))
-                .json(&payload),
-        )
-        .send()
-        .await
-        .map_err(|e| ApiError::request_failed(format!("Request failed: {}", e)))?;
+        let response = self
+            .send_request(ApiClient::with_credentials(
+                self.http_client()
+                    .post(format!("{}/auth/refresh", base_url))
+                    .json(&payload),
+            ))
+            .await?;
 
         let status = response.status();
         Self::handle_unauthorized_status(status);
@@ -200,4 +203,9 @@ impl ApiClient {
             Err(error)
         }
     }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) fn queue_refresh_override(client: &ApiClient, result: Result<LoginResponse, ApiError>) {
+    client.queue_refresh_override(result);
 }

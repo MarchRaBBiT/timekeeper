@@ -47,3 +47,64 @@ mod tests {
         assert!(should_render_children(true, false));
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::RequireAuth;
+    use crate::state::auth::AuthState;
+    use crate::test_support::helpers::regular_user;
+    use crate::test_support::ssr::render_to_string;
+    use leptos::*;
+
+    fn provide_auth_state(is_authenticated: bool, loading: bool) {
+        let (auth, set_auth) = create_signal(AuthState {
+            user: if is_authenticated {
+                Some(regular_user())
+            } else {
+                None
+            },
+            is_authenticated,
+            loading,
+        });
+        provide_context((auth, set_auth));
+    }
+
+    #[test]
+    fn require_auth_renders_children_when_authenticated() {
+        let html = render_to_string(move || {
+            provide_auth_state(true, false);
+            view! {
+                <RequireAuth>
+                    {|| view! { <div>"protected-content"</div> }}
+                </RequireAuth>
+            }
+        });
+        assert!(html.contains("protected-content"));
+    }
+
+    #[test]
+    fn require_auth_hides_children_when_unauthenticated() {
+        let html = render_to_string(move || {
+            provide_auth_state(false, false);
+            view! {
+                <RequireAuth>
+                    {|| view! { <div>"protected-content"</div> }}
+                </RequireAuth>
+            }
+        });
+        assert!(!html.contains("protected-content"));
+    }
+
+    #[test]
+    fn require_auth_shows_loading_spinner_while_loading() {
+        let html = render_to_string(move || {
+            provide_auth_state(false, true);
+            view! {
+                <RequireAuth>
+                    {|| view! { <div>"protected-content"</div> }}
+                </RequireAuth>
+            }
+        });
+        assert!(html.contains("animate-spin"));
+    }
+}

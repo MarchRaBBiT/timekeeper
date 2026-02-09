@@ -114,3 +114,156 @@ impl Default for EmailService {
         Self::new().expect("Failed to initialize email service")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    const ENV_KEYS: [&str; 7] = [
+        "SMTP_SKIP_SEND",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_FROM_ADDRESS",
+        "FRONTEND_URL",
+    ];
+
+    fn env_mutex() -> &'static Mutex<()> {
+        static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_MUTEX.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        original: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            let lock = env_mutex().lock().expect("lock env");
+            let original = ENV_KEYS
+                .iter()
+                .map(|&key| (key, std::env::var(key).ok()))
+                .collect();
+            Self {
+                _lock: lock,
+                original,
+            }
+        }
+
+        fn set(&self, key: &'static str, value: &str) {
+            std::env::set_var(key, value);
+        }
+
+        fn remove(&self, key: &'static str) {
+            std::env::remove_var(key);
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in &self.original {
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn email_service_new_creates_service() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        env.remove("SMTP_FROM_ADDRESS");
+        let service = EmailService::new();
+        assert!(service.is_ok());
+        let service = service.unwrap();
+        assert_eq!(service.from_address, "noreply@timekeeper.local");
+    }
+
+    #[test]
+    fn email_service_new_uses_env_vars() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        env.set("SMTP_HOST", "smtp.example.com");
+        env.set("SMTP_PORT", "2525");
+        env.set("SMTP_FROM_ADDRESS", "test@example.com");
+
+        let service = EmailService::new().unwrap();
+        assert_eq!(service.from_address, "test@example.com");
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_skips_when_enabled() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        env.set("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("test@example.com", "token123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_skips_when_enabled() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("test@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_includes_token() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        env.set("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("test@example.com", "abc123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_includes_username() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("test@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_default_impl_new() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        let service = EmailService::default();
+        assert_eq!(service.from_address, "noreply@timekeeper.local");
+    }
+
+    #[test]
+    fn email_service_send_password_reset_email_valid_to_address() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+        env.set("FRONTEND_URL", "http://test.example.com");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_reset_email("valid@example.com", "abc123");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_password_changed_notification_valid_to_address() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_password_changed_notification("valid@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+}

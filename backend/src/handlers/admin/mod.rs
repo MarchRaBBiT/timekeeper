@@ -98,3 +98,64 @@ pub use query_validation::{
     validate_admin_holiday_query as test_validate_admin_holiday_query,
     AdminHolidayQueryParams as TestAdminHolidayQueryParams,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::query_validation::validate_admin_holiday_query;
+    use super::AdminHolidayListQuery;
+    use crate::models::holiday::AdminHolidayKind;
+    use axum::http::StatusCode;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn validate_admin_holiday_query_clamps_and_parses() {
+        let query = AdminHolidayListQuery {
+            page: Some(0),
+            per_page: Some(500),
+            r#type: Some("public".to_string()),
+            from: Some("2024-01-01".to_string()),
+            to: Some("2024-01-10".to_string()),
+        };
+
+        let params = validate_admin_holiday_query(query).expect("valid query");
+        assert_eq!(params.page, 1);
+        assert_eq!(params.per_page, 100);
+        assert_eq!(params.kind, Some(AdminHolidayKind::Public));
+        assert_eq!(
+            params.from,
+            Some(NaiveDate::from_ymd_opt(2024, 1, 1).expect("from date"))
+        );
+        assert_eq!(
+            params.to,
+            Some(NaiveDate::from_ymd_opt(2024, 1, 10).expect("to date"))
+        );
+    }
+
+    #[test]
+    fn validate_admin_holiday_query_rejects_invalid_type() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: None,
+            r#type: Some("unknown".to_string()),
+            from: None,
+            to: None,
+        };
+
+        let err = validate_admin_holiday_query(query).expect_err("invalid type");
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_admin_holiday_query_rejects_inverted_range() {
+        let query = AdminHolidayListQuery {
+            page: None,
+            per_page: None,
+            r#type: None,
+            from: Some("2024-02-01".to_string()),
+            to: Some("2024-01-01".to_string()),
+        };
+
+        let err = validate_admin_holiday_query(query).expect_err("invalid range");
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+}

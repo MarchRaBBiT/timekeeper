@@ -4,10 +4,10 @@ use crate::{
     handlers::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayListQuery, AdminHolidayListResponse,
-            AdminRequestListPageInfo, AdminRequestListResponse, ApprovePayload,
-            AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse, AuditLogResponse,
-            DecisionPayload, ExportQuery, RejectPayload, RequestListQuery, ResetMfaPayload,
-            SubjectRequestListQuery, SubjectRequestListResponse, AdminSessionResponse,
+            AdminRequestListPageInfo, AdminRequestListResponse, AdminSessionResponse,
+            ApprovePayload, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
+            AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload, RequestListQuery,
+            ResetMfaPayload, SubjectRequestListQuery, SubjectRequestListResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
         sessions::SessionResponse,
@@ -660,3 +660,110 @@ fn admin_list_holiday_exceptions_doc() {}
     tag = "Admin"
 )]
 fn admin_delete_holiday_exception_doc() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utoipa::{Modify, OpenApi};
+
+    #[test]
+    fn security_scheme_modifier_sets_bearer_auth() {
+        let mut openapi = utoipa::openapi::OpenApi::default();
+        SecuritySchemes.modify(&mut openapi);
+
+        let scheme = openapi
+            .components
+            .as_ref()
+            .and_then(|c| c.security_schemes.get("BearerAuth"))
+            .expect("BearerAuth must be present");
+        let value = serde_json::to_value(scheme).expect("serialize security scheme");
+
+        assert_eq!(value.get("type").and_then(|v| v.as_str()), Some("http"));
+        assert_eq!(value.get("scheme").and_then(|v| v.as_str()), Some("bearer"));
+        assert_eq!(
+            value.get("bearerFormat").and_then(|v| v.as_str()),
+            Some("JWT")
+        );
+    }
+
+    #[test]
+    fn openapi_contains_representative_paths_and_tags() {
+        let openapi = ApiDoc::openapi();
+        let json = serde_json::to_value(&openapi).expect("serialize openapi");
+        let paths = json
+            .get("paths")
+            .and_then(|value| value.as_object())
+            .expect("paths object");
+        assert!(paths.contains_key("/api/auth/login"));
+        assert!(paths.contains_key("/api/attendance/me"));
+        assert!(paths.contains_key("/api/admin/users/{user_id}/holiday-exceptions/{id}"));
+
+        let tags = json
+            .get("tags")
+            .and_then(|value| value.as_array())
+            .expect("tags array");
+        assert!(tags.iter().any(|tag| tag["name"] == "Auth"));
+        assert!(tags.iter().any(|tag| tag["name"] == "Admin"));
+    }
+
+    #[test]
+    fn doc_stub_functions_are_invocable() {
+        let docs: Vec<fn()> = vec![
+            login_doc,
+            refresh_doc,
+            me_doc,
+            mfa_status_doc,
+            mfa_setup_doc,
+            mfa_activate_doc,
+            mfa_disable_doc,
+            change_password_doc,
+            logout_doc,
+            list_sessions_doc,
+            revoke_session_doc,
+            clock_in_doc,
+            clock_out_doc,
+            break_start_doc,
+            break_end_doc,
+            attendance_status_doc,
+            my_attendance_doc,
+            my_attendance_summary_doc,
+            export_attendance_doc,
+            create_leave_doc,
+            create_overtime_doc,
+            my_requests_doc,
+            record_consent_doc,
+            list_my_consents_doc,
+            create_subject_request_doc,
+            list_my_subject_requests_doc,
+            cancel_subject_request_doc,
+            admin_list_requests_doc,
+            admin_request_detail_doc,
+            admin_approve_request_doc,
+            admin_reject_request_doc,
+            admin_list_subject_requests_doc,
+            admin_approve_subject_request_doc,
+            admin_reject_subject_request_doc,
+            admin_get_users_doc,
+            admin_create_user_doc,
+            admin_list_user_sessions_doc,
+            admin_revoke_session_doc,
+            admin_list_holidays_doc,
+            admin_create_holiday_doc,
+            admin_delete_holiday_doc,
+            admin_list_weekly_holidays_doc,
+            admin_create_weekly_holiday_doc,
+            admin_export_doc,
+            admin_list_audit_logs_doc,
+            admin_get_audit_log_doc,
+            admin_export_audit_logs_doc,
+            system_admin_reset_mfa_doc,
+            admin_create_holiday_exception_doc,
+            admin_list_holiday_exceptions_doc,
+            admin_delete_holiday_exception_doc,
+        ];
+
+        for endpoint_doc in docs {
+            endpoint_doc();
+        }
+    }
+}

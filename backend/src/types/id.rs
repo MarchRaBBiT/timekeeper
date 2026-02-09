@@ -161,3 +161,53 @@ typed_id!(
     "Unique identifier for a holiday exception."
 );
 typed_id!(AuditLogId, "Unique identifier for an audit log entry.");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_id_roundtrip_and_conversions() {
+        let raw = Uuid::new_v4();
+        let user_id = UserId::from_uuid(raw);
+        assert_eq!(user_id.as_uuid(), &raw);
+        assert_eq!(Uuid::from(user_id), raw);
+
+        let as_string = user_id.to_string();
+        let parsed = UserId::from_str(&as_string).expect("parse user id");
+        assert_eq!(parsed, user_id);
+
+        let from_str_ref = UserId::from(as_string.as_str());
+        let from_string = UserId::from(as_string.clone());
+        assert_eq!(from_str_ref, user_id);
+        assert_eq!(from_string, user_id);
+
+        let as_json = serde_json::to_string(&user_id).expect("serialize user id");
+        let decoded: UserId = serde_json::from_str(&as_json).expect("deserialize user id");
+        assert_eq!(decoded, user_id);
+    }
+
+    #[test]
+    fn default_generates_distinct_ids() {
+        let first = AttendanceId::default();
+        let second = AttendanceId::default();
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn from_str_rejects_invalid_uuid() {
+        assert!(UserId::from_str("invalid-uuid").is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid UUID string")]
+    fn from_str_ref_panics_for_invalid_uuid() {
+        let _ = UserId::from("invalid-uuid");
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid UUID string")]
+    fn from_string_panics_for_invalid_uuid() {
+        let _ = UserId::from("invalid-uuid".to_string());
+    }
+}

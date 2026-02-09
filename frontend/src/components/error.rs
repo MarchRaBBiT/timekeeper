@@ -33,3 +33,43 @@ pub fn InlineErrorMessage(error: Signal<Option<ApiError>>) -> impl IntoView {
         </Show>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+    use serde_json::json;
+
+    #[test]
+    fn inline_error_renders_validation_details() {
+        let html = render_to_string(move || {
+            let error = ApiError {
+                error: "Validation failed".into(),
+                code: "VALIDATION_ERROR".into(),
+                details: Some(json!({
+                    "errors": ["Name is required", "Email is invalid"]
+                })),
+            };
+            let signal = create_rw_signal(Some(error));
+            view! { <InlineErrorMessage error={signal.into()} /> }
+        });
+        assert!(html.contains("Validation failed"));
+        assert!(html.contains("Name is required"));
+        assert!(html.contains("Email is invalid"));
+    }
+
+    #[test]
+    fn inline_error_renders_code_when_present() {
+        let html = render_to_string(move || {
+            let error = ApiError {
+                error: "Request failed".into(),
+                code: "REQUEST_FAILED".into(),
+                details: None,
+            };
+            let signal = create_rw_signal(Some(error));
+            view! { <InlineErrorMessage error={signal.into()} /> }
+        });
+        assert!(html.contains("Request failed"));
+        assert!(html.contains("Code: REQUEST_FAILED"));
+    }
+}

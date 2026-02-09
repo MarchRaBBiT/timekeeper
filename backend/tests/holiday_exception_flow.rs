@@ -2,15 +2,16 @@
 
 use chrono::NaiveDate;
 use timekeeper_backend::{
-    handlers::{holiday_exception_repo, holiday_exceptions},
+    handlers::holiday_exceptions,
     models::{
         holiday_exception::{
             CreateHolidayExceptionPayload, HolidayException, HolidayExceptionResponse,
         },
         user::UserRole,
     },
+    repositories::holiday_exception as holiday_exception_repo,
     services::{
-        holiday::{HolidayReason, HolidayService},
+        holiday::{HolidayReason, HolidayService, HolidayServiceTrait},
         holiday_exception::{HolidayExceptionService, HolidayExceptionServiceTrait},
     },
     state::AppState,
@@ -18,25 +19,31 @@ use timekeeper_backend::{
 
 use {
     axum::{
-        body::Body,
+        body::{to_bytes, Body},
         extract::Extension,
         http::{Request, StatusCode},
-        routing::{delete, get, post},
+        routing::{delete, post},
         Router,
     },
-    hyper::body::to_bytes,
     serde_json::json,
-    std::sync::Arc,
+    std::sync::{Arc, OnceLock},
+    tokio::sync::Mutex,
     tower::ServiceExt,
 };
 
 #[path = "support/mod.rs"]
 mod support;
 
+async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+    GUARD.get_or_init(|| Mutex::new(())).lock().await
+}
+
 #[tokio::test]
 async fn repository_prevents_duplicate_exceptions_for_same_user_and_date() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
-    sqlx::migrate!("../migrations")
+    sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .expect("run migrations");
@@ -71,8 +78,9 @@ async fn repository_prevents_duplicate_exceptions_for_same_user_and_date() {
 
 #[tokio::test]
 async fn service_marks_exception_as_workday_over_public_and_weekly() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
-    sqlx::migrate!("../migrations")
+    sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .expect("run migrations");
@@ -87,18 +95,19 @@ async fn service_marks_exception_as_workday_over_public_and_weekly() {
 
     exception_service
         .create_workday_override(
-            &user.id,
+            user.id,
             CreateHolidayExceptionPayload {
                 exception_date: date,
                 reason: Some("現場稼働のため出社".into()),
             },
-            &user.id,
+            user.id,
         )
         .await
         .expect("create override");
 
+    let user_id = user.id.to_string();
     let decision = holiday_service
-        .is_holiday(date, Some(&user.id))
+        .is_holiday(date, Some(user_id.as_str()))
         .await
         .expect("holiday decision");
 
@@ -111,8 +120,9 @@ async fn service_marks_exception_as_workday_over_public_and_weekly() {
 
 #[tokio::test]
 async fn handler_creates_and_lists_personal_workday_override() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
-    sqlx::migrate!("../migrations")
+    sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .expect("run migrations");
@@ -133,7 +143,13 @@ async fn handler_creates_and_lists_personal_workday_override() {
             "/api/admin/users/{user_id}/holiday-exceptions/{id}",
             delete(holiday_exceptions::delete_holiday_exception),
         )
-        .with_state(AppState::new(pool.clone(), None, None, None, config.clone()))
+        .with_state(AppState::new(
+            pool.clone(),
+            None,
+            None,
+            None,
+            config.clone(),
+        ))
         .layer(Extension(admin.clone()))
         .layer(Extension(exception_service.clone()));
 
@@ -153,7 +169,9 @@ async fn handler_creates_and_lists_personal_workday_override() {
         .expect("handler should respond");
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    let body = to_bytes(response.into_body()).await.expect("read body");
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read body");
     let created: HolidayExceptionResponse =
         serde_json::from_slice(&body).expect("parse response body");
     assert_eq!(created.exception_date, date(2025, 6, 10));
@@ -181,7 +199,7 @@ async fn handler_creates_and_lists_personal_workday_override() {
         .await
         .expect("list handler should respond");
     assert_eq!(list_response.status(), StatusCode::OK);
-    let list_body = to_bytes(list_response.into_body())
+    let list_body = to_bytes(list_response.into_body(), 1024 * 64)
         .await
         .expect("read list body");
     let listed: Vec<HolidayExceptionResponse> =

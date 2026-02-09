@@ -69,11 +69,17 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(HolidayExceptionService::new(write_pool.clone()));
 
     let redis_pool = create_redis_pool(&config).await?;
-    let token_cache: Option<Arc<dyn TokenCacheServiceTrait>> = redis_pool
-        .as_ref()
-        .map(|pool| Arc::new(TokenCacheService::new(pool.clone())) as Arc<dyn TokenCacheServiceTrait>);
+    let token_cache: Option<Arc<dyn TokenCacheServiceTrait>> = redis_pool.as_ref().map(|pool| {
+        Arc::new(TokenCacheService::new(pool.clone())) as Arc<dyn TokenCacheServiceTrait>
+    });
 
-    let shared_state = AppState::new(write_pool, read_pool, redis_pool, token_cache, config.clone());
+    let shared_state = AppState::new(
+        write_pool,
+        read_pool,
+        redis_pool,
+        token_cache,
+        config.clone(),
+    );
 
     spawn_audit_log_cleanup(
         audit_log_service.clone(),
@@ -125,9 +131,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_http_request_span(
-    request: &axum::http::Request<axum::body::Body>,
-) -> tracing::Span {
+fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) -> tracing::Span {
     let request_id = request
         .extensions()
         .get::<middleware::RequestId>()
@@ -246,7 +250,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
         .route("/api/auth/me", get(handlers::auth::me))
         .route("/api/auth/me", put(handlers::auth::update_profile))
         .route("/api/auth/sessions", get(handlers::sessions::list_sessions))
-        .route("/api/auth/sessions/{id}", delete(handlers::sessions::revoke_session))
+        .route(
+            "/api/auth/sessions/{id}",
+            delete(handlers::sessions::revoke_session),
+        )
         .route(
             "/api/auth/change-password",
             put(handlers::auth::change_password),
@@ -592,8 +599,18 @@ mod tests {
         }
     }
 
+    fn test_state_with_config(config: Config) -> AppState {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url)
+            .expect("create lazy pool");
+        AppState::new(pool, None, None, None, config)
+    }
+
     #[test]
-    #[should_panic(expected = "Refusing to start due to insecure CORS configuration in production mode")]
+    #[should_panic(
+        expected = "Refusing to start due to insecure CORS configuration in production mode"
+    )]
     fn test_production_mode_wildcard_cors_panics() {
         let mut config = test_config(vec!["*".to_string()]);
         config.production_mode = true;
@@ -610,11 +627,7 @@ mod tests {
     #[tokio::test]
     async fn test_app_router_builds() {
         let config = test_config(vec!["*".to_string()]);
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect_lazy(&config.database_url)
-            .expect("create lazy pool");
-        let state = AppState::new(pool, None, None, None, config);
+        let state = test_state_with_config(config);
 
         let mut app = Router::new()
             .merge(public_routes(state.clone()))
@@ -630,6 +643,79 @@ mod tests {
         let response = app.call(request).await.unwrap();
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_user_admin_and_system_routes_require_auth() {
+        let state = test_state_with_config(test_config(vec!["*".to_string()]));
+
+        let mut user_app = Router::new()
+            .merge(user_routes(state.clone()))
+            .with_state(state.clone());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/auth/me")
+            .body(Body::empty())
+            .expect("build user route request");
+        let response = user_app.call(request).await.expect("call user route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let mut admin_app = Router::new()
+            .merge(admin_routes(state.clone()))
+            .with_state(state.clone());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/admin/users")
+            .body(Body::empty())
+            .expect("build admin route request");
+        let response = admin_app.call(request).await.expect("call admin route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+
+        let mut system_admin_app = Router::new()
+            .merge(system_admin_routes(state.clone()))
+            .with_state(state);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/admin/mfa/reset")
+            .body(Body::empty())
+            .expect("build system admin route request");
+        let response = system_admin_app
+            .call(request)
+            .await
+            .expect("call system admin route");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_log_config_with_read_database_and_wildcard_in_non_production() {
+        let mut config = test_config(vec!["*".to_string()]);
+        config.read_database_url = Some("postgres://read-db".to_string());
+        config.production_mode = false;
+        log_config(&config);
+    }
+
+    #[test]
+    fn test_cors_layer_accepts_specific_origins() {
+        let config = test_config(vec![
+            "https://example.com".to_string(),
+            "http://localhost:3000".to_string(),
+        ]);
+        let _layer = cors_layer(&config);
+    }
+
+    #[tokio::test]
+    async fn test_spawn_cleanup_skips_when_retention_disabled() {
+        let config = test_config(vec!["*".to_string()]);
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url)
+            .expect("create lazy pool");
+        let audit_service: Arc<dyn AuditLogServiceTrait> =
+            Arc::new(AuditLogService::new(pool.clone()));
+        let consent_service = Arc::new(ConsentLogService::new(pool));
+
+        spawn_audit_log_cleanup(audit_service, AuditLogRetentionPolicy::Disabled);
+        spawn_consent_log_cleanup(consent_service, AuditLogRetentionPolicy::Disabled);
     }
 
     #[derive(Default, Clone)]
@@ -747,7 +833,11 @@ mod tests {
     fn test_http_request_span_fields_are_recorded() {
         let store = SpanStore::default();
         let subscriber = tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer().with_test_writer().with_ansi(false))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_test_writer()
+                    .with_ansi(false),
+            )
             .with(store.clone());
 
         tracing::subscriber::with_default(subscriber, || {
@@ -811,7 +901,9 @@ mod tests {
                 .method("POST")
                 .uri("/api/auth/login")
                 .header("Authorization", "Bearer super-secret-token")
-                .body(Body::from(r#"{"password":"P@ssw0rd","token":"secret-token"}"#))
+                .body(Body::from(
+                    r#"{"password":"P@ssw0rd","token":"secret-token"}"#,
+                ))
                 .expect("build request");
             request
                 .extensions_mut()
@@ -829,9 +921,7 @@ mod tests {
         let sensitive_values = ["super-secret-token", "P@ssw0rd", "secret-token"];
 
         for value in sensitive_values {
-            let leaked_field = span_fields
-                .values()
-                .any(|field| field.contains(value));
+            let leaked_field = span_fields.values().any(|field| field.contains(value));
             assert!(
                 !leaked_field,
                 "span fields should not contain sensitive value: {}",
@@ -839,14 +929,8 @@ mod tests {
             );
         }
 
-        let output = String::from_utf8(
-            writer
-                .buffer
-                .lock()
-                .expect("lock log buffer")
-                .clone(),
-        )
-        .expect("log output should be valid utf-8");
+        let output = String::from_utf8(writer.buffer.lock().expect("lock log buffer").clone())
+            .expect("log output should be valid utf-8");
         for value in sensitive_values {
             assert!(
                 !output.contains(value),

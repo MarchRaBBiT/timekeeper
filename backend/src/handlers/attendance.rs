@@ -18,7 +18,9 @@ use crate::handlers::attendance_utils::{
     update_clock_out,
 };
 use crate::repositories::{
-    attendance::AttendanceRepository, break_record::BreakRecordRepository, repository::Repository,
+    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
+    break_record::BreakRecordRepository,
+    repository::Repository,
 };
 use crate::state::AppState;
 use crate::types::{AttendanceId, UserId};
@@ -170,9 +172,7 @@ pub async fn break_start(
     }
 
     let break_record = BreakRecord::new(payload.attendance_id, break_start_time, now_utc);
-    break_repo
-        .create(&state.write_pool, &break_record)
-        .await?;
+    break_repo.create(&state.write_pool, &break_record).await?;
 
     let response = BreakRecordResponse::from(break_record);
     Ok(Json(response))
@@ -201,9 +201,7 @@ pub async fn break_end(
     ensure_authorized_access(&att, user.id)?;
 
     break_record.end_break(break_end_time, now_utc);
-    break_repo
-        .update(&state.write_pool, &break_record)
-        .await?;
+    break_repo.update(&state.write_pool, &break_record).await?;
 
     if att.clock_out_time.is_some() {
         recalculate_total_hours(&state.write_pool, att, now_utc).await?;
@@ -528,4 +526,202 @@ async fn reject_if_holiday(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::holiday::{HolidayCalendarEntry, HolidayDecision, HolidayReason};
+    use crate::types::{AttendanceId, UserId};
+    use chrono::NaiveDate;
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_attendance_query_default_values() {
+        let query = AttendanceQuery {
+            year: None,
+            month: None,
+            from: None,
+            to: None,
+        };
+        assert!(query.year.is_none());
+        assert!(query.month.is_none());
+        assert!(query.from.is_none());
+        assert!(query.to.is_none());
+    }
+
+    #[test]
+    fn test_attendance_query_with_values() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let query = AttendanceQuery {
+            year: Some(2024),
+            month: Some(1),
+            from: Some(date),
+            to: Some(date),
+        };
+        assert_eq!(query.year, Some(2024));
+        assert_eq!(query.month, Some(1));
+        assert_eq!(query.from, Some(date));
+        assert_eq!(query.to, Some(date));
+    }
+
+    #[test]
+    fn test_attendance_export_query_default_values() {
+        let query = AttendanceExportQuery {
+            from: None,
+            to: None,
+        };
+        assert!(query.from.is_none());
+        assert!(query.to.is_none());
+    }
+
+    #[test]
+    fn test_attendance_status_response_structure() {
+        let response = AttendanceStatusResponse {
+            status: "clocked_in".to_string(),
+            attendance_id: Some("test-id".to_string()),
+            active_break_id: None,
+            clock_in_time: None,
+            clock_out_time: None,
+        };
+        assert_eq!(response.status, "clocked_in");
+        assert!(response.attendance_id.is_some());
+        assert!(response.active_break_id.is_none());
+    }
+
+    #[test]
+    fn test_clock_in_request_structure() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15);
+        let request = ClockInRequest { date };
+        assert_eq!(request.date, date);
+    }
+
+    #[test]
+    fn test_clock_out_request_structure() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15);
+        let request = ClockOutRequest { date };
+        assert_eq!(request.date, date);
+    }
+
+    #[test]
+    fn test_attendance_summary_structure() {
+        let summary = AttendanceSummary {
+            month: 1,
+            year: 2024,
+            total_work_hours: 160.5,
+            total_work_days: 20,
+            average_daily_hours: 8.0,
+        };
+        assert_eq!(summary.month, 1);
+        assert_eq!(summary.year, 2024);
+        assert_eq!(summary.total_work_hours, 160.5);
+        assert_eq!(summary.total_work_days, 20);
+        assert_eq!(summary.average_daily_hours, 8.0);
+    }
+
+    struct FixedHolidayService {
+        decision: HolidayDecision,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::services::holiday::HolidayServiceTrait for FixedHolidayService {
+        async fn is_holiday(
+            &self,
+            _date: NaiveDate,
+            _user_id: Option<&str>,
+        ) -> sqlx::Result<HolidayDecision> {
+            Ok(self.decision.clone())
+        }
+
+        async fn list_month(
+            &self,
+            _year: i32,
+            _month: u32,
+            _user_id: Option<&str>,
+        ) -> sqlx::Result<Vec<HolidayCalendarEntry>> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn reject_if_holiday_allows_working_day() {
+        let service = Arc::new(FixedHolidayService {
+            decision: HolidayDecision {
+                is_holiday: false,
+                reason: HolidayReason::None,
+            },
+        });
+        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+        let user_id = UserId::new();
+
+        let result = reject_if_holiday(service.as_ref(), date, user_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn reject_if_holiday_rejects_holiday_with_reason() {
+        let service = Arc::new(FixedHolidayService {
+            decision: HolidayDecision {
+                is_holiday: true,
+                reason: HolidayReason::PublicHoliday,
+            },
+        });
+        let date = NaiveDate::from_ymd_opt(2026, 2, 11).expect("date");
+        let user_id = UserId::new();
+
+        let result = reject_if_holiday(service.as_ref(), date, user_id).await;
+        let err = result.expect_err("holiday should be rejected");
+        match err {
+            AppError::Forbidden(message) => assert!(message.contains("public holiday")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_attendance_response_keeps_core_fields() {
+        let now = Utc::now();
+        let attendance = Attendance {
+            id: AttendanceId::new(),
+            user_id: UserId::new(),
+            date: NaiveDate::from_ymd_opt(2026, 2, 4).expect("date"),
+            clock_in_time: Some(
+                chrono::NaiveDateTime::parse_from_str("2026-02-04T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                    .expect("clock in"),
+            ),
+            clock_out_time: None,
+            status: crate::models::attendance::AttendanceStatus::Present,
+            total_work_hours: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        let response = build_attendance_response(attendance.clone(), Vec::new());
+        assert_eq!(response.id, attendance.id);
+        assert_eq!(response.user_id, attendance.user_id);
+        assert_eq!(response.date, attendance.date);
+        assert_eq!(response.clock_in_time, attendance.clock_in_time);
+        assert_eq!(response.clock_out_time, attendance.clock_out_time);
+        assert!(response.break_records.is_empty());
+    }
+
+    #[tokio::test]
+    async fn recalculate_total_hours_returns_early_when_times_missing() {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://127.0.0.1:15432/timekeeper")
+            .expect("lazy pool");
+        let now = Utc::now();
+
+        let mut attendance = Attendance::new(
+            UserId::new(),
+            NaiveDate::from_ymd_opt(2026, 2, 4).expect("date"),
+            now,
+        );
+        attendance.clock_in_time = None;
+        attendance.clock_out_time = None;
+
+        let result = recalculate_total_hours(&pool, attendance, now).await;
+        assert!(result.is_ok());
+    }
 }

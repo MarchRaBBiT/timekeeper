@@ -50,10 +50,29 @@ timekeeper/
 - コミット: Conventional Commits (`feat:`, `fix:`, `chore:`)
 - バージョン管理: `git` コマンドは使わず `jj` (jujutsu) を使用
 
+### Jujutsu スナップショット運用
+- 変更後に対象テストが成功するたび、`jj` でスナップショットを作成する
+- 基本手順:
+  1. `jj status` で差分確認
+  2. 対象テストを実行（例: `cargo test --test auth_flow_api`）
+  3. テスト成功を確認
+  4. `jj commit -m "<message>"` でスナップショット作成
+
+- コミットメッセージ規則:
+  - テスト追加・更新のみ: `chore(test): add coverage for <module_or_endpoint>`
+  - テスト成功ごとのスナップショット: `chore(test): snapshot after <test_target> pass`
+  - 機能修正＋テスト成功: `fix(<scope>): <summary>`
+
 ### Rust 全般
 - インデント: 4 スペース
 - 命名: モジュールは `snake_case`、型は `PascalCase`
 - 事前確認: `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`
+
+### テスト実装ルール（必須）
+- リファクタリング前後で、変更対象の挙動を検証するテストを必ず実行する
+- 変更対象にテストが存在しない場合は、先にテストを実装してから変更し、テスト成功を確認する
+- 新機能を実装する場合は、あるべき挙動を示すテストを先に実装してから本体実装を行う（テスト先行）
+- いずれの変更でも、最終的に関連テストが成功した状態で完了とする
 
 ### バックエンド (Axum)
 - 認証: `Extension<User>` エクストラクター
@@ -74,6 +93,13 @@ timekeeper/
 - ハンドラーの肥大化を回避（重い DB ロジックは repository/service に委譲）
 - フロントエンドの大幅なリファクタリングは UI/UX 変更を含む場合 `frontend-ui-ux-engineer` に委譲
 - SQLxマイグレーションの変更禁止（必ず新しいファイル追加でDB操作）
+
+## EXEC PLAN 運用 (Codex)
+- 複雑タスク（複数レイヤー横断・長時間実装・仕様判断が多い変更）では `ExecPlan` を必須とする
+- 小さな修正（単一ファイルの軽微修正、文言修正、明確なバグ1点修正）は従来フローのままでよい
+- 計画書は `.agent/PLANS.md` を使い、完了条件を「観測できる挙動」で定義する
+- `ExecPlan` では検証コマンドと結果を残し、テスト成功の節目ごとに `jj` スナップショットを作成する
+- 実装中は計画のチェックボックスを更新し、未完了項目を明示する
 
 ## COMMANDS
 ```bash

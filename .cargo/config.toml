@@ -2,3 +2,8 @@
 DATABASE_URL = "postgres://timekeeper:timekeeper@localhost:5432/timekeeper"
 SQLX_OFFLINE = "true"
 
+[alias]
+frontend-cov = "llvm-cov -p timekeeper-frontend --lib --summary-only --ignore-filename-regex frontend/src/(pages|components|api|lib\\.rs|router\\.rs|config\\.rs|state/(attendance|auth)\\.rs|theme\\.rs|utils/(download|storage)\\.rs)"
+
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

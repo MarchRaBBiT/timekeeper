@@ -68,3 +68,26 @@ mod tests {
         assert_eq!(result, "data:image/svg+xml;base64,");
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::with_runtime;
+
+    #[test]
+    fn validate_totp_code_rejects_short_values_on_host() {
+        let result = validate_totp_code("123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn message_state_clear_resets_signals() {
+        with_runtime(|| {
+            let message = MessageState::default();
+            message.set_success("ok".into());
+            message.clear();
+            assert!(message.success.get().is_none());
+            assert!(message.error.get().is_none());
+        });
+    }
+}

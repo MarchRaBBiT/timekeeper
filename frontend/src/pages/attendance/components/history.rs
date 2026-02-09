@@ -194,3 +194,71 @@ fn HistoryRow(
         </li>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::api::{AttendanceResponse, BreakRecordResponse};
+    use crate::test_support::ssr::render_to_string;
+
+    fn sample_attendance() -> AttendanceResponse {
+        let date = crate::utils::time::today_in_app_tz();
+        AttendanceResponse {
+            id: "att-1".into(),
+            user_id: "u1".into(),
+            date,
+            clock_in_time: Some(date.and_hms_opt(9, 0, 0).unwrap()),
+            clock_out_time: Some(date.and_hms_opt(18, 0, 0).unwrap()),
+            status: "clocked_out".into(),
+            total_work_hours: Some(8.0),
+            break_records: vec![BreakRecordResponse {
+                id: "br-1".into(),
+                attendance_id: "att-1".into(),
+                break_start_time: date.and_hms_opt(12, 0, 0).unwrap(),
+                break_end_time: Some(date.and_hms_opt(12, 30, 0).unwrap()),
+                duration_minutes: Some(30),
+            }],
+        }
+    }
+
+    #[test]
+    fn history_section_renders_empty_state() {
+        let html = render_to_string(move || {
+            let (history, _) = create_signal(Vec::new());
+            let history_signal = Signal::derive(move || history.get());
+            let holiday_signal = Signal::derive(|| Vec::new());
+            let loading = Signal::derive(|| false);
+            let error = Signal::derive(|| None::<crate::api::ApiError>);
+            view! {
+                <HistorySection
+                    history=history_signal
+                    holiday_entries=holiday_signal
+                    loading=loading
+                    error=error
+                />
+            }
+        });
+        assert!(html.contains("指定された期間の記録はありません"));
+    }
+
+    #[test]
+    fn history_section_renders_rows() {
+        let html = render_to_string(move || {
+            let (history, _) = create_signal(vec![sample_attendance()]);
+            let history_signal = Signal::derive(move || history.get());
+            let holiday_signal = Signal::derive(|| Vec::new());
+            let loading = Signal::derive(|| false);
+            let error = Signal::derive(|| None::<crate::api::ApiError>);
+            view! {
+                <HistorySection
+                    history=history_signal
+                    holiday_entries=holiday_signal
+                    loading=loading
+                    error=error
+                />
+            }
+        });
+        assert!(html.contains("勤怠履歴"));
+        assert!(html.contains("勤務時間"));
+    }
+}

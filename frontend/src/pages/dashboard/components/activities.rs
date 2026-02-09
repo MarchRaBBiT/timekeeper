@@ -49,3 +49,41 @@ pub fn ActivitiesSection(
         </div>
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::pages::dashboard::repository::DashboardActivity;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn activities_section_renders_loading_and_items() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || ActivityStatusFilter::All,
+                |_| async move { Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new()) },
+            );
+            resource.set(Ok(vec![DashboardActivity {
+                title: "申請A".into(),
+                detail: Some("1件".into()),
+            }]));
+            view! { <ActivitiesSection activities=resource /> }
+        });
+        assert!(html.contains("申請・活動のサマリー"));
+        assert!(html.contains("申請A"));
+        assert!(html.contains("1件"));
+    }
+
+    #[test]
+    fn activities_section_renders_error() {
+        let html = render_to_string(move || {
+            let resource = Resource::new(
+                || ActivityStatusFilter::All,
+                |_| async move { Ok::<Vec<DashboardActivity>, crate::api::ApiError>(Vec::new()) },
+            );
+            resource.set(Err(crate::api::ApiError::unknown("activity failed")));
+            view! { <ActivitiesSection activities=resource /> }
+        });
+        assert!(html.contains("activity failed"));
+    }
+}

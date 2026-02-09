@@ -14,6 +14,8 @@ static API_BASE_URL: OnceLock<String> = OnceLock::new();
 static TIME_ZONE: OnceLock<RwLock<TimeZoneCache>> = OnceLock::new();
 #[cfg(test)]
 static TIME_ZONE_FETCH_OVERRIDE: OnceLock<Mutex<Vec<Result<String, String>>>> = OnceLock::new();
+#[cfg(test)]
+static TEST_SERIAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Default)]
 struct TimeZoneCache {
@@ -151,6 +153,14 @@ pub(crate) fn queue_mock_time_zone_fetch(result: Result<String, String>) {
 }
 
 #[cfg(test)]
+pub(crate) fn acquire_test_serial_lock() -> std::sync::MutexGuard<'static, ()> {
+    TEST_SERIAL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("config test serial lock poisoned")
+}
+
+#[cfg(test)]
 fn next_mock_time_zone_fetch() -> Option<Result<String, String>> {
     TIME_ZONE_FETCH_OVERRIDE
         .get()
@@ -280,6 +290,7 @@ mod tests {
 
     #[test]
     fn reports_fallback_status_when_marked() {
+        let _guard = acquire_test_serial_lock();
         overwrite_time_zone_status_for_test(TimeZoneStatus {
             time_zone: Some("UTC".into()),
             is_fallback: true,
@@ -294,6 +305,7 @@ mod tests {
 
     #[test]
     fn clears_error_after_refresh() {
+        let _guard = acquire_test_serial_lock();
         overwrite_time_zone_status_for_test(TimeZoneStatus {
             time_zone: Some("UTC".into()),
             is_fallback: true,

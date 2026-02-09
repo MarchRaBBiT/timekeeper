@@ -172,3 +172,44 @@ fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) 
         *has_clause = true;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_log_filters_default_all_none() {
+        let filters = AuditLogFilters::default();
+        assert!(filters.from.is_none());
+        assert!(filters.to.is_none());
+        assert!(filters.actor_id.is_none());
+        assert!(filters.actor_type.is_none());
+        assert!(filters.event_type.is_none());
+        assert!(filters.target_type.is_none());
+        assert!(filters.target_id.is_none());
+        assert!(filters.result.is_none());
+    }
+
+    #[test]
+    fn audit_log_filters_all_fields() {
+        let user_id = UserId::new();
+        let filters = AuditLogFilters {
+            from: Some(Utc::now()),
+            to: Some(Utc::now()),
+            actor_id: Some(user_id.clone()),
+            actor_type: Some("user".to_string()),
+            event_type: Some("login".to_string()),
+            target_type: Some("attendance".to_string()),
+            target_id: Some("att123".to_string()),
+            result: Some("success".to_string()),
+        };
+        assert!(filters.from.is_some());
+        assert!(filters.to.is_some());
+        assert_eq!(filters.actor_id, Some(user_id));
+        assert_eq!(filters.actor_type, Some("user".to_string()));
+        assert_eq!(filters.event_type, Some("login".to_string()));
+        assert_eq!(filters.target_type, Some("attendance".to_string()));
+        assert_eq!(filters.target_id, Some("att123".to_string()));
+        assert_eq!(filters.result, Some("success".to_string()));
+    }
+}

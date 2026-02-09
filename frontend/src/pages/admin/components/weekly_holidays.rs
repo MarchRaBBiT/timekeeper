@@ -10,6 +10,38 @@ use crate::{
 };
 use leptos::{ev, *};
 
+fn weekly_create_feedback(
+    result: Result<WeeklyHolidayResponse, ApiError>,
+) -> (Option<String>, Option<ApiError>, Option<chrono::NaiveDate>) {
+    match result {
+        Ok(created) => (
+            Some(format!(
+                "{} ({}) を登録しました。",
+                crate::pages::admin::utils::weekday_label(created.weekday),
+                created.starts_on.format("%Y-%m-%d")
+            )),
+            None,
+            Some(created.starts_on),
+        ),
+        Err(err) => (None, Some(err), None),
+    }
+}
+
+fn weekly_delete_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
+    match result {
+        Ok(_) => (Some("週次休日を削除しました。".into()), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
+fn weekly_start_hint(system_admin_allowed: bool) -> &'static str {
+    if system_admin_allowed {
+        "システム管理者は本日から設定できます。"
+    } else {
+        "通常管理者は翌日以降が設定可能です。"
+    }
+}
+
 #[component]
 pub fn WeeklyHolidaySection(
     state: WeeklyHolidayFormState,
@@ -40,32 +72,25 @@ pub fn WeeklyHolidaySection(
     // Effects and submission logic
     create_effect(move |_| {
         if let Some(result) = action.value().get() {
-            match result {
-                Ok(created) => {
-                    message.set(Some(format!(
-                        "{} ({}) を登録しました。",
-                        crate::pages::admin::utils::weekday_label(created.weekday),
-                        created.starts_on.format("%Y-%m-%d")
-                    )));
-                    error.set(None);
-                    state.reset_starts_on(created.starts_on);
-                    state.reset_ends_on();
-                    reload.update(|value| *value = value.wrapping_add(1));
-                }
-                Err(err) => error.set(Some(err)),
+            let (next_message, next_error, reset_start) = weekly_create_feedback(result);
+            message.set(next_message);
+            error.set(next_error);
+            if let Some(starts_on) = reset_start {
+                state.reset_starts_on(starts_on);
+                state.reset_ends_on();
+                reload.update(|value| *value = value.wrapping_add(1));
             }
         }
     });
 
     create_effect(move |_| {
         if let Some(result) = delete_action.value().get() {
-            match result {
-                Ok(_) => {
-                    message.set(Some("週次休日を削除しました。".into()));
-                    error.set(None);
-                    reload.update(|value| *value = value.wrapping_add(1));
-                }
-                Err(err) => error.set(Some(err)),
+            let (next_message, next_error) = weekly_delete_feedback(result);
+            let should_reload = next_error.is_none();
+            message.set(next_message);
+            error.set(next_error);
+            if should_reload {
+                reload.update(|value| *value = value.wrapping_add(1));
             }
         }
     });
@@ -136,13 +161,7 @@ pub fn WeeklyHolidaySection(
                         value=starts_on_signal
                     />
                     <p class="text-xs text-fg-muted mt-1">
-                        {move || {
-                            if system_admin_allowed.get() {
-                                "システム管理者は本日から設定できます。"
-                            } else {
-                                "通常管理者は翌日以降が設定可能です。"
-                            }
-                        }}
+                        {move || weekly_start_hint(system_admin_allowed.get())}
                     </p>
                 </div>
                 <div class="lg:col-span-1">
@@ -245,5 +264,105 @@ pub fn WeeklyHolidaySection(
                 </div>
             </Show>
         </div>
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::ssr::render_to_string;
+
+    fn sample_item() -> WeeklyHolidayResponse {
+        WeeklyHolidayResponse {
+            id: "wh1".into(),
+            weekday: 1,
+            starts_on: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            ends_on: None,
+            enforced_from: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            enforced_to: None,
+        }
+    }
+
+    fn render_with_resource(
+        items: Vec<WeeklyHolidayResponse>,
+        admin_allowed: bool,
+        system_admin_allowed: bool,
+    ) -> String {
+        render_to_string(move || {
+            let state = WeeklyHolidayFormState::new("1", "2025-01-02".into());
+            let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
+            resource.set(Ok(items.clone()));
+            let action =
+                create_action(|_: &CreateWeeklyHolidayRequest| async move { Ok(sample_item()) });
+            let delete_action = create_action(|_: &String| async move { Ok(()) });
+            let reload = create_rw_signal(0u32);
+            let message = create_rw_signal(None::<String>);
+            let error = create_rw_signal(None::<ApiError>);
+            let admin_allowed = create_memo(move |_| admin_allowed);
+            let system_admin_allowed = create_memo(move |_| system_admin_allowed);
+            view! {
+                <WeeklyHolidaySection
+                    state=state
+                    resource=resource
+                    action=action
+                    delete_action=delete_action
+                    reload=reload
+                    message=message
+                    error=error
+                    admin_allowed=admin_allowed
+                    system_admin_allowed=system_admin_allowed
+                />
+            }
+        })
+    }
+
+    #[test]
+    fn weekly_holiday_section_renders_empty_state() {
+        let html = render_with_resource(Vec::new(), true, false);
+        assert!(html.contains("週次休日"));
+        assert!(html.contains("登録済みの週次休日はありません。"));
+    }
+
+    #[test]
+    fn weekly_holiday_section_renders_table() {
+        let html = render_with_resource(vec![sample_item()], true, true);
+        assert!(html.contains("週次休日"));
+        assert!(html.contains("月"));
+    }
+
+    #[test]
+    fn helper_feedback_and_hint_cover_success_and_error_paths() {
+        let created = sample_item();
+        let (create_msg, create_err, reset_start) = weekly_create_feedback(Ok(created));
+        assert!(create_msg.unwrap_or_default().contains("登録しました"));
+        assert!(create_err.is_none());
+        assert_eq!(
+            reset_start.map(|d| d.to_string()).as_deref(),
+            Some("2025-01-01")
+        );
+
+        let (create_fail_msg, create_fail_err, create_fail_start) =
+            weekly_create_feedback(Err(ApiError::unknown("create failed")));
+        assert!(create_fail_msg.is_none());
+        assert_eq!(create_fail_err.expect("error").error, "create failed");
+        assert!(create_fail_start.is_none());
+
+        let (delete_ok_msg, delete_ok_err) = weekly_delete_feedback(Ok(()));
+        assert_eq!(delete_ok_msg.as_deref(), Some("週次休日を削除しました。"));
+        assert!(delete_ok_err.is_none());
+
+        let (delete_err_msg, delete_err) =
+            weekly_delete_feedback(Err(ApiError::unknown("delete failed")));
+        assert!(delete_err_msg.is_none());
+        assert_eq!(delete_err.expect("error").error, "delete failed");
+
+        assert_eq!(
+            weekly_start_hint(true),
+            "システム管理者は本日から設定できます。"
+        );
+        assert_eq!(
+            weekly_start_hint(false),
+            "通常管理者は翌日以降が設定可能です。"
+        );
     }
 }

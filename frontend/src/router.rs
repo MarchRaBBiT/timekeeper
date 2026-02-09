@@ -145,4 +145,69 @@ mod tests {
         let unique: HashSet<&str> = ROUTE_PATHS.iter().copied().collect();
         assert_eq!(unique.len(), ROUTE_PATHS.len());
     }
+
+    #[test]
+    fn public_and_protected_routes_are_disjoint() {
+        let protected: HashSet<&str> = PROTECTED_ROUTE_PATHS.iter().copied().collect();
+        let public: HashSet<&str> = PUBLIC_ROUTE_PATHS.iter().copied().collect();
+        assert!(protected.is_disjoint(&public));
+    }
+
+    #[test]
+    fn public_routes_are_subset_of_all() {
+        let all: HashSet<&str> = ROUTE_PATHS.iter().copied().collect();
+        for path in PUBLIC_ROUTE_PATHS {
+            assert!(
+                all.contains(path),
+                "public path missing from ROUTE_PATHS: {}",
+                path
+            );
+        }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::ssr::{render_to_string, with_local_runtime_async};
+    use leptos_router::{RouterIntegrationContext, ServerIntegration};
+
+    #[test]
+    fn app_root_renders_route_shell() {
+        with_local_runtime_async(|| async {
+            let runtime = leptos::create_runtime();
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
+            leptos_reactive::suppress_resource_load(true);
+            let html = app_root().into_view().render_to_string().to_string();
+            leptos_reactive::suppress_resource_load(false);
+            assert!(!html.is_empty());
+            runtime.dispose();
+        });
+    }
+
+    #[test]
+    fn protected_views_render_with_auth_context() {
+        let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/dashboard".to_string(),
+            }));
+            provide_auth(Some(admin_user(true)));
+            view! {
+                <div>
+                    <ProtectedDashboard />
+                    <ProtectedAttendance />
+                    <ProtectedRequests />
+                    <ProtectedSettings />
+                    <ProtectedAdmin />
+                    <ProtectedAdminUsers />
+                    <ProtectedAdminExport />
+                    <ProtectedAdminAuditLogs />
+                </div>
+            }
+        });
+        assert!(!html.is_empty());
+    }
 }
