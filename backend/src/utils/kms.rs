@@ -2,11 +2,17 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
+use anyhow::{anyhow, Context, Result};
+use aws_config::BehaviorVersion;
+use aws_sdk_kms::primitives::Blob;
+use base64::{
+    engine::general_purpose::STANDARD, engine::general_purpose::STANDARD_NO_PAD, Engine as _,
+};
 use rand::{rngs::OsRng, RngCore};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::env;
+use std::{env, future::Future, thread};
 
 use crate::config::Config;
 
@@ -45,7 +51,6 @@ impl KmsEnvelope {
 
         let parts: Vec<&str> = stored.split(':').collect();
         let (provider_id, nonce_part, cipher_part) = match parts.as_slice() {
-            // Backward compatibility: kms:v1:<nonce>:<ciphertext>
             ["kms", "v1", nonce, cipher] => (PSEUDO_PROVIDER_ID.to_string(), *nonce, *cipher),
             ["kms", "v1", provider, nonce, cipher] => (provider.to_string(), *nonce, *cipher),
             _ => return Err(anyhow!("Invalid KMS envelope format")),
@@ -76,6 +81,45 @@ pub trait KmsProvider: Send + Sync {
     fn decrypt(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>>;
 }
 
+fn random_nonce() -> [u8; NONCE_LENGTH] {
+    let mut nonce = [0u8; NONCE_LENGTH];
+    OsRng.fill_bytes(&mut nonce);
+    nonce
+}
+
+fn with_nonce_prefix(nonce: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(nonce.len() + plaintext.len());
+    out.extend_from_slice(nonce);
+    out.extend_from_slice(plaintext);
+    out
+}
+
+fn split_nonce_prefixed_plaintext(bytes: &[u8]) -> Result<(&[u8], &[u8])> {
+    if bytes.len() < NONCE_LENGTH {
+        return Err(anyhow!("Decrypted payload is too short"));
+    }
+    let (nonce, plaintext) = bytes.split_at(NONCE_LENGTH);
+    Ok((nonce, plaintext))
+}
+
+fn block_on_thread<F, T>(future: F) -> Result<T>
+where
+    F: Future<Output = Result<T>> + Send + 'static,
+    T: Send + 'static,
+{
+    let handle = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("Failed to build runtime for KMS call")?;
+        runtime.block_on(future)
+    });
+
+    handle
+        .join()
+        .map_err(|_| anyhow!("KMS worker thread panicked"))?
+}
+
 struct LocalAeadProvider {
     key: [u8; 32],
 }
@@ -95,8 +139,7 @@ impl LocalAeadProvider {
     }
 
     fn encrypt(&self, provider_id: &'static str, plaintext: &[u8]) -> Result<KmsEnvelope> {
-        let mut nonce = [0u8; NONCE_LENGTH];
-        OsRng.fill_bytes(&mut nonce);
+        let nonce = random_nonce();
 
         let cipher = Aes256Gcm::new_from_slice(&self.key).map_err(|_| anyhow!("Invalid key"))?;
         let ciphertext = cipher
@@ -155,16 +198,16 @@ impl KmsProvider for PseudoKmsProvider {
 }
 
 pub struct AwsKmsProvider {
-    crypto: LocalAeadProvider,
+    region: String,
+    key_id: String,
 }
 
 impl AwsKmsProvider {
     pub fn from_config(config: &Config) -> Self {
-        let crypto = LocalAeadProvider::from_context(
-            config,
-            &[AWS_PROVIDER_ID, &config.aws_region, &config.aws_kms_key_id],
-        );
-        Self { crypto }
+        Self {
+            region: config.aws_region.clone(),
+            key_id: config.aws_kms_key_id.clone(),
+        }
     }
 }
 
@@ -174,23 +217,142 @@ impl KmsProvider for AwsKmsProvider {
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope> {
-        self.crypto.encrypt(self.provider_id(), plaintext)
+        if self.key_id.trim().is_empty() {
+            return Err(anyhow!("AWS KMS key id is not configured"));
+        }
+
+        let nonce = random_nonce();
+        let payload = with_nonce_prefix(&nonce, plaintext);
+        let region = self.region.clone();
+        let key_id = self.key_id.clone();
+
+        let ciphertext = block_on_thread(async move {
+            let aws_config = aws_config::defaults(BehaviorVersion::latest())
+                .region(aws_config::Region::new(region))
+                .load()
+                .await;
+            let client = aws_sdk_kms::Client::new(&aws_config);
+            let response = client
+                .encrypt()
+                .key_id(key_id)
+                .plaintext(Blob::new(payload))
+                .send()
+                .await
+                .context("AWS KMS Encrypt API call failed")?;
+
+            response
+                .ciphertext_blob
+                .map(|blob| blob.into_inner())
+                .ok_or_else(|| anyhow!("AWS KMS Encrypt returned empty ciphertext"))
+        })?;
+
+        Ok(KmsEnvelope {
+            provider_id: self.provider_id().to_string(),
+            nonce: nonce.to_vec(),
+            ciphertext,
+        })
     }
 
     fn decrypt(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
-        self.crypto.decrypt(nonce, ciphertext)
+        if self.key_id.trim().is_empty() {
+            return Err(anyhow!("AWS KMS key id is not configured"));
+        }
+
+        if nonce.len() != NONCE_LENGTH {
+            return Err(anyhow!("Invalid nonce length"));
+        }
+
+        let region = self.region.clone();
+        let ciphertext_blob = ciphertext.to_vec();
+        let expected_nonce = nonce.to_vec();
+
+        let decrypted = block_on_thread(async move {
+            let aws_config = aws_config::defaults(BehaviorVersion::latest())
+                .region(aws_config::Region::new(region))
+                .load()
+                .await;
+            let client = aws_sdk_kms::Client::new(&aws_config);
+            let response = client
+                .decrypt()
+                .ciphertext_blob(Blob::new(ciphertext_blob))
+                .send()
+                .await
+                .context("AWS KMS Decrypt API call failed")?;
+
+            response
+                .plaintext
+                .map(|blob| blob.into_inner())
+                .ok_or_else(|| anyhow!("AWS KMS Decrypt returned empty plaintext"))
+        })?;
+
+        let (embedded_nonce, plaintext) = split_nonce_prefixed_plaintext(&decrypted)?;
+        if embedded_nonce != expected_nonce.as_slice() {
+            return Err(anyhow!("KMS envelope nonce mismatch"));
+        }
+
+        Ok(plaintext.to_vec())
     }
 }
 
+#[derive(Serialize)]
+struct GcpEncryptRequest {
+    plaintext: String,
+}
+
+#[derive(Deserialize)]
+struct GcpEncryptResponse {
+    ciphertext: String,
+}
+
+#[derive(Serialize)]
+struct GcpDecryptRequest {
+    ciphertext: String,
+}
+
+#[derive(Deserialize)]
+struct GcpDecryptResponse {
+    plaintext: String,
+}
+
 pub struct GcpKmsProvider {
-    crypto: LocalAeadProvider,
+    key_name: String,
+    access_token: Option<String>,
+    http_client: Client,
 }
 
 impl GcpKmsProvider {
     pub fn from_config(config: &Config) -> Self {
-        let crypto =
-            LocalAeadProvider::from_context(config, &[GCP_PROVIDER_ID, &config.aws_kms_key_id]);
-        Self { crypto }
+        let key_name =
+            env::var("GCP_KMS_KEY_NAME").unwrap_or_else(|_| config.aws_kms_key_id.clone());
+        let access_token = env::var("GCP_ACCESS_TOKEN")
+            .ok()
+            .or_else(|| env::var("GOOGLE_OAUTH_ACCESS_TOKEN").ok());
+
+        Self {
+            key_name,
+            access_token,
+            http_client: Client::new(),
+        }
+    }
+
+    fn access_token(&self) -> Result<&str> {
+        self.access_token
+            .as_deref()
+            .ok_or_else(|| anyhow!("GCP access token is not configured"))
+    }
+
+    fn encrypt_url(&self) -> String {
+        format!(
+            "https://cloudkms.googleapis.com/v1/{}:encrypt",
+            self.key_name
+        )
+    }
+
+    fn decrypt_url(&self) -> String {
+        format!(
+            "https://cloudkms.googleapis.com/v1/{}:decrypt",
+            self.key_name
+        )
     }
 }
 
@@ -200,11 +362,80 @@ impl KmsProvider for GcpKmsProvider {
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope> {
-        self.crypto.encrypt(self.provider_id(), plaintext)
+        if self.key_name.trim().is_empty() {
+            return Err(anyhow!("GCP KMS key name is not configured"));
+        }
+
+        let nonce = random_nonce();
+        let payload = with_nonce_prefix(&nonce, plaintext);
+        let request = GcpEncryptRequest {
+            plaintext: STANDARD.encode(payload),
+        };
+        let token = self.access_token()?;
+
+        let response = self
+            .http_client
+            .post(self.encrypt_url())
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .context("GCP KMS Encrypt API call failed")?
+            .error_for_status()
+            .context("GCP KMS Encrypt returned error status")?;
+
+        let body: GcpEncryptResponse = response
+            .json()
+            .context("Failed to parse GCP KMS Encrypt response")?;
+
+        let ciphertext = STANDARD
+            .decode(body.ciphertext)
+            .map_err(|_| anyhow!("Invalid GCP ciphertext encoding"))?;
+
+        Ok(KmsEnvelope {
+            provider_id: self.provider_id().to_string(),
+            nonce: nonce.to_vec(),
+            ciphertext,
+        })
     }
 
     fn decrypt(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
-        self.crypto.decrypt(nonce, ciphertext)
+        if self.key_name.trim().is_empty() {
+            return Err(anyhow!("GCP KMS key name is not configured"));
+        }
+
+        if nonce.len() != NONCE_LENGTH {
+            return Err(anyhow!("Invalid nonce length"));
+        }
+
+        let request = GcpDecryptRequest {
+            ciphertext: STANDARD.encode(ciphertext),
+        };
+        let token = self.access_token()?;
+
+        let response = self
+            .http_client
+            .post(self.decrypt_url())
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .context("GCP KMS Decrypt API call failed")?
+            .error_for_status()
+            .context("GCP KMS Decrypt returned error status")?;
+
+        let body: GcpDecryptResponse = response
+            .json()
+            .context("Failed to parse GCP KMS Decrypt response")?;
+
+        let decrypted_payload = STANDARD
+            .decode(body.plaintext)
+            .map_err(|_| anyhow!("Invalid GCP plaintext encoding"))?;
+
+        let (embedded_nonce, plaintext) = split_nonce_prefixed_plaintext(&decrypted_payload)?;
+        if embedded_nonce != nonce {
+            return Err(anyhow!("KMS envelope nonce mismatch"));
+        }
+
+        Ok(plaintext.to_vec())
     }
 }
 
@@ -288,26 +519,11 @@ mod tests {
     }
 
     #[test]
-    fn aws_provider_round_trip() {
-        let config = config_stub();
-        let provider = AwsKmsProvider::from_config(&config);
-        let plaintext = b"aws-test";
-        let envelope = provider.encrypt(plaintext).expect("encrypt");
-        let decrypted = provider
-            .decrypt(&envelope.nonce, &envelope.ciphertext)
-            .expect("decrypt");
-        assert_eq!(decrypted, plaintext);
-    }
-
-    #[test]
-    fn gcp_provider_round_trip() {
-        let config = config_stub();
-        let provider = GcpKmsProvider::from_config(&config);
-        let plaintext = b"gcp-test";
-        let envelope = provider.encrypt(plaintext).expect("encrypt");
-        let decrypted = provider
-            .decrypt(&envelope.nonce, &envelope.ciphertext)
-            .expect("decrypt");
-        assert_eq!(decrypted, plaintext);
+    fn split_nonce_prefixed_plaintext_extracts_nonce_and_payload() {
+        let nonce = [1u8; NONCE_LENGTH];
+        let payload = with_nonce_prefix(&nonce, b"hello");
+        let (decoded_nonce, plaintext) = split_nonce_prefixed_plaintext(&payload).expect("split");
+        assert_eq!(decoded_nonce, nonce);
+        assert_eq!(plaintext, b"hello");
     }
 }
