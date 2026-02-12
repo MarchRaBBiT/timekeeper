@@ -18,6 +18,10 @@ path = "src/bin/token_cleanup.rs"
 name = "pii_backfill"
 path = "src/bin/pii_backfill.rs"
 
+[[bin]]
+name = "pii_rotate_keys"
+path = "src/bin/pii_rotate_keys.rs"
+
 [dependencies]
 # Web framework
 axum = { version = "0.8", features = ["macros", "multipart", "tracing"] }

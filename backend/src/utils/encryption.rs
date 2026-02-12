@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use sha2::{Digest, Sha256};
 
 use crate::config::Config;
-use crate::utils::kms::{active_provider, provider_by_id, KmsEnvelope};
+use crate::utils::kms::{active_provider, provider_by_id_and_version, KmsEnvelope};
 
 pub fn encrypt_pii(plaintext: &str, config: &Config) -> Result<String> {
     let provider = active_provider(config);
@@ -15,7 +15,7 @@ pub fn decrypt_pii(stored: &str, config: &Config) -> Result<String> {
         return Ok(stored.to_string());
     };
 
-    let provider = provider_by_id(&envelope.provider_id, config)?;
+    let provider = provider_by_id_and_version(&envelope.provider_id, envelope.key_version, config)?;
     let plaintext = provider.decrypt(&envelope.nonce, &envelope.ciphertext)?;
     String::from_utf8(plaintext).map_err(|_| anyhow!("Decrypted data is not UTF-8"))
 }
@@ -89,7 +89,7 @@ mod tests {
         let config = config_stub();
         let plain = "Alice Example";
         let encrypted = encrypt_pii(plain, &config).expect("encrypt");
-        assert!(encrypted.starts_with("kms:v1:pseudo:"));
+        assert!(encrypted.starts_with("kms:v1:pseudo:1:"));
         let decrypted = decrypt_pii(&encrypted, &config).expect("decrypt");
         assert_eq!(decrypted, plain);
     }
@@ -107,7 +107,7 @@ mod tests {
         let config = config_stub();
         let plain = "legacy-kms-envelope";
         let encrypted = encrypt_pii(plain, &config).expect("encrypt");
-        let legacy = encrypted.replacen("kms:v1:pseudo:", "kms:v1:", 1);
+        let legacy = encrypted.replacen("kms:v1:pseudo:1:", "kms:v1:", 1);
         let decrypted = decrypt_pii(&legacy, &config).expect("decrypt legacy");
         assert_eq!(decrypted, plain);
     }

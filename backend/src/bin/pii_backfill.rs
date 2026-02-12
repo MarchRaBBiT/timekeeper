@@ -4,6 +4,7 @@ use timekeeper_backend::{
     db::connection::create_pool,
     utils::{
         encryption::{encrypt_pii, hash_email},
+        kms::active_key_version,
         mfa::{protect_totp_secret, recover_totp_secret},
     },
 };
@@ -29,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn backfill_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
+    let key_version = i16::try_from(active_key_version()).unwrap_or(1);
     let rows = sqlx::query_as::<_, UserPiiRow>(
         "SELECT id, full_name, email, mfa_secret FROM users ORDER BY created_at ASC",
     )
@@ -56,13 +58,14 @@ async fn backfill_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
              email_enc = $2, \
              email_hash = $3, \
              mfa_secret_enc = $4, \
-             pii_key_version = 1 \
-             WHERE id = $5",
+             pii_key_version = $5 \
+             WHERE id = $6",
         )
         .bind(full_name_enc)
         .bind(email_enc)
         .bind(email_hash)
         .bind(mfa_secret_enc)
+        .bind(key_version)
         .bind(row.id)
         .execute(pool)
         .await?;
@@ -72,6 +75,7 @@ async fn backfill_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
 }
 
 async fn backfill_archived_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
+    let key_version = i16::try_from(active_key_version()).unwrap_or(1);
     let rows = sqlx::query_as::<_, UserPiiRow>(
         "SELECT id, full_name, email, mfa_secret FROM archived_users ORDER BY archived_at ASC",
     )
@@ -99,13 +103,14 @@ async fn backfill_archived_users(pool: &PgPool, config: &Config) -> anyhow::Resu
              email_enc = $2, \
              email_hash = $3, \
              mfa_secret_enc = $4, \
-             pii_key_version = 1 \
-             WHERE id = $5",
+             pii_key_version = $5 \
+             WHERE id = $6",
         )
         .bind(full_name_enc)
         .bind(email_enc)
         .bind(email_hash)
         .bind(mfa_secret_enc)
+        .bind(key_version)
         .bind(row.id)
         .execute(pool)
         .await?;

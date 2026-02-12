@@ -19,12 +19,14 @@ use crate::config::Config;
 const NONCE_LENGTH: usize = 12;
 const ENVELOPE_SCHEME: &str = "kms";
 const ENVELOPE_VERSION: &str = "v1";
+const DEFAULT_KEY_VERSION: u16 = 1;
 const PSEUDO_PROVIDER_ID: &str = "pseudo";
 const AWS_PROVIDER_ID: &str = "aws";
 const GCP_PROVIDER_ID: &str = "gcp";
 
 pub struct KmsEnvelope {
     pub provider_id: String,
+    pub key_version: u16,
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
 }
@@ -34,11 +36,16 @@ impl KmsEnvelope {
         if self.nonce.len() != NONCE_LENGTH {
             return Err(anyhow!("Invalid nonce length"));
         }
+        if self.key_version == 0 {
+            return Err(anyhow!("Invalid key version"));
+        }
+
         Ok(format!(
-            "{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             ENVELOPE_SCHEME,
             ENVELOPE_VERSION,
             self.provider_id,
+            self.key_version,
             STANDARD_NO_PAD.encode(&self.nonce),
             STANDARD_NO_PAD.encode(&self.ciphertext)
         ))
@@ -50,9 +57,27 @@ impl KmsEnvelope {
         }
 
         let parts: Vec<&str> = stored.split(':').collect();
-        let (provider_id, nonce_part, cipher_part) = match parts.as_slice() {
-            ["kms", "v1", nonce, cipher] => (PSEUDO_PROVIDER_ID.to_string(), *nonce, *cipher),
-            ["kms", "v1", provider, nonce, cipher] => (provider.to_string(), *nonce, *cipher),
+        let (provider_id, key_version, nonce_part, cipher_part) = match parts.as_slice() {
+            // Backward compatibility: kms:v1:<nonce>:<ciphertext>
+            ["kms", "v1", nonce, cipher] => (
+                PSEUDO_PROVIDER_ID.to_string(),
+                DEFAULT_KEY_VERSION,
+                *nonce,
+                *cipher,
+            ),
+            // Backward compatibility: kms:v1:<provider>:<nonce>:<ciphertext>
+            ["kms", "v1", provider, nonce, cipher] => {
+                (provider.to_string(), DEFAULT_KEY_VERSION, *nonce, *cipher)
+            }
+            ["kms", "v1", provider, version, nonce, cipher] => {
+                let parsed_version = version
+                    .parse::<u16>()
+                    .map_err(|_| anyhow!("Invalid key version"))?;
+                if parsed_version == 0 {
+                    return Err(anyhow!("Invalid key version"));
+                }
+                (provider.to_string(), parsed_version, *nonce, *cipher)
+            }
             _ => return Err(anyhow!("Invalid KMS envelope format")),
         };
 
@@ -69,6 +94,7 @@ impl KmsEnvelope {
 
         Ok(Some(Self {
             provider_id,
+            key_version,
             nonce,
             ciphertext,
         }))
@@ -77,8 +103,38 @@ impl KmsEnvelope {
 
 pub trait KmsProvider: Send + Sync {
     fn provider_id(&self) -> &'static str;
+    fn key_version(&self) -> u16;
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope>;
     fn decrypt(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>>;
+}
+
+pub fn active_key_version() -> u16 {
+    env::var("KMS_ACTIVE_KEY_VERSION")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|version| *version > 0)
+        .unwrap_or(DEFAULT_KEY_VERSION)
+}
+
+fn resolve_versioned_env(base_name: &str, key_version: u16) -> Option<String> {
+    if key_version > DEFAULT_KEY_VERSION {
+        let versioned = format!("{}_V{}", base_name, key_version);
+        if let Ok(value) = env::var(versioned) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    env::var(base_name).ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
 }
 
 fn random_nonce() -> [u8; NONCE_LENGTH] {
@@ -138,7 +194,12 @@ impl LocalAeadProvider {
         Self { key }
     }
 
-    fn encrypt(&self, provider_id: &'static str, plaintext: &[u8]) -> Result<KmsEnvelope> {
+    fn encrypt(
+        &self,
+        provider_id: &'static str,
+        key_version: u16,
+        plaintext: &[u8],
+    ) -> Result<KmsEnvelope> {
         let nonce = random_nonce();
 
         let cipher = Aes256Gcm::new_from_slice(&self.key).map_err(|_| anyhow!("Invalid key"))?;
@@ -148,6 +209,7 @@ impl LocalAeadProvider {
 
         Ok(KmsEnvelope {
             provider_id: provider_id.to_string(),
+            key_version,
             nonce: nonce.to_vec(),
             ciphertext,
         })
@@ -167,19 +229,25 @@ impl LocalAeadProvider {
 
 pub struct PseudoKmsProvider {
     crypto: LocalAeadProvider,
+    key_version: u16,
 }
 
 impl PseudoKmsProvider {
-    pub fn from_config(config: &Config) -> Self {
+    pub fn from_config(config: &Config, key_version: u16) -> Self {
+        let key_version_str = key_version.to_string();
         let crypto = LocalAeadProvider::from_context(
             config,
             &[
                 PSEUDO_PROVIDER_ID,
+                &key_version_str,
                 &config.aws_region,
                 &config.aws_kms_key_id,
             ],
         );
-        Self { crypto }
+        Self {
+            crypto,
+            key_version,
+        }
     }
 }
 
@@ -188,8 +256,13 @@ impl KmsProvider for PseudoKmsProvider {
         PSEUDO_PROVIDER_ID
     }
 
+    fn key_version(&self) -> u16 {
+        self.key_version
+    }
+
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope> {
-        self.crypto.encrypt(self.provider_id(), plaintext)
+        self.crypto
+            .encrypt(self.provider_id(), self.key_version(), plaintext)
     }
 
     fn decrypt(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
@@ -200,13 +273,18 @@ impl KmsProvider for PseudoKmsProvider {
 pub struct AwsKmsProvider {
     region: String,
     key_id: String,
+    key_version: u16,
 }
 
 impl AwsKmsProvider {
-    pub fn from_config(config: &Config) -> Self {
+    pub fn from_config(config: &Config, key_version: u16) -> Self {
+        let key_id = resolve_versioned_env("AWS_KMS_KEY_ID", key_version)
+            .unwrap_or_else(|| config.aws_kms_key_id.clone());
+
         Self {
             region: config.aws_region.clone(),
-            key_id: config.aws_kms_key_id.clone(),
+            key_id,
+            key_version,
         }
     }
 }
@@ -214,6 +292,10 @@ impl AwsKmsProvider {
 impl KmsProvider for AwsKmsProvider {
     fn provider_id(&self) -> &'static str {
         AWS_PROVIDER_ID
+    }
+
+    fn key_version(&self) -> u16 {
+        self.key_version
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope> {
@@ -248,6 +330,7 @@ impl KmsProvider for AwsKmsProvider {
 
         Ok(KmsEnvelope {
             provider_id: self.provider_id().to_string(),
+            key_version: self.key_version(),
             nonce: nonce.to_vec(),
             ciphertext,
         })
@@ -318,12 +401,15 @@ pub struct GcpKmsProvider {
     key_name: String,
     access_token: Option<String>,
     http_client: Client,
+    key_version: u16,
 }
 
 impl GcpKmsProvider {
-    pub fn from_config(config: &Config) -> Self {
-        let key_name =
-            env::var("GCP_KMS_KEY_NAME").unwrap_or_else(|_| config.aws_kms_key_id.clone());
+    pub fn from_config(config: &Config, key_version: u16) -> Self {
+        let key_name = resolve_versioned_env("GCP_KMS_KEY_NAME", key_version)
+            .or_else(|| resolve_versioned_env("AWS_KMS_KEY_ID", key_version))
+            .unwrap_or_else(|| config.aws_kms_key_id.clone());
+
         let access_token = env::var("GCP_ACCESS_TOKEN")
             .ok()
             .or_else(|| env::var("GOOGLE_OAUTH_ACCESS_TOKEN").ok());
@@ -332,6 +418,7 @@ impl GcpKmsProvider {
             key_name,
             access_token,
             http_client: Client::new(),
+            key_version,
         }
     }
 
@@ -359,6 +446,10 @@ impl GcpKmsProvider {
 impl KmsProvider for GcpKmsProvider {
     fn provider_id(&self) -> &'static str {
         GCP_PROVIDER_ID
+    }
+
+    fn key_version(&self) -> u16 {
+        self.key_version
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<KmsEnvelope> {
@@ -393,6 +484,7 @@ impl KmsProvider for GcpKmsProvider {
 
         Ok(KmsEnvelope {
             provider_id: self.provider_id().to_string(),
+            key_version: self.key_version(),
             nonce: nonce.to_vec(),
             ciphertext,
         })
@@ -440,18 +532,34 @@ impl KmsProvider for GcpKmsProvider {
 }
 
 pub fn active_provider(config: &Config) -> Box<dyn KmsProvider> {
+    let key_version = active_key_version();
     match env::var("KMS_PROVIDER").ok().as_deref() {
-        Some(AWS_PROVIDER_ID) => Box::new(AwsKmsProvider::from_config(config)),
-        Some(GCP_PROVIDER_ID) => Box::new(GcpKmsProvider::from_config(config)),
-        _ => Box::new(PseudoKmsProvider::from_config(config)),
+        Some(AWS_PROVIDER_ID) => Box::new(AwsKmsProvider::from_config(config, key_version)),
+        Some(GCP_PROVIDER_ID) => Box::new(GcpKmsProvider::from_config(config, key_version)),
+        _ => Box::new(PseudoKmsProvider::from_config(config, key_version)),
     }
 }
 
 pub fn provider_by_id(provider_id: &str, config: &Config) -> Result<Box<dyn KmsProvider>> {
+    provider_by_id_and_version(provider_id, active_key_version(), config)
+}
+
+pub fn provider_by_id_and_version(
+    provider_id: &str,
+    key_version: u16,
+    config: &Config,
+) -> Result<Box<dyn KmsProvider>> {
+    if key_version == 0 {
+        return Err(anyhow!("Invalid key version"));
+    }
+
     match provider_id {
-        PSEUDO_PROVIDER_ID => Ok(Box::new(PseudoKmsProvider::from_config(config))),
-        AWS_PROVIDER_ID => Ok(Box::new(AwsKmsProvider::from_config(config))),
-        GCP_PROVIDER_ID => Ok(Box::new(GcpKmsProvider::from_config(config))),
+        PSEUDO_PROVIDER_ID => Ok(Box::new(PseudoKmsProvider::from_config(
+            config,
+            key_version,
+        ))),
+        AWS_PROVIDER_ID => Ok(Box::new(AwsKmsProvider::from_config(config, key_version))),
+        GCP_PROVIDER_ID => Ok(Box::new(GcpKmsProvider::from_config(config, key_version))),
         _ => Err(anyhow!("Unsupported KMS provider: {}", provider_id)),
     }
 }
@@ -511,10 +619,10 @@ mod tests {
     #[test]
     fn provider_by_id_supports_aws_and_gcp() {
         let config = config_stub();
-        let aws = provider_by_id("aws", &config).expect("aws provider");
+        let aws = provider_by_id_and_version("aws", 1, &config).expect("aws provider");
         assert_eq!(aws.provider_id(), "aws");
 
-        let gcp = provider_by_id("gcp", &config).expect("gcp provider");
+        let gcp = provider_by_id_and_version("gcp", 1, &config).expect("gcp provider");
         assert_eq!(gcp.provider_id(), "gcp");
     }
 
@@ -525,5 +633,38 @@ mod tests {
         let (decoded_nonce, plaintext) = split_nonce_prefixed_plaintext(&payload).expect("split");
         assert_eq!(decoded_nonce, nonce);
         assert_eq!(plaintext, b"hello");
+    }
+
+    #[test]
+    fn envelope_parse_supports_new_and_legacy_formats() {
+        let encoded = "kms:v1:pseudo:2:AAAAAAAAAAAAAAAA:Ym9keQ";
+        let envelope = KmsEnvelope::parse(encoded)
+            .expect("parse")
+            .expect("envelope");
+        assert_eq!(envelope.provider_id, "pseudo");
+        assert_eq!(envelope.key_version, 2);
+
+        let legacy = "kms:v1:AAAAAAAAAAAAAAAA:Ym9keQ";
+        let envelope = KmsEnvelope::parse(legacy)
+            .expect("parse")
+            .expect("envelope");
+        assert_eq!(envelope.provider_id, "pseudo");
+        assert_eq!(envelope.key_version, 1);
+    }
+
+    #[test]
+    fn pseudo_provider_key_version_changes_derived_key() {
+        let config = config_stub();
+        let provider_v1 = PseudoKmsProvider::from_config(&config, 1);
+        let provider_v2 = PseudoKmsProvider::from_config(&config, 2);
+
+        let envelope = provider_v1.encrypt(b"same-plaintext").expect("encrypt");
+        let decrypted_v1 = provider_v1
+            .decrypt(&envelope.nonce, &envelope.ciphertext)
+            .expect("decrypt v1");
+        assert_eq!(decrypted_v1, b"same-plaintext");
+
+        let decrypt_v2 = provider_v2.decrypt(&envelope.nonce, &envelope.ciphertext);
+        assert!(decrypt_v2.is_err());
     }
 }
