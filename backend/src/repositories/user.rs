@@ -85,6 +85,15 @@ pub async fn email_exists_for_other_user(
     Ok(result.0)
 }
 
+/// Checks if an email exists (for conflict checks).
+pub async fn email_exists(pool: &PgPool, email: &str) -> Result<bool, sqlx::Error> {
+    let result: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)")
+        .bind(email)
+        .fetch_one(pool)
+        .await?;
+    Ok(result.0)
+}
+
 /// Resets MFA for a user.
 pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
@@ -254,8 +263,8 @@ pub async fn soft_delete_user(
     // 6. Archive user
     sqlx::query(
         r#"
-        INSERT INTO archived_users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, archived_at, archived_by)
-        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, $2, $3
+        INSERT INTO archived_users (id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, archived_at, archived_by)
+        SELECT id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at, $2, $3
         FROM users
         WHERE id = $1
         "#,
@@ -293,8 +302,8 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     // 1. Restore user
     sqlx::query(
         r#"
-        INSERT INTO users (id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at)
-        SELECT id, username, password_hash, full_name, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at
+        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at)
+        SELECT id, username, password_hash, full_name, email, role, is_system_admin, mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at
         FROM archived_users
         WHERE id = $1
         "#,
@@ -491,6 +500,19 @@ pub async fn fetch_archived_username(
             .fetch_optional(pool)
             .await?;
     Ok(result.map(|(u,)| u))
+}
+
+/// Fetches archived username and email by user ID.
+pub async fn fetch_archived_identity(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<Option<(String, String)>, sqlx::Error> {
+    let result: Option<(String, String)> =
+        sqlx::query_as("SELECT username, email FROM archived_users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(result)
 }
 
 /// Archived user data for API response.

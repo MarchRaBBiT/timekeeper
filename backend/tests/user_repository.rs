@@ -1,7 +1,6 @@
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
 use std::sync::OnceLock;
 use timekeeper_backend::{
-    error::AppError,
     models::{
         leave_request::LeaveType,
         user::{User, UserRole},
@@ -347,7 +346,6 @@ async fn user_repository_restore_missing_user_is_noop() {
 }
 
 #[tokio::test]
-#[ignore = "Known issue #281: restore_user fails due to archived_users email schema mismatch"]
 async fn user_repository_soft_delete_restore_and_archive_cleanup() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
@@ -401,19 +399,21 @@ async fn user_repository_soft_delete_restore_and_archive_cleanup() {
         .expect("get archived users");
     assert!(archived_rows.iter().any(|row| row.id == user_id));
 
-    let restore_err = user_repo::restore_user(&pool, &user_id)
+    user_repo::restore_user(&pool, &user_id)
         .await
-        .expect_err("restore must fail because archived_users has no email column");
-    assert!(matches!(restore_err, AppError::InternalServerError(_)));
-    assert!(!user_repo::user_exists(&pool, &user_id)
+        .expect("restore archived user");
+    assert!(user_repo::user_exists(&pool, &user_id)
         .await
-        .expect("restored user should not exist"));
-    assert!(user_repo::archived_user_exists(&pool, &user_id)
+        .expect("restored user exists"));
+    assert!(!user_repo::archived_user_exists(&pool, &user_id)
         .await
-        .expect("archived user remains after restore error"));
-    user_repo::hard_delete_archived_user(&pool, &user_id)
+        .expect("archived user removed after restore"));
+    let restored_email = sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = $1")
+        .bind(&user_id)
+        .fetch_one(&pool)
         .await
-        .expect("hard delete archived user");
+        .expect("fetch restored email");
+    assert_eq!(restored_email, user.email);
 
     assert!(!user_repo::archived_user_exists(&pool, &user_id)
         .await

@@ -400,6 +400,7 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
     let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
     let regular_admin = seed_user(&pool, UserRole::Admin, false).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
+    let email_conflict_target = seed_user(&pool, UserRole::Employee, false).await;
 
     let app_sysadmin = Router::new()
         .route("/api/admin/users", axum::routing::post(users::create_user))
@@ -437,6 +438,25 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
         .expect("call soft delete");
     assert_eq!(soft_delete_response.status(), StatusCode::OK);
 
+    let soft_delete_email_conflict_target = Request::builder()
+        .method("DELETE")
+        .uri(format!(
+            "/api/admin/users/{}?hard=false",
+            email_conflict_target.id
+        ))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .expect("build soft delete for email conflict target");
+    let soft_delete_email_conflict_target_response = app_sysadmin
+        .clone()
+        .oneshot(soft_delete_email_conflict_target)
+        .await
+        .expect("call soft delete for email conflict target");
+    assert_eq!(
+        soft_delete_email_conflict_target_response.status(),
+        StatusCode::OK
+    );
+
     let inserted_conflict = sqlx::query(
         "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
          mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
@@ -466,6 +486,42 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
         .await
         .expect("call restore conflict");
     assert_eq!(restore_conflict_response.status(), StatusCode::BAD_REQUEST);
+
+    let inserted_email_conflict = sqlx::query(
+        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
+         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NOW(), NOW(), NOW())",
+    )
+    .bind(UserId::new().to_string())
+    .bind(format!("email-conflict-{}", UserId::new()))
+    .bind("hash")
+    .bind("Email Conflict User")
+    .bind(&email_conflict_target.email)
+    .bind("employee")
+    .bind(false)
+    .execute(&pool)
+    .await
+    .expect("insert email conflict user");
+    assert_eq!(inserted_email_conflict.rows_affected(), 1);
+
+    let restore_email_conflict = Request::builder()
+        .method("POST")
+        .uri(format!(
+            "/api/admin/archived-users/{}/restore",
+            email_conflict_target.id
+        ))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .expect("build restore email conflict request");
+    let restore_email_conflict_response = app_sysadmin
+        .clone()
+        .oneshot(restore_email_conflict)
+        .await
+        .expect("call restore email conflict");
+    assert_eq!(
+        restore_email_conflict_response.status(),
+        StatusCode::BAD_REQUEST
+    );
 
     let delete_missing_archived = Request::builder()
         .method("DELETE")

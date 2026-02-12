@@ -295,7 +295,7 @@ pub async fn restore_archived_user(
         return Err(AppError::NotFound("Archived user not found".into()));
     }
 
-    let username = user_repo::fetch_archived_username(&state.write_pool, &user_id)
+    let (username, email) = user_repo::fetch_archived_identity(&state.write_pool, &user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .unwrap_or_default();
@@ -307,6 +307,16 @@ pub async fn restore_archived_user(
     if conflict_check {
         return Err(AppError::BadRequest(
             "Username already in use by another user".into(),
+        ));
+    }
+
+    let email_conflict_check = user_repo::email_exists(&state.write_pool, &email)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    if email_conflict_check {
+        return Err(AppError::BadRequest(
+            "Email already in use by another user".into(),
         ));
     }
 
