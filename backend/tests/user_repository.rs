@@ -6,7 +6,7 @@ use timekeeper_backend::{
         user::{User, UserRole},
     },
     repositories::user as user_repo,
-    utils::encryption::hash_email,
+    utils::encryption::{decrypt_pii, hash_email},
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -107,7 +107,6 @@ async fn user_repository_basic_crud_and_mfa_flags() {
     assert!(!user_repo::email_exists_for_other_user(
         &pool,
         &hash_email("repo-user@example.com", &support::test_config()),
-        "repo-user@example.com",
         &created_id
     )
     .await
@@ -115,7 +114,6 @@ async fn user_repository_basic_crud_and_mfa_flags() {
     assert!(user_repo::email_exists_for_other_user(
         &pool,
         &hash_email("repo-user@example.com", &support::test_config()),
-        "repo-user@example.com",
         &other.id.to_string()
     )
     .await
@@ -417,11 +415,14 @@ async fn user_repository_soft_delete_restore_and_archive_cleanup() {
     assert!(!user_repo::archived_user_exists(&pool, &user_id)
         .await
         .expect("archived user removed after restore"));
-    let restored_email = sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = $1")
-        .bind(&user_id)
-        .fetch_one(&pool)
-        .await
-        .expect("fetch restored email");
+    let restored_email =
+        sqlx::query_scalar::<_, String>("SELECT email_enc FROM users WHERE id = $1")
+            .bind(&user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch restored email");
+    let restored_email =
+        decrypt_pii(&restored_email, &support::test_config()).expect("decrypt restored email");
     assert_eq!(restored_email, user.email);
 
     assert!(!user_repo::archived_user_exists(&pool, &user_id)

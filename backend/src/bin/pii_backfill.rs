@@ -3,7 +3,7 @@ use timekeeper_backend::{
     config::Config,
     db::connection::create_pool,
     utils::{
-        encryption::{encrypt_pii, hash_email},
+        encryption::{decrypt_pii, encrypt_pii, hash_email},
         kms::active_key_version,
         mfa::{protect_totp_secret, recover_totp_secret},
     },
@@ -12,9 +12,9 @@ use timekeeper_backend::{
 #[derive(Debug, FromRow)]
 struct UserPiiRow {
     id: String,
-    full_name: Option<String>,
-    email: Option<String>,
-    mfa_secret: Option<String>,
+    full_name_enc: Option<String>,
+    email_enc: Option<String>,
+    mfa_secret_enc: Option<String>,
 }
 
 #[tokio::main]
@@ -32,19 +32,29 @@ async fn main() -> anyhow::Result<()> {
 async fn backfill_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
     let key_version = i16::try_from(active_key_version()).unwrap_or(1);
     let rows = sqlx::query_as::<_, UserPiiRow>(
-        "SELECT id, full_name, email, mfa_secret FROM users ORDER BY created_at ASC",
+        "SELECT id, full_name_enc, email_enc, mfa_secret_enc FROM users ORDER BY created_at ASC",
     )
     .fetch_all(pool)
     .await?;
 
     for row in rows {
-        let full_name_plain = row.full_name.unwrap_or_default();
-        let email_plain = row.email.unwrap_or_default();
+        let full_name_plain = row
+            .full_name_enc
+            .as_deref()
+            .map(|value| decrypt_pii(value, config))
+            .transpose()?
+            .unwrap_or_default();
+        let email_plain = row
+            .email_enc
+            .as_deref()
+            .map(|value| decrypt_pii(value, config))
+            .transpose()?
+            .unwrap_or_default();
         let full_name_enc = encrypt_pii(&full_name_plain, config)?;
         let email_enc = encrypt_pii(&email_plain, config)?;
         let email_hash = hash_email(&email_plain, config);
         let mfa_secret_enc = row
-            .mfa_secret
+            .mfa_secret_enc
             .as_deref()
             .map(|raw| {
                 let plain = recover_totp_secret(raw, config)?;
@@ -77,19 +87,29 @@ async fn backfill_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
 async fn backfill_archived_users(pool: &PgPool, config: &Config) -> anyhow::Result<()> {
     let key_version = i16::try_from(active_key_version()).unwrap_or(1);
     let rows = sqlx::query_as::<_, UserPiiRow>(
-        "SELECT id, full_name, email, mfa_secret FROM archived_users ORDER BY archived_at ASC",
+        "SELECT id, full_name_enc, email_enc, mfa_secret_enc FROM archived_users ORDER BY archived_at ASC",
     )
     .fetch_all(pool)
     .await?;
 
     for row in rows {
-        let full_name_plain = row.full_name.unwrap_or_default();
-        let email_plain = row.email.unwrap_or_default();
+        let full_name_plain = row
+            .full_name_enc
+            .as_deref()
+            .map(|value| decrypt_pii(value, config))
+            .transpose()?
+            .unwrap_or_default();
+        let email_plain = row
+            .email_enc
+            .as_deref()
+            .map(|value| decrypt_pii(value, config))
+            .transpose()?
+            .unwrap_or_default();
         let full_name_enc = encrypt_pii(&full_name_plain, config)?;
         let email_enc = encrypt_pii(&email_plain, config)?;
         let email_hash = hash_email(&email_plain, config);
         let mfa_secret_enc = row
-            .mfa_secret
+            .mfa_secret_enc
             .as_deref()
             .map(|raw| {
                 let plain = recover_totp_secret(raw, config)?;

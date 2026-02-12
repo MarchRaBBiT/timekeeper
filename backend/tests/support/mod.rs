@@ -23,7 +23,7 @@ use timekeeper_backend::{
     },
     state::AppState,
     types::{HolidayExceptionId, UserId, WeeklyHolidayId},
-    utils::{cookies::SameSite, password::hash_password},
+    utils::{cookies::SameSite, encryption::encrypt_pii, password::hash_password},
 };
 use uuid::Uuid;
 
@@ -259,6 +259,7 @@ async fn insert_user_with_password_hash(
     is_system_admin: bool,
     password_hash: String,
 ) -> User {
+    let config = test_config();
     let user = User::new(
         format!("user_{}", Uuid::new_v4()),
         password_hash,
@@ -267,19 +268,26 @@ async fn insert_user_with_password_hash(
         role,
         is_system_admin,
     );
+    let full_name_enc = encrypt_pii(&user.full_name, &config).expect("encrypt full_name");
+    let email_enc = encrypt_pii(&user.email, &config).expect("encrypt email");
+    let mfa_secret_enc = user
+        .mfa_secret
+        .as_deref()
+        .map(|secret| encrypt_pii(secret, &config).expect("encrypt mfa_secret"));
     sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+         mfa_secret_enc, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
-    .bind(&user.full_name)
-    .bind(&user.email)
+    .bind(full_name_enc)
+    .bind(email_enc)
+    .bind(timekeeper_backend::utils::encryption::hash_email(&user.email, &config))
     .bind(user.role.as_str())
     .bind(user.is_system_admin)
-    .bind(&user.mfa_secret)
+    .bind(mfa_secret_enc)
     .bind(user.mfa_enabled_at)
     .bind(user.password_changed_at)
     .bind(user.created_at)

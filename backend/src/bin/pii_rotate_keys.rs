@@ -17,11 +17,8 @@ struct RotateOptions {
 #[derive(Debug, FromRow)]
 struct UserPiiRow {
     id: String,
-    full_name: Option<String>,
     full_name_enc: Option<String>,
-    email: Option<String>,
     email_enc: Option<String>,
-    mfa_secret: Option<String>,
     mfa_secret_enc: Option<String>,
     pii_key_version: i16,
 }
@@ -71,7 +68,7 @@ async fn rotate_users(
     options: RotateOptions,
 ) -> anyhow::Result<u64> {
     let rows = sqlx::query_as::<_, UserPiiRow>(
-        "SELECT id, full_name, full_name_enc, email, email_enc, mfa_secret, mfa_secret_enc, pii_key_version \
+        "SELECT id, full_name_enc, email_enc, mfa_secret_enc, pii_key_version \
          FROM users ORDER BY created_at ASC",
     )
     .fetch_all(pool)
@@ -96,7 +93,7 @@ async fn rotate_archived_users(
     options: RotateOptions,
 ) -> anyhow::Result<u64> {
     let rows = sqlx::query_as::<_, UserPiiRow>(
-        "SELECT id, full_name, full_name_enc, email, email_enc, mfa_secret, mfa_secret_enc, pii_key_version \
+        "SELECT id, full_name_enc, email_enc, mfa_secret_enc, pii_key_version \
          FROM archived_users ORDER BY archived_at ASC",
     )
     .fetch_all(pool)
@@ -131,16 +128,8 @@ async fn rotate_rows(
             continue;
         }
 
-        let full_name_source = row
-            .full_name_enc
-            .as_deref()
-            .or(row.full_name.as_deref())
-            .unwrap_or_default();
-        let email_source = row
-            .email_enc
-            .as_deref()
-            .or(row.email.as_deref())
-            .unwrap_or_default();
+        let full_name_source = row.full_name_enc.as_deref().unwrap_or_default();
+        let email_source = row.email_enc.as_deref().unwrap_or_default();
 
         let full_name_plain = decrypt_pii(full_name_source, config)?;
         let email_plain = decrypt_pii(email_source, config)?;
@@ -149,8 +138,9 @@ async fn rotate_rows(
         let email_enc = encrypt_pii(&email_plain, config)?;
         let email_hash = hash_email(&email_plain, config);
 
-        let mfa_source = row.mfa_secret_enc.as_deref().or(row.mfa_secret.as_deref());
-        let mfa_secret_enc = mfa_source
+        let mfa_secret_enc = row
+            .mfa_secret_enc
+            .as_deref()
             .map(|raw| {
                 let plain = recover_totp_secret(raw, config)?;
                 protect_totp_secret(&plain, config)
@@ -165,10 +155,10 @@ async fn rotate_rows(
         let sql = format!(
             "UPDATE {table_name} SET \
              {update_prefix} \
-             full_name = $1, full_name_enc = $1, \
-             email = $2, email_enc = $2, \
+             full_name_enc = $1, \
+             email_enc = $2, \
              email_hash = $3, \
-             mfa_secret = $4, mfa_secret_enc = $4, \
+             mfa_secret_enc = $4, \
              pii_key_version = $5 \
              WHERE id = $6"
         );

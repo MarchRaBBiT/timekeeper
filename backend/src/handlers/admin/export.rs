@@ -13,7 +13,7 @@ use crate::{
     error::AppError,
     models::user::User,
     state::AppState,
-    utils::{csv::append_csv_row, pii::mask_name, time},
+    utils::{csv::append_csv_row, encryption::decrypt_pii, pii::mask_name, time},
 };
 
 use super::common::{parse_date_value, push_clause};
@@ -65,7 +65,7 @@ pub async fn export_data(
     }
 
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
+        "SELECT u.username, u.full_name_enc as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
     );
     let mut has_clause = false;
@@ -95,7 +95,9 @@ pub async fn export_data(
             let username = record
                 .try_get::<String, &str>("username")
                 .unwrap_or_default();
-            let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let encrypted_full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let full_name = decrypt_pii(&encrypted_full_name, &state.config)
+                .unwrap_or_else(|_| "***".to_string());
             let full_name = if mask_pii {
                 mask_name(&full_name)
             } else {

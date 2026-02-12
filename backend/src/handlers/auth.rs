@@ -461,7 +461,6 @@ pub async fn update_profile(
         let email_exists = user_repo::email_exists_for_other_user(
             &state.write_pool,
             &email_hash,
-            email,
             &user.id.to_string(),
         )
         .await
@@ -677,10 +676,9 @@ pub async fn request_password_reset(
     payload.validate()?;
 
     let email_hash = hash_email(&payload.email, &state.config);
-    let user_opt =
-        auth_repo::find_user_by_email_hash(&state.write_pool, &email_hash, &payload.email)
-            .await
-            .map_err(|_| internal_error("Database error"))?;
+    let user_opt = auth_repo::find_user_by_email_hash(&state.write_pool, &email_hash)
+        .await
+        .map_err(|_| internal_error("Database error"))?;
 
     if let Some(user) = user_opt {
         let resolved_email =

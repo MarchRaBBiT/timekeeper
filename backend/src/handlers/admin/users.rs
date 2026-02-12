@@ -156,7 +156,6 @@ pub async fn update_user(
         let email_exists = user_repo::email_exists_for_other_user(
             &state.write_pool,
             &email_hash,
-            email,
             &existing_user.id.to_string(),
         )
         .await
@@ -434,7 +433,7 @@ pub async fn restore_archived_user(
     }
 
     let email_hash = hash_email(&email, &state.config);
-    let email_conflict_check = user_repo::email_exists(&state.write_pool, &email_hash, &email)
+    let email_conflict_check = user_repo::email_exists(&state.write_pool, &email_hash)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 

@@ -11,6 +11,7 @@ use timekeeper_backend::{
     models::user::{CreateUser, UpdateUser, User, UserRole},
     state::AppState,
     types::UserId,
+    utils::encryption::{encrypt_pii, hash_email},
 };
 use tower::ServiceExt;
 
@@ -66,7 +67,17 @@ async fn get_users_payload(pool: &PgPool, user: &User) -> (String, serde_json::V
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 1024 * 64)
+            .await
+            .expect("read error body");
+        panic!(
+            "unexpected status: {} body: {}",
+            status,
+            String::from_utf8_lossy(&body)
+        );
+    }
     let masked_header = response
         .headers()
         .get("x-pii-masked")
@@ -598,16 +609,19 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
         StatusCode::OK
     );
 
+    let conflict_email = format!("conflict-{}@example.com", UserId::new());
+    let config = test_config();
     let inserted_conflict = sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NOW(), NOW(), NOW())",
+        "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+         mfa_secret_enc, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NOW(), NOW(), NOW())",
     )
     .bind(UserId::new().to_string())
     .bind(&target.username)
     .bind("hash")
-    .bind("Conflict User")
-    .bind(format!("conflict-{}@example.com", UserId::new()))
+    .bind(encrypt_pii("Conflict User", &config).expect("encrypt full_name"))
+    .bind(encrypt_pii(&conflict_email, &config).expect("encrypt email"))
+    .bind(hash_email(&conflict_email, &config))
     .bind("employee")
     .bind(false)
     .execute(&pool)
@@ -629,15 +643,16 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
     assert_eq!(restore_conflict_response.status(), StatusCode::BAD_REQUEST);
 
     let inserted_email_conflict = sqlx::query(
-        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NOW(), NOW(), NOW())",
+        "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+         mfa_secret_enc, mfa_enabled_at, password_changed_at, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NOW(), NOW(), NOW())",
     )
     .bind(UserId::new().to_string())
     .bind(format!("email-conflict-{}", UserId::new()))
     .bind("hash")
-    .bind("Email Conflict User")
-    .bind(&email_conflict_target.email)
+    .bind(encrypt_pii("Email Conflict User", &config).expect("encrypt full_name"))
+    .bind(encrypt_pii(&email_conflict_target.email, &config).expect("encrypt email"))
+    .bind(hash_email(&email_conflict_target.email, &config))
     .bind("employee")
     .bind(false)
     .execute(&pool)
