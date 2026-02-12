@@ -19,7 +19,10 @@ use crate::{
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     state::AppState,
     types::UserId,
-    utils::password::{hash_password, validate_password_complexity},
+    utils::{
+        password::{hash_password, validate_password_complexity},
+        pii::{mask_email, mask_name},
+    },
 };
 
 pub async fn get_users(
@@ -34,7 +37,17 @@ pub async fn get_users(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    let responses = users.into_iter().map(UserResponse::from).collect();
+    let responses = users
+        .into_iter()
+        .map(UserResponse::from)
+        .map(|mut response| {
+            if !user.is_system_admin() {
+                response.full_name = mask_name(&response.full_name);
+                response.email = mask_email(&response.email);
+            }
+            response
+        })
+        .collect();
     Ok(Json(responses))
 }
 

@@ -11,7 +11,7 @@ use crate::{
     error::AppError,
     models::user::User,
     state::AppState,
-    utils::{csv::append_csv_row, time},
+    utils::{csv::append_csv_row, pii::mask_name, time},
 };
 
 use super::common::{parse_date_value, push_clause};
@@ -86,6 +86,7 @@ pub async fn export_data(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    let mask_pii = !user.is_system_admin();
     let rows: Vec<ExportRow> = data
         .into_iter()
         .map(|record| {
@@ -93,6 +94,11 @@ pub async fn export_data(
                 .try_get::<String, &str>("username")
                 .unwrap_or_default();
             let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let full_name = if mask_pii {
+                mask_name(&full_name)
+            } else {
+                full_name
+            };
             let date = record
                 .try_get::<chrono::NaiveDate, _>("date")
                 .map(|value| value.format("%Y-%m-%d").to_string())

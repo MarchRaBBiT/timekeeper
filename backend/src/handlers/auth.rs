@@ -40,7 +40,10 @@ use crate::{
             create_access_token, create_refresh_token, decode_refresh_token, hash_refresh_token,
             verify_access_token, verify_refresh_token, Claims, RefreshToken,
         },
-        mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
+        mfa::{
+            generate_otpauth_uri, generate_totp_secret, protect_totp_secret, recover_totp_secret,
+            verify_totp_code,
+        },
         password::{
             hash_password, password_matches_any, validate_password_complexity, verify_password,
         },
@@ -483,10 +486,14 @@ pub async fn mfa_activate(
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| bad_request("MFA setup not initiated"))?;
+        .ok_or_else(|| bad_request("MFA setup not initiated"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
 
     let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+    if !verify_totp_code(&secret, &code).map_err(|_| internal_error("MFA verification error"))? {
         return Err(unauthorized("Invalid MFA code"));
     }
 
@@ -526,10 +533,14 @@ pub async fn mfa_disable(
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| internal_error("MFA secret missing"))?;
+        .ok_or_else(|| internal_error("MFA secret missing"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
 
     let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+    if !verify_totp_code(&secret, &code).map_err(|_| internal_error("MFA verification error"))? {
         return Err(unauthorized("Invalid MFA code"));
     }
 
@@ -755,7 +766,10 @@ async fn begin_mfa_enrollment(
     let otpauth_url = generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret)
         .map_err(|_| internal_error("Failed to issue MFA secret"))?;
 
-    if !user_repo::set_mfa_secret(pool, &user.id.to_string(), &secret, Utc::now())
+    let protected_secret = protect_totp_secret(&secret, config)
+        .map_err(|_| internal_error("Failed to encrypt MFA secret"))?;
+
+    if !user_repo::set_mfa_secret(pool, &user.id.to_string(), &protected_secret, Utc::now())
         .await
         .map_err(|_| internal_error("Failed to persist MFA secret"))?
     {
@@ -790,7 +804,7 @@ where
         "Invalid username or password",
     )
     .await?;
-    enforce_mfa(&user, payload.totp_code.as_deref())?;
+    enforce_mfa(&user, payload.totp_code.as_deref(), config)?;
     enforce_password_expiration(&user, config)?;
 
     let (access_token, claims) = create_access_token(
@@ -1145,7 +1159,7 @@ pub async fn ensure_password_matches(
     }
 }
 
-pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
+pub fn enforce_mfa(user: &User, code: Option<&str>, config: &Config) -> HandlerResult<()> {
     if !user.is_mfa_enabled() {
         return Ok(());
     }
@@ -1160,8 +1174,14 @@ pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| internal_error("MFA secret missing"))?;
-    if verify_totp_code(secret, &totp_code).map_err(|_| internal_error("MFA verification error"))? {
+        .ok_or_else(|| internal_error("MFA secret missing"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
+    if verify_totp_code(&secret, &totp_code)
+        .map_err(|_| internal_error("MFA verification error"))?
+    {
         Ok(())
     } else {
         Err(unauthorized("Invalid MFA code"))
@@ -1404,19 +1424,21 @@ mod tests {
     #[test]
     fn enforce_mfa_accepts_valid_code() {
         let mut user = build_user();
+        let config = config_stub();
         let secret = generate_totp_secret();
         user.mfa_secret = Some(secret.clone());
         user.mfa_enabled_at = Some(Utc::now());
         let code = current_totp_code(&secret);
-        enforce_mfa(&user, Some(&code)).expect("valid mfa code should pass");
+        enforce_mfa(&user, Some(&code), &config).expect("valid mfa code should pass");
     }
 
     #[test]
     fn enforce_mfa_rejects_missing_code() {
         let mut user = build_user();
+        let config = config_stub();
         user.mfa_secret = Some(generate_totp_secret());
         user.mfa_enabled_at = Some(Utc::now());
-        let err = enforce_mfa(&user, None).expect_err("code required");
+        let err = enforce_mfa(&user, None, &config).expect_err("code required");
         assert!(matches!(err, AppError::Unauthorized(_)));
     }
 

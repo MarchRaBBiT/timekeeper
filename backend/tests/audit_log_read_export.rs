@@ -266,6 +266,72 @@ async fn audit_log_detail_returns_log() {
 }
 
 #[tokio::test]
+async fn audit_log_list_masks_pii_for_non_system_admin() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_audit_logs(&pool).await;
+    let state = AppState::new(pool.clone(), None, None, None, support::test_config());
+
+    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    support::grant_permission(&pool, &admin.id.to_string(), permissions::AUDIT_LOG_READ).await;
+
+    let log = AuditLog {
+        id: AuditLogId::new(),
+        occurred_at: Utc::now(),
+        actor_id: Some(admin.id),
+        actor_type: "user".to_string(),
+        event_type: "admin_user_create".to_string(),
+        target_type: Some("user".to_string()),
+        target_id: Some("u-1".to_string()),
+        result: "success".to_string(),
+        error_code: None,
+        metadata: Some(Json(json!({
+            "email": "alice@example.com",
+            "full_name": "Alice Example"
+        }))),
+        ip: Some("192.168.10.25".to_string()),
+        user_agent: Some("Mozilla/5.0 Test Agent".to_string()),
+        request_id: Some(Uuid::new_v4().to_string()),
+    };
+    audit_log::insert_audit_log(&pool, &log)
+        .await
+        .expect("insert log");
+
+    let app = Router::new()
+        .route("/api/admin/audit-logs", get(list_audit_logs))
+        .layer(Extension(admin))
+        .with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/audit-logs")
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read body");
+    let payload: AuditLogListResponse = serde_json::from_slice(&body).expect("parse body");
+    assert_eq!(payload.items.len(), 1);
+    assert_eq!(payload.items[0].ip.as_deref(), Some("192.168.10.0/24"));
+    assert_eq!(
+        payload.items[0]
+            .metadata
+            .as_ref()
+            .and_then(|v| v.get("email")),
+        Some(&json!("a***@e***.com"))
+    );
+}
+
+#[tokio::test]
 async fn audit_log_export_returns_json_file() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;

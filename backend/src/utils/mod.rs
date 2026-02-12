@@ -4,5 +4,6 @@ pub mod email;
 pub mod jwt;
 pub mod mfa;
 pub mod password;
+pub mod pii;
 pub mod security;
 pub mod time;

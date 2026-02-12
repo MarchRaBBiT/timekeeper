@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
     routing::get,
     Extension, Router,
@@ -55,6 +55,24 @@ async fn get_users_list(pool: &PgPool, user: &User) -> StatusCode {
     response.status()
 }
 
+async fn get_users_payload(pool: &PgPool, user: &User) -> serde_json::Value {
+    let token = create_test_token(user.id, user.role.clone());
+    let app = test_router_with_state(pool.clone(), user.clone());
+
+    let request = Request::builder()
+        .uri("/api/admin/users")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read response body");
+    serde_json::from_slice(&body).expect("parse json")
+}
+
 #[tokio::test]
 async fn test_admin_can_list_all_users() {
     let _guard = integration_guard().await;
@@ -68,6 +86,35 @@ async fn test_admin_can_list_all_users() {
 
     let status = get_users_list(&pool, &admin).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_non_system_admin_user_list_masks_pii() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let _regular = seed_user(&pool, UserRole::Employee, false).await;
+
+    let payload = get_users_payload(&pool, &admin).await;
+    let first = payload
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("first user");
+    let full_name = first
+        .get("full_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let email = first
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+
+    assert!(full_name.contains('*'));
+    assert!(email.contains("***@"));
 }
 
 #[tokio::test]

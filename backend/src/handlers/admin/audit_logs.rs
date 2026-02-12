@@ -22,7 +22,10 @@ use crate::{
     },
     state::AppState,
     types::{AuditLogId, UserId},
-    utils::time,
+    utils::{
+        pii::{mask_ip, mask_pii_json, mask_user_agent},
+        time,
+    },
 };
 use std::str::FromStr;
 
@@ -102,6 +105,17 @@ pub struct AuditLogListResponse {
     pub items: Vec<AuditLogResponse>,
 }
 
+fn apply_pii_policy(mut response: AuditLogResponse, mask_pii: bool) -> AuditLogResponse {
+    if !mask_pii {
+        return response;
+    }
+
+    response.metadata = response.metadata.as_ref().map(mask_pii_json);
+    response.ip = response.ip.as_deref().map(mask_ip);
+    response.user_agent = response.user_agent.as_deref().map(mask_user_agent);
+    response
+}
+
 pub async fn list_audit_logs(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
@@ -116,6 +130,7 @@ pub async fn list_audit_logs(
             .await
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    let mask_pii = !user.is_system_admin();
     Ok(Json(AuditLogListResponse {
         page,
         per_page,
@@ -123,6 +138,7 @@ pub async fn list_audit_logs(
         items: items
             .into_iter()
             .map(AuditLogResponse::from)
+            .map(|response| apply_pii_policy(response, mask_pii))
             .collect::<Vec<_>>(),
     }))
 }
@@ -142,7 +158,11 @@ pub async fn get_audit_log_detail(
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("Not found".into()))?;
 
-    Ok(Json(AuditLogResponse::from(log)))
+    let mask_pii = !user.is_system_admin();
+    Ok(Json(apply_pii_policy(
+        AuditLogResponse::from(log),
+        mask_pii,
+    )))
 }
 
 pub async fn export_audit_logs(
@@ -157,7 +177,12 @@ pub async fn export_audit_logs(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    let payload: Vec<AuditLogResponse> = logs.into_iter().map(AuditLogResponse::from).collect();
+    let mask_pii = !user.is_system_admin();
+    let payload: Vec<AuditLogResponse> = logs
+        .into_iter()
+        .map(AuditLogResponse::from)
+        .map(|response| apply_pii_policy(response, mask_pii))
+        .collect();
     let body = serde_json::to_vec(&payload).map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let filename = format!(
