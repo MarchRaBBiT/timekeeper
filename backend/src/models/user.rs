@@ -32,6 +32,14 @@ pub struct User {
     pub mfa_enabled_at: Option<DateTime<Utc>>,
     /// Timestamp marking when the password was last changed.
     pub password_changed_at: DateTime<Utc>,
+    /// Number of consecutive failed login attempts since the last successful login.
+    pub failed_login_attempts: i32,
+    /// Time until which the account remains locked.
+    pub locked_until: Option<DateTime<Utc>>,
+    /// Free-form lock reason used for auditing.
+    pub lock_reason: Option<String>,
+    /// Number of times the account has been locked.
+    pub lockout_count: i32,
     /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
     /// Last update timestamp for auditing.
@@ -202,12 +210,19 @@ pub struct UserResponse {
     pub role: String,
     pub is_system_admin: bool,
     pub mfa_enabled: bool,
+    pub is_locked: bool,
+    pub locked_until: Option<DateTime<Utc>>,
+    pub failed_login_attempts: i32,
 }
 
 impl From<User> for UserResponse {
     /// Converts the persistent user model into the API response DTO.
     fn from(user: User) -> Self {
         let mfa_enabled = user.is_mfa_enabled();
+        let is_locked = user
+            .locked_until
+            .map(|until| until > Utc::now())
+            .unwrap_or(false);
         UserResponse {
             id: user.id,
             username: user.username,
@@ -216,6 +231,9 @@ impl From<User> for UserResponse {
             role: user.role.as_str().to_string(),
             is_system_admin: user.is_system_admin,
             mfa_enabled,
+            is_locked,
+            locked_until: user.locked_until,
+            failed_login_attempts: user.failed_login_attempts,
         }
     }
 }
@@ -242,6 +260,10 @@ impl User {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: now,
             updated_at: now,
         }

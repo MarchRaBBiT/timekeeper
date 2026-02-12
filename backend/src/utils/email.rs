@@ -107,6 +107,41 @@ Timekeeper 勤怠管理システム
         self.mailer.send(&email)?;
         Ok(())
     }
+
+    pub fn send_account_lockout_notification(
+        &self,
+        to_email: &str,
+        username: &str,
+        locked_until: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        if env::var("SMTP_SKIP_SEND").unwrap_or_default() == "true" {
+            return Ok(());
+        }
+        let body = format!(
+            r#"
+{}さんのアカウントは複数回のログイン失敗により一時的にロックされました。
+
+ロック解除予定時刻: {}
+
+この操作に心当たりがない場合は、管理者に連絡してください。
+
+---
+Timekeeper 勤怠管理システム
+"#,
+            username,
+            locked_until.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
+        let email = Message::builder()
+            .from(self.from_address.parse()?)
+            .to(to_email.parse()?)
+            .subject("アカウントロック通知 - Timekeeper")
+            .header(ContentType::TEXT_PLAIN)
+            .body(body)?;
+
+        self.mailer.send(&email)?;
+        Ok(())
+    }
 }
 
 impl Default for EmailService {
@@ -264,6 +299,20 @@ mod tests {
 
         let service = EmailService::new().unwrap();
         let result = service.send_password_changed_notification("valid@example.com", "testuser");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn email_service_send_account_lockout_notification_skips_when_enabled() {
+        let env = EnvGuard::new();
+        env.set("SMTP_SKIP_SEND", "true");
+
+        let service = EmailService::new().unwrap();
+        let result = service.send_account_lockout_notification(
+            "valid@example.com",
+            "testuser",
+            chrono::Utc::now(),
+        );
         assert!(result.is_ok());
     }
 }

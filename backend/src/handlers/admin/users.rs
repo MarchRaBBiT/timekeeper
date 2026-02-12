@@ -1,17 +1,22 @@
 use axum::{
     extract::{Extension, Path, Query, State},
+    http::HeaderMap,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 use crate::{
     error::AppError,
+    middleware::request_id::RequestId,
     models::user::{CreateUser, UpdateUser, User, UserResponse},
     repositories::{auth as auth_repo, user as user_repo},
+    services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     state::AppState,
     types::UserId,
     utils::password::{hash_password, validate_password_complexity},
@@ -168,6 +173,58 @@ pub async fn reset_user_mfa(
     Ok(Json(json!({
         "message": "MFA reset and refresh tokens revoked",
         "user_id": payload.user_id
+    })))
+}
+
+pub async fn unlock_user_account(
+    State(state): State<AppState>,
+    Extension(requester): Extension<User>,
+    request_id: Option<Extension<RequestId>>,
+    audit_log_service: Option<Extension<Arc<dyn AuditLogServiceTrait>>>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    if !requester.is_system_admin() {
+        return Err(AppError::Forbidden(
+            "Only system administrators can unlock user accounts".into(),
+        ));
+    }
+
+    let user_id_obj =
+        UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
+    let unlocked = auth_repo::unlock_user_account(&state.write_pool, user_id_obj)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    if !unlocked {
+        return Err(AppError::NotFound("User not found".into()));
+    }
+
+    if let Some(Extension(audit_log_service)) = audit_log_service {
+        let entry = AuditLogEntry {
+            occurred_at: Utc::now(),
+            actor_id: Some(requester.id),
+            actor_type: "user".to_string(),
+            event_type: "account_unlock".to_string(),
+            target_type: Some("user".to_string()),
+            target_id: Some(user_id.clone()),
+            result: "success".to_string(),
+            error_code: None,
+            metadata: Some(json!({ "reason": "manual_unlock" })),
+            ip: extract_ip(&headers),
+            user_agent: extract_user_agent(&headers),
+            request_id: request_id.map(|Extension(id)| id.0),
+        };
+        tokio::spawn(async move {
+            if let Err(err) = audit_log_service.record_event(entry).await {
+                tracing::warn!(error = ?err, "Failed to record account unlock audit log");
+            }
+        });
+    }
+
+    Ok(Json(json!({
+        "message": "User unlocked",
+        "user_id": user_id
     })))
 }
 
@@ -464,6 +521,10 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -487,6 +548,10 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -510,10 +575,37 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
         assert!(!employee_user.is_admin());
         assert!(!employee_user.is_system_admin());
     }
+}
+
+fn extract_ip(headers: &HeaderMap) -> Option<String> {
+    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        return value
+            .split(',')
+            .next()
+            .map(|ip| ip.trim().to_string())
+            .filter(|ip| !ip.is_empty());
+    }
+    headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .map(|ip| ip.trim().to_string())
+        .filter(|ip| !ip.is_empty())
+}
+
+fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|agent| agent.trim().to_string())
+        .filter(|agent| !agent.is_empty())
 }

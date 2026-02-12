@@ -39,6 +39,10 @@ fn loads_time_zone_string_without_db() {
         password_require_symbols: true,
         password_expiration_days: 90,
         password_history_count: 5,
+        account_lockout_threshold: 5,
+        account_lockout_duration_minutes: 15,
+        account_lockout_backoff_enabled: true,
+        account_lockout_max_duration_hours: 24,
         production_mode: false,
     };
     assert_eq!(cfg.time_zone, chrono_tz::Asia::Tokyo);

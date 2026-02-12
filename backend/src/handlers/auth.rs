@@ -23,7 +23,7 @@ use crate::{
     },
     repositories::{
         active_session,
-        auth::{self as auth_repo, ActiveAccessToken},
+        auth::{self as auth_repo, ActiveAccessToken, LockoutPolicy},
         password_reset as password_reset_repo, user as user_repo,
     },
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
@@ -73,8 +73,23 @@ pub async fn login(
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
 
     let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+    let audit_actor_id = audit_context
+        .actor_id
+        .clone()
+        .ok_or_else(|| internal_error("Missing audit actor ID"))?;
+    let now = Utc::now();
+    if user.locked_until.map(|until| until > now).unwrap_or(false) {
+        record_login_audit_event(
+            Some(audit_log_service.clone()),
+            audit_context.clone(),
+            "login_failure",
+            user.id,
+            Some(json!({ "reason": "account_locked" })),
+        );
+        return Err(unauthorized("Invalid username or password"));
+    }
 
-    let session = process_login_for_user(
+    let login_result = process_login_for_user(
         user,
         payload,
         &state.config,
@@ -121,7 +136,60 @@ pub async fn login(
             }
         },
     )
-    .await?;
+    .await;
+
+    let session = match login_result {
+        Ok(session) => {
+            auth_repo::clear_login_failures(&state.write_pool, session.user.id)
+                .await
+                .map_err(|_| internal_error("Failed to clear login failure count"))?;
+            session
+        }
+        Err(err) => {
+            if should_track_login_failure(&err) {
+                let failure_state = auth_repo::record_login_failure(
+                    &state.write_pool,
+                    audit_actor_id.clone(),
+                    now,
+                    lockout_policy(&state.config),
+                )
+                .await
+                .map_err(|_| internal_error("Failed to update login failure state"))?;
+
+                record_login_audit_event(
+                    Some(audit_log_service.clone()),
+                    audit_context.clone(),
+                    "login_failure",
+                    audit_actor_id.clone(),
+                    Some(json!({
+                        "failed_login_attempts": failure_state.failed_login_attempts,
+                        "lockout_count": failure_state.lockout_count,
+                    })),
+                );
+
+                if failure_state.became_locked {
+                    record_login_audit_event(
+                        Some(audit_log_service.clone()),
+                        audit_context.clone(),
+                        "account_lockout",
+                        audit_actor_id.clone(),
+                        Some(json!({
+                            "locked_until": failure_state.locked_until,
+                        })),
+                    );
+                    if let Some(locked_until) = failure_state.locked_until {
+                        let _ = send_lockout_notification(
+                            &state.write_pool,
+                            audit_actor_id.clone(),
+                            locked_until,
+                        )
+                        .await;
+                    }
+                }
+            }
+            return Err(genericize_login_error(err));
+        }
+    };
 
     let mut headers = HeaderMap::new();
     set_auth_cookies(&mut headers, &session, &state.config);
@@ -1117,6 +1185,85 @@ fn enforce_password_expiration(user: &User, config: &Config) -> HandlerResult<()
     }
 }
 
+fn lockout_policy(config: &Config) -> LockoutPolicy {
+    LockoutPolicy {
+        threshold: config.account_lockout_threshold as i32,
+        duration_minutes: config.account_lockout_duration_minutes as i64,
+        backoff_enabled: config.account_lockout_backoff_enabled,
+        max_duration_hours: config.account_lockout_max_duration_hours as i64,
+    }
+}
+
+fn should_track_login_failure(err: &AppError) -> bool {
+    match err {
+        AppError::Unauthorized(message) => message != "Password expired",
+        _ => false,
+    }
+}
+
+fn genericize_login_error(err: AppError) -> AppError {
+    match err {
+        AppError::Unauthorized(_) => unauthorized("Invalid username or password"),
+        other => other,
+    }
+}
+
+fn record_login_audit_event(
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    context: AuditContext,
+    event_type: &'static str,
+    user_id: UserId,
+    metadata: Option<Value>,
+) {
+    let Some(audit_log_service) = audit_log_service else {
+        return;
+    };
+    let entry = AuditLogEntry {
+        occurred_at: Utc::now(),
+        actor_id: context.actor_id,
+        actor_type: context.actor_type,
+        event_type: event_type.to_string(),
+        target_type: Some("user".to_string()),
+        target_id: Some(user_id.to_string()),
+        result: "success".to_string(),
+        error_code: None,
+        metadata,
+        ip: context.ip,
+        user_agent: context.user_agent,
+        request_id: context.request_id,
+    };
+    tokio::spawn(async move {
+        if let Err(err) = audit_log_service.record_event(entry).await {
+            tracing::warn!(
+                error = ?err,
+                event_type = %event_type,
+                "Failed to record login audit log"
+            );
+        }
+    });
+}
+
+async fn send_lockout_notification(
+    pool: &sqlx::PgPool,
+    user_id: UserId,
+    locked_until: DateTime<Utc>,
+) -> HandlerResult<()> {
+    let Some(user) = auth_repo::find_user_by_id(pool, user_id)
+        .await
+        .map_err(|_| internal_error("Failed to load user for lockout notification"))?
+    else {
+        return Ok(());
+    };
+
+    let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
+    if let Err(err) =
+        email_service.send_account_lockout_notification(&user.email, &user.username, locked_until)
+    {
+        tracing::warn!(error = ?err, user_id = %user.id, "Failed to send lockout notification");
+    }
+    Ok(())
+}
+
 async fn ensure_password_not_reused(
     pool: &sqlx::PgPool,
     user_id: UserId,
@@ -1196,6 +1343,10 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 30,
             password_history_count: 5,
+            account_lockout_threshold: 5,
+            account_lockout_duration_minutes: 15,
+            account_lockout_backoff_enabled: true,
+            account_lockout_max_duration_hours: 24,
             production_mode: false,
         }
     }

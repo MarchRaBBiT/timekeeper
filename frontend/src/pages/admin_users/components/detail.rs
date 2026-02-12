@@ -24,11 +24,13 @@ pub fn UserDetailDrawer(
     selected_user: RwSignal<Option<UserResponse>>,
     messages: MessageState,
     reset_mfa_action: Action<String, Result<(), ApiError>>,
+    unlock_user_action: Action<String, Result<(), ApiError>>,
     delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Current user's ID to prevent self-deletion
     current_user_id: Signal<Option<String>>,
 ) -> impl IntoView {
     let pending = reset_mfa_action.pending();
+    let unlock_pending = unlock_user_action.pending();
     let delete_pending = delete_user_action.pending();
 
     // State for delete confirmation
@@ -67,6 +69,14 @@ pub fn UserDetailDrawer(
                                 if let Some(current) = selected_user.get_untracked() {
                                     messages.clear();
                                     reset_mfa_action.dispatch(current.id.clone());
+                                }
+                            }
+                        };
+                        let unlock_click = {
+                            move |_| {
+                                if let Some(current) = selected_user.get_untracked() {
+                                    messages.clear();
+                                    unlock_user_action.dispatch(current.id.clone());
                                 }
                             }
                         };
@@ -125,6 +135,12 @@ pub fn UserDetailDrawer(
                                                 {if user.mfa_enabled { "登録済み" } else { "未登録" }}
                                             </p>
                                         </div>
+                                        <div>
+                                            <p class="text-sm text-fg-muted">{"アカウント状態"}</p>
+                                            <p class="text-base text-fg font-medium">
+                                                {if user.is_locked { "ロック中" } else { "正常" }}
+                                            </p>
+                                        </div>
                                         <Show when=move || messages.error.get().is_some()>
                                             <InlineErrorMessage error={messages.error.into()} />
                                         </Show>
@@ -138,6 +154,15 @@ pub fn UserDetailDrawer(
                                         >
                                             {move || if pending.get() { "MFA をリセット中..." } else { "MFA をリセット" }}
                                         </button>
+                                        <Show when=move || user.is_locked>
+                                            <button
+                                                class="w-full px-4 py-2 rounded bg-status-warning-bg text-status-warning-text border border-status-warning-border disabled:opacity-50"
+                                                disabled=move || unlock_pending.get()
+                                                on:click=unlock_click
+                                            >
+                                                {move || if unlock_pending.get() { "ロック解除中..." } else { "ロックを解除" }}
+                                            </button>
+                                        </Show>
 
                                         // Delete buttons (hidden for self)
                                         <Show when=move || !is_self>
@@ -214,6 +239,9 @@ mod host_tests {
             role: "admin".into(),
             is_system_admin: false,
             mfa_enabled: true,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
         }
     }
 
@@ -223,6 +251,7 @@ mod host_tests {
             let selected = create_rw_signal(Some(user()));
             let messages = MessageState::default();
             let reset_action = create_action(|_: &String| async move { Ok(()) });
+            let unlock_action = create_action(|_: &String| async move { Ok(()) });
             let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
             let current_user_id = Signal::derive(|| None::<String>);
             view! {
@@ -230,6 +259,7 @@ mod host_tests {
                     selected_user=selected
                     messages=messages
                     reset_mfa_action=reset_action
+                    unlock_user_action=unlock_action
                     delete_user_action=delete_action
                     current_user_id=current_user_id
                 />
@@ -261,6 +291,7 @@ mod host_tests {
             let selected = create_rw_signal(Some(user()));
             let messages = MessageState::default();
             let reset_action = create_action(|_: &String| async move { Ok(()) });
+            let unlock_action = create_action(|_: &String| async move { Ok(()) });
             let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
             let current_user_id = Signal::derive(|| Some("u1".to_string()));
             view! {
@@ -268,6 +299,7 @@ mod host_tests {
                     selected_user=selected
                     messages=messages
                     reset_mfa_action=reset_action
+                    unlock_user_action=unlock_action
                     delete_user_action=delete_action
                     current_user_id=current_user_id
                 />

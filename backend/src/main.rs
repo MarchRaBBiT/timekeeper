@@ -390,6 +390,10 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         )
         .route("/api/admin/users/{id}", put(handlers::admin::update_user))
         .route(
+            "/api/admin/users/{id}/unlock",
+            post(handlers::admin::unlock_user_account),
+        )
+        .route(
             "/api/admin/users/{id}",
             delete(handlers::admin::delete_user),
         )
@@ -595,6 +599,10 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 90,
             password_history_count: 5,
+            account_lockout_threshold: 5,
+            account_lockout_duration_minutes: 15,
+            account_lockout_backoff_enabled: true,
+            account_lockout_max_duration_hours: 24,
             production_mode: false,
         }
     }

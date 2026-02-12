@@ -124,6 +124,19 @@ async fn refresh_token_exists(pool: &PgPool, token_id: &str) -> bool {
         .expect("refresh token exists")
 }
 
+async fn fetch_lock_state(
+    pool: &PgPool,
+    user_id: &str,
+) -> (i32, Option<chrono::DateTime<chrono::Utc>>, i32) {
+    sqlx::query_as::<_, (i32, Option<chrono::DateTime<chrono::Utc>>, i32)>(
+        "SELECT failed_login_attempts, locked_until, lockout_count FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .expect("fetch lock state")
+}
+
 #[tokio::test]
 async fn login_sets_cookies_and_persists_tokens() {
     let _guard = integration_guard().await;
@@ -197,6 +210,125 @@ async fn login_rejects_invalid_password() {
     assert_eq!(count_refresh_tokens(&pool, &user_id).await, 0);
     assert_eq!(count_active_access_tokens(&pool, &user_id).await, 0);
     assert_eq!(count_active_sessions(&pool, &user_id).await, 0);
+}
+
+#[tokio::test]
+async fn login_locks_account_after_reaching_failure_threshold() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Correct123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 3;
+    config.account_lockout_duration_minutes = 15;
+    config.account_lockout_backoff_enabled = true;
+    config.account_lockout_max_duration_hours = 24;
+    let app = auth_router_with_config(pool.clone(), config);
+
+    for _ in 0..3 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/login")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "username": user.username.clone(),
+                            "password": "Wrong123!",
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build login request"),
+            )
+            .await
+            .expect("login request");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    let (failed_attempts, locked_until, lockout_count) =
+        fetch_lock_state(&pool, &user.id.to_string()).await;
+    assert_eq!(failed_attempts, 0);
+    assert!(locked_until.is_some());
+    assert_eq!(lockout_count, 1);
+
+    let locked_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(locked_response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn login_success_clears_login_failure_state() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Correct123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let app = auth_router(pool.clone());
+
+    let failed_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(failed_response.status(), StatusCode::UNAUTHORIZED);
+
+    let success_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let (failed_attempts, locked_until, lockout_count) =
+        fetch_lock_state(&pool, &user.id.to_string()).await;
+    assert_eq!(failed_attempts, 0);
+    assert!(locked_until.is_none());
+    assert_eq!(lockout_count, 0);
 }
 
 #[tokio::test]

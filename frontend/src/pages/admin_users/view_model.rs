@@ -27,6 +27,7 @@ pub struct AdminUsersViewModel {
     pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, ApiError>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     pub reset_mfa_action: Action<String, Result<(), ApiError>>,
+    pub unlock_user_action: Action<String, Result<(), ApiError>>,
     /// Delete a user: (user_id, hard_delete)
     pub delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Restore an archived user
@@ -109,6 +110,13 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         async move { repo.delete_user(user_id, hard).await }
     });
 
+    let repo_unlock = repo.clone();
+    let unlock_user_action = create_action(move |user_id: &String| {
+        let repo = repo_unlock.clone();
+        let user_id = user_id.clone();
+        async move { repo.unlock_user(user_id).await }
+    });
+
     let repo_restore = repo.clone();
     let restore_archived_action = create_action(move |user_id: &String| {
         let repo = repo_restore.clone();
@@ -170,6 +178,20 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     });
 
     create_effect(move |_| {
+        if let Some(result) = unlock_user_action.value().get() {
+            match result {
+                Ok(_) => {
+                    drawer_messages.set_success("ユーザーのロックを解除しました。");
+                    users_resource.refetch();
+                }
+                Err(err) => {
+                    drawer_messages.set_error(err);
+                }
+            }
+        }
+    });
+
+    create_effect(move |_| {
         if let Some(result) = restore_archived_action.value().get() {
             match result {
                 Ok(_) => {
@@ -211,6 +233,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         archived_users_resource,
         invite_action,
         reset_mfa_action,
+        unlock_user_action,
         delete_user_action,
         restore_archived_action,
         delete_archived_action,

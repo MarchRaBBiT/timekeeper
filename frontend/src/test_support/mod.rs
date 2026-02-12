@@ -16,6 +16,9 @@ pub mod helpers {
             role: "admin".into(),
             is_system_admin: system_admin,
             mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
         }
     }
 
@@ -27,6 +30,9 @@ pub mod helpers {
             role: "member".into(),
             is_system_admin: false,
             mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
         }
     }
 

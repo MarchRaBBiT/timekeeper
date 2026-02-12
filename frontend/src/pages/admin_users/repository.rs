@@ -40,6 +40,10 @@ impl AdminUsersRepository {
         self.client.admin_delete_user(&user_id, hard).await
     }
 
+    pub async fn unlock_user(&self, user_id: String) -> Result<(), ApiError> {
+        self.client.admin_unlock_user(&user_id).await
+    }
+
     // ========================================================================
     // Archived user functions
     // ========================================================================
@@ -114,6 +118,11 @@ mod host_tests {
                 .json_body(serde_json::json!({ "status": "deleted" }));
         });
         server.mock(|when, then| {
+            when.method(POST).path("/api/admin/users/u1/unlock");
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "unlocked" }));
+        });
+        server.mock(|when, then| {
             when.method(GET).path("/api/admin/archived-users");
             then.status(200)
                 .json_body(serde_json::json!([archived_user_json("a1")]));
@@ -150,6 +159,7 @@ mod host_tests {
 
         repo.reset_user_mfa("u1".into()).await.unwrap();
         repo.delete_user("u1".into(), false).await.unwrap();
+        repo.unlock_user("u1".into()).await.unwrap();
         let archived = repo.fetch_archived_users().await.unwrap();
         assert_eq!(archived.len(), 1);
         repo.restore_archived_user("a1".into()).await.unwrap();

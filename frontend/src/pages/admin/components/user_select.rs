@@ -146,6 +146,9 @@ mod host_tests {
             role: "admin".into(),
             is_system_admin: false,
             mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
         }
     }
 
