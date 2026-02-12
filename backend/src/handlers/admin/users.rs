@@ -46,9 +46,10 @@ pub async fn create_user(
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     // Check if username already exists
-    if let Some(_) = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
+    if auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
+        .is_some()
     {
         return Err(AppError::BadRequest("Username already exists".into()));
     }
