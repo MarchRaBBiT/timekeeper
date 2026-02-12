@@ -1,63 +1,22 @@
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce,
-};
 use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
-use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::config::Config;
-
-const NONCE_LENGTH: usize = 12;
-const ENVELOPE_PREFIX: &str = "kms:v1";
+use crate::utils::kms::{active_provider, provider_by_id, KmsEnvelope};
 
 pub fn encrypt_pii(plaintext: &str, config: &Config) -> Result<String> {
-    let mut nonce_bytes = [0u8; NONCE_LENGTH];
-    OsRng.fill_bytes(&mut nonce_bytes);
-
-    let key = derive_key(config);
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| anyhow!("Invalid encryption key"))?;
-    let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_bytes())
-        .map_err(|_| anyhow!("Encryption failed"))?;
-
-    Ok(format!(
-        "{}:{}:{}",
-        ENVELOPE_PREFIX,
-        STANDARD_NO_PAD.encode(nonce_bytes),
-        STANDARD_NO_PAD.encode(ciphertext)
-    ))
+    let provider = active_provider(config);
+    let envelope = provider.encrypt(plaintext.as_bytes())?;
+    envelope.encode()
 }
 
 pub fn decrypt_pii(stored: &str, config: &Config) -> Result<String> {
-    if !stored.starts_with("kms:v1:") {
+    let Some(envelope) = KmsEnvelope::parse(stored)? else {
         return Ok(stored.to_string());
-    }
+    };
 
-    let mut parts = stored.splitn(4, ':');
-    let _prefix = parts.next();
-    let _version = parts.next();
-    let nonce_part = parts.next().ok_or_else(|| anyhow!("Missing nonce"))?;
-    let cipher_part = parts
-        .next()
-        .ok_or_else(|| anyhow!("Missing ciphertext payload"))?;
-
-    let nonce_bytes = STANDARD_NO_PAD
-        .decode(nonce_part)
-        .map_err(|_| anyhow!("Invalid nonce encoding"))?;
-    if nonce_bytes.len() != NONCE_LENGTH {
-        return Err(anyhow!("Invalid nonce length"));
-    }
-    let ciphertext = STANDARD_NO_PAD
-        .decode(cipher_part)
-        .map_err(|_| anyhow!("Invalid ciphertext encoding"))?;
-
-    let key = derive_key(config);
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| anyhow!("Invalid decryption key"))?;
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(&nonce_bytes), ciphertext.as_ref())
-        .map_err(|_| anyhow!("Decryption failed"))?;
+    let provider = provider_by_id(&envelope.provider_id, config)?;
+    let plaintext = provider.decrypt(&envelope.nonce, &envelope.ciphertext)?;
     String::from_utf8(plaintext).map_err(|_| anyhow!("Decrypted data is not UTF-8"))
 }
 
@@ -73,19 +32,6 @@ pub fn hash_email(email: &str, config: &Config) -> String {
     hasher.update(normalized.as_bytes());
     let digest = hasher.finalize();
     hex::encode(digest)
-}
-
-fn derive_key(config: &Config) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(config.jwt_secret.as_bytes());
-    hasher.update(b"|");
-    hasher.update(config.aws_region.as_bytes());
-    hasher.update(b"|");
-    hasher.update(config.aws_kms_key_id.as_bytes());
-    let digest = hasher.finalize();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&digest);
-    key
 }
 
 #[cfg(test)]
@@ -143,7 +89,7 @@ mod tests {
         let config = config_stub();
         let plain = "Alice Example";
         let encrypted = encrypt_pii(plain, &config).expect("encrypt");
-        assert!(encrypted.starts_with("kms:v1:"));
+        assert!(encrypted.starts_with("kms:v1:pseudo:"));
         let decrypted = decrypt_pii(&encrypted, &config).expect("decrypt");
         assert_eq!(decrypted, plain);
     }
@@ -153,6 +99,16 @@ mod tests {
         let config = config_stub();
         let plain = "legacy";
         let decrypted = decrypt_pii(plain, &config).expect("fallback");
+        assert_eq!(decrypted, plain);
+    }
+
+    #[test]
+    fn decrypt_legacy_kms_envelope_without_provider_id() {
+        let config = config_stub();
+        let plain = "legacy-kms-envelope";
+        let encrypted = encrypt_pii(plain, &config).expect("encrypt");
+        let legacy = encrypted.replacen("kms:v1:pseudo:", "kms:v1:", 1);
+        let decrypted = decrypt_pii(&legacy, &config).expect("decrypt legacy");
         assert_eq!(decrypted, plain);
     }
 

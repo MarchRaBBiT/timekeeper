@@ -3,6 +3,7 @@ pub mod csv;
 pub mod email;
 pub mod encryption;
 pub mod jwt;
+pub mod kms;
 pub mod mfa;
 pub mod password;
 pub mod pii;
