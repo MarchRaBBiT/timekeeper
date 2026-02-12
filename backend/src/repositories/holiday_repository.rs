@@ -133,13 +133,11 @@ impl HolidayRepositoryTrait for HolidayRepository {
         match self.create(db, item).await {
             Ok(row) => Ok(row),
             Err(AppError::InternalServerError(err)) => {
-                if let Some(sqlx_err) = err.downcast_ref::<sqlx::Error>() {
-                    if let sqlx::Error::Database(db_err) = sqlx_err {
-                        if db_err.constraint() == Some("holidays_holiday_date_key") {
-                            return Err(AppError::BadRequest(
-                                "Holiday already exists for that date".into(),
-                            ));
-                        }
+                if let Some(sqlx::Error::Database(db_err)) = err.downcast_ref::<sqlx::Error>() {
+                    if db_err.constraint() == Some("holidays_holiday_date_key") {
+                        return Err(AppError::BadRequest(
+                            "Holiday already exists for that date".into(),
+                        ));
                     }
                 }
                 Err(AppError::InternalServerError(err))

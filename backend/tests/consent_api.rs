@@ -241,7 +241,7 @@ async fn test_list_my_consents_returns_consent_history() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json.as_array().unwrap().len() > 0);
+    assert!(!json.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

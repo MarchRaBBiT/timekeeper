@@ -65,7 +65,7 @@ pub async fn export_data(
     }
 
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username, u.full_name_enc as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
+        "SELECT u.username, COALESCE(u.full_name_enc, '') as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
     );
     let mut has_clause = false;

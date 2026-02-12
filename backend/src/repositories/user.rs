@@ -11,8 +11,8 @@ use crate::models::user::{User, UserRole};
 /// Fetches all users ordered by creation date (descending).
 pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users ORDER BY created_at DESC",
     )
@@ -30,8 +30,8 @@ pub async fn create_user(
         "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
          mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
-         RETURNING id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(user.id.to_string())
@@ -71,8 +71,8 @@ pub async fn update_user(
     sqlx::query_as::<_, User>(
         "UPDATE users SET full_name_enc = $1, email_enc = $2, email_hash = $3, role = $4, is_system_admin = $5, updated_at = NOW() \
          WHERE id = $6 \
-         RETURNING id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(full_name)
@@ -141,8 +141,8 @@ pub async fn update_profile(
     sqlx::query_as::<_, User>(
         "UPDATE users SET full_name_enc = $1, email_enc = $2, email_hash = $3, updated_at = NOW() \
          WHERE id = $4 \
-         RETURNING id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(full_name)
@@ -540,11 +540,12 @@ pub async fn fetch_archived_identity(
     pool: &PgPool,
     user_id: &str,
 ) -> Result<Option<(String, String)>, sqlx::Error> {
-    let result: Option<(String, String)> =
-        sqlx::query_as("SELECT username, email_enc as email FROM archived_users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let result: Option<(String, String)> = sqlx::query_as(
+        "SELECT username, COALESCE(email_enc, '') as email FROM archived_users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
     Ok(result)
 }
 
@@ -564,7 +565,7 @@ pub struct ArchivedUserRow {
 pub async fn get_archived_users(pool: &PgPool) -> Result<Vec<ArchivedUserRow>, sqlx::Error> {
     let rows = sqlx::query_as::<_, ArchivedUserRow>(
         r#"
-        SELECT id, username, full_name_enc as full_name, role, is_system_admin, archived_at, archived_by
+        SELECT id, username, COALESCE(full_name_enc, '') as full_name, role, is_system_admin, archived_at, archived_by
         FROM archived_users
         ORDER BY archived_at DESC
         "#,

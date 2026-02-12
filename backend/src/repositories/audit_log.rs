@@ -196,7 +196,7 @@ mod tests {
         let filters = AuditLogFilters {
             from: Some(Utc::now()),
             to: Some(Utc::now()),
-            actor_id: Some(user_id.clone()),
+            actor_id: Some(user_id),
             actor_type: Some("user".to_string()),
             event_type: Some("login".to_string()),
             target_type: Some("attendance".to_string()),

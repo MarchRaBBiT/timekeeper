@@ -860,8 +860,8 @@ mod tests {
                 .insert(middleware::RequestId("req-123".to_string()));
 
             let span = build_http_request_span(&request);
-            span.record("user_id", &"42");
-            span.record("username", &"alice");
+            span.record("user_id", "42");
+            span.record("username", "alice");
 
             let _guard = span.enter();
             tracing::info!("span capture test");

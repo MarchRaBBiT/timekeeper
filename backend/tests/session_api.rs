@@ -111,7 +111,7 @@ async fn test_list_sessions_returns_user_sessions() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json.as_array().unwrap().len() > 0);
+    assert!(!json.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -289,7 +289,7 @@ async fn test_admin_can_list_user_sessions() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json.as_array().unwrap().len() > 0);
+    assert!(!json.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

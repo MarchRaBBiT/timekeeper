@@ -88,8 +88,7 @@ fn time_jst_and_utc_produce_different_datetimes() {
 #[test]
 fn time_today_local_is_naive() {
     let tz: Tz = chrono_tz::UTC;
-    let result = today_local(&tz);
-    let _ = NaiveDate::from(result);
+    let _: NaiveDate = today_local(&tz);
 }
 
 #[test]

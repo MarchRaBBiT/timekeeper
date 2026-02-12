@@ -89,7 +89,6 @@ pub async fn login(
     let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
     let audit_actor_id = audit_context
         .actor_id
-        .clone()
         .ok_or_else(|| internal_error("Missing audit actor ID"))?;
     let now = Utc::now();
     if user.locked_until.map(|until| until > now).unwrap_or(false) {
@@ -136,15 +135,17 @@ pub async fn login(
             move |user_id, refresh_token, claims, device_label| async move {
                 register_active_session(
                     &pool,
-                    cache.as_ref(),
-                    Some(audit_log_service.clone()),
-                    audit_context.clone(),
-                    &config,
-                    user_id,
-                    refresh_token,
-                    claims,
-                    device_label,
-                    "login",
+                    RegisterSessionParams {
+                        token_cache: cache.as_ref(),
+                        audit_log_service: Some(audit_log_service.clone()),
+                        audit_context: audit_context.clone(),
+                        config: &config,
+                        user_id,
+                        refresh_token,
+                        claims,
+                        device_label,
+                        source: "login",
+                    },
                 )
                 .await
             }
@@ -163,7 +164,7 @@ pub async fn login(
             if should_track_login_failure(&err) {
                 let failure_state = auth_repo::record_login_failure(
                     &state.write_pool,
-                    audit_actor_id.clone(),
+                    audit_actor_id,
                     now,
                     lockout_policy(&state.config),
                 )
@@ -174,7 +175,7 @@ pub async fn login(
                     Some(audit_log_service.clone()),
                     audit_context.clone(),
                     "login_failure",
-                    audit_actor_id.clone(),
+                    audit_actor_id,
                     Some(json!({
                         "failed_login_attempts": failure_state.failed_login_attempts,
                         "lockout_count": failure_state.lockout_count,
@@ -186,7 +187,7 @@ pub async fn login(
                         Some(audit_log_service.clone()),
                         audit_context.clone(),
                         "account_lockout",
-                        audit_actor_id.clone(),
+                        audit_actor_id,
                         Some(json!({
                             "locked_until": failure_state.locked_until,
                         })),
@@ -304,15 +305,17 @@ pub async fn refresh(
     if !updated {
         register_active_session(
             &state.write_pool,
-            state.token_cache.as_ref(),
-            Some(audit_log_service.clone()),
-            audit_context.clone(),
-            &state.config,
-            user.id,
-            rt_data.clone(),
-            claims.clone(),
-            previous_device_label,
-            "refresh",
+            RegisterSessionParams {
+                token_cache: state.token_cache.as_ref(),
+                audit_log_service: Some(audit_log_service.clone()),
+                audit_context: audit_context.clone(),
+                config: &state.config,
+                user_id: user.id,
+                refresh_token: rt_data.clone(),
+                claims: claims.clone(),
+                device_label: previous_device_label,
+                source: "refresh",
+            },
         )
         .await?;
     }
@@ -932,18 +935,33 @@ async fn persist_active_access_token(
         .map_err(|_| internal_error("Failed to register access token"))
 }
 
-async fn register_active_session(
-    pool: &sqlx::PgPool,
-    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+struct RegisterSessionParams<'a> {
+    token_cache: Option<&'a Arc<dyn TokenCacheServiceTrait>>,
     audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
     audit_context: AuditContext,
-    config: &Config,
+    config: &'a Config,
     user_id: UserId,
     refresh_token: RefreshToken,
     claims: Claims,
     device_label: Option<String>,
     source: &'static str,
+}
+
+async fn register_active_session(
+    pool: &sqlx::PgPool,
+    params: RegisterSessionParams<'_>,
 ) -> HandlerResult<()> {
+    let RegisterSessionParams {
+        token_cache,
+        audit_log_service,
+        audit_context,
+        config,
+        user_id,
+        refresh_token,
+        claims,
+        device_label,
+        source,
+    } = params;
     let device_label = sanitize_device_label(device_label);
     let session = active_session::create_active_session(
         pool,
@@ -1186,6 +1204,18 @@ fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
 
 fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
     headers.get(header::COOKIE).and_then(|v| v.to_str().ok())
+}
+
+fn bad_request(message: impl Into<String>) -> AppError {
+    AppError::BadRequest(message.into())
+}
+
+fn unauthorized(message: impl Into<String>) -> AppError {
+    AppError::Unauthorized(message.into())
+}
+
+fn internal_error(message: impl Into<String>) -> AppError {
+    AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }
 
 pub async fn ensure_password_matches(
@@ -1589,16 +1619,4 @@ mod tests {
         clear_auth_cookies(&mut headers, &config);
         assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 4);
     }
-}
-
-fn bad_request(message: impl Into<String>) -> AppError {
-    AppError::BadRequest(message.into())
-}
-
-fn unauthorized(message: impl Into<String>) -> AppError {
-    AppError::Unauthorized(message.into())
-}
-
-fn internal_error(message: impl Into<String>) -> AppError {
-    AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }

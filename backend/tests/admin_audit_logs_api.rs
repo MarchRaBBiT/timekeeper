@@ -87,7 +87,7 @@ async fn test_system_admin_can_list_audit_logs() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json["items"].as_array().unwrap().len() > 0);
+    assert!(!json["items"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

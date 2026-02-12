@@ -495,6 +495,29 @@ pub async fn delete_archived_user(
     })))
 }
 
+fn extract_ip(headers: &HeaderMap) -> Option<String> {
+    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        return value
+            .split(',')
+            .next()
+            .map(|ip| ip.trim().to_string())
+            .filter(|ip| !ip.is_empty());
+    }
+    headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .map(|ip| ip.trim().to_string())
+        .filter(|ip| !ip.is_empty())
+}
+
+fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|agent| agent.trim().to_string())
+        .filter(|agent| !agent.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,27 +673,4 @@ mod tests {
         assert!(!employee_user.is_admin());
         assert!(!employee_user.is_system_admin());
     }
-}
-
-fn extract_ip(headers: &HeaderMap) -> Option<String> {
-    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        return value
-            .split(',')
-            .next()
-            .map(|ip| ip.trim().to_string())
-            .filter(|ip| !ip.is_empty());
-    }
-    headers
-        .get("x-real-ip")
-        .and_then(|v| v.to_str().ok())
-        .map(|ip| ip.trim().to_string())
-        .filter(|ip| !ip.is_empty())
-}
-
-fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|agent| agent.trim().to_string())
-        .filter(|agent| !agent.is_empty())
 }
