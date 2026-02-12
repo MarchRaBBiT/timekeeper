@@ -6,7 +6,7 @@ use axum::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
         HeaderValue,
     },
-    response::Response,
+    response::{IntoResponse, Response},
     Json,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
@@ -120,7 +120,7 @@ pub async fn list_audit_logs(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogListQuery>,
-) -> Result<Json<AuditLogListResponse>, AppError> {
+) -> Result<Response, AppError> {
     ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let (page, per_page, filters) = validate_list_query(q)?;
@@ -131,7 +131,7 @@ pub async fn list_audit_logs(
             .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let mask_pii = !user.is_system_admin();
-    Ok(Json(AuditLogListResponse {
+    let mut response = Json(AuditLogListResponse {
         page,
         per_page,
         total,
@@ -140,14 +140,20 @@ pub async fn list_audit_logs(
             .map(AuditLogResponse::from)
             .map(|response| apply_pii_policy(response, mask_pii))
             .collect::<Vec<_>>(),
-    }))
+    })
+    .into_response();
+    response.headers_mut().insert(
+        "X-PII-Masked",
+        HeaderValue::from_static(if mask_pii { "true" } else { "false" }),
+    );
+    Ok(response)
 }
 
 pub async fn get_audit_log_detail(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
-) -> Result<Json<AuditLogResponse>, AppError> {
+) -> Result<Response, AppError> {
     ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let audit_log_id = AuditLogId::from_str(&id)
@@ -159,10 +165,13 @@ pub async fn get_audit_log_detail(
         .ok_or_else(|| AppError::NotFound("Not found".into()))?;
 
     let mask_pii = !user.is_system_admin();
-    Ok(Json(apply_pii_policy(
-        AuditLogResponse::from(log),
-        mask_pii,
-    )))
+    let mut response =
+        Json(apply_pii_policy(AuditLogResponse::from(log), mask_pii)).into_response();
+    response.headers_mut().insert(
+        "X-PII-Masked",
+        HeaderValue::from_static(if mask_pii { "true" } else { "false" }),
+    );
+    Ok(response)
 }
 
 pub async fn export_audit_logs(
@@ -197,6 +206,10 @@ pub async fn export_audit_logs(
         CONTENT_DISPOSITION,
         HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+    );
+    response.headers_mut().insert(
+        "X-PII-Masked",
+        HeaderValue::from_static(if mask_pii { "true" } else { "false" }),
     );
     Ok(response)
 }

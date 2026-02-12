@@ -11,8 +11,9 @@ use crate::models::user::{User, UserRole};
 /// Fetches all users ordered by creation date (descending).
 pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, full_name) as full_name, \
+         COALESCE(email_enc, email) as email, LOWER(role) as role, is_system_admin, \
+         COALESCE(mfa_secret_enc, mfa_secret) as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users ORDER BY created_at DESC",
     )
     .fetch_all(pool)
@@ -20,19 +21,25 @@ pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
 }
 
 /// Creates a new user.
-pub async fn create_user(pool: &PgPool, user: &User) -> Result<User, sqlx::Error> {
+pub async fn create_user(
+    pool: &PgPool,
+    user: &User,
+    email_hash: &str,
+) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+        "INSERT INTO users (id, username, password_hash, full_name, email, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+         mfa_secret, mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, full_name) as full_name, \
+         COALESCE(email_enc, email) as email, LOWER(role) as role, is_system_admin, \
+         COALESCE(mfa_secret_enc, mfa_secret) as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
     .bind(&user.password_hash)
     .bind(&user.full_name)
     .bind(&user.email)
+    .bind(email_hash)
     .bind(match user.role {
         UserRole::Employee => "employee",
         UserRole::Admin => "admin",
@@ -57,17 +64,20 @@ pub async fn update_user(
     user_id: &str,
     full_name: &str,
     email: &str,
+    email_hash: &str,
     role: UserRole,
     is_system_admin: bool,
 ) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = $1, email = $2, role = $3, is_system_admin = $4, updated_at = NOW() \
-         WHERE id = $5 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+        "UPDATE users SET full_name = $1, email = $2, full_name_enc = $1, email_enc = $2, email_hash = $3, role = $4, is_system_admin = $5, updated_at = NOW() \
+         WHERE id = $6 \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, full_name) as full_name, \
+         COALESCE(email_enc, email) as email, LOWER(role) as role, is_system_admin, \
+         COALESCE(mfa_secret_enc, mfa_secret) as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
+    .bind(email_hash)
     .bind(role.as_str())
     .bind(is_system_admin)
     .bind(user_id)
@@ -78,31 +88,40 @@ pub async fn update_user(
 /// Checks if an email exists for a different user (for uniqueness check).
 pub async fn email_exists_for_other_user(
     pool: &PgPool,
-    email: &str,
+    email_hash: &str,
+    fallback_email_plain: &str,
     exclude_user_id: &str,
 ) -> Result<bool, sqlx::Error> {
-    let result: (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2)")
-            .bind(email)
-            .bind(exclude_user_id)
-            .fetch_one(pool)
-            .await?;
+    let result: (bool,) = sqlx::query_as(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE (email_hash = $1 OR email = $2) AND id != $3)",
+    )
+    .bind(email_hash)
+    .bind(fallback_email_plain)
+    .bind(exclude_user_id)
+    .fetch_one(pool)
+    .await?;
     Ok(result.0)
 }
 
 /// Checks if an email exists (for conflict checks).
-pub async fn email_exists(pool: &PgPool, email: &str) -> Result<bool, sqlx::Error> {
-    let result: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)")
-        .bind(email)
-        .fetch_one(pool)
-        .await?;
+pub async fn email_exists(
+    pool: &PgPool,
+    email_hash: &str,
+    fallback_email_plain: &str,
+) -> Result<bool, sqlx::Error> {
+    let result: (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email_hash = $1 OR email = $2)")
+            .bind(email_hash)
+            .bind(fallback_email_plain)
+            .fetch_one(pool)
+            .await?;
     Ok(result.0)
 }
 
 /// Resets MFA for a user.
 pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
+        "UPDATE users SET mfa_secret = NULL, mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
     )
     .bind(user_id)
     .execute(pool)
@@ -125,15 +144,18 @@ pub async fn update_profile(
     user_id: &str,
     full_name: &str,
     email: &str,
+    email_hash: &str,
 ) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "UPDATE users SET full_name = $1, email = $2, updated_at = NOW() \
-         WHERE id = $3 \
-         RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+        "UPDATE users SET full_name = $1, email = $2, full_name_enc = $1, email_enc = $2, email_hash = $3, updated_at = NOW() \
+         WHERE id = $4 \
+         RETURNING id, username, password_hash, COALESCE(full_name_enc, full_name) as full_name, \
+         COALESCE(email_enc, email) as email, LOWER(role) as role, is_system_admin, \
+         COALESCE(mfa_secret_enc, mfa_secret) as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
+    .bind(email_hash)
     .bind(user_id)
     .fetch_one(pool)
     .await
@@ -156,7 +178,7 @@ pub async fn enable_mfa(
 /// Disables MFA for a user (self-service).
 pub async fn disable_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "UPDATE users SET mfa_secret = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
+        "UPDATE users SET mfa_secret = NULL, mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
     )
     .bind(user_id)
     .execute(pool)
@@ -172,7 +194,7 @@ pub async fn set_mfa_secret(
     at: chrono::DateTime<chrono::Utc>,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "UPDATE users SET mfa_secret = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
+        "UPDATE users SET mfa_secret = $1, mfa_secret_enc = $1, mfa_enabled_at = NULL, updated_at = $2 WHERE id = $3",
     )
     .bind(secret)
     .bind(at)
@@ -270,12 +292,12 @@ pub async fn soft_delete_user(
         r#"
         INSERT INTO archived_users (
             id, username, password_hash, full_name, email, role, is_system_admin,
-            mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts,
+            full_name_enc, email_enc, email_hash, mfa_secret, mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts,
             locked_until, lock_reason, lockout_count, created_at, updated_at, archived_at, archived_by
         )
         SELECT
             id, username, password_hash, full_name, email, role, is_system_admin,
-            mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts,
+            full_name_enc, email_enc, email_hash, mfa_secret, mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts,
             locked_until, lock_reason, lockout_count, created_at, updated_at, $2, $3
         FROM users
         WHERE id = $1
@@ -316,12 +338,12 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
         r#"
         INSERT INTO users (
             id, username, password_hash, full_name, email, role, is_system_admin,
-            mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts,
+            full_name_enc, email_enc, email_hash, mfa_secret, mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts,
             locked_until, lock_reason, lockout_count, created_at, updated_at
         )
         SELECT
             id, username, password_hash, full_name, email, role, is_system_admin,
-            mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts,
+            full_name_enc, email_enc, email_hash, mfa_secret, mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts,
             locked_until, lock_reason, lockout_count, created_at, updated_at
         FROM archived_users
         WHERE id = $1
@@ -526,11 +548,12 @@ pub async fn fetch_archived_identity(
     pool: &PgPool,
     user_id: &str,
 ) -> Result<Option<(String, String)>, sqlx::Error> {
-    let result: Option<(String, String)> =
-        sqlx::query_as("SELECT username, email FROM archived_users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let result: Option<(String, String)> = sqlx::query_as(
+        "SELECT username, COALESCE(email_enc, email) as email FROM archived_users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
     Ok(result)
 }
 
@@ -550,7 +573,7 @@ pub struct ArchivedUserRow {
 pub async fn get_archived_users(pool: &PgPool) -> Result<Vec<ArchivedUserRow>, sqlx::Error> {
     let rows = sqlx::query_as::<_, ArchivedUserRow>(
         r#"
-        SELECT id, username, full_name, role, is_system_admin, archived_at, archived_by
+        SELECT id, username, COALESCE(full_name_enc, full_name) as full_name, role, is_system_admin, archived_at, archived_by
         FROM archived_users
         ORDER BY archived_at DESC
         "#,

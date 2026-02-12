@@ -16,7 +16,6 @@ const CODE_DIGITS: usize = 6;
 const STEP_SECONDS: u64 = 30;
 const ALLOWED_SKEW: u8 = 1;
 const NONCE_LENGTH: usize = 12;
-const ENCRYPTED_PREFIX: &str = "enc:v1";
 
 /// Generates a random base32-encoded secret suitable for RFC6238 TOTP.
 pub fn generate_totp_secret() -> String {
@@ -51,27 +50,16 @@ pub fn verify_totp_code(secret: &str, code: &str) -> Result<bool> {
 
 /// Encrypts a TOTP secret before persisting it.
 pub fn protect_totp_secret(secret: &str, config: &Config) -> Result<String> {
-    let mut nonce_bytes = [0u8; NONCE_LENGTH];
-    OsRng.fill_bytes(&mut nonce_bytes);
-
-    let key = derive_mfa_key(config);
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| anyhow!("Invalid MFA key"))?;
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher
-        .encrypt(nonce, secret.as_bytes())
-        .map_err(|_| anyhow!("Failed to encrypt MFA secret"))?;
-
-    Ok(format!(
-        "{}:{}:{}",
-        ENCRYPTED_PREFIX,
-        STANDARD_NO_PAD.encode(nonce_bytes),
-        STANDARD_NO_PAD.encode(ciphertext)
-    ))
+    crate::utils::encryption::encrypt_pii(secret, config)
 }
 
 /// Decrypts a stored TOTP secret.
 /// For backward compatibility, non-prefixed values are treated as legacy plain text.
 pub fn recover_totp_secret(stored: &str, config: &Config) -> Result<String> {
+    if stored.starts_with("kms:v1:") {
+        return crate::utils::encryption::decrypt_pii(stored, config);
+    }
+
     let mut parts = stored.splitn(3, ':');
     let prefix = parts.next().unwrap_or_default();
     let version = parts.next().unwrap_or_default();
@@ -214,7 +202,7 @@ mod tests {
         let config = test_config();
         let secret = generate_totp_secret();
         let encrypted = protect_totp_secret(&secret, &config).expect("encrypt");
-        assert!(encrypted.starts_with("enc:v1:"));
+        assert!(encrypted.starts_with("kms:v1:"));
 
         let decrypted = recover_totp_secret(&encrypted, &config).expect("decrypt");
         assert_eq!(decrypted, secret);

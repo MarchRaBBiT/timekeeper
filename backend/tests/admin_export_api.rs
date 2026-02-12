@@ -1,6 +1,6 @@
 use axum::{
     body::{to_bytes, Body},
-    http::Request,
+    http::{header::HeaderName, Request},
     routing::get,
     Extension, Router,
 };
@@ -120,6 +120,12 @@ async fn admin_export_masks_full_name_for_non_system_admin() {
         .expect("call app");
 
     assert!(response.status().is_success());
+    let masked_header = response
+        .headers()
+        .get(HeaderName::from_static("x-pii-masked"))
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     let body = to_bytes(response.into_body(), 1024 * 64)
         .await
         .expect("read body");
@@ -129,6 +135,7 @@ async fn admin_export_masks_full_name_for_non_system_admin() {
         .and_then(|value| value.as_str())
         .unwrap_or("");
 
+    assert_eq!(masked_header, "true");
     assert!(csv_data.contains('*'));
     assert!(!csv_data.contains("Test User"));
 }

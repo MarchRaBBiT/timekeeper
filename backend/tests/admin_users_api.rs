@@ -55,7 +55,7 @@ async fn get_users_list(pool: &PgPool, user: &User) -> StatusCode {
     response.status()
 }
 
-async fn get_users_payload(pool: &PgPool, user: &User) -> serde_json::Value {
+async fn get_users_payload(pool: &PgPool, user: &User) -> (String, serde_json::Value) {
     let token = create_test_token(user.id, user.role.clone());
     let app = test_router_with_state(pool.clone(), user.clone());
 
@@ -67,10 +67,17 @@ async fn get_users_payload(pool: &PgPool, user: &User) -> serde_json::Value {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    let masked_header = response
+        .headers()
+        .get("x-pii-masked")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     let body = to_bytes(response.into_body(), 1024 * 64)
         .await
         .expect("read response body");
-    serde_json::from_slice(&body).expect("parse json")
+    let payload = serde_json::from_slice(&body).expect("parse json");
+    (masked_header, payload)
 }
 
 #[tokio::test]
@@ -99,7 +106,7 @@ async fn test_non_system_admin_user_list_masks_pii() {
     let admin = seed_user(&pool, UserRole::Admin, false).await;
     let _regular = seed_user(&pool, UserRole::Employee, false).await;
 
-    let payload = get_users_payload(&pool, &admin).await;
+    let (masked_header, payload) = get_users_payload(&pool, &admin).await;
     let first = payload
         .as_array()
         .and_then(|items| items.first())
@@ -113,6 +120,7 @@ async fn test_non_system_admin_user_list_masks_pii() {
         .and_then(|v| v.as_str())
         .unwrap_or_default();
 
+    assert_eq!(masked_header, "true");
     assert!(full_name.contains('*'));
     assert!(email.contains("***@"));
 }

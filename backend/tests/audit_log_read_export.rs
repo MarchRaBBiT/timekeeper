@@ -316,6 +316,13 @@ async fn audit_log_list_masks_pii_for_non_system_admin() {
         .await
         .expect("call app");
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-pii-masked")
+            .and_then(|v| v.to_str().ok()),
+        Some("true")
+    );
     let body = to_bytes(response.into_body(), 1024 * 64)
         .await
         .expect("read body");

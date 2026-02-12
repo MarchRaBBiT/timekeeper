@@ -6,6 +6,7 @@ use timekeeper_backend::{
         user::{User, UserRole},
     },
     repositories::user as user_repo,
+    utils::encryption::hash_email,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -50,6 +51,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
             UserRole::Employee,
             false,
         ),
+        &hash_email("repo-user@example.com", &support::test_config()),
     )
     .await
     .expect("create user");
@@ -65,6 +67,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
             UserRole::Admin,
             true,
         ),
+        &hash_email("repo-admin@example.com", &support::test_config()),
     )
     .await
     .expect("create admin user");
@@ -101,13 +104,17 @@ async fn user_repository_basic_crud_and_mfa_flags() {
     );
 
     let other = support::seed_user(&pool, UserRole::Admin, false).await;
-    assert!(
-        !user_repo::email_exists_for_other_user(&pool, "repo-user@example.com", &created_id)
-            .await
-            .expect("email excluded for self")
-    );
+    assert!(!user_repo::email_exists_for_other_user(
+        &pool,
+        &hash_email("repo-user@example.com", &support::test_config()),
+        "repo-user@example.com",
+        &created_id
+    )
+    .await
+    .expect("email excluded for self"));
     assert!(user_repo::email_exists_for_other_user(
         &pool,
+        &hash_email("repo-user@example.com", &support::test_config()),
         "repo-user@example.com",
         &other.id.to_string()
     )
@@ -119,6 +126,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
         &created_id,
         "Updated Name",
         "updated-profile@example.com",
+        &hash_email("updated-profile@example.com", &support::test_config()),
     )
     .await
     .expect("update profile");
@@ -130,6 +138,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
         &created_id,
         "Admin Name",
         "updated-admin@example.com",
+        &hash_email("updated-admin@example.com", &support::test_config()),
         UserRole::Admin,
         true,
     )

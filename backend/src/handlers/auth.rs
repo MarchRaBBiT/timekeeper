@@ -36,6 +36,7 @@ use crate::{
             ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH,
         },
         email::EmailService,
+        encryption::{decrypt_pii, encrypt_pii, hash_email},
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, hash_refresh_token,
             verify_access_token, verify_refresh_token, Claims, RefreshToken,
@@ -70,10 +71,20 @@ pub async fn login(
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
+    let mut user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    if let Some(secret) = user.mfa_secret.clone() {
+        user.mfa_secret = Some(
+            decrypt_pii(&secret, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))?,
+        );
+    }
 
     let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
     let audit_actor_id = audit_context
@@ -183,7 +194,8 @@ pub async fn login(
                     if let Some(locked_until) = failure_state.locked_until {
                         let _ = send_lockout_notification(
                             &state.write_pool,
-                            audit_actor_id.clone(),
+                            &state.config,
+                            audit_actor_id,
                             locked_until,
                         )
                         .await;
@@ -231,10 +243,20 @@ pub async fn refresh(
         return Err(unauthorized("Invalid refresh token secret"));
     }
 
-    let user = auth_repo::find_user_by_id(&state.write_pool, stored.user_id)
+    let mut user = auth_repo::find_user_by_id(&state.write_pool, stored.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    if let Some(secret) = user.mfa_secret.clone() {
+        user.mfa_secret = Some(
+            decrypt_pii(&secret, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))?,
+        );
+    }
 
     enforce_password_expiration(&user, &state.config)?;
 
@@ -435,10 +457,15 @@ pub async fn update_profile(
     payload.validate()?;
 
     if let Some(ref email) = payload.email {
-        let email_exists =
-            user_repo::email_exists_for_other_user(&state.write_pool, email, &user.id.to_string())
-                .await
-                .map_err(|_| internal_error("Database error"))?;
+        let email_hash = hash_email(email, &state.config);
+        let email_exists = user_repo::email_exists_for_other_user(
+            &state.write_pool,
+            &email_hash,
+            email,
+            &user.id.to_string(),
+        )
+        .await
+        .map_err(|_| internal_error("Database error"))?;
 
         if email_exists {
             return Err(bad_request("Email already in use"));
@@ -447,12 +474,26 @@ pub async fn update_profile(
 
     let full_name = payload.full_name.unwrap_or(user.full_name);
     let email = payload.email.unwrap_or(user.email);
+    let encrypted_full_name = encrypt_pii(&full_name, &state.config)
+        .map_err(|_| internal_error("Failed to encrypt full_name"))?;
+    let encrypted_email = encrypt_pii(&email, &state.config)
+        .map_err(|_| internal_error("Failed to encrypt email"))?;
+    let email_hash = hash_email(&email, &state.config);
 
-    let updated_user =
-        user_repo::update_profile(&state.write_pool, &user.id.to_string(), &full_name, &email)
-            .await
-            .map_err(|_| internal_error("Failed to update profile"))?;
-
+    let updated_user = user_repo::update_profile(
+        &state.write_pool,
+        &user.id.to_string(),
+        &encrypted_full_name,
+        &encrypted_email,
+        &email_hash,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to update profile"))?;
+    let mut updated_user = updated_user;
+    updated_user.full_name = decrypt_pii(&updated_user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    updated_user.email = decrypt_pii(&updated_user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
     Ok(Json(UserResponse::from(updated_user)))
 }
 
@@ -635,11 +676,15 @@ pub async fn request_password_reset(
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let user_opt = auth_repo::find_user_by_email(&state.write_pool, &payload.email)
-        .await
-        .map_err(|_| internal_error("Database error"))?;
+    let email_hash = hash_email(&payload.email, &state.config);
+    let user_opt =
+        auth_repo::find_user_by_email_hash(&state.write_pool, &email_hash, &payload.email)
+            .await
+            .map_err(|_| internal_error("Database error"))?;
 
     if let Some(user) = user_opt {
+        let resolved_email =
+            decrypt_pii(&user.email, &state.config).unwrap_or_else(|_| payload.email.clone());
         let token = generate_token(32);
         password_reset_repo::create_password_reset(&state.write_pool, user.id, &token)
             .await
@@ -647,7 +692,7 @@ pub async fn request_password_reset(
 
         let email_service =
             EmailService::new().map_err(|_| internal_error("Email service error"))?;
-        if let Err(e) = email_service.send_password_reset_email(&user.email, &token) {
+        if let Err(e) = email_service.send_password_reset_email(&resolved_email, &token) {
             tracing::error!("Failed to send password reset email: {:?}", e);
         }
     }
@@ -671,10 +716,14 @@ pub async fn reset_password(
             .map_err(|_| internal_error("Database error"))?
             .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
 
-    let user = auth_repo::find_user_by_id(&state.write_pool, reset_record.user_id)
+    let mut user = auth_repo::find_user_by_id(&state.write_pool, reset_record.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| bad_request("User not found"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
 
     ensure_password_not_reused(
         &state.write_pool,
@@ -1265,15 +1314,18 @@ fn record_login_audit_event(
 
 async fn send_lockout_notification(
     pool: &sqlx::PgPool,
+    config: &Config,
     user_id: UserId,
     locked_until: DateTime<Utc>,
 ) -> HandlerResult<()> {
-    let Some(user) = auth_repo::find_user_by_id(pool, user_id)
+    let Some(mut user) = auth_repo::find_user_by_id(pool, user_id)
         .await
         .map_err(|_| internal_error("Failed to load user for lockout notification"))?
     else {
         return Ok(());
     };
+    user.email = decrypt_pii(&user.email, config)
+        .map_err(|_| internal_error("Failed to decrypt lockout email"))?;
 
     let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
     if let Err(err) =

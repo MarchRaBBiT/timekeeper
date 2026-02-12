@@ -15,6 +15,7 @@ use crate::{
     state::AppState,
     utils::{
         cookies::{extract_cookie_value, ACCESS_COOKIE_NAME},
+        encryption::decrypt_pii,
         jwt::Claims,
     },
 };
@@ -98,14 +99,14 @@ pub async fn auth_system_admin(
 
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, full_name) as full_name, \
+         COALESCE(email_enc, email) as email, LOWER(role) as role, is_system_admin, \
+         COALESCE(mfa_secret_enc, mfa_secret) as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
     .await?;
-
     Ok(user)
 }
 fn parse_bearer_token(header: &str) -> Option<&str> {
@@ -195,10 +196,17 @@ async fn authenticate_request(
         tracing::warn!(error = ?err, jti = %claims.jti, "Failed to update active session");
     }
 
-    let user = get_user_by_id(&state.write_pool, &claims.sub)
+    let mut user = get_user_by_id(&state.write_pool, &claims.sub)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::UNAUTHORIZED)?;
+    user.full_name =
+        decrypt_pii(&user.full_name, &state.config).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    user.email = decrypt_pii(&user.email, &state.config).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    if let Some(secret) = user.mfa_secret.clone() {
+        user.mfa_secret =
+            Some(decrypt_pii(&secret, &state.config).map_err(|_| StatusCode::UNAUTHORIZED)?);
+    }
 
     Ok((claims, user))
 }
