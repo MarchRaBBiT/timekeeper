@@ -1,4 +1,6 @@
-use crate::api::{ApiClient, ApiError, ArchivedUserResponse, CreateUser, UserResponse};
+use crate::api::{
+    ApiClient, ApiError, ArchivedUserResponse, CreateUser, PiiProtectedResponse, UserResponse,
+};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -23,8 +25,8 @@ impl AdminUsersRepository {
         Self { client }
     }
 
-    pub async fn fetch_users(&self) -> Result<Vec<UserResponse>, ApiError> {
-        self.client.get_users().await
+    pub async fn fetch_users(&self) -> Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError> {
+        self.client.get_users_with_policy().await
     }
 
     pub async fn invite_user(&self, payload: CreateUser) -> Result<UserResponse, ApiError> {
@@ -141,8 +143,9 @@ mod host_tests {
 
         let repo = repository(&server);
         let users = repo.fetch_users().await.unwrap();
-        assert_eq!(users.len(), 1);
-        assert_eq!(users[0].id, "u1");
+        assert!(!users.pii_masked);
+        assert_eq!(users.data.len(), 1);
+        assert_eq!(users.data[0].id, "u1");
 
         let created = repo
             .invite_user(CreateUser {

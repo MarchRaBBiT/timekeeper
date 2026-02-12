@@ -1,9 +1,11 @@
 use axum::{
     extract::{Extension, Query, State},
+    http::{HeaderMap, HeaderValue},
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use sqlx::{Postgres, QueryBuilder, Row};
 use utoipa::{IntoParams, ToSchema};
 
@@ -11,7 +13,7 @@ use crate::{
     error::AppError,
     models::user::User,
     state::AppState,
-    utils::{csv::append_csv_row, time},
+    utils::{csv::append_csv_row, encryption::decrypt_pii, pii::mask_name, time},
 };
 
 use super::common::{parse_date_value, push_clause};
@@ -37,7 +39,7 @@ pub async fn export_data(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<ExportQuery>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
@@ -63,7 +65,7 @@ pub async fn export_data(
     }
 
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username, u.full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
+        "SELECT u.username, u.full_name_enc as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
     );
     let mut has_clause = false;
@@ -86,13 +88,21 @@ pub async fn export_data(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    let mask_pii = !user.is_system_admin();
     let rows: Vec<ExportRow> = data
         .into_iter()
         .map(|record| {
             let username = record
                 .try_get::<String, &str>("username")
                 .unwrap_or_default();
-            let full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let encrypted_full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
+            let full_name = decrypt_pii(&encrypted_full_name, &state.config)
+                .unwrap_or_else(|_| "***".to_string());
+            let full_name = if mask_pii {
+                mask_name(&full_name)
+            } else {
+                full_name
+            };
             let date = record
                 .try_get::<chrono::NaiveDate, _>("date")
                 .map(|value| value.format("%Y-%m-%d").to_string())
@@ -161,11 +171,23 @@ pub async fn export_data(
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    Ok(Json(json!({
-        "csv_data": csv_data,
-        "filename": format!(
-            "attendance_export_{}.csv",
-            time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
-        )
-    })))
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "X-PII-Masked",
+        HeaderValue::from_static(if user.is_system_admin() {
+            "false"
+        } else {
+            "true"
+        }),
+    );
+    Ok((
+        headers,
+        Json(json!({
+            "csv_data": csv_data,
+            "filename": format!(
+                "attendance_export_{}.csv",
+                time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
+            )
+        })),
+    ))
 }

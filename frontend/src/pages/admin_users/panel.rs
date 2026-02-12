@@ -97,6 +97,11 @@ pub fn AdminUsersPage() -> impl IntoView {
                             }
                         }
                     >
+                        <Show when=move || vm.pii_masked.get()>
+                            <div class="mb-4 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
+                                {"この一覧の個人情報はマスキング表示されています。"}
+                            </div>
+                        </Show>
                         <InviteForm
                             form_state=vm.invite_form
                             messages=vm.invite_messages

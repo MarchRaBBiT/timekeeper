@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, ApiError};
+use crate::api::{ApiClient, ApiError, PiiProtectedResponse};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -28,12 +28,16 @@ impl AdminExportRepository {
         username: Option<&str>,
         from: Option<&str>,
         to: Option<&str>,
-    ) -> Result<serde_json::Value, ApiError> {
-        self.client.export_data_filtered(username, from, to).await
+    ) -> Result<PiiProtectedResponse<serde_json::Value>, ApiError> {
+        self.client
+            .export_data_filtered_with_policy(username, from, to)
+            .await
     }
 
-    pub async fn fetch_users(&self) -> Result<Vec<crate::api::UserResponse>, ApiError> {
-        self.client.get_users().await
+    pub async fn fetch_users(
+        &self,
+    ) -> Result<PiiProtectedResponse<Vec<crate::api::UserResponse>>, ApiError> {
+        self.client.get_users_with_policy().await
     }
 }
 
@@ -73,11 +77,13 @@ mod host_tests {
             .export_data_filtered(Some("alice"), Some("2026-01-01"), Some("2026-01-31"))
             .await
             .unwrap();
-        assert_eq!(export["filename"], "export.csv");
+        assert!(!export.pii_masked);
+        assert_eq!(export.data["filename"], "export.csv");
 
         let users = repo.fetch_users().await.unwrap();
-        assert_eq!(users.len(), 1);
-        assert_eq!(users[0].username, "alice");
+        assert!(!users.pii_masked);
+        assert_eq!(users.data.len(), 1);
+        assert_eq!(users.data[0].username, "alice");
     }
 
     #[tokio::test]

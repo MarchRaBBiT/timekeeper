@@ -14,6 +14,7 @@ use timekeeper_backend::{
     repositories::{auth as auth_repo, password_reset as password_reset_repo},
     state::AppState,
     utils::{
+        encryption::{decrypt_pii, encrypt_pii, hash_email},
         password::{hash_password, verify_password},
         security::generate_token,
     },
@@ -165,29 +166,34 @@ async fn test_invalid_token_returns_none() {
 
 async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
     let password_hash = hash_password(password).expect("hash password");
+    let config = support::test_config();
 
     let user_id = Uuid::new_v4();
     let (local, domain) = email.split_once('@').unwrap_or((email, "example.com"));
     let unique_email = format!("{}+{}@{}", local, user_id, domain);
     let username = format!("user_{}", unique_email);
-    sqlx::query_as::<_, User>(
+    let mut user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (id, username, password_hash, full_name, email, role, is_system_admin)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, 
-        mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at
+        INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, username, password_hash, full_name_enc as full_name, email_enc as email, LOWER(role) as role, is_system_admin,
+        mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at
         "#,
     )
     .bind(user_id)
     .bind(username)
     .bind(password_hash)
-    .bind("Test User")
-    .bind(unique_email)
+    .bind(encrypt_pii("Test User", &config).expect("encrypt full_name"))
+    .bind(encrypt_pii(&unique_email, &config).expect("encrypt email"))
+    .bind(hash_email(&unique_email, &config))
     .bind(UserRole::Employee.as_str())
     .bind(false)
     .fetch_one(pool)
     .await
-    .expect("create test user")
+    .expect("create test user");
+    user.full_name = decrypt_pii(&user.full_name, &config).expect("decrypt full_name");
+    user.email = decrypt_pii(&user.email, &config).expect("decrypt email");
+    user
 }
 
 #[tokio::test]

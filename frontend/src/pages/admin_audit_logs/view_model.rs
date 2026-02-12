@@ -100,6 +100,7 @@ pub struct AuditLogViewModel {
     pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
     pub page: RwSignal<i64>,
     pub filters: RwSignal<AuditLogFilters>,
+    pub pii_masked: RwSignal<bool>,
     pub export_action: Action<(), Result<(), ApiError>>,
 }
 
@@ -107,16 +108,21 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
     let api_client = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let page = create_rw_signal(1);
     let filters = create_rw_signal(AuditLogFilters::default());
+    let pii_masked = create_rw_signal(false);
 
     let api = api_client.clone();
     let logs_resource = create_resource(
         move || (page.get(), filters.get()),
         move |(p, f)| {
             let api = api.clone();
+            let pii_masked = pii_masked;
             async move {
                 let (from, to, actor_id, event_type, result) = f.into_query_params();
-                api.list_audit_logs(p, 20, from, to, actor_id, event_type, result)
-                    .await
+                let response = api
+                    .list_audit_logs_with_policy(p, 20, from, to, actor_id, event_type, result)
+                    .await?;
+                pii_masked.set(response.pii_masked);
+                Ok(response.data)
             }
         },
     );
@@ -128,11 +134,13 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
         async move {
             let (from, to, actor_id, event_type, result) = f.into_query_params();
             let result_data = api
-                .export_audit_logs(from, to, actor_id, event_type, result)
+                .export_audit_logs_with_policy(from, to, actor_id, event_type, result)
                 .await;
 
             match result_data {
-                Ok(data) => {
+                Ok(response) => {
+                    pii_masked.set(response.pii_masked);
+                    let data = response.data;
                     // In Rust WASM, to trigger download:
                     // 1. Serialize data to JSON string
                     // 2. Create Blob
@@ -163,6 +171,7 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
         logs_resource,
         page,
         filters,
+        pii_masked,
         export_action,
     }
 }

@@ -36,11 +36,15 @@ use crate::{
             ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH,
         },
         email::EmailService,
+        encryption::{decrypt_pii, encrypt_pii, hash_email},
         jwt::{
             create_access_token, create_refresh_token, decode_refresh_token, hash_refresh_token,
             verify_access_token, verify_refresh_token, Claims, RefreshToken,
         },
-        mfa::{generate_otpauth_uri, generate_totp_secret, verify_totp_code},
+        mfa::{
+            generate_otpauth_uri, generate_totp_secret, protect_totp_secret, recover_totp_secret,
+            verify_totp_code,
+        },
         password::{
             hash_password, password_matches_any, validate_password_complexity, verify_password,
         },
@@ -67,10 +71,20 @@ pub async fn login(
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
+    let mut user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("Invalid username or password"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    if let Some(secret) = user.mfa_secret.clone() {
+        user.mfa_secret = Some(
+            decrypt_pii(&secret, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))?,
+        );
+    }
 
     let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
     let audit_actor_id = audit_context
@@ -180,7 +194,8 @@ pub async fn login(
                     if let Some(locked_until) = failure_state.locked_until {
                         let _ = send_lockout_notification(
                             &state.write_pool,
-                            audit_actor_id.clone(),
+                            &state.config,
+                            audit_actor_id,
                             locked_until,
                         )
                         .await;
@@ -228,10 +243,20 @@ pub async fn refresh(
         return Err(unauthorized("Invalid refresh token secret"));
     }
 
-    let user = auth_repo::find_user_by_id(&state.write_pool, stored.user_id)
+    let mut user = auth_repo::find_user_by_id(&state.write_pool, stored.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| unauthorized("User not found"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    if let Some(secret) = user.mfa_secret.clone() {
+        user.mfa_secret = Some(
+            decrypt_pii(&secret, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))?,
+        );
+    }
 
     enforce_password_expiration(&user, &state.config)?;
 
@@ -432,10 +457,14 @@ pub async fn update_profile(
     payload.validate()?;
 
     if let Some(ref email) = payload.email {
-        let email_exists =
-            user_repo::email_exists_for_other_user(&state.write_pool, email, &user.id.to_string())
-                .await
-                .map_err(|_| internal_error("Database error"))?;
+        let email_hash = hash_email(email, &state.config);
+        let email_exists = user_repo::email_exists_for_other_user(
+            &state.write_pool,
+            &email_hash,
+            &user.id.to_string(),
+        )
+        .await
+        .map_err(|_| internal_error("Database error"))?;
 
         if email_exists {
             return Err(bad_request("Email already in use"));
@@ -444,12 +473,26 @@ pub async fn update_profile(
 
     let full_name = payload.full_name.unwrap_or(user.full_name);
     let email = payload.email.unwrap_or(user.email);
+    let encrypted_full_name = encrypt_pii(&full_name, &state.config)
+        .map_err(|_| internal_error("Failed to encrypt full_name"))?;
+    let encrypted_email = encrypt_pii(&email, &state.config)
+        .map_err(|_| internal_error("Failed to encrypt email"))?;
+    let email_hash = hash_email(&email, &state.config);
 
-    let updated_user =
-        user_repo::update_profile(&state.write_pool, &user.id.to_string(), &full_name, &email)
-            .await
-            .map_err(|_| internal_error("Failed to update profile"))?;
-
+    let updated_user = user_repo::update_profile(
+        &state.write_pool,
+        &user.id.to_string(),
+        &encrypted_full_name,
+        &encrypted_email,
+        &email_hash,
+    )
+    .await
+    .map_err(|_| internal_error("Failed to update profile"))?;
+    let mut updated_user = updated_user;
+    updated_user.full_name = decrypt_pii(&updated_user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    updated_user.email = decrypt_pii(&updated_user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
     Ok(Json(UserResponse::from(updated_user)))
 }
 
@@ -483,10 +526,14 @@ pub async fn mfa_activate(
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| bad_request("MFA setup not initiated"))?;
+        .ok_or_else(|| bad_request("MFA setup not initiated"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
 
     let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+    if !verify_totp_code(&secret, &code).map_err(|_| internal_error("MFA verification error"))? {
         return Err(unauthorized("Invalid MFA code"));
     }
 
@@ -526,10 +573,14 @@ pub async fn mfa_disable(
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| internal_error("MFA secret missing"))?;
+        .ok_or_else(|| internal_error("MFA secret missing"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, &state.config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
 
     let code = payload.code.trim().to_string();
-    if !verify_totp_code(secret, &code).map_err(|_| internal_error("MFA verification error"))? {
+    if !verify_totp_code(&secret, &code).map_err(|_| internal_error("MFA verification error"))? {
         return Err(unauthorized("Invalid MFA code"));
     }
 
@@ -624,11 +675,14 @@ pub async fn request_password_reset(
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let user_opt = auth_repo::find_user_by_email(&state.write_pool, &payload.email)
+    let email_hash = hash_email(&payload.email, &state.config);
+    let user_opt = auth_repo::find_user_by_email_hash(&state.write_pool, &email_hash)
         .await
         .map_err(|_| internal_error("Database error"))?;
 
     if let Some(user) = user_opt {
+        let resolved_email =
+            decrypt_pii(&user.email, &state.config).unwrap_or_else(|_| payload.email.clone());
         let token = generate_token(32);
         password_reset_repo::create_password_reset(&state.write_pool, user.id, &token)
             .await
@@ -636,7 +690,7 @@ pub async fn request_password_reset(
 
         let email_service =
             EmailService::new().map_err(|_| internal_error("Email service error"))?;
-        if let Err(e) = email_service.send_password_reset_email(&user.email, &token) {
+        if let Err(e) = email_service.send_password_reset_email(&resolved_email, &token) {
             tracing::error!("Failed to send password reset email: {:?}", e);
         }
     }
@@ -660,10 +714,14 @@ pub async fn reset_password(
             .map_err(|_| internal_error("Database error"))?
             .ok_or_else(|| bad_request("Invalid or expired reset token"))?;
 
-    let user = auth_repo::find_user_by_id(&state.write_pool, reset_record.user_id)
+    let mut user = auth_repo::find_user_by_id(&state.write_pool, reset_record.user_id)
         .await
         .map_err(|_| internal_error("Database error"))?
         .ok_or_else(|| bad_request("User not found"))?;
+    user.full_name = decrypt_pii(&user.full_name, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
+    user.email = decrypt_pii(&user.email, &state.config)
+        .map_err(|_| internal_error("Failed to decrypt user profile"))?;
 
     ensure_password_not_reused(
         &state.write_pool,
@@ -755,7 +813,10 @@ async fn begin_mfa_enrollment(
     let otpauth_url = generate_otpauth_uri(&config.mfa_issuer, &user.username, &secret)
         .map_err(|_| internal_error("Failed to issue MFA secret"))?;
 
-    if !user_repo::set_mfa_secret(pool, &user.id.to_string(), &secret, Utc::now())
+    let protected_secret = protect_totp_secret(&secret, config)
+        .map_err(|_| internal_error("Failed to encrypt MFA secret"))?;
+
+    if !user_repo::set_mfa_secret(pool, &user.id.to_string(), &protected_secret, Utc::now())
         .await
         .map_err(|_| internal_error("Failed to persist MFA secret"))?
     {
@@ -790,7 +851,7 @@ where
         "Invalid username or password",
     )
     .await?;
-    enforce_mfa(&user, payload.totp_code.as_deref())?;
+    enforce_mfa(&user, payload.totp_code.as_deref(), config)?;
     enforce_password_expiration(&user, config)?;
 
     let (access_token, claims) = create_access_token(
@@ -1145,7 +1206,7 @@ pub async fn ensure_password_matches(
     }
 }
 
-pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
+pub fn enforce_mfa(user: &User, code: Option<&str>, config: &Config) -> HandlerResult<()> {
     if !user.is_mfa_enabled() {
         return Ok(());
     }
@@ -1160,8 +1221,14 @@ pub fn enforce_mfa(user: &User, code: Option<&str>) -> HandlerResult<()> {
     let secret = user
         .mfa_secret
         .as_ref()
-        .ok_or_else(|| internal_error("MFA secret missing"))?;
-    if verify_totp_code(secret, &totp_code).map_err(|_| internal_error("MFA verification error"))? {
+        .ok_or_else(|| internal_error("MFA secret missing"))
+        .and_then(|stored| {
+            recover_totp_secret(stored, config)
+                .map_err(|_| internal_error("Failed to decrypt MFA secret"))
+        })?;
+    if verify_totp_code(&secret, &totp_code)
+        .map_err(|_| internal_error("MFA verification error"))?
+    {
         Ok(())
     } else {
         Err(unauthorized("Invalid MFA code"))
@@ -1245,15 +1312,18 @@ fn record_login_audit_event(
 
 async fn send_lockout_notification(
     pool: &sqlx::PgPool,
+    config: &Config,
     user_id: UserId,
     locked_until: DateTime<Utc>,
 ) -> HandlerResult<()> {
-    let Some(user) = auth_repo::find_user_by_id(pool, user_id)
+    let Some(mut user) = auth_repo::find_user_by_id(pool, user_id)
         .await
         .map_err(|_| internal_error("Failed to load user for lockout notification"))?
     else {
         return Ok(());
     };
+    user.email = decrypt_pii(&user.email, config)
+        .map_err(|_| internal_error("Failed to decrypt lockout email"))?;
 
     let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
     if let Err(err) =
@@ -1404,19 +1474,21 @@ mod tests {
     #[test]
     fn enforce_mfa_accepts_valid_code() {
         let mut user = build_user();
+        let config = config_stub();
         let secret = generate_totp_secret();
         user.mfa_secret = Some(secret.clone());
         user.mfa_enabled_at = Some(Utc::now());
         let code = current_totp_code(&secret);
-        enforce_mfa(&user, Some(&code)).expect("valid mfa code should pass");
+        enforce_mfa(&user, Some(&code), &config).expect("valid mfa code should pass");
     }
 
     #[test]
     fn enforce_mfa_rejects_missing_code() {
         let mut user = build_user();
+        let config = config_stub();
         user.mfa_secret = Some(generate_totp_secret());
         user.mfa_enabled_at = Some(Utc::now());
-        let err = enforce_mfa(&user, None).expect_err("code required");
+        let err = enforce_mfa(&user, None, &config).expect_err("code required");
         assert!(matches!(err, AppError::Unauthorized(_)));
     }
 

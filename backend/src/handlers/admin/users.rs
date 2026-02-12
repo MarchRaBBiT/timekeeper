@@ -1,6 +1,7 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::HeaderMap,
+    http::{HeaderMap, HeaderValue},
+    response::IntoResponse,
     Json,
 };
 use chrono::Utc;
@@ -19,13 +20,17 @@ use crate::{
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     state::AppState,
     types::UserId,
-    utils::password::{hash_password, validate_password_complexity},
+    utils::{
+        encryption::{decrypt_pii, encrypt_pii, hash_email},
+        password::{hash_password, validate_password_complexity},
+        pii::{mask_email, mask_name},
+    },
 };
 
 pub async fn get_users(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     if !(user.is_admin() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
@@ -34,8 +39,34 @@ pub async fn get_users(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    let responses = users.into_iter().map(UserResponse::from).collect();
-    Ok(Json(responses))
+    let responses: Vec<UserResponse> = users
+        .into_iter()
+        .map(|mut user_row| {
+            user_row.full_name = decrypt_pii(&user_row.full_name, &state.config)
+                .unwrap_or_else(|_| "***".to_string());
+            user_row.email =
+                decrypt_pii(&user_row.email, &state.config).unwrap_or_else(|_| "***".to_string());
+            user_row
+        })
+        .map(UserResponse::from)
+        .map(|mut response| {
+            if !user.is_system_admin() {
+                response.full_name = mask_name(&response.full_name);
+                response.email = mask_email(&response.email);
+            }
+            response
+        })
+        .collect();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "X-PII-Masked",
+        HeaderValue::from_static(if user.is_system_admin() {
+            "false"
+        } else {
+            "true"
+        }),
+    );
+    Ok((headers, Json(responses)))
 }
 
 pub async fn create_user(
@@ -69,20 +100,31 @@ pub async fn create_user(
             AppError::InternalServerError(anyhow::anyhow!("Failed to hash password: {}", e))
         })?;
 
+    let encrypted_full_name = encrypt_pii(&payload.full_name, &state.config).map_err(|_| {
+        AppError::InternalServerError(anyhow::anyhow!("Failed to encrypt full_name"))
+    })?;
+    let encrypted_email = encrypt_pii(&payload.email, &state.config)
+        .map_err(|_| AppError::InternalServerError(anyhow::anyhow!("Failed to encrypt email")))?;
+    let email_hash = hash_email(&payload.email, &state.config);
+
     let user = User::new(
         payload.username,
         password_hash,
-        payload.full_name,
-        payload.email,
+        encrypted_full_name,
+        encrypted_email,
         payload.role,
         payload.is_system_admin,
     );
 
-    user_repo::create_user(&state.write_pool, &user)
+    let mut created = user_repo::create_user(&state.write_pool, &user, &email_hash)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
+    created.full_name =
+        decrypt_pii(&created.full_name, &state.config).unwrap_or_else(|_| "***".to_string());
+    created.email =
+        decrypt_pii(&created.email, &state.config).unwrap_or_else(|_| "***".to_string());
 
-    let response = UserResponse::from(user);
+    let response = UserResponse::from(created);
     Ok(Json(response))
 }
 
@@ -100,15 +142,20 @@ pub async fn update_user(
     let user_id_obj =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
 
-    let existing_user = auth_repo::find_user_by_id(&state.write_pool, user_id_obj)
+    let mut existing_user = auth_repo::find_user_by_id(&state.write_pool, user_id_obj)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    existing_user.full_name = decrypt_pii(&existing_user.full_name, &state.config)
+        .unwrap_or_else(|_| existing_user.full_name.clone());
+    existing_user.email = decrypt_pii(&existing_user.email, &state.config)
+        .unwrap_or_else(|_| existing_user.email.clone());
 
     if let Some(ref email) = payload.email {
+        let email_hash = hash_email(email, &state.config);
         let email_exists = user_repo::email_exists_for_other_user(
             &state.write_pool,
-            email,
+            &email_hash,
             &existing_user.id.to_string(),
         )
         .await
@@ -121,6 +168,12 @@ pub async fn update_user(
 
     let full_name = payload.full_name.unwrap_or(existing_user.full_name);
     let email = payload.email.unwrap_or(existing_user.email);
+    let encrypted_full_name = encrypt_pii(&full_name, &state.config).map_err(|_| {
+        AppError::InternalServerError(anyhow::anyhow!("Failed to encrypt full_name"))
+    })?;
+    let encrypted_email = encrypt_pii(&email, &state.config)
+        .map_err(|_| AppError::InternalServerError(anyhow::anyhow!("Failed to encrypt email")))?;
+    let email_hash = hash_email(&email, &state.config);
     let role = payload.role.unwrap_or(existing_user.role);
     let is_system_admin = payload
         .is_system_admin
@@ -129,14 +182,20 @@ pub async fn update_user(
     let updated_user = user_repo::update_user(
         &state.write_pool,
         &user_id,
-        &full_name,
-        &email,
+        &encrypted_full_name,
+        &encrypted_email,
+        &email_hash,
         role,
         is_system_admin,
     )
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    let mut updated_user = updated_user;
+    updated_user.full_name =
+        decrypt_pii(&updated_user.full_name, &state.config).unwrap_or_else(|_| "***".to_string());
+    updated_user.email =
+        decrypt_pii(&updated_user.email, &state.config).unwrap_or_else(|_| "***".to_string());
     Ok(Json(UserResponse::from(updated_user)))
 }
 
@@ -325,7 +384,8 @@ pub async fn get_archived_users(
         .map(|row| ArchivedUserResponse {
             id: row.id,
             username: row.username,
-            full_name: row.full_name,
+            full_name: decrypt_pii(&row.full_name, &state.config)
+                .unwrap_or_else(|_| "***".to_string()),
             role: row.role,
             is_system_admin: row.is_system_admin,
             archived_at: row.archived_at.to_rfc3339(),
@@ -353,10 +413,14 @@ pub async fn restore_archived_user(
         return Err(AppError::NotFound("Archived user not found".into()));
     }
 
-    let (username, email) = user_repo::fetch_archived_identity(&state.write_pool, &user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        .unwrap_or_default();
+    let (username, encrypted_email) =
+        user_repo::fetch_archived_identity(&state.write_pool, &user_id)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?
+            .unwrap_or_default();
+    let email = decrypt_pii(&encrypted_email, &state.config).map_err(|_| {
+        AppError::InternalServerError(anyhow::anyhow!("Failed to decrypt archived email"))
+    })?;
 
     let conflict_check = user_repo::username_exists(&state.write_pool, &username)
         .await
@@ -368,7 +432,8 @@ pub async fn restore_archived_user(
         ));
     }
 
-    let email_conflict_check = user_repo::email_exists(&state.write_pool, &email)
+    let email_hash = hash_email(&email, &state.config);
+    let email_conflict_check = user_repo::email_exists(&state.write_pool, &email_hash)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 

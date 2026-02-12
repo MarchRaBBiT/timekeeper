@@ -1,19 +1,22 @@
 use crate::{
-    api::{ApiError, UserResponse},
+    api::{ApiError, PiiProtectedResponse, UserResponse},
     components::{error::InlineErrorMessage, layout::LoadingSpinner},
 };
 use leptos::*;
 
 #[component]
 pub fn UserList(
-    users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, ApiError>>,
+    users_resource: Resource<
+        (bool, u32),
+        Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>,
+    >,
     loading: Signal<bool>,
     on_select: Callback<UserResponse>,
 ) -> impl IntoView {
     let users = Signal::derive(move || {
         users_resource
             .get()
-            .and_then(|result| result.ok())
+            .and_then(|result| result.ok().map(|payload| payload.data))
             .unwrap_or_default()
     });
     let fetch_error = Signal::derive(move || users_resource.get().and_then(|result| result.err()));
@@ -191,8 +194,19 @@ mod host_tests {
     #[test]
     fn user_list_renders_empty_message() {
         let html = render_to_string(move || {
-            let users = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
-            users.set(Ok(Vec::new()));
+            let users = Resource::new(
+                || (true, 0u32),
+                |_| async move {
+                    Ok(PiiProtectedResponse {
+                        data: Vec::new(),
+                        pii_masked: false,
+                    })
+                },
+            );
+            users.set(Ok(PiiProtectedResponse {
+                data: Vec::new(),
+                pii_masked: false,
+            }));
             let loading = Signal::derive(|| false);
             let on_select = Callback::new(|_| {});
             view! { <UserList users_resource=users loading=loading on_select=on_select /> }
@@ -203,8 +217,19 @@ mod host_tests {
     #[test]
     fn user_list_renders_rows() {
         let html = render_to_string(move || {
-            let users = Resource::new(|| (true, 0u32), |_| async move { Ok(vec![user()]) });
-            users.set(Ok(vec![user()]));
+            let users = Resource::new(
+                || (true, 0u32),
+                |_| async move {
+                    Ok(PiiProtectedResponse {
+                        data: vec![user()],
+                        pii_masked: false,
+                    })
+                },
+            );
+            users.set(Ok(PiiProtectedResponse {
+                data: vec![user()],
+                pii_masked: false,
+            }));
             let loading = Signal::derive(|| false);
             let on_select = Callback::new(|_| {});
             view! { <UserList users_resource=users loading=loading on_select=on_select /> }
