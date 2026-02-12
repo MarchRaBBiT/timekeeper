@@ -1,5 +1,5 @@
 use crate::api::client::ApiClient;
-use crate::api::types::{ApiError, AuditLog, AuditLogListResponse};
+use crate::api::types::{ApiError, AuditLog, AuditLogListResponse, PiiProtectedResponse};
 
 fn audit_log_params(
     page: Option<i64>,
@@ -46,6 +46,15 @@ fn audit_log_params(
 }
 
 impl ApiClient {
+    fn pii_masked_from_response(response: &reqwest::Response) -> bool {
+        response
+            .headers()
+            .get("X-PII-Masked")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
     pub async fn list_audit_logs(
         &self,
         page: i64,
@@ -56,6 +65,21 @@ impl ApiClient {
         event_type: Option<String>,
         result: Option<String>,
     ) -> Result<AuditLogListResponse, ApiError> {
+        self.list_audit_logs_with_policy(page, per_page, from, to, actor_id, event_type, result)
+            .await
+            .map(|response| response.data)
+    }
+
+    pub async fn list_audit_logs_with_policy(
+        &self,
+        page: i64,
+        per_page: i64,
+        from: Option<String>,
+        to: Option<String>,
+        actor_id: Option<String>,
+        event_type: Option<String>,
+        result: Option<String>,
+    ) -> Result<PiiProtectedResponse<AuditLogListResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let params = audit_log_params(
             Some(page),
@@ -77,12 +101,14 @@ impl ApiClient {
             .await?;
 
         let status = response.status();
+        let pii_masked = Self::pii_masked_from_response(&response);
         Self::handle_unauthorized_status(status);
         if status.is_success() {
-            response
+            let data = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
+            Ok(PiiProtectedResponse { data, pii_masked })
         } else {
             let error: ApiError = response
                 .json()
@@ -100,6 +126,19 @@ impl ApiClient {
         event_type: Option<String>,
         result: Option<String>,
     ) -> Result<Vec<AuditLog>, ApiError> {
+        self.export_audit_logs_with_policy(from, to, actor_id, event_type, result)
+            .await
+            .map(|response| response.data)
+    }
+
+    pub async fn export_audit_logs_with_policy(
+        &self,
+        from: Option<String>,
+        to: Option<String>,
+        actor_id: Option<String>,
+        event_type: Option<String>,
+        result: Option<String>,
+    ) -> Result<PiiProtectedResponse<Vec<AuditLog>>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let params = audit_log_params(None, None, from, to, actor_id, event_type, result);
 
@@ -113,12 +152,14 @@ impl ApiClient {
             .await?;
 
         let status = response.status();
+        let pii_masked = Self::pii_masked_from_response(&response);
         Self::handle_unauthorized_status(status);
         if status.is_success() {
-            response
+            let data = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
+            Ok(PiiProtectedResponse { data, pii_masked })
         } else {
             let error: ApiError = response
                 .json()

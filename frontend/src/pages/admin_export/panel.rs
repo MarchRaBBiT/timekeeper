@@ -90,6 +90,11 @@ fn AdminExportPanel() -> impl IntoView {
         <div class="space-y-6">
             <div class="bg-surface-elevated shadow rounded-lg p-6">
                 <h2 class="text-lg font-medium text-fg mb-4">{"データエクスポート (CSV)"}</h2>
+                <Show when=move || vm.pii_masked.get()>
+                    <div class="mb-4 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
+                        {"エクスポート対象の個人情報はマスキング済みです。"}
+                    </div>
+                </Show>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
                     <div>
                         <label class="block text-sm text-fg-muted">{"ユーザー"}</label>

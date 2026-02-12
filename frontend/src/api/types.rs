@@ -371,6 +371,12 @@ pub struct AuditLogListResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PiiProtectedResponse<T> {
+    pub data: T,
+    pub pii_masked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchivedUserResponse {
     pub id: String,
     pub username: String,

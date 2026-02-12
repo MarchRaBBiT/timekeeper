@@ -2,7 +2,9 @@ use super::{
     repository::AdminUsersRepository,
     utils::{InviteFormState, MessageState},
 };
-use crate::api::{ApiClient, ApiError, ArchivedUserResponse, CreateUser, UserResponse};
+use crate::api::{
+    ApiClient, ApiError, ArchivedUserResponse, CreateUser, PiiProtectedResponse, UserResponse,
+};
 use crate::state::auth::use_auth;
 use leptos::*;
 use std::rc::Rc;
@@ -22,8 +24,10 @@ pub struct AdminUsersViewModel {
     pub drawer_messages: MessageState,
     pub selected_user: RwSignal<Option<UserResponse>>,
     pub selected_archived_user: RwSignal<Option<ArchivedUserResponse>>,
+    pub pii_masked: RwSignal<bool>,
     pub active_tab: RwSignal<UserTab>,
-    pub users_resource: Resource<(bool, u32), Result<Vec<UserResponse>, ApiError>>,
+    pub users_resource:
+        Resource<(bool, u32), Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>>,
     pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, ApiError>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     pub reset_mfa_action: Action<String, Result<(), ApiError>>,
@@ -55,6 +59,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     let drawer_messages = MessageState::default();
     let selected_user = create_rw_signal(None::<UserResponse>);
     let selected_archived_user = create_rw_signal(None::<ArchivedUserResponse>);
+    let pii_masked = create_rw_signal(false);
     let active_tab = create_rw_signal(UserTab::Active);
 
     // Active users resource
@@ -63,11 +68,14 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         move || (is_system_admin.get(), 0u32),
         move |(allowed, _reload)| {
             let repo = repo_resource.clone();
+            let pii_masked = pii_masked;
             async move {
                 if !allowed {
                     Err(ApiError::validation("システム管理者のみ利用できます。"))
                 } else {
-                    repo.fetch_users().await
+                    let response = repo.fetch_users().await?;
+                    pii_masked.set(response.pii_masked);
+                    Ok(response)
                 }
             }
         },
@@ -228,6 +236,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         drawer_messages,
         selected_user,
         selected_archived_user,
+        pii_masked,
         active_tab,
         users_resource,
         archived_users_resource,

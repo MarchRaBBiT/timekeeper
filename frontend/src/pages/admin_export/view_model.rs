@@ -1,5 +1,5 @@
 use super::repository::AdminExportRepository;
-use crate::api::{ApiClient, ApiError};
+use crate::api::{ApiClient, ApiError, PiiProtectedResponse};
 use crate::utils::trigger_csv_download;
 use chrono::NaiveDate;
 use leptos::*;
@@ -75,8 +75,10 @@ pub struct AdminExportViewModel {
     pub from_date: RwSignal<String>,
     pub to_date: RwSignal<String>,
     pub use_specific_user: RwSignal<bool>,
+    pub pii_masked: RwSignal<bool>,
     pub users_resource: Resource<bool, Result<Vec<crate::api::UserResponse>, ApiError>>,
-    pub export_action: Action<ExportFilters, Result<serde_json::Value, ApiError>>,
+    pub export_action:
+        Action<ExportFilters, Result<PiiProtectedResponse<serde_json::Value>, ApiError>>,
 }
 
 pub fn use_admin_export_view_model() -> AdminExportViewModel {
@@ -90,13 +92,19 @@ pub fn use_admin_export_view_model() -> AdminExportViewModel {
     let from_date = create_rw_signal(String::new());
     let to_date = create_rw_signal(String::new());
     let use_specific_user = create_rw_signal(false);
+    let pii_masked = create_rw_signal(false);
 
     let repo_users = repo.clone();
     let users_resource = create_resource(
         || true,
         move |_| {
             let repo = repo_users.clone();
-            async move { repo.fetch_users().await }
+            let pii_masked = pii_masked;
+            async move {
+                let response = repo.fetch_users().await?;
+                pii_masked.set(response.pii_masked);
+                Ok(response.data)
+            }
         },
     );
 
@@ -118,11 +126,14 @@ pub fn use_admin_export_view_model() -> AdminExportViewModel {
         if let Some(result) = export_action.value().get() {
             match result {
                 Ok(payload) => {
+                    pii_masked.set(payload.pii_masked);
                     let fname = payload
+                        .data
                         .get("filename")
                         .and_then(|s| s.as_str())
                         .unwrap_or("export.csv");
                     let csv = payload
+                        .data
                         .get("csv_data")
                         .and_then(|c| c.as_str())
                         .unwrap_or("");
@@ -147,6 +158,7 @@ pub fn use_admin_export_view_model() -> AdminExportViewModel {
         from_date,
         to_date,
         use_specific_user,
+        pii_masked,
         users_resource,
         export_action,
     }

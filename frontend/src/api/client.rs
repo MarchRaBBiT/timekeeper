@@ -77,6 +77,14 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
+    fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
+        headers
+            .get("X-PII-Masked")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
     pub fn new() -> Self {
         Self {
             client: Client::new(),
@@ -236,18 +244,28 @@ impl ApiClient {
     }
 
     pub async fn get_users(&self) -> Result<Vec<UserResponse>, ApiError> {
+        self.get_users_with_policy()
+            .await
+            .map(|response| response.data)
+    }
+
+    pub async fn get_users_with_policy(
+        &self,
+    ) -> Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let response = self
             .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/users", base_url))))
             .await?;
 
         let status = response.status();
+        let pii_masked = Self::parse_pii_masked_header(response.headers());
         Self::handle_unauthorized_status(status);
         if status.is_success() {
-            response
+            let data = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
+            Ok(PiiProtectedResponse { data, pii_masked })
         } else {
             let error: ApiError = response
                 .json()
@@ -705,6 +723,17 @@ impl ApiClient {
         from: Option<&str>,
         to: Option<&str>,
     ) -> Result<serde_json::Value, ApiError> {
+        self.export_data_filtered_with_policy(username, from, to)
+            .await
+            .map(|response| response.data)
+    }
+
+    pub async fn export_data_filtered_with_policy(
+        &self,
+        username: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Result<PiiProtectedResponse<serde_json::Value>, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(u) = username {
@@ -734,12 +763,14 @@ impl ApiClient {
             .await?;
 
         let status = response.status();
+        let pii_masked = Self::parse_pii_masked_header(response.headers());
         Self::handle_unauthorized_status(status);
         if status.is_success() {
-            response
+            let data = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))?;
+            Ok(PiiProtectedResponse { data, pii_masked })
         } else {
             let error: ApiError = response
                 .json()

@@ -227,6 +227,12 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         <p class="mt-1 text-sm text-fg-muted">"システム操作の履歴を確認・エクスポートします。"</p>
                     </div>
 
+                    <Show when=move || vm.pii_masked.get()>
+                        <div class="rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
+                            {"表示中の監査ログは個人情報がマスキングされています。"}
+                        </div>
+                    </Show>
+
                     <div class="bg-surface-elevated p-4 rounded-lg shadow space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                             <div>
