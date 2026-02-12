@@ -23,6 +23,22 @@ pub struct ActiveAccessToken<'a> {
     pub context: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LockoutPolicy {
+    pub threshold: i32,
+    pub duration_minutes: i64,
+    pub backoff_enabled: bool,
+    pub max_duration_hours: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoginFailureState {
+    pub failed_login_attempts: i32,
+    pub locked_until: Option<DateTime<Utc>>,
+    pub lockout_count: i32,
+    pub became_locked: bool,
+}
+
 /// Finds a user by their username.
 pub async fn find_user_by_username(
     pool: &PgPool,
@@ -30,7 +46,8 @@ pub async fn find_user_by_username(
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE username = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+         FROM users WHERE username = $1",
     )
     .bind(username)
     .fetch_optional(pool)
@@ -41,7 +58,8 @@ pub async fn find_user_by_username(
 pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE id = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+         FROM users WHERE id = $1",
     )
     .bind(user_id.to_string())
     .fetch_optional(pool)
@@ -163,7 +181,8 @@ pub async fn cleanup_expired_access_tokens(pool: &PgPool) -> Result<(), sqlx::Er
 pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE email = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+         FROM users WHERE email = $1",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -206,7 +225,7 @@ pub async fn update_user_password(
             "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
              WHERE id = $2 \
              RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-             mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
+             mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
         )
         .bind(new_password_hash)
         .bind(user_id)
@@ -220,7 +239,7 @@ pub async fn update_user_password(
             "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
              WHERE id = $2 \
              RETURNING id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-             mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at",
+             mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
         )
         .bind(new_password_hash)
         .bind(user_id)
@@ -258,6 +277,137 @@ pub async fn delete_all_refresh_tokens_for_user(
         .execute(pool)
         .await
         .map(|_| ())
+}
+
+fn lockout_duration_minutes(lockout_count: i32, policy: LockoutPolicy) -> i64 {
+    let base = policy.duration_minutes.max(1);
+    if !policy.backoff_enabled {
+        return base;
+    }
+
+    let exponent = lockout_count.saturating_sub(1).clamp(0, 20) as u32;
+    let multiplier = 2_i64.saturating_pow(exponent);
+    let minutes = base.saturating_mul(multiplier);
+    let max_minutes = policy.max_duration_hours.max(1).saturating_mul(60);
+    minutes.min(max_minutes)
+}
+
+pub async fn record_login_failure(
+    pool: &PgPool,
+    user_id: UserId,
+    now: DateTime<Utc>,
+    policy: LockoutPolicy,
+) -> Result<LoginFailureState, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query_as::<_, (i32, Option<DateTime<Utc>>, i32)>(
+        "SELECT failed_login_attempts, locked_until, lockout_count \
+         FROM users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(user_id.to_string())
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((failed_attempts, locked_until, lockout_count)) = row else {
+        tx.rollback().await?;
+        return Ok(LoginFailureState {
+            failed_login_attempts: 0,
+            locked_until: None,
+            lockout_count: 0,
+            became_locked: false,
+        });
+    };
+
+    let is_still_locked = locked_until.map(|until| until > now).unwrap_or(false);
+    if is_still_locked {
+        tx.commit().await?;
+        return Ok(LoginFailureState {
+            failed_login_attempts: failed_attempts,
+            locked_until,
+            lockout_count,
+            became_locked: false,
+        });
+    }
+
+    let threshold = policy.threshold.max(1);
+    let next_failed_attempts = failed_attempts + 1;
+    if next_failed_attempts >= threshold {
+        let next_lockout_count = lockout_count + 1;
+        let duration = lockout_duration_minutes(next_lockout_count, policy);
+        let next_locked_until = now + chrono::Duration::minutes(duration);
+        sqlx::query(
+            "UPDATE users \
+             SET failed_login_attempts = 0, \
+                 locked_until = $1, \
+                 lock_reason = $2, \
+                 lockout_count = $3, \
+                 updated_at = NOW() \
+             WHERE id = $4",
+        )
+        .bind(next_locked_until)
+        .bind("too_many_failed_attempts")
+        .bind(next_lockout_count)
+        .bind(user_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(LoginFailureState {
+            failed_login_attempts: 0,
+            locked_until: Some(next_locked_until),
+            lockout_count: next_lockout_count,
+            became_locked: true,
+        })
+    } else {
+        sqlx::query(
+            "UPDATE users \
+             SET failed_login_attempts = $1, updated_at = NOW() \
+             WHERE id = $2",
+        )
+        .bind(next_failed_attempts)
+        .bind(user_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(LoginFailureState {
+            failed_login_attempts: next_failed_attempts,
+            locked_until: None,
+            lockout_count,
+            became_locked: false,
+        })
+    }
+}
+
+pub async fn clear_login_failures(pool: &PgPool, user_id: UserId) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE users \
+         SET failed_login_attempts = 0, \
+             locked_until = NULL, \
+             lock_reason = NULL, \
+             lockout_count = 0, \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user_id.to_string())
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+pub async fn unlock_user_account(pool: &PgPool, user_id: UserId) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE users \
+         SET failed_login_attempts = 0, \
+             locked_until = NULL, \
+             lock_reason = NULL, \
+             lockout_count = 0, \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user_id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 #[cfg(test)]
@@ -319,5 +469,31 @@ mod tests {
 
         let debug_str = format!("{:?}", token);
         assert!(debug_str.contains("StoredRefreshToken"));
+    }
+
+    #[test]
+    fn lockout_duration_minutes_applies_backoff_and_cap() {
+        let policy = LockoutPolicy {
+            threshold: 5,
+            duration_minutes: 15,
+            backoff_enabled: true,
+            max_duration_hours: 24,
+        };
+        assert_eq!(lockout_duration_minutes(1, policy), 15);
+        assert_eq!(lockout_duration_minutes(2, policy), 30);
+        assert_eq!(lockout_duration_minutes(3, policy), 60);
+        assert_eq!(lockout_duration_minutes(8, policy), 1440);
+    }
+
+    #[test]
+    fn lockout_duration_minutes_fixed_when_backoff_disabled() {
+        let policy = LockoutPolicy {
+            threshold: 5,
+            duration_minutes: 15,
+            backoff_enabled: false,
+            max_duration_hours: 24,
+        };
+        assert_eq!(lockout_duration_minutes(1, policy), 15);
+        assert_eq!(lockout_duration_minutes(5, policy), 15);
     }
 }

@@ -190,6 +190,10 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
         then.status(200).json_body(json!({}));
     });
     server.mock(|when, then| {
+        when.method(POST).path("/api/admin/users/u1/unlock");
+        then.status(200).json_body(json!({}));
+    });
+    server.mock(|when, then| {
         when.method(GET).path("/api/admin/archived-users");
         then.status(200)
             .json_body(json!([archived_user_json("a1")]));
@@ -287,6 +291,7 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     );
     client.admin_reset_mfa("u1").await.unwrap();
     client.admin_delete_user("u1", false).await.unwrap();
+    client.admin_unlock_user("u1").await.unwrap();
     assert_eq!(client.admin_get_archived_users().await.unwrap().len(), 1);
     client.admin_restore_archived_user("a1").await.unwrap();
     client.admin_delete_archived_user("a1").await.unwrap();
@@ -657,6 +662,9 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
                 role: "admin".into(),
                 is_system_admin: true,
                 mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
             },
         }),
     );
@@ -693,6 +701,9 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
                 role: "admin".into(),
                 is_system_admin: true,
                 mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
             },
         }),
     );

@@ -334,6 +334,28 @@ impl ApiClient {
         }
     }
 
+    pub async fn admin_unlock_user(&self, user_id: &str) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let resp = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!("{}/admin/users/{}/unlock", base_url, user_id)))
+            })
+            .await?;
+        let status = resp.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = resp
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
+        }
+    }
+
     /// Get all archived users.
     pub async fn admin_get_archived_users(&self) -> Result<Vec<ArchivedUserResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;

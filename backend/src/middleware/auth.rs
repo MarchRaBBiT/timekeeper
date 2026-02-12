@@ -99,7 +99,8 @@ pub async fn auth_system_admin(
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, full_name, email, LOWER(role) as role, is_system_admin, \
-         mfa_secret, mfa_enabled_at, password_changed_at, created_at, updated_at FROM users WHERE id = $1",
+         mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+         FROM users WHERE id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)

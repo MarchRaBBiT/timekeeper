@@ -33,6 +33,12 @@ pub struct UserResponse {
     pub is_system_admin: bool,
     #[serde(default)]
     pub mfa_enabled: bool,
+    #[serde(default)]
+    pub is_locked: bool,
+    #[serde(default)]
+    pub locked_until: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub failed_login_attempts: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

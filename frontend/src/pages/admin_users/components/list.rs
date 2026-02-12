@@ -87,6 +87,12 @@ pub fn UserList(
                                                     {if row_user.mfa_enabled { "Enabled" } else { "Disabled" }}
                                                 </p>
                                             </div>
+                                            <div>
+                                                <p class="text-fg-muted">{"状態"}</p>
+                                                <p class="text-fg">
+                                                    {if row_user.is_locked { "Locked" } else { "Active" }}
+                                                </p>
+                                            </div>
                                         </div>
                                     </button>
                                 }
@@ -111,6 +117,9 @@ pub fn UserList(
                                     </th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
                                         {"MFA"}
+                                    </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">
+                                        {"状態"}
                                     </th>
                                 </tr>
                             </thead>
@@ -144,6 +153,9 @@ pub fn UserList(
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">
                                                     {if row_user.mfa_enabled { "Enabled" } else { "Disabled" }}
                                                 </td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">
+                                                    {if row_user.is_locked { "Locked" } else { "Active" }}
+                                                </td>
                                             </tr>
                                         }
                                     }
@@ -170,6 +182,9 @@ mod host_tests {
             role: "admin".into(),
             is_system_admin: true,
             mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
         }
     }
 

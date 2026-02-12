@@ -92,6 +92,7 @@ use utoipa::{
         admin_get_audit_log_doc,
         admin_export_audit_logs_doc,
         system_admin_reset_mfa_doc,
+        system_admin_unlock_user_doc,
         admin_create_holiday_exception_doc,
         admin_list_holiday_exceptions_doc,
         admin_delete_holiday_exception_doc
@@ -625,6 +626,15 @@ fn system_admin_reset_mfa_doc() {}
 
 #[utoipa::path(
     post,
+    path = "/api/admin/users/{id}/unlock",
+    params(("id" = String, Path, description = "User ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn system_admin_unlock_user_doc() {}
+
+#[utoipa::path(
+    post,
     path = "/api/admin/users/{user_id}/holiday-exceptions",
     params(("user_id" = String, Path, description = "対象ユーザーID")),
     request_body = CreateHolidayExceptionPayload,
@@ -757,6 +767,7 @@ mod tests {
             admin_get_audit_log_doc,
             admin_export_audit_logs_doc,
             system_admin_reset_mfa_doc,
+            system_admin_unlock_user_doc,
             admin_create_holiday_exception_doc,
             admin_list_holiday_exceptions_doc,
             admin_delete_holiday_exception_doc,

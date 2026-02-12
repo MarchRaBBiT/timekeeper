@@ -43,6 +43,10 @@ pub struct Config {
     pub password_require_symbols: bool,
     pub password_expiration_days: u64,
     pub password_history_count: u32,
+    pub account_lockout_threshold: u32,
+    pub account_lockout_duration_minutes: u64,
+    pub account_lockout_backoff_enabled: bool,
+    pub account_lockout_max_duration_hours: u64,
     pub production_mode: bool,
 }
 
@@ -232,6 +236,26 @@ impl Config {
             .parse()
             .unwrap_or(5);
 
+        let account_lockout_threshold = env::var("ACCOUNT_LOCKOUT_THRESHOLD")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse()
+            .unwrap_or(5);
+
+        let account_lockout_duration_minutes = env::var("ACCOUNT_LOCKOUT_DURATION_MINUTES")
+            .unwrap_or_else(|_| "15".to_string())
+            .parse()
+            .unwrap_or(15);
+
+        let account_lockout_backoff_enabled = env::var("ACCOUNT_LOCKOUT_BACKOFF_ENABLED")
+            .unwrap_or_else(|_| "true".to_string())
+            .parse()
+            .unwrap_or(true);
+
+        let account_lockout_max_duration_hours = env::var("ACCOUNT_LOCKOUT_MAX_DURATION_HOURS")
+            .unwrap_or_else(|_| "24".to_string())
+            .parse()
+            .unwrap_or(24);
+
         let production_mode = env::var("PRODUCTION_MODE")
             .unwrap_or_else(|_| "false".to_string())
             .parse()
@@ -273,6 +297,10 @@ impl Config {
             password_require_symbols,
             password_expiration_days,
             password_history_count,
+            account_lockout_threshold,
+            account_lockout_duration_minutes,
+            account_lockout_backoff_enabled,
+            account_lockout_max_duration_hours,
             production_mode,
         })
     }
@@ -376,6 +404,10 @@ mod tests {
             password_require_symbols: true,
             password_expiration_days: 90,
             password_history_count: 5,
+            account_lockout_threshold: 5,
+            account_lockout_duration_minutes: 15,
+            account_lockout_backoff_enabled: true,
+            account_lockout_max_duration_hours: 24,
             production_mode: false,
         }
     }

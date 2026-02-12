@@ -347,6 +347,92 @@ async fn test_regular_admin_cannot_reset_mfa() {
 }
 
 #[tokio::test]
+async fn test_system_admin_can_unlock_user_account() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let target = seed_user(&pool, UserRole::Employee, false).await;
+
+    sqlx::query(
+        "UPDATE users \
+         SET failed_login_attempts = 0, locked_until = NOW() + INTERVAL '15 minutes', \
+             lock_reason = 'too_many_failed_attempts', lockout_count = 1 \
+         WHERE id = $1",
+    )
+    .bind(target.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("lock target user");
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = Router::new()
+        .route(
+            "/api/admin/users/{id}/unlock",
+            axum::routing::post(users::unlock_user_account),
+        )
+        .layer(Extension(sysadmin))
+        .with_state(AppState::new(pool.clone(), None, None, None, test_config()));
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/users/{}/unlock", target.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let unlocked = sqlx::query_scalar::<_, bool>(
+        "SELECT failed_login_attempts = 0 \
+             AND locked_until IS NULL \
+             AND lock_reason IS NULL \
+             AND lockout_count = 0 \
+         FROM users WHERE id = $1",
+    )
+    .bind(target.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch unlocked status");
+    assert!(unlocked);
+}
+
+#[tokio::test]
+async fn test_regular_admin_cannot_unlock_user_account() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let target = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(admin.id, admin.role.clone());
+    let app = Router::new()
+        .route(
+            "/api/admin/users/{id}/unlock",
+            axum::routing::post(users::unlock_user_account),
+        )
+        .layer(Extension(admin))
+        .with_state(AppState::new(pool, None, None, None, test_config()));
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/users/{}/unlock", target.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn test_delete_user_rejects_invalid_id_and_missing_user() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;

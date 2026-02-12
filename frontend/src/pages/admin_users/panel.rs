@@ -116,6 +116,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                     selected_user=vm.selected_user
                     messages=vm.drawer_messages
                     reset_mfa_action=vm.reset_mfa_action
+                    unlock_user_action=vm.unlock_user_action
                     delete_user_action=vm.delete_user_action
                     current_user_id=current_user_id
                 />

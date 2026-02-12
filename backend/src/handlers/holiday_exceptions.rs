@@ -171,6 +171,10 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: now,
             updated_at: now,
         };
@@ -193,6 +197,10 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: now,
             updated_at: now,
         };
@@ -215,6 +223,10 @@ mod tests {
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
             created_at: now,
             updated_at: now,
         };
