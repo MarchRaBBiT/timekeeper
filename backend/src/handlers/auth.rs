@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::future::Future;
 use std::str::FromStr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
     config::Config,
@@ -214,8 +215,8 @@ pub async fn login(
 
 pub async fn refresh(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
+    Extension(_request_id): Extension<RequestId>,
+    Extension(_audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
@@ -261,12 +262,12 @@ pub async fn refresh(
 
     enforce_password_expiration(&user, &state.config)?;
 
-    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
-
     let session = create_auth_session(&user, &state.config).await?;
 
     let rt_data = session.refresh_token_data(state.config.refresh_token_expiration_days)?;
     let claims = session.access_claims(&state.config.jwt_secret)?;
+    let access_expires_at = DateTime::<Utc>::from_timestamp(claims.exp, 0)
+        .ok_or_else(|| internal_error("Token expiration overflow"))?;
     let previous_session =
         active_session::find_active_session_by_refresh_token_id(&state.write_pool, &stored.id)
             .await
@@ -277,48 +278,90 @@ pub async fn refresh(
     let previous_access_jti = previous_session
         .as_ref()
         .and_then(|session| session.access_jti.clone());
-    persist_refresh_token(
-        &state.write_pool,
-        &rt_data,
-        "Failed to store new refresh token",
-    )
-    .await?;
+    let mut tx = state
+        .write_pool
+        .begin()
+        .await
+        .map_err(|_| internal_error("Failed to start refresh token rotation transaction"))?;
+    let now = Utc::now();
 
-    persist_active_access_token(
-        &state.write_pool,
-        &claims,
-        Some(format!("refresh_{}", stored.id)),
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
-    .await?;
-
-    let updated = active_session::update_active_session_tokens(
-        &state.write_pool,
-        &stored.id,
-        &rt_data.id,
-        &claims.jti,
-        Utc::now(),
-        rt_data.expires_at,
-    )
+    .bind(&rt_data.id)
+    .bind(rt_data.user_id.to_string())
+    .bind(&rt_data.token_hash)
+    .bind(rt_data.expires_at)
+    .execute(&mut *tx)
     .await
-    .map_err(|_| internal_error("Failed to update active session"))?;
+    .map_err(|_| internal_error("Failed to store new refresh token"))?;
+
+    sqlx::query(
+        "INSERT INTO active_access_tokens (jti, user_id, expires_at, context) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&claims.jti)
+    .bind(claims.sub.clone())
+    .bind(access_expires_at)
+    .bind(Some(format!("refresh_{}", stored.id)))
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to store active access token"))?;
+
+    let updated = sqlx::query(
+        r#"
+        UPDATE active_sessions
+        SET refresh_token_id = $1,
+            access_jti = $2,
+            last_seen_at = $3,
+            expires_at = $4
+        WHERE refresh_token_id = $5
+        "#,
+    )
+    .bind(&rt_data.id)
+    .bind(&claims.jti)
+    .bind(now)
+    .bind(rt_data.expires_at)
+    .bind(&stored.id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to update active session"))?
+    .rows_affected()
+        > 0;
 
     if !updated {
-        register_active_session(
-            &state.write_pool,
-            RegisterSessionParams {
-                token_cache: state.token_cache.as_ref(),
-                audit_log_service: Some(audit_log_service.clone()),
-                audit_context: audit_context.clone(),
-                config: &state.config,
-                user_id: user.id,
-                refresh_token: rt_data.clone(),
-                claims: claims.clone(),
-                device_label: previous_device_label,
-                source: "refresh",
-            },
+        sqlx::query(
+            "INSERT INTO active_sessions \
+             (id, user_id, refresh_token_id, access_jti, device_label, last_seen_at, expires_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .await?;
+        .bind(Uuid::new_v4().to_string())
+        .bind(user.id)
+        .bind(&rt_data.id)
+        .bind(&claims.jti)
+        .bind(previous_device_label.as_deref())
+        .bind(now)
+        .bind(rt_data.expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| internal_error("Failed to create active session"))?;
     }
+
+    let revoked_old = sqlx::query_scalar::<_, String>(
+        "DELETE FROM refresh_tokens WHERE id = $1 AND token_hash = $2 RETURNING id",
+    )
+    .bind(&stored.id)
+    .bind(&stored.token_hash)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
+
+    if revoked_old.is_none() {
+        return Err(unauthorized("Invalid or already-rotated refresh token"));
+    }
+
+    tx.commit()
+        .await
+        .map_err(|_| internal_error("Failed to commit refresh token rotation"))?;
 
     if let Some(access_jti) = previous_access_jti.as_deref() {
         auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti)
@@ -328,10 +371,6 @@ pub async fn refresh(
             let _ = cache.invalidate_token(access_jti).await;
         }
     }
-
-    auth_repo::delete_refresh_token_by_id(&state.write_pool, &stored.id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
 
     if let Some(cache) = &state.token_cache {
         let user_id =
