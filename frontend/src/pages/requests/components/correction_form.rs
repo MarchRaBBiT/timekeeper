@@ -20,13 +20,22 @@ pub fn AttendanceCorrectionRequestForm(
 ) -> impl IntoView {
     let pending = action.pending();
     let updating = update_action.pending();
+    let editing_correction = move || {
+        editing
+            .get()
+            .map(|target| target.kind == RequestKind::AttendanceCorrection)
+            .unwrap_or(false)
+    };
 
     let on_submit = {
         let state = state;
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             message.update(|msg| msg.clear());
-            if let Some(target) = editing.get() {
+            if let Some(target) = editing
+                .get()
+                .filter(|t| t.kind == RequestKind::AttendanceCorrection)
+            {
                 match state.to_update_payload() {
                     Ok(payload) => update_action.dispatch((target.id, payload).into()),
                     Err(err) => message.update(|msg| msg.set_error(err)),
@@ -72,6 +81,7 @@ pub fn AttendanceCorrectionRequestForm(
                 <DatePicker
                     label=Some("対象日")
                     value=date_signal
+                    disabled=MaybeSignal::derive(editing_correction)
                 />
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div>

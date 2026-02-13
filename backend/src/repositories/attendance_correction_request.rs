@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::models::attendance_correction_request::{
     AttendanceCorrectionEffectiveValue, AttendanceCorrectionRequest, AttendanceCorrectionSnapshot,
+    CorrectionBreakItem,
 };
 use crate::types::{AttendanceId, UserId};
 use chrono::Utc;
@@ -204,36 +205,6 @@ impl AttendanceCorrectionRequestRepository {
         Ok(())
     }
 
-    pub async fn approve(
-        &self,
-        db: &PgPool,
-        id: &str,
-        approver_id: UserId,
-        comment: &str,
-    ) -> Result<(), AppError> {
-        let now = Utc::now();
-        let query = "UPDATE attendance_correction_requests
-            SET status = 'approved', approved_by = $1, approved_at = $2,
-                decision_comment = $3, updated_at = $2
-            WHERE id = $4 AND status = 'pending'";
-
-        let affected = sqlx::query(query)
-            .bind(approver_id)
-            .bind(now)
-            .bind(comment)
-            .bind(id)
-            .execute(db)
-            .await?
-            .rows_affected();
-
-        if affected == 0 {
-            return Err(AppError::Conflict(
-                "Request not found or already processed".into(),
-            ));
-        }
-        Ok(())
-    }
-
     pub async fn reject(
         &self,
         db: &PgPool,
@@ -264,18 +235,86 @@ impl AttendanceCorrectionRequestRepository {
         Ok(())
     }
 
-    pub async fn upsert_effective_values(
+    pub async fn approve_and_apply_effective_values(
         &self,
         db: &PgPool,
+        id: &str,
         attendance_id: AttendanceId,
-        source_request_id: &str,
+        approver_id: UserId,
+        comment: &str,
+        original_snapshot: &AttendanceCorrectionSnapshot,
         proposed_values: &AttendanceCorrectionSnapshot,
-        applied_by: UserId,
     ) -> Result<(), AppError> {
         let now = Utc::now();
         let breaks_json: Value = serde_json::to_value(&proposed_values.breaks)
             .map_err(|e| AppError::InternalServerError(e.into()))?;
-        let query = "INSERT INTO attendance_correction_effective_values (
+
+        let mut tx = db.begin().await?;
+        let latest_attendance =
+            sqlx::query_as::<_, (Option<chrono::NaiveDateTime>, Option<chrono::NaiveDateTime>)>(
+                "SELECT clock_in_time, clock_out_time
+             FROM attendance
+             WHERE id = $1
+             FOR UPDATE",
+            )
+            .bind(attendance_id)
+            .fetch_optional(tx.as_mut())
+            .await?;
+
+        let Some((clock_in_time, clock_out_time)) = latest_attendance else {
+            return Err(AppError::NotFound("Attendance record not found".into()));
+        };
+
+        let latest_breaks =
+            sqlx::query_as::<_, (chrono::NaiveDateTime, Option<chrono::NaiveDateTime>)>(
+                "SELECT break_start_time, break_end_time
+             FROM break_records
+             WHERE attendance_id = $1
+             ORDER BY break_start_time ASC
+             FOR UPDATE",
+            )
+            .bind(attendance_id)
+            .fetch_all(tx.as_mut())
+            .await?;
+
+        let latest_snapshot = AttendanceCorrectionSnapshot {
+            clock_in_time,
+            clock_out_time,
+            breaks: latest_breaks
+                .into_iter()
+                .map(|(break_start_time, break_end_time)| CorrectionBreakItem {
+                    break_start_time,
+                    break_end_time,
+                })
+                .collect(),
+        };
+
+        if &latest_snapshot != original_snapshot {
+            return Err(AppError::Conflict(
+                "Attendance record changed after request submission. Please resubmit.".into(),
+            ));
+        }
+
+        let approve_query = "UPDATE attendance_correction_requests
+            SET status = 'approved', approved_by = $1, approved_at = $2,
+                decision_comment = $3, updated_at = $2
+            WHERE id = $4 AND status = 'pending'";
+        let affected = sqlx::query(approve_query)
+            .bind(approver_id)
+            .bind(now)
+            .bind(comment)
+            .bind(id)
+            .execute(tx.as_mut())
+            .await?
+            .rows_affected();
+
+        if affected == 0 {
+            return Err(AppError::Conflict(
+                "Request not found or already processed".into(),
+            ));
+        }
+
+        let upsert_query = "INSERT INTO attendance_correction_effective_values (
                 attendance_id, source_request_id,
                 clock_in_time_corrected, clock_out_time_corrected,
                 break_records_corrected_json, applied_by, applied_at, updated_at
@@ -288,17 +327,18 @@ impl AttendanceCorrectionRequestRepository {
                 applied_by = EXCLUDED.applied_by,
                 applied_at = EXCLUDED.applied_at,
                 updated_at = EXCLUDED.updated_at";
-
-        sqlx::query(query)
+        sqlx::query(upsert_query)
             .bind(attendance_id)
-            .bind(source_request_id)
+            .bind(id)
             .bind(proposed_values.clock_in_time)
             .bind(proposed_values.clock_out_time)
             .bind(breaks_json)
-            .bind(applied_by)
+            .bind(approver_id)
             .bind(now)
-            .execute(db)
+            .execute(tx.as_mut())
             .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 

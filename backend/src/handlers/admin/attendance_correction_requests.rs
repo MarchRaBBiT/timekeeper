@@ -5,14 +5,9 @@ use axum::{
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::handlers::attendance_correction_requests::build_snapshot;
 use crate::models::attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload};
 use crate::models::user::User;
-use crate::repositories::{
-    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    attendance_correction_request::AttendanceCorrectionRequestRepository,
-    break_record::BreakRecordRepository,
-};
+use crate::repositories::attendance_correction_request::AttendanceCorrectionRequestRepository;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -103,38 +98,24 @@ pub async fn approve_attendance_correction_request(
         ));
     }
 
-    let attendance_repo = AttendanceRepository::new();
-    let break_repo = BreakRecordRepository::new();
-    let attendance = attendance_repo
-        .find_by_id(state.read_pool(), request.attendance_id)
-        .await?;
-
-    let latest_snapshot = build_snapshot(&attendance, &break_repo, state.read_pool()).await?;
     let original_snapshot = request
         .parse_original_snapshot()
         .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    if latest_snapshot != original_snapshot {
-        return Err(AppError::Conflict(
-            "Attendance record changed after request submission. Please resubmit.".into(),
-        ));
-    }
 
     let proposed = request
         .parse_proposed_values()
         .map_err(|e| AppError::InternalServerError(e.into()))?;
 
-    repo.upsert_effective_values(
+    repo.approve_and_apply_effective_values(
         &state.write_pool,
+        &id,
         request.attendance_id,
-        &request.id,
-        &proposed,
         user.id,
+        &payload.comment,
+        &original_snapshot,
+        &proposed,
     )
     .await?;
-
-    repo.approve(&state.write_pool, &id, user.id, &payload.comment)
-        .await?;
 
     Ok(Json(serde_json::json!({ "message": "Request approved" })))
 }

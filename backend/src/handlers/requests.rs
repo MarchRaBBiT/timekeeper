@@ -210,36 +210,46 @@ pub async fn update_request(
 
     // Try attendance correction request update
     let correction_repo = AttendanceCorrectionRequestRepository::new();
-    if let Ok(current) = correction_repo
+    match correction_repo
         .find_by_id_for_user(&state.write_pool, &request_id, user_id)
         .await
     {
-        if current.status.db_value() != "pending" {
-            return Err(AppError::BadRequest(
-                "Only pending requests can be updated".into(),
+        Ok(current) => {
+            if current.status.db_value() != "pending" {
+                return Err(AppError::BadRequest(
+                    "Only pending requests can be updated".into(),
+                ));
+            }
+
+            let reason = payload
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| AppError::BadRequest("reason is required".into()))?;
+
+            let proposed_values_json = payload
+                .get("proposed_values")
+                .cloned()
+                .ok_or_else(|| AppError::BadRequest("proposed_values is required".into()))?;
+            let proposed = serde_json::from_value(proposed_values_json)
+                .map_err(|_| AppError::BadRequest("Invalid proposed_values".into()))?;
+
+            correction_repo
+                .update_pending_for_user(
+                    &state.write_pool,
+                    &request_id,
+                    user_id,
+                    &reason,
+                    &proposed,
+                )
+                .await?;
+            return Ok(Json(
+                json!({"message":"Attendance correction request updated"}),
             ));
         }
-
-        let reason = payload
-            .get("reason")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| AppError::BadRequest("reason is required".into()))?;
-
-        let proposed_values_json = payload
-            .get("proposed_values")
-            .cloned()
-            .ok_or_else(|| AppError::BadRequest("proposed_values is required".into()))?;
-        let proposed = serde_json::from_value(proposed_values_json)
-            .map_err(|_| AppError::BadRequest("Invalid proposed_values".into()))?;
-
-        correction_repo
-            .update_pending_for_user(&state.write_pool, &request_id, user_id, &reason, &proposed)
-            .await?;
-        return Ok(Json(
-            json!({"message":"Attendance correction request updated"}),
-        ));
+        Err(AppError::NotFound(_)) => {}
+        Err(err) => return Err(err),
     }
 
     Err(AppError::NotFound("Request not found".into()))
@@ -277,12 +287,13 @@ pub async fn cancel_request(
 
     // Try attendance correction cancellation
     let correction_repo = AttendanceCorrectionRequestRepository::new();
-    if correction_repo
+    match correction_repo
         .cancel_pending_for_user(&state.write_pool, &request_id, user_id)
         .await
-        .is_ok()
     {
-        return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
+        Ok(_) => return Ok(Json(json!({"id": request_id, "status":"cancelled"}))),
+        Err(AppError::Conflict(_)) | Err(AppError::NotFound(_)) => {}
+        Err(err) => return Err(err),
     }
 
     Err(AppError::NotFound(
