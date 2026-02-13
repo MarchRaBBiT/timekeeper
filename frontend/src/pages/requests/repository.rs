@@ -1,6 +1,7 @@
 use crate::api::{
-    ApiClient, ApiError, CreateLeaveRequest, CreateOvertimeRequest, LeaveRequestResponse,
-    OvertimeRequestResponse,
+    ApiClient, ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
+    CreateOvertimeRequest, LeaveRequestResponse, OvertimeRequestResponse,
+    UpdateAttendanceCorrectionRequest,
 };
 use serde_json::Value;
 use std::rc::Rc;
@@ -33,12 +34,40 @@ impl RequestsRepository {
         self.client.create_overtime_request(payload).await
     }
 
+    pub async fn submit_attendance_correction(
+        &self,
+        payload: CreateAttendanceCorrectionRequest,
+    ) -> Result<(), ApiError> {
+        self.client
+            .create_attendance_correction_request(payload)
+            .await
+            .map(|_| ())
+    }
+
     pub async fn update_request(&self, id: &str, payload: Value) -> Result<(), ApiError> {
         self.client.update_request(id, payload).await.map(|_| ())
     }
 
     pub async fn cancel_request(&self, id: &str) -> Result<(), ApiError> {
         self.client.cancel_request(id).await.map(|_| ())
+    }
+
+    pub async fn update_attendance_correction(
+        &self,
+        id: &str,
+        payload: UpdateAttendanceCorrectionRequest,
+    ) -> Result<(), ApiError> {
+        self.client
+            .update_attendance_correction_request(id, payload)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn cancel_attendance_correction(&self, id: &str) -> Result<(), ApiError> {
+        self.client
+            .cancel_attendance_correction_request(id)
+            .await
+            .map(|_| ())
     }
 
     pub async fn list_my_requests(&self) -> Result<MyRequestsResponse, ApiError> {

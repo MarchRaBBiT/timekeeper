@@ -540,10 +540,6 @@ pub fn active_provider(config: &Config) -> Box<dyn KmsProvider> {
     }
 }
 
-pub fn provider_by_id(provider_id: &str, config: &Config) -> Result<Box<dyn KmsProvider>> {
-    provider_by_id_and_version(provider_id, active_key_version(), config)
-}
-
 pub fn provider_by_id_and_version(
     provider_id: &str,
     key_version: u16,

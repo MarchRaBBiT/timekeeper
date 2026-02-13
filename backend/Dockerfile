@@ -1,11 +1,18 @@
-FROM rust:1.88 as chef
+ARG RUST_VERSION=1.93
+ARG CARGO_CHEF_VERSION=0.1.73
+
+FROM rust:${RUST_VERSION} as chef
+ARG CARGO_CHEF_VERSION
 WORKDIR /app
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --version ${CARGO_CHEF_VERSION}
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM rust:1.88 as builder
+FROM rust:${RUST_VERSION} as builder
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mold binutils \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 COPY --from=chef /app/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -27,7 +34,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo build -p timekeeper-backend --release
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libpq5 \

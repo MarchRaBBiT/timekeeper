@@ -5,7 +5,6 @@ use axum::{
     Extension, Router,
 };
 use chrono::Utc;
-use serde_json;
 use sqlx::PgPool;
 use std::sync::OnceLock;
 use timekeeper_backend::{

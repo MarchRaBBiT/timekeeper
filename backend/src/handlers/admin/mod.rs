@@ -1,4 +1,5 @@
 pub mod attendance;
+pub mod attendance_correction_requests;
 pub mod audit_logs;
 pub mod common;
 pub mod export;
@@ -8,6 +9,7 @@ pub mod sessions;
 pub mod users;
 
 pub use attendance::*;
+pub use attendance_correction_requests::*;
 pub use audit_logs::*;
 // common is internal helpers, usually not re-exported fully, but let's see if docs.rs needs anything from it.
 // docs.rs needs structs. The structs are in their respective modules now.

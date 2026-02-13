@@ -21,6 +21,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                                 {match summary.kind {
                                                     RequestKind::Leave => "休暇申請",
                                                     RequestKind::Overtime => "残業申請",
+                                                    RequestKind::AttendanceCorrection => "勤怠修正依頼",
                                                 }}
                                             </p>
                                         </div>

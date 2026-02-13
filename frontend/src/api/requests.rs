@@ -3,8 +3,8 @@ use serde_json::{json, Value};
 use super::{
     client::ApiClient,
     types::{
-        ApiError, CreateLeaveRequest, CreateOvertimeRequest, LeaveRequestResponse,
-        OvertimeRequestResponse,
+        ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest, CreateOvertimeRequest,
+        LeaveRequestResponse, OvertimeRequestResponse, UpdateAttendanceCorrectionRequest,
     },
 };
 
@@ -117,6 +117,51 @@ impl ApiClient {
         request: CreateOvertimeRequest,
     ) -> Result<OvertimeRequestResponse, ApiError> {
         self.create_request("overtime", request).await
+    }
+
+    pub async fn create_attendance_correction_request(
+        &self,
+        request: CreateAttendanceCorrectionRequest,
+    ) -> Result<Value, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .post(format!("{}/attendance-corrections", base_url))
+                    .json(&request))
+            })
+            .await?;
+        self.map_json_response(response).await
+    }
+
+    pub async fn update_attendance_correction_request(
+        &self,
+        id: &str,
+        request: UpdateAttendanceCorrectionRequest,
+    ) -> Result<Value, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .put(format!("{}/attendance-corrections/{}", base_url, id))
+                    .json(&request))
+            })
+            .await?;
+        self.map_json_response(response).await
+    }
+
+    pub async fn cancel_attendance_correction_request(&self, id: &str) -> Result<Value, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .delete(format!("{}/attendance-corrections/{}", base_url, id)))
+            })
+            .await?;
+        self.map_json_response(response).await
     }
 
     async fn create_request<T, R>(&self, kind: &str, payload: T) -> Result<R, ApiError>

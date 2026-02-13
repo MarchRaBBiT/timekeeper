@@ -7,12 +7,15 @@ pub struct MyRequestsResponse {
     pub leave_requests: Vec<Value>,
     #[serde(default)]
     pub overtime_requests: Vec<Value>,
+    #[serde(default)]
+    pub attendance_corrections: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestKind {
     Leave,
     Overtime,
+    AttendanceCorrection,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +91,35 @@ impl RequestSummary {
             details: value.clone(),
         }
     }
+
+    pub fn from_attendance_correction(value: &Value) -> Self {
+        let date = value
+            .get("date")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let secondary_label = value
+            .get("proposed_values")
+            .and_then(|v| v.get("breaks"))
+            .and_then(|v| v.as_array())
+            .map(|arr| format!("休憩{}件", arr.len()));
+
+        Self {
+            id: extract_string(value, "id"),
+            kind: RequestKind::AttendanceCorrection,
+            status: extract_string(value, "status"),
+            submitted_at: value
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            primary_label: date,
+            secondary_label,
+            reason: value
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            details: value.clone(),
+        }
+    }
 }
 
 fn extract_string(value: &Value, key: &str) -> String {
@@ -109,6 +141,12 @@ pub fn flatten_requests(response: &MyRequestsResponse) -> Vec<RequestSummary> {
                 .overtime_requests
                 .iter()
                 .map(RequestSummary::from_overtime),
+        )
+        .chain(
+            response
+                .attendance_corrections
+                .iter()
+                .map(RequestSummary::from_attendance_correction),
         )
         .collect();
     list.sort_by(|a, b| b.submitted_at.cmp(&a.submitted_at));

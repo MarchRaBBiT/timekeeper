@@ -30,7 +30,7 @@ pub async fn auth(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
-    Span::current().record("user_id", &user.id.to_string());
+    Span::current().record("user_id", user.id.to_string());
     Span::current().record("username", &user.username);
     request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user.clone());
@@ -60,7 +60,7 @@ pub async fn auth_admin(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
-    Span::current().record("user_id", &user.id.to_string());
+    Span::current().record("user_id", user.id.to_string());
     Span::current().record("username", &user.username);
     if !(user.is_admin() || user.is_system_admin()) {
         let mut response = StatusCode::FORBIDDEN.into_response();
@@ -99,8 +99,8 @@ pub async fn auth_system_admin(
 
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users WHERE id = $1",
     )
@@ -317,7 +317,7 @@ mod tests {
         let role = format!("{:?}", UserRole::Employee);
         let secret = "test_secret_key_for_jwt_tokens";
         let (token_string, _claims) =
-            create_access_token(user_id.to_string(), username, role, &secret, 1).unwrap();
+            create_access_token(user_id.to_string(), username, role, secret, 1).unwrap();
 
         let result = verify_access_token(&token_string, secret);
         assert!(result.is_ok());
@@ -338,7 +338,7 @@ mod tests {
         let secret = "correct_secret";
         let wrong_secret = "wrong_secret";
         let (token_string, _claims) =
-            create_access_token(user_id.to_string(), username, role, &secret, 1).unwrap();
+            create_access_token(user_id.to_string(), username, role, secret, 1).unwrap();
 
         let result = verify_access_token(&token_string, wrong_secret);
         assert!(result.is_err());

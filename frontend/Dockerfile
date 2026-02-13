@@ -1,11 +1,20 @@
-FROM rust:1.88 as chef
+ARG RUST_VERSION=1.93
+ARG CARGO_CHEF_VERSION=0.1.73
+ARG WASM_PACK_VERSION=0.13.1
+
+FROM rust:${RUST_VERSION} as chef
+ARG CARGO_CHEF_VERSION
 WORKDIR /app
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --version ${CARGO_CHEF_VERSION}
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json --bin timekeeper-frontend
 
-FROM rust:1.88 as builder
+FROM rust:${RUST_VERSION} as builder
+ARG WASM_PACK_VERSION
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mold binutils \
+    && rm -rf /var/lib/apt/lists/*
 RUN rustup target add wasm32-unknown-unknown
 COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 COPY --from=chef /app/recipe.json recipe.json
@@ -17,7 +26,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY . .
 
 # Install wasm-pack
-RUN cargo install wasm-pack
+RUN cargo install wasm-pack --version ${WASM_PACK_VERSION}
 
 # Build frontend (WASM)
 WORKDIR /app/frontend

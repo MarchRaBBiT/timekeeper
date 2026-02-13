@@ -45,8 +45,8 @@ pub async fn find_user_by_username(
     username: &str,
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users WHERE username = $1",
     )
@@ -58,8 +58,8 @@ pub async fn find_user_by_username(
 /// Finds a user by their ID.
 pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users WHERE id = $1",
     )
@@ -179,19 +179,13 @@ pub async fn cleanup_expired_access_tokens(pool: &PgPool) -> Result<(), sqlx::Er
         .map(|_| ())
 }
 
-#[allow(dead_code)]
-/// Finds a user by their email address.
-pub async fn find_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
-    find_user_by_email_hash(pool, email).await
-}
-
 pub async fn find_user_by_email_hash(
     pool: &PgPool,
     email_hash: &str,
 ) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
-        "SELECT id, username, password_hash, full_name_enc as full_name, \
-         email_enc as email, LOWER(role) as role, is_system_admin, \
+        "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+         COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
          mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
          FROM users WHERE email_hash = $1",
     )
@@ -235,8 +229,8 @@ pub async fn update_user_password(
         let user = sqlx::query_as::<_, User>(
             "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
              WHERE id = $2 \
-             RETURNING id, username, password_hash, full_name_enc as full_name, \
-             email_enc as email, LOWER(role) as role, is_system_admin, \
+             RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+             COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
              mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
         )
         .bind(new_password_hash)
@@ -250,8 +244,8 @@ pub async fn update_user_password(
         sqlx::query_as::<_, User>(
             "UPDATE users SET password_hash = $1, password_changed_at = NOW(), updated_at = NOW() \
              WHERE id = $2 \
-             RETURNING id, username, password_hash, full_name_enc as full_name, \
-             email_enc as email, LOWER(role) as role, is_system_admin, \
+             RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+             COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
              mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
         )
         .bind(new_password_hash)
@@ -448,7 +442,7 @@ mod tests {
 
         let token = ActiveAccessToken {
             jti,
-            user_id: user_id.clone(),
+            user_id,
             expires_at,
             context,
         };
