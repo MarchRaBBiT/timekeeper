@@ -6,6 +6,7 @@ use axum::{
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use serde_json::json;
 use sqlx::PgPool;
+use std::sync::Arc;
 use timekeeper_backend::{
     handlers::{
         admin::attendance_correction_requests as admin_corrections, attendance,
@@ -344,4 +345,112 @@ async fn update_request_returns_internal_error_when_correction_table_is_missing(
     .expect("restore correction table");
 
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn concurrent_approval_stress_allows_only_one_success() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let user_app = user_router(pool.clone(), employee.clone());
+    let admin_app = admin_router(pool.clone(), admin.clone());
+    let user_token = create_test_token(employee.id, employee.role.clone());
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+
+    let date = NaiveDate::from_ymd_opt(2026, 2, 13).expect("valid date");
+    let clock_in = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let clock_out = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(18, 0, 0).unwrap());
+    seed_attendance(&pool, employee.id, date, Some(clock_in), Some(clock_out)).await;
+
+    let create_payload = json!({
+        "date": date.to_string(),
+        "clock_out_time": (clock_out + Duration::minutes(25)).format("%Y-%m-%dT%H:%M:%S").to_string(),
+        "reason": "同時承認テスト"
+    });
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/attendance-corrections")
+        .header("Authorization", format!("Bearer {}", user_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(create_payload.to_string()))
+        .expect("build create request");
+    let create_res = user_app.oneshot(create_req).await.expect("create call");
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let create_json = response_json(create_res).await;
+    let request_id = create_json["id"].as_str().expect("request id").to_string();
+
+    let workers = 24usize;
+    let barrier = Arc::new(tokio::sync::Barrier::new(workers));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let app = admin_app.clone();
+        let token = admin_token.clone();
+        let rid = request_id.clone();
+        let barrier = barrier.clone();
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            let approve_payload = json!({ "comment": "stress approve" });
+            let approve_req = Request::builder()
+                .method("PUT")
+                .uri(format!("/api/admin/attendance-corrections/{rid}/approve"))
+                .header("Authorization", format!("Bearer {}", token))
+                .header("Content-Type", "application/json")
+                .body(Body::from(approve_payload.to_string()))
+                .expect("build approve request");
+            app.oneshot(approve_req)
+                .await
+                .expect("approve call")
+                .status()
+        }));
+    }
+
+    let mut ok_count = 0usize;
+    let mut conflict_count = 0usize;
+    for handle in handles {
+        let status = handle.await.expect("join approval task");
+        if status == StatusCode::OK {
+            ok_count += 1;
+        } else if status == StatusCode::CONFLICT {
+            conflict_count += 1;
+        } else {
+            panic!("unexpected status from concurrent approval: {status}");
+        }
+    }
+    assert_eq!(ok_count, 1, "only one approval must succeed");
+    assert_eq!(
+        conflict_count,
+        workers - 1,
+        "remaining approvals must conflict"
+    );
+
+    let row: (String, String, String) = sqlx::query_as(
+        "SELECT status, approved_by, decision_comment
+         FROM attendance_correction_requests
+         WHERE id = $1",
+    )
+    .bind(&request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch correction request");
+    assert_eq!(row.0, "approved");
+    assert_eq!(row.1, admin.id.to_string());
+    assert_eq!(row.2, "stress approve");
+
+    let effective: (String, String) = sqlx::query_as(
+        "SELECT source_request_id, applied_by
+         FROM attendance_correction_effective_values
+         WHERE source_request_id = $1",
+    )
+    .bind(&request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch effective values");
+    assert_eq!(effective.0, request_id);
+    assert_eq!(effective.1, admin.id.to_string());
 }
