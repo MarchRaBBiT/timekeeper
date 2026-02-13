@@ -1,7 +1,8 @@
 use crate::pages::requests::{
     components::{
-        detail_modal::RequestDetailModal, filter::RequestsFilter, leave_form::LeaveRequestForm,
-        list::RequestsList, overtime_form::OvertimeRequestForm,
+        correction_form::AttendanceCorrectionRequestForm, detail_modal::RequestDetailModal,
+        filter::RequestsFilter, leave_form::LeaveRequestForm, list::RequestsList,
+        overtime_form::OvertimeRequestForm,
     },
     layout::RequestsLayout,
     view_model::{use_requests_view_model, RequestFormKind},
@@ -13,14 +14,18 @@ pub fn RequestsPage() -> impl IntoView {
     let vm = use_requests_view_model();
     let leave_state = vm.leave_state;
     let overtime_state = vm.overtime_state;
+    let correction_state = vm.correction_state;
     let active_form = vm.active_form;
     let set_active_form = vm.set_active_form;
     let leave_message = vm.leave_message;
     let overtime_message = vm.overtime_message;
+    let correction_message = vm.correction_message;
     let list_message = vm.list_message;
     let leave_action = vm.leave_action;
     let overtime_action = vm.overtime_action;
+    let correction_action = vm.correction_action;
     let update_action = vm.update_action;
+    let correction_update_action = vm.correction_update_action;
     let editing_request = vm.editing_request;
     let filter_state = vm.filter_state;
     let filtered_summaries = vm.filtered_summaries();
@@ -45,6 +50,14 @@ pub fn RequestsPage() -> impl IntoView {
         }
     });
 
+    let on_cancel_correction = Callback::new({
+        move |_| {
+            editing_request.set(None);
+            list_message.update(|msg| msg.clear());
+            correction_state.reset();
+        }
+    });
+
     view! {
         <>
             <RequestsLayout>
@@ -62,6 +75,19 @@ pub fn RequestsPage() -> impl IntoView {
                             on:click=move |_| set_active_form.set(RequestFormKind::Leave)
                         >
                             {"休暇申請"}
+                        </button>
+                        <button
+                            class=move || {
+                                let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
+                                if matches!(active_form.get(), RequestFormKind::AttendanceCorrection) {
+                                    format!("{base} bg-surface-elevated text-fg shadow-sm transition-all duration-300")
+                                } else {
+                                    format!("{base} text-fg-muted hover:text-fg")
+                                }
+                            }
+                            on:click=move |_| set_active_form.set(RequestFormKind::AttendanceCorrection)
+                        >
+                            {"勤怠修正"}
                         </button>
                         <button
                             class=move || {
@@ -97,8 +123,18 @@ pub fn RequestsPage() -> impl IntoView {
                             on_cancel_edit=on_cancel_overtime
                         />
                     </Show>
+                    <Show when=move || matches!(active_form.get(), RequestFormKind::AttendanceCorrection)>
+                        <AttendanceCorrectionRequestForm
+                            state=correction_state
+                            message=correction_message
+                            action=correction_action
+                            update_action=correction_update_action
+                            editing=editing_request
+                            on_cancel_edit=on_cancel_correction
+                        />
+                    </Show>
                 </div>
-                <div class="hidden lg:grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div class="hidden lg:grid grid-cols-1 gap-6 lg:grid-cols-3">
                     <LeaveRequestForm
                         state=leave_state
                         message=leave_message
@@ -114,6 +150,14 @@ pub fn RequestsPage() -> impl IntoView {
                         update_action=update_action
                         editing=editing_request
                         on_cancel_edit=on_cancel_overtime
+                    />
+                    <AttendanceCorrectionRequestForm
+                        state=correction_state
+                        message=correction_message
+                        action=correction_action
+                        update_action=correction_update_action
+                        editing=editing_request
+                        on_cancel_edit=on_cancel_correction
                     />
                 </div>
                 <RequestsFilter filter_state=filter_state />
@@ -142,6 +186,7 @@ mod host_tests {
         let html = render_to_string(move || view! { <RequestsPage /> });
         assert!(html.contains("休暇申請"));
         assert!(html.contains("残業申請"));
+        assert!(html.contains("勤怠修正"));
         assert!(html.contains("申請一覧"));
     }
 }

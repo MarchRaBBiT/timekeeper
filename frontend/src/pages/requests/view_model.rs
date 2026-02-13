@@ -1,9 +1,15 @@
-use crate::api::{ApiClient, ApiError, CreateLeaveRequest, CreateOvertimeRequest};
+use crate::api::{
+    ApiClient, ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
+    CreateOvertimeRequest, UpdateAttendanceCorrectionRequest,
+};
 use crate::pages::requests::types::MyRequestsResponse;
 use crate::pages::requests::{
     repository::RequestsRepository,
     types::{flatten_requests, RequestSummary},
-    utils::{EditTarget, LeaveFormState, MessageState, OvertimeFormState, RequestFilterState},
+    utils::{
+        AttendanceCorrectionFormState, EditTarget, LeaveFormState, MessageState, OvertimeFormState,
+        RequestFilterState,
+    },
 };
 use leptos::*;
 
@@ -11,9 +17,11 @@ use leptos::*;
 pub struct RequestsViewModel {
     pub leave_state: LeaveFormState,
     pub overtime_state: OvertimeFormState,
+    pub correction_state: AttendanceCorrectionFormState,
     pub filter_state: RequestFilterState,
     pub leave_message: RwSignal<MessageState>,
     pub overtime_message: RwSignal<MessageState>,
+    pub correction_message: RwSignal<MessageState>,
     pub list_message: RwSignal<MessageState>,
     pub selected_request: RwSignal<Option<RequestSummary>>,
     pub editing_request: RwSignal<Option<EditTarget>>,
@@ -22,20 +30,39 @@ pub struct RequestsViewModel {
     pub requests_resource: Resource<u32, Result<MyRequestsResponse, ApiError>>,
     pub leave_action: Action<CreateLeaveRequest, Result<(), ApiError>>,
     pub overtime_action: Action<CreateOvertimeRequest, Result<(), ApiError>>,
+    pub correction_action: Action<CreateAttendanceCorrectionRequest, Result<(), ApiError>>,
     pub update_action: Action<EditPayload, Result<(), ApiError>>,
+    pub correction_update_action: Action<AttendanceCorrectionEditPayload, Result<(), ApiError>>,
     pub cancel_action: Action<String, Result<(), ApiError>>,
+    pub correction_cancel_action: Action<String, Result<(), ApiError>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RequestFormKind {
     Leave,
     Overtime,
+    AttendanceCorrection,
 }
 
 #[derive(Clone)]
 pub struct EditPayload {
     pub id: String,
     pub body: serde_json::Value,
+}
+
+#[derive(Clone)]
+pub struct AttendanceCorrectionEditPayload {
+    pub id: String,
+    pub payload: UpdateAttendanceCorrectionRequest,
+}
+
+impl From<(String, UpdateAttendanceCorrectionRequest)> for AttendanceCorrectionEditPayload {
+    fn from(value: (String, UpdateAttendanceCorrectionRequest)) -> Self {
+        Self {
+            id: value.0,
+            payload: value.1,
+        }
+    }
 }
 
 impl From<(String, serde_json::Value)> for EditPayload {
@@ -52,6 +79,8 @@ fn apply_optional_update_action_result(
     list_message: RwSignal<MessageState>,
     editing_request: RwSignal<Option<EditTarget>>,
     leave_state: LeaveFormState,
+    overtime_state: OvertimeFormState,
+    correction_state: AttendanceCorrectionFormState,
     reload: RwSignal<u32>,
 ) {
     if let Some(result) = result {
@@ -60,6 +89,8 @@ fn apply_optional_update_action_result(
                 list_message.update(|msg| msg.set_success("申請内容を更新しました。"));
                 editing_request.set(None);
                 leave_state.reset();
+                overtime_state.reset();
+                correction_state.reset();
                 reload.update(|value| *value = value.wrapping_add(1));
             }
             Err(err) => list_message.update(|msg| msg.set_error(err)),
@@ -115,10 +146,27 @@ fn apply_optional_overtime_action_result(
     }
 }
 
+fn apply_optional_correction_action_result(
+    result: Option<Result<(), ApiError>>,
+    correction_message: RwSignal<MessageState>,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        match result {
+            Ok(_) => {
+                correction_message.update(|msg| msg.set_success("勤怠修正依頼を送信しました。"));
+                reload.update(|value| *value = value.wrapping_add(1));
+            }
+            Err(err) => correction_message.update(|msg| msg.set_error(err)),
+        }
+    }
+}
+
 fn apply_edit_selection(
     summary: RequestSummary,
     leave_state: LeaveFormState,
     overtime_state: OvertimeFormState,
+    correction_state: AttendanceCorrectionFormState,
     list_message: RwSignal<MessageState>,
     editing_request: RwSignal<Option<EditTarget>>,
     set_active_form: WriteSignal<RequestFormKind>,
@@ -138,6 +186,10 @@ fn apply_edit_selection(
             overtime_state.load_from_value(&summary.details);
             set_active_form.set(RequestFormKind::Overtime);
         }
+        crate::pages::requests::types::RequestKind::AttendanceCorrection => {
+            correction_state.load_from_value(&summary.details);
+            set_active_form.set(RequestFormKind::AttendanceCorrection);
+        }
     }
 }
 
@@ -145,6 +197,7 @@ fn apply_cancel_selection<F>(
     summary: RequestSummary,
     leave_state: LeaveFormState,
     overtime_state: OvertimeFormState,
+    correction_state: AttendanceCorrectionFormState,
     editing_request: RwSignal<Option<EditTarget>>,
     dispatch_cancel: F,
 ) where
@@ -153,6 +206,7 @@ fn apply_cancel_selection<F>(
     editing_request.set(None);
     leave_state.reset();
     overtime_state.reset();
+    correction_state.reset();
     dispatch_cancel(summary.id);
 }
 
@@ -163,9 +217,11 @@ impl RequestsViewModel {
 
         let leave_state = LeaveFormState::default();
         let overtime_state = OvertimeFormState::default();
+        let correction_state = AttendanceCorrectionFormState::default();
         let filter_state = RequestFilterState::default();
         let leave_message = create_rw_signal(MessageState::default());
         let overtime_message = create_rw_signal(MessageState::default());
+        let correction_message = create_rw_signal(MessageState::default());
         let list_message = create_rw_signal(MessageState::default());
         let selected_request = create_rw_signal(None::<RequestSummary>);
         let editing_request = create_rw_signal(None::<EditTarget>);
@@ -192,16 +248,39 @@ impl RequestsViewModel {
             async move { repo.submit_overtime(payload).await.map(|_| ()) }
         });
 
+        let correction_action =
+            create_action(move |payload: &CreateAttendanceCorrectionRequest| {
+                let repo = repository.get_value();
+                let payload = payload.clone();
+                async move { repo.submit_attendance_correction(payload).await }
+            });
+
         let update_action = create_action(move |payload: &EditPayload| {
             let repo = repository.get_value();
             let payload = payload.clone();
             async move { repo.update_request(&payload.id, payload.body.clone()).await }
         });
 
+        let correction_update_action =
+            create_action(move |payload: &AttendanceCorrectionEditPayload| {
+                let repo = repository.get_value();
+                let payload = payload.clone();
+                async move {
+                    repo.update_attendance_correction(&payload.id, payload.payload)
+                        .await
+                }
+            });
+
         let cancel_action = create_action(move |id: &String| {
             let repo = repository.get_value();
             let id = id.clone();
             async move { repo.cancel_request(&id).await }
+        });
+
+        let correction_cancel_action = create_action(move |id: &String| {
+            let repo = repository.get_value();
+            let id = id.clone();
+            async move { repo.cancel_attendance_correction(&id).await }
         });
 
         // Setup effects for actions
@@ -212,6 +291,8 @@ impl RequestsViewModel {
                     list_message,
                     editing_request,
                     leave_state,
+                    overtime_state,
+                    correction_state,
                     reload,
                 );
             });
@@ -221,6 +302,16 @@ impl RequestsViewModel {
             create_effect(move |_| {
                 apply_optional_cancel_action_result(
                     cancel_action.value().get(),
+                    list_message,
+                    reload,
+                );
+            });
+        }
+
+        {
+            create_effect(move |_| {
+                apply_optional_cancel_action_result(
+                    correction_cancel_action.value().get(),
                     list_message,
                     reload,
                 );
@@ -247,12 +338,38 @@ impl RequestsViewModel {
             });
         }
 
+        {
+            create_effect(move |_| {
+                apply_optional_correction_action_result(
+                    correction_action.value().get(),
+                    correction_message,
+                    reload,
+                );
+            });
+        }
+
+        {
+            create_effect(move |_| {
+                apply_optional_update_action_result(
+                    correction_update_action.value().get(),
+                    list_message,
+                    editing_request,
+                    leave_state,
+                    overtime_state,
+                    correction_state,
+                    reload,
+                );
+            });
+        }
+
         Self {
             leave_state,
             overtime_state,
+            correction_state,
             filter_state,
             leave_message,
             overtime_message,
+            correction_message,
             list_message,
             selected_request,
             editing_request,
@@ -261,8 +378,11 @@ impl RequestsViewModel {
             requests_resource,
             leave_action,
             overtime_action,
+            correction_action,
             update_action,
+            correction_update_action,
             cancel_action,
+            correction_cancel_action,
         }
     }
 
@@ -294,6 +414,7 @@ impl RequestsViewModel {
     pub fn on_edit(&self) -> Callback<RequestSummary> {
         let leave_state = self.leave_state;
         let overtime_state = self.overtime_state;
+        let correction_state = self.correction_state;
         let list_message = self.list_message;
         let editing_request = self.editing_request;
         let set_active_form = self.set_active_form;
@@ -303,6 +424,7 @@ impl RequestsViewModel {
                 summary,
                 leave_state,
                 overtime_state,
+                correction_state,
                 list_message,
                 editing_request,
                 set_active_form,
@@ -313,16 +435,25 @@ impl RequestsViewModel {
     pub fn on_cancel_request(&self) -> Callback<RequestSummary> {
         let leave_state = self.leave_state;
         let overtime_state = self.overtime_state;
+        let correction_state = self.correction_state;
         let editing_request = self.editing_request;
         let cancel_action = self.cancel_action;
+        let correction_cancel_action = self.correction_cancel_action;
 
         Callback::new(move |summary: RequestSummary| {
+            let summary_kind = summary.kind;
             apply_cancel_selection(
                 summary,
                 leave_state,
                 overtime_state,
+                correction_state,
                 editing_request,
-                |id| cancel_action.dispatch(id),
+                |id| match summary_kind {
+                    crate::pages::requests::types::RequestKind::AttendanceCorrection => {
+                        correction_cancel_action.dispatch(id)
+                    }
+                    _ => cancel_action.dispatch(id),
+                },
             );
         })
     }
@@ -353,7 +484,8 @@ mod host_tests {
             when.method(GET).path("/api/requests/me");
             then.status(200).json_body(json!({
                 "leave_requests": [],
-                "overtime_requests": []
+                "overtime_requests": [],
+                "attendance_corrections": []
             }));
         });
         server.mock(|when, then| {
@@ -394,7 +526,18 @@ mod host_tests {
             }));
         });
         server.mock(|when, then| {
+            when.method(POST).path("/api/attendance-corrections");
+            then.status(200).json_body(json!({
+                "id": "corr-1",
+                "status": "pending"
+            }));
+        });
+        server.mock(|when, then| {
             when.method(PUT).path("/api/requests/req-1");
+            then.status(200).json_body(json!({ "status": "updated" }));
+        });
+        server.mock(|when, then| {
+            when.method(PUT).path("/api/attendance-corrections/corr-1");
             then.status(200).json_body(json!({ "status": "updated" }));
         });
         server.mock(|when, then| {
@@ -437,10 +580,20 @@ mod host_tests {
                     "planned_hours": 2.5,
                     "created_at": "2025-01-06T10:00:00Z"
                 })],
+                attendance_corrections: vec![json!({
+                    "id": "corr-1",
+                    "status": "pending",
+                    "date": "2025-01-12",
+                    "reason": "fix",
+                    "created_at": "2025-01-07T10:00:00Z",
+                    "proposed_values": {
+                        "breaks": []
+                    }
+                })],
             };
             vm.requests_resource.set(Ok(response));
             let all = vm.filtered_summaries().get();
-            assert_eq!(all.len(), 2);
+            assert_eq!(all.len(), 3);
 
             vm.filter_state.status_signal().set("approved".into());
             let filtered = vm.filtered_summaries().get();
@@ -482,6 +635,21 @@ mod host_tests {
             assert!(matches!(vm.overtime_action.value().get(), Some(Ok(()))));
             let _ = vm.overtime_message.get();
 
+            vm.correction_action
+                .dispatch(CreateAttendanceCorrectionRequest {
+                    date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                    clock_in_time: None,
+                    clock_out_time: None,
+                    breaks: Some(vec![]),
+                    reason: "fix".to_string(),
+                });
+            assert!(
+                wait_until(|| vm.correction_action.value().get().is_some()).await,
+                "correction action should complete"
+            );
+            assert!(matches!(vm.correction_action.value().get(), Some(Ok(()))));
+            let _ = vm.correction_message.get();
+
             vm.editing_request.set(Some(EditTarget {
                 id: "req-1".into(),
                 kind: crate::pages::requests::types::RequestKind::Leave,
@@ -497,6 +665,31 @@ mod host_tests {
             assert!(matches!(vm.update_action.value().get(), Some(Ok(()))));
             let _ = vm.editing_request.get();
             let _ = vm.list_message.get();
+
+            vm.editing_request.set(Some(EditTarget {
+                id: "corr-1".into(),
+                kind: crate::pages::requests::types::RequestKind::AttendanceCorrection,
+            }));
+            vm.correction_update_action.dispatch(
+                (
+                    "corr-1".to_string(),
+                    UpdateAttendanceCorrectionRequest {
+                        clock_in_time: None,
+                        clock_out_time: None,
+                        breaks: Some(vec![]),
+                        reason: "updated".to_string(),
+                    },
+                )
+                    .into(),
+            );
+            assert!(
+                wait_until(|| vm.correction_update_action.value().get().is_some()).await,
+                "correction update action should complete"
+            );
+            assert!(matches!(
+                vm.correction_update_action.value().get(),
+                Some(Ok(()))
+            ));
 
             vm.cancel_action.dispatch("req-1".into());
             assert!(
@@ -514,9 +707,11 @@ mod host_tests {
         with_runtime(|| {
             let leave_state = LeaveFormState::default();
             let overtime_state = OvertimeFormState::default();
+            let correction_state = AttendanceCorrectionFormState::default();
             let list_message = create_rw_signal(MessageState::default());
             let leave_message = create_rw_signal(MessageState::default());
             let overtime_message = create_rw_signal(MessageState::default());
+            let correction_message = create_rw_signal(MessageState::default());
             let editing_request = create_rw_signal(Some(EditTarget {
                 id: "req-old".to_string(),
                 kind: crate::pages::requests::types::RequestKind::Leave,
@@ -530,6 +725,8 @@ mod host_tests {
                 list_message,
                 editing_request,
                 leave_state,
+                overtime_state,
+                correction_state,
                 reload,
             );
             assert_eq!(
@@ -545,6 +742,8 @@ mod host_tests {
                 list_message,
                 editing_request,
                 leave_state,
+                overtime_state,
+                correction_state,
                 reload,
             );
             assert_eq!(
@@ -601,6 +800,22 @@ mod host_tests {
                 Some("overtime failed".to_string())
             );
 
+            apply_optional_correction_action_result(Some(Ok(())), correction_message, reload);
+            assert_eq!(
+                correction_message.get().success.as_deref(),
+                Some("勤怠修正依頼を送信しました。")
+            );
+            assert_eq!(reload.get(), 5);
+            apply_optional_correction_action_result(
+                Some(Err(ApiError::unknown("correction failed"))),
+                correction_message,
+                reload,
+            );
+            assert_eq!(
+                correction_message.get().error.map(|err| err.error),
+                Some("correction failed".to_string())
+            );
+
             list_message.set(MessageState {
                 success: Some("old".to_string()),
                 error: None,
@@ -624,6 +839,7 @@ mod host_tests {
                 leave_summary,
                 leave_state,
                 overtime_state,
+                correction_state,
                 list_message,
                 editing_request,
                 set_active_form,
@@ -655,6 +871,7 @@ mod host_tests {
                 overtime_summary.clone(),
                 leave_state,
                 overtime_state,
+                correction_state,
                 list_message,
                 editing_request,
                 set_active_form,
@@ -663,20 +880,54 @@ mod host_tests {
             assert_eq!(overtime_state.date_signal().get(), "2025-04-01");
             assert_eq!(overtime_state.hours_signal().get(), "3.50");
 
-            leave_state.start_signal().set("2025-05-01".to_string());
-            overtime_state.date_signal().set("2025-05-02".to_string());
-            let mut cancelled_id = None;
-            apply_cancel_selection(
-                overtime_summary,
+            let correction_summary = RequestSummary {
+                id: "corr-2".to_string(),
+                kind: crate::pages::requests::types::RequestKind::AttendanceCorrection,
+                status: "pending".to_string(),
+                submitted_at: None,
+                primary_label: None,
+                secondary_label: None,
+                reason: None,
+                details: json!({
+                    "date": "2025-06-01",
+                    "reason": "forgot",
+                    "proposed_values": {
+                        "clock_in_time": "2025-06-01T09:00:00",
+                        "clock_out_time": "2025-06-01T18:00:00",
+                        "breaks": []
+                    }
+                }),
+            };
+            apply_edit_selection(
+                correction_summary.clone(),
                 leave_state,
                 overtime_state,
+                correction_state,
+                list_message,
+                editing_request,
+                set_active_form,
+            );
+            assert_eq!(active_form.get(), RequestFormKind::AttendanceCorrection);
+            assert_eq!(correction_state.date_signal().get(), "2025-06-01");
+            assert_eq!(correction_state.reason_signal().get(), "forgot");
+
+            leave_state.start_signal().set("2025-05-01".to_string());
+            overtime_state.date_signal().set("2025-05-02".to_string());
+            correction_state.date_signal().set("2025-05-03".to_string());
+            let mut cancelled_id = None;
+            apply_cancel_selection(
+                correction_summary,
+                leave_state,
+                overtime_state,
+                correction_state,
                 editing_request,
                 |id| cancelled_id = Some(id),
             );
             assert!(editing_request.get().is_none());
             assert_eq!(leave_state.start_signal().get(), "");
             assert_eq!(overtime_state.date_signal().get(), "");
-            assert_eq!(cancelled_id.as_deref(), Some("ot-1"));
+            assert_eq!(correction_state.date_signal().get(), "");
+            assert_eq!(cancelled_id.as_deref(), Some("corr-2"));
         });
     }
 

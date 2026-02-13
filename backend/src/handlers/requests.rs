@@ -8,10 +8,12 @@ use validator::Validate;
 use crate::{
     error::AppError,
     models::{
+        attendance_correction_request::AttendanceCorrectionResponse,
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{
+        attendance_correction_request::AttendanceCorrectionRequestRepository,
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
         request::{RequestCreate, RequestRecord, RequestRepository},
@@ -94,10 +96,22 @@ pub async fn get_my_requests(
 
     let repo = RequestRepository::new();
     let requests = repo.get_user_requests(state.read_pool(), user_id).await?;
+    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    let corrections = correction_repo
+        .list_by_user(state.read_pool(), user_id)
+        .await?;
+    let correction_responses: Vec<AttendanceCorrectionResponse> = corrections
+        .iter()
+        .map(|item| {
+            item.to_response()
+                .map_err(|e| AppError::InternalServerError(e.into()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let response = json!({
         "leave_requests": requests.leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
-        "overtime_requests": requests.overtime_requests.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>()
+        "overtime_requests": requests.overtime_requests.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>(),
+        "attendance_corrections": correction_responses
     });
 
     Ok(Json(response))
@@ -194,6 +208,40 @@ pub async fn update_request(
         return Ok(Json(json!({"message":"Overtime request updated"})));
     }
 
+    // Try attendance correction request update
+    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    if let Ok(current) = correction_repo
+        .find_by_id_for_user(&state.write_pool, &request_id, user_id)
+        .await
+    {
+        if current.status.db_value() != "pending" {
+            return Err(AppError::BadRequest(
+                "Only pending requests can be updated".into(),
+            ));
+        }
+
+        let reason = payload
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| AppError::BadRequest("reason is required".into()))?;
+
+        let proposed_values_json = payload
+            .get("proposed_values")
+            .cloned()
+            .ok_or_else(|| AppError::BadRequest("proposed_values is required".into()))?;
+        let proposed = serde_json::from_value(proposed_values_json)
+            .map_err(|_| AppError::BadRequest("Invalid proposed_values".into()))?;
+
+        correction_repo
+            .update_pending_for_user(&state.write_pool, &request_id, user_id, &reason, &proposed)
+            .await?;
+        return Ok(Json(
+            json!({"message":"Attendance correction request updated"}),
+        ));
+    }
+
     Err(AppError::NotFound("Request not found".into()))
 }
 
@@ -224,6 +272,16 @@ pub async fn cancel_request(
         .cancel(&state.write_pool, overtime_request_id, user_id, Utc::now())
         .await?;
     if result > 0 {
+        return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
+    }
+
+    // Try attendance correction cancellation
+    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    if correction_repo
+        .cancel_pending_for_user(&state.write_pool, &request_id, user_id)
+        .await
+        .is_ok()
+    {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
     }
 

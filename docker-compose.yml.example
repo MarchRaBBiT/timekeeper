@@ -5,15 +5,24 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.93}
+        CARGO_CHEF_VERSION: ${CARGO_CHEF_VERSION:-0.1.73}
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://timekeeper:timekeeper@backend-db:5432/timekeeper}
-      - RUST_LOG=${RUST_LOG:-info}
-      - APP_TIMEZONE=${APP_TIMEZONE:-Asia/Tokyo}
-      - JWT_SECRET=${JWT_SECRET:?set in .env}
+      - DATABASE_URL=postgres://timekeeper:timekeeper@backend-db:5432/timekeeper
+      - REDIS_URL=redis://redis:6379
+      - REDIS_POOL_SIZE=10
+      - REDIS_CONNECT_TIMEOUT=5
+      - FEATURE_REDIS_CACHE_ENABLED=true
+      - RUST_LOG=info
+      - APP_TIMEZONE=Asia/Tokyo
+      - JWT_SECRET=local-dev-secret-change-me-32-characters
     depends_on:
       backend-db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - timekeeper_net
@@ -22,6 +31,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.93}
+        CARGO_CHEF_VERSION: ${CARGO_CHEF_VERSION:-0.1.73}
+        WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
     ports:
       - "8080:80"
     depends_on:
@@ -32,15 +45,30 @@ services:
   backend-db:
     image: postgres:16
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-timekeeper}
-      - POSTGRES_USER=${POSTGRES_USER:-timekeeper}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-timekeeper}
+      - POSTGRES_DB=timekeeper
+      - POSTGRES_USER=timekeeper
+      - POSTGRES_PASSWORD=timekeeper
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-timekeeper}"]
+      test: ["CMD", "pg_isready", "-U", "timekeeper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - timekeeper_net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,8 +78,8 @@ services:
   db_admin:
     image: dpage/pgadmin4:8.12
     environment:
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-change-me}
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=change-me
     ports:
       - "5050:80"
     depends_on:
@@ -64,6 +92,7 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  redis_data:
 
 networks:
   timekeeper_net:

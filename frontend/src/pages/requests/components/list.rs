@@ -97,6 +97,7 @@ pub fn RequestsList(
                                                     {match summary_value.kind {
                                                         RequestKind::Leave => "休暇",
                                                         RequestKind::Overtime => "残業",
+                                                        RequestKind::AttendanceCorrection => "勤怠修正",
                                                     }}
                                                 </span>
                                             </td>

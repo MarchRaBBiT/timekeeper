@@ -2,6 +2,7 @@
 
 pub mod active_session;
 pub mod attendance;
+pub mod attendance_correction_request;
 pub mod attendance_repository;
 pub mod audit_log;
 pub mod auth;

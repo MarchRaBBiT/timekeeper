@@ -209,6 +209,20 @@ fn user_routes(state: AppState) -> Router<AppState> {
             get(handlers::attendance::export_my_attendance),
         )
         .route(
+            "/api/attendance-corrections",
+            post(handlers::attendance_correction_requests::create_attendance_correction_request),
+        )
+        .route(
+            "/api/attendance-corrections/me",
+            get(handlers::attendance_correction_requests::list_my_attendance_correction_requests),
+        )
+        .route(
+            "/api/attendance-corrections/{id}",
+            get(handlers::attendance_correction_requests::get_my_attendance_correction_request)
+                .put(handlers::attendance_correction_requests::update_my_attendance_correction_request)
+                .delete(handlers::attendance_correction_requests::cancel_my_attendance_correction_request),
+        )
+        .route(
             "/api/requests/leave",
             post(handlers::requests::create_leave_request),
         )
@@ -295,6 +309,22 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/requests/{id}/reject",
             put(handlers::admin::reject_request),
+        )
+        .route(
+            "/api/admin/attendance-corrections",
+            get(handlers::admin::list_attendance_correction_requests),
+        )
+        .route(
+            "/api/admin/attendance-corrections/{id}",
+            get(handlers::admin::get_attendance_correction_request_detail),
+        )
+        .route(
+            "/api/admin/attendance-corrections/{id}/approve",
+            put(handlers::admin::approve_attendance_correction_request),
+        )
+        .route(
+            "/api/admin/attendance-corrections/{id}/reject",
+            put(handlers::admin::reject_attendance_correction_request),
         )
         .route(
             "/api/admin/subject-requests",

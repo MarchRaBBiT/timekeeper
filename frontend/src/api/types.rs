@@ -208,6 +208,29 @@ pub struct CreateOvertimeRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrectionBreakItem {
+    pub break_start_time: NaiveDateTime,
+    pub break_end_time: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAttendanceCorrectionRequest {
+    pub date: NaiveDate,
+    pub clock_in_time: Option<NaiveDateTime>,
+    pub clock_out_time: Option<NaiveDateTime>,
+    pub breaks: Option<Vec<CorrectionBreakItem>>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAttendanceCorrectionRequest {
+    pub clock_in_time: Option<NaiveDateTime>,
+    pub clock_out_time: Option<NaiveDateTime>,
+    pub breaks: Option<Vec<CorrectionBreakItem>>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OvertimeRequestResponse {
     pub id: String,
     pub user_id: String,

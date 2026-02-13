@@ -1,4 +1,7 @@
-use crate::api::{ApiError, CreateLeaveRequest, CreateOvertimeRequest};
+use crate::api::{
+    ApiError, CorrectionBreakItem, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
+    CreateOvertimeRequest, UpdateAttendanceCorrectionRequest,
+};
 use chrono::NaiveDate;
 use leptos::*;
 use serde_json::Value;
@@ -34,6 +37,15 @@ impl Default for LeaveFormState {
 pub struct OvertimeFormState {
     date: RwSignal<String>,
     hours: RwSignal<String>,
+    reason: RwSignal<String>,
+}
+
+#[derive(Clone, Copy)]
+pub struct AttendanceCorrectionFormState {
+    date: RwSignal<String>,
+    clock_in_time: RwSignal<String>,
+    clock_out_time: RwSignal<String>,
+    break_rows: RwSignal<String>,
     reason: RwSignal<String>,
 }
 
@@ -168,6 +180,132 @@ impl OvertimeFormState {
     }
 }
 
+impl Default for AttendanceCorrectionFormState {
+    fn default() -> Self {
+        Self {
+            date: create_rw_signal(String::new()),
+            clock_in_time: create_rw_signal(String::new()),
+            clock_out_time: create_rw_signal(String::new()),
+            break_rows: create_rw_signal(String::new()),
+            reason: create_rw_signal(String::new()),
+        }
+    }
+}
+
+impl AttendanceCorrectionFormState {
+    pub fn date_signal(&self) -> RwSignal<String> {
+        self.date
+    }
+
+    pub fn clock_in_signal(&self) -> RwSignal<String> {
+        self.clock_in_time
+    }
+
+    pub fn clock_out_signal(&self) -> RwSignal<String> {
+        self.clock_out_time
+    }
+
+    pub fn break_rows_signal(&self) -> RwSignal<String> {
+        self.break_rows
+    }
+
+    pub fn reason_signal(&self) -> RwSignal<String> {
+        self.reason
+    }
+
+    pub fn reset(&self) {
+        self.date.set(String::new());
+        self.clock_in_time.set(String::new());
+        self.clock_out_time.set(String::new());
+        self.break_rows.set(String::new());
+        self.reason.set(String::new());
+    }
+
+    pub fn load_from_value(&self, value: &Value) {
+        if let Some(date) = value.get("date").and_then(|v| v.as_str()) {
+            self.date.set(date.to_string());
+        }
+        if let Some(proposed) = value.get("proposed_values") {
+            if let Some(clock_in) = proposed.get("clock_in_time").and_then(|v| v.as_str()) {
+                self.clock_in_time.set(clock_in.to_string());
+            }
+            if let Some(clock_out) = proposed.get("clock_out_time").and_then(|v| v.as_str()) {
+                self.clock_out_time.set(clock_out.to_string());
+            }
+            if let Some(breaks) = proposed.get("breaks").and_then(|v| v.as_array()) {
+                let rows = breaks
+                    .iter()
+                    .map(|item| {
+                        let start = item
+                            .get("break_start_time")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
+                        let end = item
+                            .get("break_end_time")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
+                        format!("{start},{end}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.break_rows.set(rows);
+            }
+        }
+        if let Some(reason) = value.get("reason").and_then(|v| v.as_str()) {
+            self.reason.set(reason.to_string());
+        }
+    }
+
+    pub fn to_create_payload(self) -> Result<CreateAttendanceCorrectionRequest, ApiError> {
+        let date = parse_date(
+            &self.date.get(),
+            "対象日を YYYY-MM-DD 形式で入力してください。",
+        )?;
+        let clock_in = parse_datetime_optional(
+            &self.clock_in_time.get(),
+            "出勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+        )?;
+        let clock_out = parse_datetime_optional(
+            &self.clock_out_time.get(),
+            "退勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+        )?;
+        let breaks = parse_break_rows(&self.break_rows.get())?;
+        let reason = self.reason.get().trim().to_string();
+        if reason.is_empty() {
+            return Err(ApiError::validation("修正理由を入力してください。"));
+        }
+        Ok(CreateAttendanceCorrectionRequest {
+            date,
+            clock_in_time: clock_in,
+            clock_out_time: clock_out,
+            breaks: Some(breaks),
+            reason,
+        })
+    }
+
+    pub fn to_update_payload(self) -> Result<UpdateAttendanceCorrectionRequest, ApiError> {
+        let clock_in = parse_datetime_optional(
+            &self.clock_in_time.get(),
+            "出勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+        )?;
+        let clock_out = parse_datetime_optional(
+            &self.clock_out_time.get(),
+            "退勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+        )?;
+        let breaks = parse_break_rows(&self.break_rows.get())?;
+        let reason = self.reason.get().trim().to_string();
+        if reason.is_empty() {
+            return Err(ApiError::validation("修正理由を入力してください。"));
+        }
+        Ok(UpdateAttendanceCorrectionRequest {
+            clock_in_time: clock_in,
+            clock_out_time: clock_out,
+            breaks: Some(breaks),
+            reason,
+        })
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct MessageState {
     pub success: Option<String>,
@@ -221,6 +359,58 @@ fn optional_string(value: String) -> Option<String> {
     } else {
         Some(trimmed)
     }
+}
+
+fn parse_datetime_optional(
+    input: &str,
+    err: &str,
+) -> Result<Option<chrono::NaiveDateTime>, ApiError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    parse_datetime(trimmed, err).map(Some)
+}
+
+fn parse_datetime(input: &str, err: &str) -> Result<chrono::NaiveDateTime, ApiError> {
+    chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M"))
+        .map_err(|_| ApiError::validation(err.to_string()))
+}
+
+fn parse_break_rows(input: &str) -> Result<Vec<CorrectionBreakItem>, ApiError> {
+    let mut items = Vec::new();
+    for line in input.lines() {
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let mut parts = raw.splitn(2, ',');
+        let start_raw = parts.next().unwrap_or_default().trim();
+        if start_raw.is_empty() {
+            return Err(ApiError::validation(
+                "休憩行は `開始時刻,終了時刻(任意)` 形式で入力してください。",
+            ));
+        }
+        let end_raw = parts.next().map(|s| s.trim()).unwrap_or_default();
+        let start = parse_datetime(
+            start_raw,
+            "休憩開始は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+        )?;
+        let end = if end_raw.is_empty() {
+            None
+        } else {
+            Some(parse_datetime(
+                end_raw,
+                "休憩終了は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            )?)
+        };
+        items.push(CorrectionBreakItem {
+            break_start_time: start,
+            break_end_time: end,
+        });
+    }
+    Ok(items)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
