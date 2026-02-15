@@ -31,6 +31,17 @@ fn user_rate_limit_store() -> &'static Mutex<HashMap<String, UserRateLimitWindow
     USER_RATE_LIMIT_STORE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn user_rate_limit_cleanup_threshold() -> usize {
+    parse_cleanup_threshold(std::env::var("RATE_LIMIT_USER_STORE_CLEANUP_THRESHOLD").ok())
+}
+
+fn parse_cleanup_threshold(raw: Option<String>) -> usize {
+    const DEFAULT_THRESHOLD: usize = 10_000;
+    raw.and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_THRESHOLD)
+}
+
 pub async fn user_rate_limit(
     State(state): State<AppState>,
     request: Request,
@@ -64,7 +75,7 @@ pub async fn user_rate_limit(
         let mut store = user_rate_limit_store()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if store.len() > 10_000 {
+        if store.len() > user_rate_limit_cleanup_threshold() {
             store.retain(|_, entry| now.duration_since(entry.started_at) < window);
         }
 
@@ -199,6 +210,19 @@ mod tests {
     fn create_auth_rate_limiter_handles_zero_values() {
         let config = test_config(0, 0, 20, 3600);
         let _limiter = create_auth_rate_limiter(&config);
+    }
+
+    #[test]
+    fn parse_cleanup_threshold_uses_default_for_invalid_values() {
+        assert_eq!(parse_cleanup_threshold(None), 10_000);
+        assert_eq!(parse_cleanup_threshold(Some("".to_string())), 10_000);
+        assert_eq!(parse_cleanup_threshold(Some("abc".to_string())), 10_000);
+        assert_eq!(parse_cleanup_threshold(Some("0".to_string())), 10_000);
+    }
+
+    #[test]
+    fn parse_cleanup_threshold_accepts_positive_values() {
+        assert_eq!(parse_cleanup_threshold(Some("500".to_string())), 500);
     }
 
     #[test]
