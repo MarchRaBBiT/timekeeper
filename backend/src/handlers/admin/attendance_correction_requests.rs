@@ -92,12 +92,6 @@ pub async fn approve_attendance_correction_request(
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(&state.write_pool, &id).await?;
 
-    if request.status.db_value() != "pending" {
-        return Err(AppError::Conflict(
-            "Request not found or already processed".into(),
-        ));
-    }
-
     let original_snapshot = request
         .parse_original_snapshot()
         .map_err(|e| AppError::InternalServerError(e.into()))?;
