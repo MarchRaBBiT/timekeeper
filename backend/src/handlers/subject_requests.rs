@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
+use validator::Validate;
 
 use crate::{
     models::{
@@ -24,6 +25,12 @@ pub async fn create_subject_request(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateDataSubjectRequest>,
 ) -> Result<Json<DataSubjectRequestResponse>, (StatusCode, Json<Value>)> {
+    payload.validate().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "validation failed"})),
+        )
+    })?;
     let details = validate_details(payload.details)?;
     let now = time::now_utc(&state.config.time_zone);
     let user_id = user.id.to_string();

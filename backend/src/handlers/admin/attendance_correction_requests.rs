@@ -3,6 +3,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use validator::Validate;
 
 use crate::error::AppError;
 use crate::models::attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload};
@@ -87,6 +88,7 @@ pub async fn approve_attendance_correction_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    payload.validate()?;
     validate_comment(&payload.comment)?;
 
     let repo = AttendanceCorrectionRequestRepository::new();
@@ -124,6 +126,7 @@ pub async fn reject_attendance_correction_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    payload.validate()?;
     validate_comment(&payload.comment)?;
 
     let repo = AttendanceCorrectionRequestRepository::new();

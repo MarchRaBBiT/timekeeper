@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::models::request::RequestStatus;
 
@@ -69,9 +70,10 @@ impl DataSubjectRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct CreateDataSubjectRequest {
     pub request_type: DataSubjectRequestType,
+    #[validate(length(max = 2000))]
     pub details: Option<String>,
 }
 
@@ -109,5 +111,30 @@ impl From<DataSubjectRequest> for DataSubjectRequestResponse {
             created_at: request.created_at,
             updated_at: request.updated_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_data_subject_request_rejects_too_long_details() {
+        let payload = CreateDataSubjectRequest {
+            request_type: DataSubjectRequestType::Access,
+            details: Some("a".repeat(2001)),
+        };
+
+        assert!(payload.validate().is_err());
+    }
+
+    #[test]
+    fn create_data_subject_request_accepts_max_details_length() {
+        let payload = CreateDataSubjectRequest {
+            request_type: DataSubjectRequestType::Access,
+            details: Some("a".repeat(2000)),
+        };
+
+        assert!(payload.validate().is_ok());
     }
 }
