@@ -348,6 +348,42 @@ async fn test_upsert_attendance_with_invalid_break_start_fails() {
 }
 
 #[tokio::test]
+async fn test_upsert_attendance_with_invalid_break_end_fails() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
+
+    let payload = json!({
+        "user_id": employee.id.to_string(),
+        "date": "2024-07-15",
+        "clock_in_time": "2024-07-15T09:00:00",
+        "breaks": [
+            { "break_start_time": "2024-07-15T12:00:00", "break_end_time": "invalid" }
+        ]
+    });
+
+    let request = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/attendance")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_system_admin_can_force_end_active_break() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
