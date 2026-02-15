@@ -63,7 +63,7 @@ pub async fn list_subject_requests(
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
     let (items, total) =
-        subject_request::list_subject_requests(&state.write_pool, &filters, per_page, offset)
+        subject_request::list_subject_requests(state.read_pool(), &filters, per_page, offset)
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "failed to list subject requests");
@@ -94,7 +94,7 @@ pub async fn approve_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&state.write_pool, &request_id).await?;
+    ensure_pending_request(state.read_pool(), &request_id).await?;
     let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
 
@@ -134,7 +134,7 @@ pub async fn reject_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&state.write_pool, &request_id).await?;
+    ensure_pending_request(state.read_pool(), &request_id).await?;
     let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
 
