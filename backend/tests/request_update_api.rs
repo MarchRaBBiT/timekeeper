@@ -245,6 +245,94 @@ async fn update_overtime_request_validates_payload_and_updates() {
 }
 
 #[tokio::test]
+async fn update_request_rejects_invalid_reason_and_tiny_planned_hours() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    migrate(&pool).await;
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let leave = seed_leave_request(
+        &pool,
+        employee.id,
+        timekeeper_backend::models::leave_request::LeaveType::Annual,
+        NaiveDate::from_ymd_opt(2026, 5, 10).expect("valid date"),
+        NaiveDate::from_ymd_opt(2026, 5, 10).expect("valid date"),
+    )
+    .await;
+    let overtime = seed_overtime_request(
+        &pool,
+        employee.id,
+        NaiveDate::from_ymd_opt(2026, 5, 11).expect("valid date"),
+        2.0,
+    )
+    .await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = requests_router(pool, employee);
+
+    let empty_reason = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/requests/{}", leave.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!({ "reason": "" }).to_string()))
+        .expect("build empty reason request");
+    let empty_reason_response = app
+        .clone()
+        .oneshot(empty_reason)
+        .await
+        .expect("call empty reason update");
+    assert_eq!(empty_reason_response.status(), StatusCode::BAD_REQUEST);
+
+    let long_reason = "a".repeat(501);
+    let long_reason_request = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/requests/{}", leave.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!({ "reason": long_reason }).to_string()))
+        .expect("build long reason request");
+    let long_reason_response = app
+        .clone()
+        .oneshot(long_reason_request)
+        .await
+        .expect("call long reason update");
+    assert_eq!(long_reason_response.status(), StatusCode::BAD_REQUEST);
+
+    let tiny_hours = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/requests/{}", overtime.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            json!({ "planned_hours": 0.0000001 }).to_string(),
+        ))
+        .expect("build tiny hours request");
+    let tiny_hours_response = app
+        .clone()
+        .oneshot(tiny_hours)
+        .await
+        .expect("call tiny hours update");
+    assert_eq!(tiny_hours_response.status(), StatusCode::BAD_REQUEST);
+
+    let empty_overtime_reason = Request::builder()
+        .method("PUT")
+        .uri(format!("/api/requests/{}", overtime.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!({ "reason": "   " }).to_string()))
+        .expect("build empty overtime reason request");
+    let empty_overtime_reason_response = app
+        .oneshot(empty_overtime_reason)
+        .await
+        .expect("call empty overtime reason update");
+    assert_eq!(
+        empty_overtime_reason_response.status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
 async fn cancel_request_handles_invalid_and_not_cancellable_states() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
