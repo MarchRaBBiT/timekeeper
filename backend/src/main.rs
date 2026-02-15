@@ -37,7 +37,7 @@ mod validation;
 use config::{AuditLogRetentionPolicy, Config};
 use db::connection::create_pools;
 use db::redis::create_redis_pool;
-use middleware::rate_limit::create_auth_rate_limiter;
+use middleware::rate_limit::{create_auth_rate_limiter, user_rate_limit};
 use services::{
     audit_log::{AuditLogService, AuditLogServiceTrait},
     consent_log::ConsentLogService,
@@ -287,6 +287,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
         )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
+            user_rate_limit,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
             middleware::auth,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -395,6 +399,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
+            user_rate_limit,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
             middleware::auth_admin,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -439,6 +447,10 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             "/api/admin/archived-users/{id}/restore",
             post(handlers::admin::restore_archived_user),
         )
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            user_rate_limit,
+        ))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::auth_system_admin,
