@@ -1,6 +1,6 @@
 use axum::{
     extract::{Extension, State},
-    http::{header, header::USER_AGENT, HeaderMap},
+    http::{header, header::USER_AGENT, HeaderMap, HeaderValue},
     Json,
 };
 use chrono::{DateTime, Utc};
@@ -208,7 +208,7 @@ pub async fn login(
     };
 
     let mut headers = HeaderMap::new();
-    set_auth_cookies(&mut headers, &session, &state.config);
+    set_auth_cookies(&mut headers, &session, &state.config)?;
     Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
@@ -341,7 +341,7 @@ pub async fn refresh(
     }
 
     let mut headers = HeaderMap::new();
-    set_auth_cookies(&mut headers, &session, &state.config);
+    set_auth_cookies(&mut headers, &session, &state.config)?;
     Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
@@ -386,7 +386,7 @@ pub async fn logout(
             );
         }
         let mut response_headers = HeaderMap::new();
-        clear_auth_cookies(&mut response_headers, &state.config);
+        clear_auth_cookies(&mut response_headers, &state.config)?;
         return Ok((
             response_headers,
             Json(json!({"message":"Logged out from all devices"})),
@@ -435,7 +435,7 @@ pub async fn logout(
         );
     }
     let mut response_headers = HeaderMap::new();
-    clear_auth_cookies(&mut response_headers, &state.config);
+    clear_auth_cookies(&mut response_headers, &state.config)?;
     Ok((response_headers, Json(json!({"message":"Logged out"}))))
 }
 
@@ -1165,7 +1165,11 @@ impl AuthSession {
     }
 }
 
-fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Config) {
+fn set_auth_cookies(
+    headers: &mut HeaderMap,
+    session: &AuthSession,
+    config: &Config,
+) -> HandlerResult<()> {
     let options = CookieOptions {
         secure: config.cookie_secure,
         same_site: config.cookie_same_site,
@@ -1187,19 +1191,29 @@ fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Con
         REFRESH_COOKIE_PATH,
         options,
     );
-    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
-    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
+    let access_cookie_value = HeaderValue::from_str(&access_cookie)
+        .map_err(|_| internal_error("Failed to set access cookie header"))?;
+    let refresh_cookie_value = HeaderValue::from_str(&refresh_cookie)
+        .map_err(|_| internal_error("Failed to set refresh cookie header"))?;
+    headers.append(header::SET_COOKIE, access_cookie_value);
+    headers.append(header::SET_COOKIE, refresh_cookie_value);
+    Ok(())
 }
 
-fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
+fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) -> HandlerResult<()> {
     let options = CookieOptions {
         secure: config.cookie_secure,
         same_site: config.cookie_same_site,
     };
     let access_cookie = build_clear_cookie(ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, options);
     let refresh_cookie = build_clear_cookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH, options);
-    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
-    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
+    let access_cookie_value = HeaderValue::from_str(&access_cookie)
+        .map_err(|_| internal_error("Failed to clear access cookie header"))?;
+    let refresh_cookie_value = HeaderValue::from_str(&refresh_cookie)
+        .map_err(|_| internal_error("Failed to clear refresh cookie header"))?;
+    headers.append(header::SET_COOKIE, access_cookie_value);
+    headers.append(header::SET_COOKIE, refresh_cookie_value);
+    Ok(())
 }
 
 fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
@@ -1614,9 +1628,23 @@ mod tests {
         let session = create_auth_session(&user, &config)
             .await
             .expect("create session");
-        set_auth_cookies(&mut headers, &session, &config);
+        set_auth_cookies(&mut headers, &session, &config).expect("set auth cookies");
         assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 2);
-        clear_auth_cookies(&mut headers, &config);
+        clear_auth_cookies(&mut headers, &config).expect("clear auth cookies");
         assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 4);
+    }
+
+    #[test]
+    fn set_auth_cookies_returns_error_for_invalid_cookie_value() {
+        let mut headers = HeaderMap::new();
+        let config = config_stub();
+        let session = AuthSession {
+            access_token: "invalid\naccess".to_string(),
+            refresh_token: "valid-refresh".to_string(),
+            user: UserResponse::from(build_user()),
+        };
+
+        let result = set_auth_cookies(&mut headers, &session, &config);
+        assert!(matches!(result, Err(AppError::InternalServerError(_))));
     }
 }
