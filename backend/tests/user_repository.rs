@@ -22,7 +22,10 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
 async fn reset_tables(pool: &sqlx::PgPool) {
     sqlx::query(
         "TRUNCATE archived_break_records, archived_attendance, archived_leave_requests, \
-         archived_overtime_requests, archived_holiday_exceptions, archived_users, \
+         archived_overtime_requests, archived_holiday_exceptions, \
+         archived_attendance_correction_effective_values, archived_attendance_correction_requests, \
+         archived_users, \
+         attendance_correction_effective_values, attendance_correction_requests, \
          break_records, attendance, leave_requests, overtime_requests, holiday_exceptions, \
          active_sessions, refresh_tokens, active_access_tokens, users RESTART IDENTITY CASCADE",
     )
@@ -216,6 +219,53 @@ async fn user_repository_soft_delete_archives_records_and_hard_delete_archived_r
     support::seed_leave_request(&pool, user.id, LeaveType::Personal, date, date).await;
     support::seed_overtime_request(&pool, user.id, date, 1.5).await;
     support::seed_holiday_exception(&pool, user.id, date, false, "coverage test").await;
+    let correction_request_id = Uuid::new_v4().to_string();
+    let original_snapshot = serde_json::json!({
+        "clock_in_time": clock_in,
+        "clock_out_time": clock_out,
+        "breaks": []
+    });
+    let proposed_snapshot = serde_json::json!({
+        "clock_in_time": clock_in,
+        "clock_out_time": clock_out + ChronoDuration::minutes(30),
+        "breaks": []
+    });
+    sqlx::query(
+        "INSERT INTO attendance_correction_requests \
+         (id, user_id, attendance_id, date, status, reason, original_snapshot_json, proposed_values_json, \
+          decision_comment, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,'approved',$5,$6,$7,$8,$9,$10,NULL,NULL,NULL,$11,$11)",
+    )
+    .bind(&correction_request_id)
+    .bind(user.id.to_string())
+    .bind(attendance.id.to_string())
+    .bind(date)
+    .bind("coverage correction")
+    .bind(original_snapshot)
+    .bind(proposed_snapshot)
+    .bind("approved")
+    .bind(archiver.id.to_string())
+    .bind(Utc::now())
+    .bind(Utc::now())
+    .execute(&pool)
+    .await
+    .expect("insert correction request");
+    sqlx::query(
+        "INSERT INTO attendance_correction_effective_values \
+         (attendance_id, source_request_id, clock_in_time_corrected, clock_out_time_corrected, \
+          break_records_corrected_json, applied_by, applied_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7)",
+    )
+    .bind(attendance.id.to_string())
+    .bind(&correction_request_id)
+    .bind(clock_in)
+    .bind(clock_out + ChronoDuration::minutes(30))
+    .bind(serde_json::json!([]))
+    .bind(archiver.id.to_string())
+    .bind(Utc::now())
+    .execute(&pool)
+    .await
+    .expect("insert correction effective values");
 
     let refresh_token_id = format!("refresh-{}", Uuid::new_v4());
     let access_jti = format!("jti-{}", Uuid::new_v4());
@@ -295,6 +345,27 @@ async fn user_repository_soft_delete_archives_records_and_hard_delete_archived_r
         1
     );
     assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM archived_attendance_correction_requests WHERE user_id = $1",
+        )
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count archived correction requests"),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM archived_attendance_correction_effective_values \
+             WHERE source_request_id IN (SELECT id FROM archived_attendance_correction_requests WHERE user_id = $1)",
+        )
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count archived correction effective values"),
+        1
+    );
+    assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
             .bind(&user_id)
             .fetch_one(&pool)
@@ -325,6 +396,16 @@ async fn user_repository_soft_delete_archives_records_and_hard_delete_archived_r
             .fetch_one(&pool)
             .await
             .expect("count archived attendance after purge"),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM archived_attendance_correction_requests WHERE user_id = $1",
+        )
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count archived correction requests after purge"),
         0
     );
 }
@@ -377,9 +458,85 @@ async fn user_repository_soft_delete_restore_and_archive_cleanup() {
         Some(clock_in + ChronoDuration::hours(4)),
     )
     .await;
-    support::seed_leave_request(&pool, user.id, LeaveType::Annual, date, date).await;
-    support::seed_overtime_request(&pool, user.id, date, 2.0).await;
+    let leave_request =
+        support::seed_leave_request(&pool, user.id, LeaveType::Annual, date, date).await;
+    let overtime_request = support::seed_overtime_request(&pool, user.id, date, 2.0).await;
     support::seed_holiday_exception(&pool, user.id, date, false, "manual override").await;
+    let now = Utc::now();
+    sqlx::query(
+        "UPDATE leave_requests \
+         SET status = 'rejected', decision_comment = $1, rejected_by = $2, rejected_at = $3, cancelled_at = $4 \
+         WHERE id = $5",
+    )
+    .bind("leave rejected for coverage")
+    .bind(archiver.id.to_string())
+    .bind(now)
+    .bind(now + ChronoDuration::minutes(1))
+    .bind(leave_request.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("update leave request decision fields");
+    sqlx::query(
+        "UPDATE overtime_requests \
+         SET status = 'rejected', decision_comment = $1, rejected_by = $2, rejected_at = $3, cancelled_at = $4 \
+         WHERE id = $5",
+    )
+    .bind("ot rejected for coverage")
+    .bind(archiver.id.to_string())
+    .bind(now)
+    .bind(now + ChronoDuration::minutes(2))
+    .bind(overtime_request.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("update overtime request decision fields");
+
+    let correction_request_id = Uuid::new_v4().to_string();
+    let original_snapshot = serde_json::json!({
+        "clock_in_time": clock_in,
+        "clock_out_time": clock_out,
+        "breaks": []
+    });
+    let proposed_snapshot = serde_json::json!({
+        "clock_in_time": clock_in,
+        "clock_out_time": clock_out + ChronoDuration::minutes(20),
+        "breaks": []
+    });
+    sqlx::query(
+        "INSERT INTO attendance_correction_requests \
+         (id, user_id, attendance_id, date, status, reason, original_snapshot_json, proposed_values_json, \
+          decision_comment, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,'approved',$5,$6,$7,$8,$9,$10,NULL,NULL,NULL,$11,$11)",
+    )
+    .bind(&correction_request_id)
+    .bind(user.id.to_string())
+    .bind(attendance.id.to_string())
+    .bind(date)
+    .bind("restore coverage correction")
+    .bind(original_snapshot)
+    .bind(proposed_snapshot)
+    .bind("approved")
+    .bind(archiver.id.to_string())
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert correction request for restore");
+    sqlx::query(
+        "INSERT INTO attendance_correction_effective_values \
+         (attendance_id, source_request_id, clock_in_time_corrected, clock_out_time_corrected, \
+          break_records_corrected_json, applied_by, applied_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7)",
+    )
+    .bind(attendance.id.to_string())
+    .bind(&correction_request_id)
+    .bind(clock_in)
+    .bind(clock_out + ChronoDuration::minutes(20))
+    .bind(serde_json::json!([]))
+    .bind(archiver.id.to_string())
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert correction effective values for restore");
 
     let user_id = user.id.to_string();
     let archiver_id = archiver.id.to_string();
@@ -424,6 +581,67 @@ async fn user_repository_soft_delete_restore_and_archive_cleanup() {
     let restored_email =
         decrypt_pii(&restored_email, &support::test_config()).expect("decrypt restored email");
     assert_eq!(restored_email, user.email);
+    let restored_leave: (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<chrono::DateTime<Utc>>,
+    ) = sqlx::query_as(
+        "SELECT status, decision_comment, rejected_by, cancelled_at \
+             FROM leave_requests WHERE id = $1",
+    )
+    .bind(leave_request.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch restored leave request");
+    assert_eq!(restored_leave.0, "rejected");
+    assert_eq!(
+        restored_leave.1.as_deref(),
+        Some("leave rejected for coverage")
+    );
+    assert_eq!(restored_leave.2.as_deref(), Some(archiver_id.as_str()));
+    assert!(restored_leave.3.is_some());
+
+    let restored_overtime: (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<chrono::DateTime<Utc>>,
+    ) = sqlx::query_as(
+        "SELECT status, decision_comment, rejected_by, cancelled_at \
+         FROM overtime_requests WHERE id = $1",
+    )
+    .bind(overtime_request.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("fetch restored overtime request");
+    assert_eq!(restored_overtime.0, "rejected");
+    assert_eq!(
+        restored_overtime.1.as_deref(),
+        Some("ot rejected for coverage")
+    );
+    assert_eq!(restored_overtime.2.as_deref(), Some(archiver_id.as_str()));
+    assert!(restored_overtime.3.is_some());
+
+    let restored_correction: (String, String) = sqlx::query_as(
+        "SELECT status, decision_comment \
+         FROM attendance_correction_requests WHERE id = $1",
+    )
+    .bind(&correction_request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch restored correction request");
+    assert_eq!(restored_correction.0, "approved");
+    assert_eq!(restored_correction.1, "approved");
+
+    let restored_effective_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM attendance_correction_effective_values WHERE source_request_id = $1",
+    )
+    .bind(&correction_request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count restored correction effective values");
+    assert_eq!(restored_effective_count, 1);
 
     assert!(!user_repo::archived_user_exists(&pool, &user_id)
         .await
