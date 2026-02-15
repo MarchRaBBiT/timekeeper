@@ -119,6 +119,7 @@ pub async fn touch_active_session_by_access_jti(
     Ok(result.rows_affected() > 0)
 }
 
+#[allow(dead_code)]
 pub async fn update_active_session_tokens(
     pool: &PgPool,
     current_refresh_token_id: &str,
