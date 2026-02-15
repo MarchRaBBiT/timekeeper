@@ -4,6 +4,7 @@ use axum::{
     routing::get,
     Extension, Router,
 };
+use chrono::{Duration, Utc};
 use serde_json::json;
 use sqlx::PgPool;
 use timekeeper_backend::{
@@ -410,6 +411,98 @@ async fn test_regular_admin_cannot_reset_mfa() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_system_admin_reset_mfa_rejects_non_uuid_without_partial_update() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let state = AppState::new(pool.clone(), None, None, None, test_config());
+    let app = Router::new()
+        .route(
+            "/api/admin/users/{id}/reset-mfa",
+            axum::routing::post(users::reset_user_mfa),
+        )
+        .layer(Extension(sysadmin))
+        .with_state(state);
+
+    let legacy_user_id = "legacy-user-id-302";
+    let encrypted_full_name =
+        encrypt_pii("Legacy User", &test_config()).expect("encrypt legacy full name");
+    let encrypted_email =
+        encrypt_pii("legacy302@example.com", &test_config()).expect("encrypt legacy email");
+    let email_hash = hash_email("legacy302@example.com", &test_config());
+    let now = Utc::now();
+    let refresh_token_id = format!("rt-{}", uuid::Uuid::new_v4());
+
+    sqlx::query(
+        "INSERT INTO users \
+         (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+          mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, \
+          lock_reason, lockout_count, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, NULL, NULL, 0, $12, $13)",
+    )
+    .bind(legacy_user_id)
+    .bind("legacy-302")
+    .bind("dummy-password-hash")
+    .bind(encrypted_full_name)
+    .bind(encrypted_email)
+    .bind(email_hash)
+    .bind("employee")
+    .bind(false)
+    .bind("legacy-mfa-secret")
+    .bind(now)
+    .bind(now)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .expect("insert legacy user");
+
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&refresh_token_id)
+    .bind(legacy_user_id)
+    .bind("legacy-token-hash")
+    .bind(now + Duration::days(7))
+    .execute(&pool)
+    .await
+    .expect("insert refresh token");
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/users/{}/reset-mfa", UserId::new()))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!({"user_id": legacy_user_id}).to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let remaining_mfa_secret =
+        sqlx::query_scalar::<_, Option<String>>("SELECT mfa_secret_enc FROM users WHERE id = $1")
+            .bind(legacy_user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch mfa secret");
+    assert_eq!(remaining_mfa_secret.as_deref(), Some("legacy-mfa-secret"));
+
+    let refresh_token_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+            .bind(legacy_user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count refresh tokens");
+    assert_eq!(refresh_token_count, 1);
 }
 
 #[tokio::test]

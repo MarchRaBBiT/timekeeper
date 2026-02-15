@@ -110,15 +110,34 @@ pub async fn email_exists(pool: &PgPool, email_hash: &str) -> Result<bool, sqlx:
     Ok(result.0)
 }
 
-/// Resets MFA for a user.
-pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
+/// Resets MFA and revokes refresh tokens for a user atomically.
+pub async fn reset_mfa_and_revoke_refresh_tokens(
+    pool: &PgPool,
+    user_id: crate::types::UserId,
+) -> Result<bool, AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
+    let user_id = user_id.to_string();
+
     let result = sqlx::query(
         "UPDATE users SET mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
     )
-    .bind(user_id)
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected() > 0)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    if result.rows_affected() == 0 {
+        return Ok(false);
+    }
+
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    transaction::commit_transaction(tx).await?;
+    Ok(true)
 }
 
 /// Checks if a username exists (for conflict check).
