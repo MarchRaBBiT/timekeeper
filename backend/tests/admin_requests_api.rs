@@ -231,6 +231,104 @@ async fn test_admin_can_reject_leave_request() {
 }
 
 #[tokio::test]
+async fn test_admin_cannot_approve_own_request() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+    let user_app = test_router_user(pool.clone(), admin.clone());
+    let admin_app = test_router_admin(pool.clone(), admin.clone());
+
+    let payload = json!({
+        "leave_type": "annual",
+        "start_date": "2024-12-01",
+        "end_date": "2024-12-02",
+        "reason": "Own request"
+    });
+    let request_create = Request::builder()
+        .method("POST")
+        .uri("/api/requests/leave")
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let response_create = user_app.oneshot(request_create).await.unwrap();
+
+    let body = axum::body::to_bytes(response_create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let request_id = json["id"].as_str().unwrap();
+
+    let approve_payload = json!({
+        "comment": "self approve"
+    });
+    let request_approve = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/requests/{}/approve", request_id))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(approve_payload.to_string()))
+        .unwrap();
+    let response = admin_app.oneshot(request_approve).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_admin_cannot_reject_own_request() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+    let user_app = test_router_user(pool.clone(), admin.clone());
+    let admin_app = test_router_admin(pool.clone(), admin.clone());
+
+    let payload = json!({
+        "leave_type": "annual",
+        "start_date": "2024-12-10",
+        "end_date": "2024-12-10",
+        "reason": "Own request"
+    });
+    let request_create = Request::builder()
+        .method("POST")
+        .uri("/api/requests/leave")
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+    let response_create = user_app.oneshot(request_create).await.unwrap();
+
+    let body = axum::body::to_bytes(response_create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let request_id = json["id"].as_str().unwrap();
+
+    let reject_payload = json!({
+        "comment": "self reject"
+    });
+    let request_reject = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/requests/{}/reject", request_id))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(reject_payload.to_string()))
+        .unwrap();
+    let response = admin_app.oneshot(request_reject).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn test_approve_already_processed_request_fails() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
