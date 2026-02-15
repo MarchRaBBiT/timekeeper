@@ -575,6 +575,76 @@ async fn refresh_rotates_tokens_and_revokes_previous_access_token() {
 }
 
 #[tokio::test]
+async fn refresh_enforces_session_limit() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+
+    let login_response = auth_router(pool.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(login_response.status(), StatusCode::OK);
+
+    let old_refresh_token = extract_set_cookie_value(login_response.headers(), REFRESH_COOKIE_NAME)
+        .expect("refresh cookie");
+    let (old_refresh_id, _) =
+        decode_refresh_token(&old_refresh_token).expect("decode old refresh token");
+
+    let extra_refresh_id = Uuid::new_v4().to_string();
+    support::seed_active_session(&pool, user.id, &extra_refresh_id, None).await;
+    assert_eq!(count_active_sessions(&pool, &user.id.to_string()).await, 2);
+    assert_eq!(count_refresh_tokens(&pool, &user.id.to_string()).await, 2);
+
+    let mut config = support::test_config();
+    config.max_concurrent_sessions = 1;
+
+    let refresh_response = auth_router_with_config(pool.clone(), config)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/refresh")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(
+                    header::COOKIE,
+                    format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
+                )
+                .body(Body::from("{}"))
+                .expect("build refresh request"),
+        )
+        .await
+        .expect("refresh request");
+    assert_eq!(refresh_response.status(), StatusCode::OK);
+
+    let new_refresh_token =
+        extract_set_cookie_value(refresh_response.headers(), REFRESH_COOKIE_NAME)
+            .expect("new refresh cookie");
+    let (new_refresh_id, _) =
+        decode_refresh_token(&new_refresh_token).expect("decode new refresh token");
+
+    assert!(!refresh_token_exists(&pool, &old_refresh_id).await);
+    assert!(refresh_token_exists(&pool, &new_refresh_id).await);
+    assert_eq!(count_active_sessions(&pool, &user.id.to_string()).await, 1);
+    assert_eq!(count_refresh_tokens(&pool, &user.id.to_string()).await, 1);
+}
+
+#[tokio::test]
 async fn refresh_rejects_missing_or_malformed_token() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
@@ -608,6 +678,103 @@ async fn refresh_rejects_missing_or_malformed_token() {
         .expect("refresh request with malformed token");
 
     assert_eq!(response_invalid.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn refresh_with_same_token_concurrently_allows_only_one_success() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+
+    let login_response = auth_router(pool.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+
+    assert_eq!(login_response.status(), StatusCode::OK);
+    let old_refresh_token = extract_set_cookie_value(login_response.headers(), REFRESH_COOKIE_NAME)
+        .expect("refresh cookie");
+    let (old_refresh_id, _) =
+        decode_refresh_token(&old_refresh_token).expect("decode old refresh token");
+
+    let request_1 = Request::builder()
+        .method("POST")
+        .uri("/api/auth/refresh")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(
+            header::COOKIE,
+            format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
+        )
+        .body(Body::from("{}"))
+        .expect("build refresh request 1");
+    let request_2 = Request::builder()
+        .method("POST")
+        .uri("/api/auth/refresh")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(
+            header::COOKIE,
+            format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
+        )
+        .body(Body::from("{}"))
+        .expect("build refresh request 2");
+
+    let refresh_1 = auth_router(pool.clone()).oneshot(request_1);
+    let refresh_2 = auth_router(pool.clone()).oneshot(request_2);
+    let (response_1, response_2) = tokio::join!(refresh_1, refresh_2);
+    let response_1 = response_1.expect("first refresh request");
+    let response_2 = response_2.expect("second refresh request");
+
+    let status_1 = response_1.status();
+    let status_2 = response_2.status();
+    let success_count = [status_1, status_2]
+        .iter()
+        .filter(|status| **status == StatusCode::OK)
+        .count();
+    let unauthorized_count = [status_1, status_2]
+        .iter()
+        .filter(|status| **status == StatusCode::UNAUTHORIZED)
+        .count();
+
+    assert_eq!(
+        success_count, 1,
+        "exactly one refresh request should succeed"
+    );
+    assert_eq!(
+        unauthorized_count, 1,
+        "the competing refresh request should be rejected"
+    );
+
+    let successful_response = if status_1 == StatusCode::OK {
+        &response_1
+    } else {
+        &response_2
+    };
+    let new_refresh_token =
+        extract_set_cookie_value(successful_response.headers(), REFRESH_COOKIE_NAME)
+            .expect("new refresh cookie");
+    let (new_refresh_id, _) =
+        decode_refresh_token(&new_refresh_token).expect("decode new refresh token");
+
+    assert!(!refresh_token_exists(&pool, &old_refresh_id).await);
+    assert!(refresh_token_exists(&pool, &new_refresh_id).await);
+    assert_eq!(count_refresh_tokens(&pool, &user.id.to_string()).await, 1);
+    assert_eq!(count_active_sessions(&pool, &user.id.to_string()).await, 1);
 }
 
 #[tokio::test]
