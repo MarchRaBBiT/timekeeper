@@ -17,6 +17,7 @@ pub struct User {
     /// Immutable username used for login.
     pub username: String,
     /// Argon2/Bcrypt/Scrypt hash of the user's password.
+    #[serde(skip_serializing)]
     pub password_hash: String,
     /// Human-readable full name.
     pub full_name: String,
@@ -27,6 +28,7 @@ pub struct User {
     /// Flag promoting the user to the highest administrative tier.
     pub is_system_admin: bool,
     /// Shared secret for RFC6238 TOTP verification (base32 encoded).
+    #[serde(skip_serializing)]
     pub mfa_secret: Option<String>,
     /// Timestamp marking when the user completed MFA enrollment.
     pub mfa_enabled_at: Option<DateTime<Utc>>,
@@ -345,5 +347,23 @@ mod tests {
         assert_eq!(update.email.as_deref(), Some("alice@example.com"));
         assert!(matches!(update.role, Some(UserRole::Admin)));
         assert_eq!(update.is_system_admin, Some(true));
+    }
+
+    #[test]
+    fn user_serialization_omits_sensitive_fields() {
+        let mut user = User::new(
+            "alice".to_string(),
+            "sensitive-password-hash".to_string(),
+            "Alice Example".to_string(),
+            "alice@example.com".to_string(),
+            UserRole::Admin,
+            true,
+        );
+        user.mfa_secret = Some("sensitive-mfa-secret".to_string());
+
+        let value = serde_json::to_value(user).expect("serialize user");
+        let object = value.as_object().expect("user json object");
+        assert!(!object.contains_key("password_hash"));
+        assert!(!object.contains_key("mfa_secret"));
     }
 }
