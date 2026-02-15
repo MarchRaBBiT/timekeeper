@@ -214,20 +214,16 @@ pub async fn reset_user_mfa(
             "Only system administrators can reset MFA".into(),
         ));
     }
-    let success = user_repo::reset_mfa(&state.write_pool, &payload.user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    if !success {
-        return Err(AppError::NotFound("User not found".into()));
-    }
 
     let user_id = UserId::from_str(&payload.user_id)
         .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
 
-    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let success =
+        user_repo::reset_mfa_and_revoke_refresh_tokens(&state.write_pool, user_id).await?;
+
+    if !success {
+        return Err(AppError::NotFound("User not found".into()));
+    }
 
     Ok(Json(json!({
         "message": "MFA reset and refresh tokens revoked",

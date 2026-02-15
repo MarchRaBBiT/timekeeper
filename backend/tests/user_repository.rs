@@ -1,4 +1,5 @@
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
+use std::str::FromStr;
 use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{
@@ -6,6 +7,7 @@ use timekeeper_backend::{
         user::{User, UserRole},
     },
     repositories::user as user_repo,
+    types::UserId,
     utils::encryption::{decrypt_pii, hash_email},
 };
 use tokio::sync::Mutex;
@@ -159,9 +161,12 @@ async fn user_repository_basic_crud_and_mfa_flags() {
     assert!(user_repo::disable_mfa(&pool, &created_id)
         .await
         .expect("disable mfa"));
-    assert!(user_repo::reset_mfa(&pool, &created_id)
-        .await
-        .expect("reset mfa"));
+    let created_user_id = UserId::from_str(&created_id).expect("created id is uuid");
+    assert!(
+        user_repo::reset_mfa_and_revoke_refresh_tokens(&pool, created_user_id)
+            .await
+            .expect("reset mfa")
+    );
 
     let missing_id = Uuid::new_v4().to_string();
     assert!(
@@ -175,9 +180,12 @@ async fn user_repository_basic_crud_and_mfa_flags() {
     assert!(!user_repo::disable_mfa(&pool, &missing_id)
         .await
         .expect("disable mfa missing user"));
-    assert!(!user_repo::reset_mfa(&pool, &missing_id)
-        .await
-        .expect("reset mfa missing user"));
+    let missing_user_id = UserId::from_str(&missing_id).expect("missing id is uuid");
+    assert!(
+        !user_repo::reset_mfa_and_revoke_refresh_tokens(&pool, missing_user_id)
+            .await
+            .expect("reset mfa missing user")
+    );
 
     user_repo::hard_delete_user(&pool, &created_id)
         .await
