@@ -1322,7 +1322,7 @@ fn record_login_audit_event(
         event_type: event_type.to_string(),
         target_type: Some("user".to_string()),
         target_id: Some(user_id.to_string()),
-        result: "success".to_string(),
+        result: login_audit_result(event_type).to_string(),
         error_code: None,
         metadata,
         ip: context.ip,
@@ -1338,6 +1338,14 @@ fn record_login_audit_event(
             );
         }
     });
+}
+
+fn login_audit_result(event_type: &str) -> &'static str {
+    if event_type == "login_failure" {
+        "failure"
+    } else {
+        "success"
+    }
 }
 
 async fn send_lockout_notification(
@@ -1604,6 +1612,12 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, "foo=bar; baz=qux".parse().unwrap());
         assert_eq!(cookie_header_value(&headers), Some("foo=bar; baz=qux"));
+    }
+
+    #[test]
+    fn login_audit_result_is_failure_for_login_failure_event() {
+        assert_eq!(login_audit_result("login_failure"), "failure");
+        assert_eq!(login_audit_result("login_success"), "success");
     }
 
     #[tokio::test]
