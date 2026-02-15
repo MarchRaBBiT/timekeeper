@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
+use validator::Validate;
 
 use crate::{
     error::AppError,
@@ -148,11 +149,7 @@ pub async fn create_weekly_holiday(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
-    if payload.weekday > 6 {
-        return Err(AppError::BadRequest(
-            "Weekday must be between 0 (Sun) and 6 (Sat). (Sun=0, Mon=1, ..., Sat=6)".into(),
-        ));
-    }
+    payload.validate()?;
 
     if let Some(ends_on) = payload.ends_on {
         if ends_on < payload.starts_on {
