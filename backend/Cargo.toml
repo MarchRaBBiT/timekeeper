@@ -95,6 +95,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 async-trait = "0.1"
 sha2 = "0.10.9"
 hex = "0.4"
+url = "2.5"
 aws-config = "1.8"
 aws-sdk-kms = "1.90"
 

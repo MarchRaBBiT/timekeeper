@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::error::AppError;
 use axum::http::HeaderMap;
 use rand::Rng;
+use url::Url;
 
 pub fn generate_token(length: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -15,12 +16,7 @@ pub fn generate_token(length: usize) -> String {
 }
 
 pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
-    let origin = headers
-        .get("Origin")
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| headers.get("Referer").and_then(|v| v.to_str().ok()));
-
-    let origin_str = match origin {
+    let origin_str = match extract_request_origin(headers) {
         Some(o) => o,
         None => {
             return Err(AppError::Forbidden(
@@ -39,6 +35,16 @@ pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(),
     } else {
         Err(AppError::Forbidden("Invalid Origin or Referer".into()))
     }
+}
+
+fn extract_request_origin(headers: &HeaderMap) -> Option<String> {
+    if let Some(origin) = headers.get("Origin").and_then(|v| v.to_str().ok()) {
+        return Some(origin.to_string());
+    }
+
+    let referer = headers.get("Referer").and_then(|v| v.to_str().ok())?;
+    let parsed = Url::parse(referer).ok()?;
+    Some(parsed.origin().ascii_serialization())
 }
 
 pub fn mask_database_url(url: &str) -> String {
@@ -160,7 +166,20 @@ mod tests {
     fn verify_referer_fallback() {
         let config = test_config(vec!["http://localhost:3000".into()]);
         let mut headers = HeaderMap::new();
-        headers.insert("Referer", "http://localhost:3000".parse().unwrap());
+        headers.insert(
+            "Referer",
+            "http://localhost:3000/path/to/page?foo=bar"
+                .parse()
+                .unwrap(),
+        );
         assert!(verify_request_origin(&headers, &config).is_ok());
+    }
+
+    #[test]
+    fn verify_referer_failure_with_unparseable_url() {
+        let config = test_config(vec!["http://localhost:3000".into()]);
+        let mut headers = HeaderMap::new();
+        headers.insert("Referer", "not-a-valid-url".parse().unwrap());
+        assert!(verify_request_origin(&headers, &config).is_err());
     }
 }
