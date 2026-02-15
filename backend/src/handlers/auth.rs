@@ -6,6 +6,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::future::Future;
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -1119,18 +1120,26 @@ fn record_session_audit_event(
 }
 
 fn extract_ip(headers: &HeaderMap) -> Option<String> {
-    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        return value
-            .split(',')
-            .next()
-            .map(|ip| ip.trim().to_string())
-            .filter(|ip| !ip.is_empty());
-    }
     headers
-        .get("x-real-ip")
+        .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
-        .map(|ip| ip.trim().to_string())
+        .and_then(parse_ip_from_header_value)
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_ip_from_header_value)
+        })
+}
+
+fn parse_ip_from_header_value(value: &str) -> Option<String> {
+    value
+        .split(',')
+        .next()
+        .map(str::trim)
         .filter(|ip| !ip.is_empty())
+        .and_then(|ip| ip.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string())
 }
 
 fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
@@ -1587,6 +1596,22 @@ mod tests {
         assert_eq!(extract_ip(&headers), Some("1.2.3.4".to_string()));
         headers.remove("x-forwarded-for");
         assert_eq!(extract_ip(&headers), Some("9.9.9.9".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_ignores_invalid_forwarded_for_and_falls_back() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "invalid-ip-value".parse().unwrap());
+        headers.insert("x-real-ip", "2001:db8::1".parse().unwrap());
+        assert_eq!(extract_ip(&headers), Some("2001:db8::1".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_returns_none_when_headers_are_invalid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "not-an-ip".parse().unwrap());
+        headers.insert("x-real-ip", "also-invalid".parse().unwrap());
+        assert_eq!(extract_ip(&headers), None);
     }
 
     #[test]
