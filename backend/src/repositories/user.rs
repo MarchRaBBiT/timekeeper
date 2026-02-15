@@ -110,6 +110,18 @@ pub async fn email_exists(pool: &PgPool, email_hash: &str) -> Result<bool, sqlx:
     Ok(result.0)
 }
 
+/// Resets MFA for a user.
+#[allow(dead_code)]
+pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "UPDATE users SET mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// Resets MFA and revokes refresh tokens for a user atomically.
 pub async fn reset_mfa_and_revoke_refresh_tokens(
     pool: &PgPool,

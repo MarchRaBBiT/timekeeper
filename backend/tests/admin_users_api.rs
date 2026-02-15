@@ -403,10 +403,7 @@ async fn test_regular_admin_cannot_reset_mfa() {
         .method("POST")
         .uri(format!("/api/admin/users/{}/reset-mfa", UserId::new()))
         .header("Authorization", format!("Bearer {}", token))
-        .header("Content-Type", "application/json")
-        .body(Body::from(
-            json!({"user_id": UserId::new().to_string()}).to_string(),
-        ))
+        .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
@@ -479,10 +476,9 @@ async fn test_system_admin_reset_mfa_rejects_non_uuid_without_partial_update() {
 
     let request = Request::builder()
         .method("POST")
-        .uri(format!("/api/admin/users/{}/reset-mfa", UserId::new()))
+        .uri(format!("/api/admin/users/{legacy_user_id}/reset-mfa"))
         .header("Authorization", format!("Bearer {}", token))
-        .header("Content-Type", "application/json")
-        .body(Body::from(json!({"user_id": legacy_user_id}).to_string()))
+        .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
@@ -503,6 +499,73 @@ async fn test_system_admin_reset_mfa_rejects_non_uuid_without_partial_update() {
             .await
             .expect("count refresh tokens");
     assert_eq!(refresh_token_count, 1);
+}
+
+#[tokio::test]
+async fn test_system_admin_can_reset_mfa_and_revoke_refresh_tokens() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let target = seed_user(&pool, UserRole::Employee, false).await;
+
+    sqlx::query(
+        "UPDATE users SET mfa_secret_enc = $1, mfa_enabled_at = NOW(), updated_at = NOW() WHERE id = $2",
+    )
+    .bind("dummy-secret")
+    .bind(target.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed mfa state");
+
+    let refresh_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '7 days')")
+        .bind(&refresh_id)
+        .bind(target.id.to_string())
+        .bind("hash")
+        .execute(&pool)
+        .await
+        .expect("seed refresh token");
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let state = AppState::new(pool.clone(), None, None, None, test_config());
+    let app = Router::new()
+        .route(
+            "/api/admin/users/{id}/reset-mfa",
+            axum::routing::post(users::reset_user_mfa),
+        )
+        .layer(Extension(sysadmin))
+        .with_state(state);
+
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/users/{}/reset-mfa", target.id))
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let mfa_reset = sqlx::query_scalar::<_, bool>(
+        "SELECT mfa_secret_enc IS NULL AND mfa_enabled_at IS NULL FROM users WHERE id = $1",
+    )
+    .bind(target.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("check mfa state");
+    assert!(mfa_reset);
+
+    let remaining_refresh_tokens =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+            .bind(target.id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("count refresh tokens");
+    assert_eq!(remaining_refresh_tokens, 0);
 }
 
 #[tokio::test]

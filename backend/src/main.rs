@@ -423,7 +423,7 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             put(handlers::admin::force_end_break),
         )
         .route(
-            "/api/admin/mfa/reset",
+            "/api/admin/users/{id}/reset-mfa",
             post(handlers::admin::reset_user_mfa),
         )
         .route("/api/admin/users/{id}", put(handlers::admin::update_user))
@@ -726,7 +726,7 @@ mod tests {
             .with_state(state);
         let request = Request::builder()
             .method("POST")
-            .uri("/api/admin/mfa/reset")
+            .uri("/api/admin/users/test-id/reset-mfa")
             .body(Body::empty())
             .expect("build system admin route request");
         let response = system_admin_app
