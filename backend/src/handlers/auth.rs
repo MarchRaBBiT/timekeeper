@@ -215,8 +215,8 @@ pub async fn login(
 
 pub async fn refresh(
     State(state): State<AppState>,
-    Extension(_request_id): Extension<RequestId>,
-    Extension(_audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
+    Extension(request_id): Extension<RequestId>,
+    Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
@@ -272,12 +272,15 @@ pub async fn refresh(
         active_session::find_active_session_by_refresh_token_id(&state.write_pool, &stored.id)
             .await
             .map_err(|_| internal_error("Failed to fetch active session"))?;
-    let previous_device_label = previous_session
-        .as_ref()
-        .and_then(|session| session.device_label.clone());
+    let previous_device_label = sanitize_device_label(
+        previous_session
+            .as_ref()
+            .and_then(|session| session.device_label.clone()),
+    );
     let previous_access_jti = previous_session
         .as_ref()
         .and_then(|session| session.access_jti.clone());
+    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
     let mut tx = state
         .write_pool
         .begin()
@@ -307,7 +310,7 @@ pub async fn refresh(
     .await
     .map_err(|_| internal_error("Failed to store active access token"))?;
 
-    let updated = sqlx::query(
+    let refreshed_session_id = if let Some(session_id) = sqlx::query_scalar::<_, String>(
         r#"
         UPDATE active_sessions
         SET refresh_token_id = $1,
@@ -315,6 +318,7 @@ pub async fn refresh(
             last_seen_at = $3,
             expires_at = $4
         WHERE refresh_token_id = $5
+        RETURNING id
         "#,
     )
     .bind(&rt_data.id)
@@ -322,19 +326,19 @@ pub async fn refresh(
     .bind(now)
     .bind(rt_data.expires_at)
     .bind(&stored.id)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| internal_error("Failed to update active session"))?
-    .rows_affected()
-        > 0;
-
-    if !updated {
+    {
+        session_id
+    } else {
+        let session_id = Uuid::new_v4().to_string();
         sqlx::query(
             "INSERT INTO active_sessions \
              (id, user_id, refresh_token_id, access_jti, device_label, last_seen_at, expires_at) \
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(&session_id)
         .bind(user.id)
         .bind(&rt_data.id)
         .bind(&claims.jti)
@@ -344,7 +348,8 @@ pub async fn refresh(
         .execute(&mut *tx)
         .await
         .map_err(|_| internal_error("Failed to create active session"))?;
-    }
+        session_id
+    };
 
     let revoked_old = sqlx::query_scalar::<_, String>(
         "DELETE FROM refresh_tokens WHERE id = $1 AND token_hash = $2 RETURNING id",
@@ -363,10 +368,37 @@ pub async fn refresh(
         .await
         .map_err(|_| internal_error("Failed to commit refresh token rotation"))?;
 
+    record_session_audit_event(
+        Some(audit_log_service.clone()),
+        audit_context.clone(),
+        "session_create",
+        Some(refreshed_session_id),
+        Some(json!({
+            "source": "refresh",
+            "device_label": previous_device_label
+        })),
+    );
+
+    enforce_session_limit(
+        &state.write_pool,
+        state.token_cache.as_ref(),
+        Some(audit_log_service.clone()),
+        audit_context,
+        &state.config,
+        user.id,
+    )
+    .await?;
+
     if let Some(access_jti) = previous_access_jti.as_deref() {
-        auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti)
-            .await
-            .map_err(|_| internal_error("Failed to revoke previous access token"))?;
+        if let Err(err) =
+            auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti).await
+        {
+            tracing::warn!(
+                error = %err,
+                access_jti = %access_jti,
+                "Failed to revoke previous access token after successful refresh rotation"
+            );
+        }
         if let Some(cache) = &state.token_cache {
             let _ = cache.invalidate_token(access_jti).await;
         }
