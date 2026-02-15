@@ -266,6 +266,44 @@ async fn test_cannot_create_user_with_duplicate_username() {
 }
 
 #[tokio::test]
+async fn test_create_user_rejects_password_without_required_symbol() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+
+    let new_user = CreateUser {
+        username: "nosymboluser".to_string(),
+        password: "ValidPassword123".to_string(),
+        full_name: "No Symbol".to_string(),
+        email: "nosymbol@example.com".to_string(),
+        role: UserRole::Employee,
+        is_system_admin: false,
+    };
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let state = AppState::new(pool.clone(), None, None, None, test_config());
+    let app = Router::new()
+        .route("/api/admin/users", axum::routing::post(users::create_user))
+        .layer(Extension(sysadmin))
+        .with_state(state);
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/admin/users")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!(new_user).to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_system_admin_can_update_user() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
