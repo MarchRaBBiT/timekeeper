@@ -4,8 +4,6 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 use crate::models::audit_log::AuditLog;
 use crate::types::{AuditLogId, UserId};
 
-pub const MAX_EXPORT_ROWS: i64 = 10_000;
-
 #[derive(Debug, Clone, Default)]
 pub struct AuditLogFilters {
     pub from: Option<DateTime<Utc>>,
@@ -80,8 +78,10 @@ pub async fn list_audit_logs(
 pub async fn export_audit_logs(
     pool: &PgPool,
     filters: &AuditLogFilters,
+    max_rows: i64,
 ) -> Result<Vec<AuditLog>, sqlx::Error> {
-    query_audit_logs(pool, filters, Some((MAX_EXPORT_ROWS, 0))).await
+    let safe_max_rows = max_rows.max(1);
+    query_audit_logs(pool, filters, Some((safe_max_rows, 0))).await
 }
 
 pub async fn delete_audit_logs_before(

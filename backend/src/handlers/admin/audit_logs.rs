@@ -182,9 +182,13 @@ pub async fn export_audit_logs(
     ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let filters = validate_export_query(q)?;
-    let logs = audit_log::export_audit_logs(state.read_pool(), &filters)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let logs = audit_log::export_audit_logs(
+        state.read_pool(),
+        &filters,
+        state.config.audit_log_export_max_rows,
+    )
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let mask_pii = !user.is_system_admin();
     let payload: Vec<AuditLogResponse> = logs

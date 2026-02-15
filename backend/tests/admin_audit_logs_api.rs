@@ -8,7 +8,6 @@ use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::audit_logs,
     models::user::{User, UserRole},
-    repositories::audit_log::MAX_EXPORT_ROWS,
     state::AppState,
 };
 use tower::ServiceExt;
@@ -179,7 +178,8 @@ async fn test_export_audit_logs_is_capped_by_max_rows() {
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let actor_id = employee.id.to_string();
 
-    let total_rows = MAX_EXPORT_ROWS + 5;
+    let max_export_rows = test_config().audit_log_export_max_rows;
+    let total_rows = max_export_rows + 5;
     sqlx::query(
         r#"
         INSERT INTO audit_logs (
@@ -229,7 +229,7 @@ async fn test_export_audit_logs_is_capped_by_max_rows() {
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let items = json.as_array().expect("export response array");
-    assert_eq!(items.len() as i64, MAX_EXPORT_ROWS);
+    assert_eq!(items.len() as i64, max_export_rows);
 }
 
 #[tokio::test]

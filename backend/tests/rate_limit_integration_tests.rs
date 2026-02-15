@@ -14,6 +14,7 @@ fn test_config(rate_limit_ip_max_requests: u32, rate_limit_ip_window_seconds: u6
         max_concurrent_sessions: 3,
         audit_log_retention_days: 30,
         audit_log_retention_forever: false,
+        audit_log_export_max_rows: 10_000,
         consent_log_retention_days: 30,
         consent_log_retention_forever: false,
         aws_region: "us-east-1".to_string(),
