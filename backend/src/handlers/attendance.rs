@@ -73,6 +73,7 @@ pub async fn clock_in(
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
+    ensure_clock_date_is_today(date, now_local.date_naive())?;
     let clock_in_time = now_local.naive_local();
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
@@ -112,6 +113,7 @@ pub async fn clock_out(
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
+    ensure_clock_date_is_today(date, now_local.date_naive())?;
     let clock_out_time = now_local.naive_local();
 
     reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
@@ -146,6 +148,13 @@ pub async fn clock_out(
     let response = build_attendance_response(attendance, break_records);
 
     Ok(Json(response))
+}
+
+fn ensure_clock_date_is_today(date: NaiveDate, today: NaiveDate) -> Result<(), AppError> {
+    if date != today {
+        return Err(AppError::BadRequest("Clock date must be today".to_string()));
+    }
+    Ok(())
 }
 
 pub async fn break_start(
