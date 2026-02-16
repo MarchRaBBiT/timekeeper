@@ -1,5 +1,6 @@
 use std::net::TcpListener;
 
+use bb8_redis::redis::AsyncCommands;
 use testcontainers::{clients::Cli, core::WaitFor, GenericImage, RunnableImage};
 use timekeeper_backend::db::redis::create_redis_pool;
 use timekeeper_backend::services::token_cache::{TokenCacheService, TokenCacheServiceTrait};
@@ -73,4 +74,46 @@ async fn token_cache_service_roundtrip() {
         .await
         .expect("check token 3");
     assert_eq!(active, Some(false));
+}
+
+#[tokio::test]
+async fn token_cache_service_preserves_longer_user_set_ttl() {
+    let docker = Cli::default();
+    let host_port = allocate_ephemeral_port();
+    let image = GenericImage::new("redis", "7-alpine")
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
+    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
+    let _container = docker.run(image);
+
+    let mut config = support::test_config();
+    config.redis_url = Some(format!("redis://127.0.0.1:{host_port}"));
+    config.redis_pool_size = 2;
+    config.redis_connect_timeout = 5;
+
+    let pool = create_redis_pool(&config)
+        .await
+        .expect("create redis pool")
+        .expect("redis pool available");
+    let service = TokenCacheService::new(pool.clone());
+
+    let user_id = UserId::new();
+    service
+        .cache_token("jti-long", user_id, 90)
+        .await
+        .expect("cache long ttl token");
+    service
+        .cache_token("jti-short", user_id, 10)
+        .await
+        .expect("cache short ttl token");
+
+    let mut conn = pool.get().await.expect("get redis connection");
+    let ttl: i64 = conn
+        .ttl(format!("user_tokens:{}", user_id))
+        .await
+        .expect("read ttl");
+
+    assert!(
+        ttl > 10,
+        "expected user token set ttl to keep longer ttl, got {ttl}"
+    );
 }
