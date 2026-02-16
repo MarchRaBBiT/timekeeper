@@ -1518,6 +1518,7 @@ mod tests {
             max_concurrent_sessions: 3,
             audit_log_retention_days: 1825,
             audit_log_retention_forever: false,
+            audit_log_export_max_rows: 10_000,
             consent_log_retention_days: 1825,
             consent_log_retention_forever: false,
             aws_region: "ap-northeast-1".into(),

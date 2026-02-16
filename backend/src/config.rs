@@ -16,6 +16,7 @@ pub struct Config {
     pub max_concurrent_sessions: u32,
     pub audit_log_retention_days: i64,
     pub audit_log_retention_forever: bool,
+    pub audit_log_export_max_rows: i64,
     pub consent_log_retention_days: i64,
     pub consent_log_retention_forever: bool,
     pub aws_region: String,
@@ -119,6 +120,11 @@ impl Config {
             .unwrap_or_else(|_| "false".to_string())
             .parse()
             .unwrap_or(false);
+        let audit_log_export_max_rows = env::var("AUDIT_LOG_EXPORT_MAX_ROWS")
+            .unwrap_or_else(|_| "10000".to_string())
+            .parse::<i64>()
+            .unwrap_or(10000)
+            .max(1);
 
         let consent_log_retention_days = env::var("CONSENT_LOG_RETENTION_DAYS")
             .unwrap_or_else(|_| "1825".to_string())
@@ -270,6 +276,7 @@ impl Config {
             max_concurrent_sessions,
             audit_log_retention_days,
             audit_log_retention_forever,
+            audit_log_export_max_rows,
             consent_log_retention_days,
             consent_log_retention_forever,
             aws_region,
@@ -377,6 +384,7 @@ mod tests {
             max_concurrent_sessions: 3,
             audit_log_retention_days: 1825,
             audit_log_retention_forever: false,
+            audit_log_export_max_rows: 10_000,
             consent_log_retention_days: 1825,
             consent_log_retention_forever: false,
             aws_region: "ap-northeast-1".to_string(),
@@ -419,6 +427,7 @@ mod tests {
             "JWT_SECRET",
             "AUDIT_LOG_RETENTION_DAYS",
             "AUDIT_LOG_RETENTION_FOREVER",
+            "AUDIT_LOG_EXPORT_MAX_ROWS",
             "CONSENT_LOG_RETENTION_DAYS",
             "CONSENT_LOG_RETENTION_FOREVER",
             "AWS_KMS_KEY_ID",
@@ -431,6 +440,7 @@ mod tests {
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::remove_var("AUDIT_LOG_RETENTION_DAYS");
         env::remove_var("AUDIT_LOG_RETENTION_FOREVER");
+        env::remove_var("AUDIT_LOG_EXPORT_MAX_ROWS");
         env::remove_var("CONSENT_LOG_RETENTION_DAYS");
         env::remove_var("CONSENT_LOG_RETENTION_FOREVER");
         env::remove_var("AWS_REGION");
@@ -441,6 +451,7 @@ mod tests {
 
         assert_eq!(config.audit_log_retention_days, 1825);
         assert!(!config.audit_log_retention_forever);
+        assert_eq!(config.audit_log_export_max_rows, 10_000);
         assert_eq!(config.consent_log_retention_days, 1825);
         assert!(!config.consent_log_retention_forever);
         assert_eq!(config.aws_kms_key_id, "");
