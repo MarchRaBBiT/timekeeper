@@ -107,7 +107,7 @@ pub struct CreateUser {
         custom(function = "validate_username_format")
     )]
     pub username: String,
-    #[validate(length(min = 8), custom(function = "validate_password_format"))]
+    #[validate(length(min = 1))]
     pub password: String,
     #[validate(length(min = 1, max = 100))]
     pub full_name: String,
@@ -120,10 +120,6 @@ pub struct CreateUser {
 
 fn validate_username_format(username: &str) -> Result<(), validator::ValidationError> {
     rules::validate_username(username)
-}
-
-fn validate_password_format(password: &str) -> Result<(), validator::ValidationError> {
-    rules::validate_password_strength(password)
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
@@ -168,12 +164,8 @@ pub struct ChangePasswordRequest {
     #[validate(length(min = 1))]
     pub current_password: String,
     /// Replacement password that will be stored if verification succeeds.
-    #[validate(length(min = 8), custom(function = "validate_new_password"))]
+    #[validate(length(min = 1))]
     pub new_password: String,
-}
-
-fn validate_new_password(password: &str) -> Result<(), validator::ValidationError> {
-    rules::validate_password_strength(password)
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
