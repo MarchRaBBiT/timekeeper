@@ -2,6 +2,7 @@ param(
   [ValidateSet('build', 'start', 'stop', 'status', 'logs')]
   [string]$cmd = 'start',
   [int]$port = 8000,
+  [string]$connectSrc = $(if ($env:FRONTEND_CSP_CONNECT_SRC) { $env:FRONTEND_CSP_CONNECT_SRC } else { "'self' http://localhost:3000" }),
   [switch]$release
 )
 
@@ -44,12 +45,40 @@ function Build-Frontend {
   & wasm-pack build --target web --out-dir pkg $mode
 }
 
+function New-DevServeRoot {
+  $frontendRoot = Join-Path $projectRoot 'frontend'
+  $serveRoot = Join-Path $frontendRoot '.serve'
+  $templatePath = Join-Path $frontendRoot 'index.html.template'
+  $indexPath = Join-Path $serveRoot 'index.html'
+
+  if (!(Test-Path $templatePath)) {
+    throw "Missing template file: $templatePath"
+  }
+
+  if (Test-Path $serveRoot) {
+    Remove-Item -Recurse -Force $serveRoot
+  }
+  New-Item -ItemType Directory -Force -Path $serveRoot | Out-Null
+
+  Copy-Item -Recurse -Force (Join-Path $frontendRoot 'pkg') (Join-Path $serveRoot 'pkg')
+  Copy-Item -Recurse -Force (Join-Path $frontendRoot 'assets') (Join-Path $serveRoot 'assets')
+  Copy-Item -Force (Join-Path $frontendRoot 'env.js') (Join-Path $serveRoot 'env.js')
+  Copy-Item -Force (Join-Path $frontendRoot 'config.json') (Join-Path $serveRoot 'config.json')
+
+  $template = Get-Content -Raw -Path $templatePath
+  $generated = $template.Replace('__CSP_CONNECT_SRC__', $connectSrc)
+  Set-Content -Path $indexPath -Value $generated -NoNewline
+
+  return $serveRoot
+}
+
 function Start-Frontend {
   if (Test-Path $pidFile) {
     Write-Host "PID file exists. Use 'stop' first if process is stale." -ForegroundColor Yellow
   }
   Build-Frontend
-  $script = "Set-Location frontend; python -m http.server $port *>&1 | Tee-Object -FilePath frontend-dev.log"
+  $serveRoot = New-DevServeRoot
+  $script = "Set-Location '$serveRoot'; python -m http.server $port *>&1 | Tee-Object -FilePath '$logFile'"
   $p = Start-Process -FilePath 'pwsh' -ArgumentList @('-NoLogo', '-NoProfile', '-Command', $script) -PassThru -WindowStyle Minimized
   $p.Id | Out-File -FilePath $pidFile -Encoding ascii -Force
   Write-Host "Frontend started. PID=$($p.Id). http://localhost:$port Logs: $logFile" -ForegroundColor Green
