@@ -4,7 +4,11 @@ use crate::components::common::{Button, ButtonVariant};
 use crate::components::empty_state::EmptyState;
 use crate::components::layout::Layout;
 use crate::state::auth::use_auth;
+use leptos::ev::KeyboardEvent;
+use leptos::html;
 use leptos::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
 fn update_filter_value(filters: &mut AuditLogFilters, field: &str, value: String) {
     match field {
@@ -197,6 +201,10 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
     let vm = use_audit_log_view_model();
     let (auth, _) = use_auth();
     let selected_metadata = create_rw_signal::<Option<serde_json::Value>>(None);
+    let metadata_header_close_ref = create_node_ref::<html::Button>();
+    let metadata_footer_close_ref = create_node_ref::<html::Button>();
+    #[cfg(target_arch = "wasm32")]
+    let metadata_previously_focused = create_rw_signal(None::<web_sys::HtmlElement>);
     let is_system_admin = create_memo(move |_| {
         auth.get()
             .user
@@ -214,6 +222,54 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
         });
         vm.page.set(page);
     };
+    let on_metadata_modal_keydown = move |ev: KeyboardEvent| match ev.key().as_str() {
+        "Escape" => {
+            ev.prevent_default();
+            selected_metadata.update(clear_selected_metadata);
+            #[cfg(target_arch = "wasm32")]
+            if let Some(element) = metadata_previously_focused.get_untracked() {
+                let _ = element.focus();
+                metadata_previously_focused.set(None);
+            }
+        }
+        "Tab" => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let active_id = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.active_element())
+                    .and_then(|element| element.get_attribute("id"))
+                    .unwrap_or_default();
+                if ev.shift_key() && active_id == "audit-metadata-modal-header-close" {
+                    ev.prevent_default();
+                    if let Some(button) = metadata_footer_close_ref.get() {
+                        let _ = button.focus();
+                    }
+                } else if !ev.shift_key() && active_id == "audit-metadata-modal-footer-close" {
+                    ev.prevent_default();
+                    if let Some(button) = metadata_header_close_ref.get() {
+                        let _ = button.focus();
+                    }
+                }
+            }
+        }
+        _ => {}
+    };
+    create_effect(move |_| {
+        if selected_metadata.get().is_some() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let active = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.active_element())
+                    .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok());
+                metadata_previously_focused.set(active);
+                if let Some(button) = metadata_header_close_ref.get() {
+                    let _ = button.focus();
+                }
+            }
+        }
+    });
 
     view! {
         <Layout>
@@ -348,10 +404,29 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
 
                     <Show when=move || selected_metadata.get().is_some()>
                         <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50 p-4">
-                            <div class="bg-surface-elevated rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                            <div
+                                class="bg-surface-elevated rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-primary-focus"
+                                role="dialog"
+                                aria-modal="true"
+                                tabindex="-1"
+                                on:keydown=on_metadata_modal_keydown
+                            >
                                 <div class="p-4 border-b border-border flex justify-between items-center">
                                     <h3 class="text-lg font-bold text-fg">"メタデータ詳細"</h3>
-                                    <button class="text-fg-muted hover:text-fg" on:click=move |_| selected_metadata.update(clear_selected_metadata)>
+                                    <button
+                                        id="audit-metadata-modal-header-close"
+                                        node_ref=metadata_header_close_ref
+                                        aria-label="閉じる"
+                                        class="text-fg-muted hover:text-fg"
+                                        on:click=move |_| {
+                                            selected_metadata.update(clear_selected_metadata);
+                                            #[cfg(target_arch = "wasm32")]
+                                            if let Some(element) = metadata_previously_focused.get_untracked() {
+                                                let _ = element.focus();
+                                                metadata_previously_focused.set(None);
+                                            }
+                                        }
+                                    >
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
@@ -360,8 +435,17 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 </div>
                                 <div class="p-4 border-t border-border flex justify-end">
                                     <button
+                                        id="audit-metadata-modal-footer-close"
+                                        node_ref=metadata_footer_close_ref
                                         class="px-4 py-2 bg-surface-muted hover:bg-surface-elevated rounded text-sm font-medium text-fg"
-                                        on:click=move |_| selected_metadata.update(clear_selected_metadata)
+                                        on:click=move |_| {
+                                            selected_metadata.update(clear_selected_metadata);
+                                            #[cfg(target_arch = "wasm32")]
+                                            if let Some(element) = metadata_previously_focused.get_untracked() {
+                                                let _ = element.focus();
+                                                metadata_previously_focused.set(None);
+                                            }
+                                        }
                                     >
                                         "閉じる"
                                     </button>
