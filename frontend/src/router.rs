@@ -2,7 +2,7 @@ use leptos::*;
 use leptos_router::*;
 
 use crate::{
-    components::guard::RequireAuth,
+    components::guard::{RequireAdmin, RequireAuth},
     pages::{
         admin::AdminPage, admin_audit_logs::AdminAuditLogsPage, admin_export::AdminExportPage,
         admin_users::AdminUsersPage, attendance::AttendancePage, dashboard::DashboardPage,
@@ -99,22 +99,22 @@ fn ProtectedSettings() -> impl IntoView {
 
 #[component]
 fn ProtectedAdmin() -> impl IntoView {
-    view! { <RequireAuth><AdminPage/></RequireAuth> }
+    view! { <RequireAdmin><AdminPage/></RequireAdmin> }
 }
 
 #[component]
 fn ProtectedAdminUsers() -> impl IntoView {
-    view! { <RequireAuth><AdminUsersPage/></RequireAuth> }
+    view! { <RequireAdmin><AdminUsersPage/></RequireAdmin> }
 }
 
 #[component]
 fn ProtectedAdminExport() -> impl IntoView {
-    view! { <RequireAuth><AdminExportPage/></RequireAuth> }
+    view! { <RequireAdmin><AdminExportPage/></RequireAdmin> }
 }
 
 #[component]
 fn ProtectedAdminAuditLogs() -> impl IntoView {
-    view! { <RequireAuth><AdminAuditLogsPage/></RequireAuth> }
+    view! { <RequireAdmin><AdminAuditLogsPage/></RequireAdmin> }
 }
 
 #[cfg(test)]
