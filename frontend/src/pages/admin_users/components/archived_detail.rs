@@ -1,6 +1,8 @@
 use crate::{
     api::{ApiError, ArchivedUserResponse},
-    components::{error::InlineErrorMessage, layout::SuccessMessage},
+    components::{
+        confirm_dialog::ConfirmDialog, error::InlineErrorMessage, layout::SuccessMessage,
+    },
     pages::admin_users::utils::MessageState,
 };
 use leptos::*;
@@ -55,17 +57,17 @@ pub fn ArchivedUserDetailDrawer(
                             show_delete_confirm.set(true);
                         };
 
-                        let confirm_delete = move |_| {
+                        let confirm_delete = Callback::new(move |_| {
                             if let Some(current) = selected_archived_user.get_untracked() {
                                 messages.clear();
                                 delete_action.dispatch(current.id.clone());
                                 show_delete_confirm.set(false);
                             }
-                        };
+                        });
 
-                        let cancel_delete = move |_| {
+                        let cancel_delete = Callback::new(move |_| {
                             show_delete_confirm.set(false);
-                        };
+                        });
 
                         view! {
                             <div class="fixed inset-0 z-50 flex justify-end">
@@ -114,43 +116,26 @@ pub fn ArchivedUserDetailDrawer(
                                                 {move || if restore_pending.get() { "復職処理中..." } else { "復職させる" }}
                                             </button>
 
-                                            <Show
-                                                when=move || !show_delete_confirm.get()
-                                                fallback=move || {
-                                                    view! {
-                                                        <div class="border border-status-error-border rounded p-4 bg-status-error-bg text-status-error-text">
-                                                            <p class="text-sm text-status-error-text mb-3">
-                                                                {"この退職ユーザーのデータを完全に削除しますか？この操作は取り消せません。"}
-                                                            </p>
-                                                            <div class="flex gap-2">
-                                                                <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
-                                                                    disabled=move || delete_pending.get()
-                                                                    on:click=confirm_delete
-                                                                >
-                                                                    {move || if delete_pending.get() { "削除中..." } else { "完全削除する" }}
-                                                                </button>
-                                                                <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-surface-muted text-fg"
-                                                                    on:click=cancel_delete
-                                                                >
-                                                                    {"キャンセル"}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }
+                                            <button
+                                                class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
+                                                disabled=move || restore_pending.get() || delete_pending.get()
+                                                on:click=delete_click
                                             >
-                                                <button
-                                                    class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
-                                                    disabled=move || restore_pending.get() || delete_pending.get()
-                                                    on:click=delete_click
-                                                >
-                                                    {"完全削除"}
-                                                </button>
-                                            </Show>
+                                                {"完全削除"}
+                                            </button>
                                         </div>
                                     </div>
+                                    <ConfirmDialog
+                                        is_open=Signal::derive(move || show_delete_confirm.get())
+                                        title="完全削除の確認"
+                                        message="この退職ユーザーのデータを完全に削除しますか？この操作は取り消せません。"
+                                        on_confirm=confirm_delete
+                                        on_cancel=cancel_delete
+                                        confirm_label=Signal::derive(move || if delete_pending.get() { "削除中...".to_string() } else { "完全削除する".to_string() })
+                                        cancel_label="いいえ"
+                                        confirm_disabled=Signal::derive(move || delete_pending.get())
+                                        destructive=true
+                                    />
                                 </div>
                             </div>
                         }
