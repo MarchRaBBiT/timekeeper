@@ -115,7 +115,7 @@ pub fn LoginForm(
                     <div class="flex items-center justify-between">
                         <div class="text-sm">
                             <A href="/forgot-password" class="font-medium text-link hover:text-link-hover">
-                                "Forgot your password?"
+                                "パスワードをお忘れですか？"
                             </A>
                         </div>
                     </div>
