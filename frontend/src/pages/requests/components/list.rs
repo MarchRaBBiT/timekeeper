@@ -2,6 +2,7 @@ use crate::api::ApiError;
 use crate::components::{
     empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner,
 };
+use crate::pages::requests::components::status_label::request_status_label;
 use crate::pages::requests::types::{RequestKind, RequestSummary};
 use leptos::*;
 
@@ -76,6 +77,7 @@ pub fn RequestsList(
                                     let status = summary_value.status.clone();
                                     let status_for_pending = status.clone();
                                     let status_for_not_pending = status.clone();
+                                    let status_label = request_status_label(&status);
                                     let primary_label =
                                         summary_value.primary_label.clone().unwrap_or_else(|| "-".into());
                                     let secondary_label =
@@ -109,7 +111,7 @@ pub fn RequestsList(
                                             </td>
                                             <td class="px-8 py-5 whitespace-nowrap">
                                                 <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider {}", status_style)>
-                                                    {status.clone()}
+                                                    {status_label.clone()}
                                                 </span>
                                             </td>
                                             <td class="px-8 py-5 whitespace-nowrap text-sm font-medium text-fg-muted">
@@ -219,7 +221,7 @@ mod host_tests {
             }
         });
         assert!(html.contains("申請一覧"));
-        assert!(html.contains("pending"));
+        assert!(html.contains("承認待ち"));
         assert!(html.contains("休暇"));
     }
 }
