@@ -1,4 +1,4 @@
-use crate::api::{ApiError, CreateOvertimeRequest};
+use crate::api::{ApiError, CreateOvertimeRequest, UpdateOvertimeRequest};
 use crate::components::error::InlineErrorMessage;
 use crate::components::forms::DatePicker;
 use crate::components::layout::SuccessMessage;
@@ -8,7 +8,6 @@ use crate::pages::requests::{
     view_model::EditPayload,
 };
 use leptos::*;
-use serde_json::to_value;
 
 #[component]
 pub fn OvertimeRequestForm(
@@ -30,8 +29,14 @@ pub fn OvertimeRequestForm(
                 Ok(payload) => {
                     message.update(|msg| msg.clear());
                     if let Some(target) = editing.get() {
-                        update_action
-                            .dispatch((target.id, to_value(payload).unwrap_or_default()).into());
+                        update_action.dispatch(EditPayload::Overtime {
+                            id: target.id,
+                            payload: UpdateOvertimeRequest {
+                                date: payload.date,
+                                planned_hours: payload.planned_hours,
+                                reason: payload.reason,
+                            },
+                        });
                     } else {
                         action.dispatch(payload);
                     }

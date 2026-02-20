@@ -1,6 +1,7 @@
 use crate::api::{
     ApiClient, ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
-    CreateOvertimeRequest, UpdateAttendanceCorrectionRequest,
+    CreateOvertimeRequest, UpdateAttendanceCorrectionRequest, UpdateLeaveRequest,
+    UpdateOvertimeRequest,
 };
 use crate::pages::requests::types::MyRequestsResponse;
 use crate::pages::requests::{
@@ -45,9 +46,15 @@ pub enum RequestFormKind {
 }
 
 #[derive(Clone)]
-pub struct EditPayload {
-    pub id: String,
-    pub body: serde_json::Value,
+pub enum EditPayload {
+    Leave {
+        id: String,
+        payload: UpdateLeaveRequest,
+    },
+    Overtime {
+        id: String,
+        payload: UpdateOvertimeRequest,
+    },
 }
 
 #[derive(Clone)]
@@ -61,15 +68,6 @@ impl From<(String, UpdateAttendanceCorrectionRequest)> for AttendanceCorrectionE
         Self {
             id: value.0,
             payload: value.1,
-        }
-    }
-}
-
-impl From<(String, serde_json::Value)> for EditPayload {
-    fn from(value: (String, serde_json::Value)) -> Self {
-        Self {
-            id: value.0,
-            body: value.1,
         }
     }
 }
@@ -258,7 +256,14 @@ impl RequestsViewModel {
         let update_action = create_action(move |payload: &EditPayload| {
             let repo = repository.get_value();
             let payload = payload.clone();
-            async move { repo.update_request(&payload.id, payload.body.clone()).await }
+            async move {
+                match payload {
+                    EditPayload::Leave { id, payload } => repo.update_leave(&id, payload).await,
+                    EditPayload::Overtime { id, payload } => {
+                        repo.update_overtime(&id, payload).await
+                    }
+                }
+            }
         });
 
         let correction_update_action =
@@ -654,10 +659,15 @@ mod host_tests {
                 id: "req-1".into(),
                 kind: crate::pages::requests::types::RequestKind::Leave,
             }));
-            vm.update_action.dispatch(EditPayload::from((
-                "req-1".to_string(),
-                json!({ "status": "updated" }),
-            )));
+            vm.update_action.dispatch(EditPayload::Leave {
+                id: "req-1".to_string(),
+                payload: UpdateLeaveRequest {
+                    leave_type: "annual".into(),
+                    start_date: NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+                    end_date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                    reason: Some("updated".into()),
+                },
+            });
             assert!(
                 wait_until(|| vm.update_action.value().get().is_some()).await,
                 "update action should complete"
