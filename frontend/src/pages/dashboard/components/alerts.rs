@@ -13,9 +13,9 @@ type AlertsResource = Resource<
 #[component]
 pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
     view! {
-        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div class="flex flex-col gap-2">
-                <h3 class="text-base font-semibold text-fg">{"アラート"}</h3>
+                <h3 class="text-base font-display font-bold text-fg">{"アラート"}</h3>
                 <p class="text-sm text-fg-muted">{"勤務や申請に関する注意事項"}</p>
             </div>
             {move || match alerts.get() {

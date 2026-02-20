@@ -559,8 +559,8 @@ pub fn SettingsPage() -> impl IntoView {
             <div class="mx-auto max-w-3xl space-y-8">
 
                 // --- Password Change Section ---
-                <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-                    <h2 class="text-xl font-semibold text-fg border-b border-border pb-2">"パスワード変更"</h2>
+                <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
+                    <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"パスワード変更"</h2>
 
                     <Show when=move || password_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={password_success_msg.get().unwrap_or_default()} />
@@ -636,8 +636,8 @@ pub fn SettingsPage() -> impl IntoView {
                 </div>
 
                 // --- Subject Request Section ---
-                <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-                    <h2 class="text-xl font-semibold text-fg border-b border-border pb-2">"本人対応申請"</h2>
+                <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
+                    <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"本人対応申請"</h2>
                     <Show when=move || subject_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={subject_success_msg.get().unwrap_or_default()} />
                     </Show>
