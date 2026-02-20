@@ -53,9 +53,9 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
 
 fn render_badge(level: &DashboardAlertLevel) -> View {
     let (color, text) = match level {
-        DashboardAlertLevel::Info => ("bg-status-info-bg text-status-info-text", "INFO"),
-        DashboardAlertLevel::Warning => ("bg-status-warning-bg text-status-warning-text", "WARN"),
-        DashboardAlertLevel::Error => ("bg-status-error-bg text-status-error-text", "ERROR"),
+        DashboardAlertLevel::Info => ("bg-status-info-bg text-status-info-text", "情報"),
+        DashboardAlertLevel::Warning => ("bg-status-warning-bg text-status-warning-text", "警告"),
+        DashboardAlertLevel::Error => ("bg-status-error-bg text-status-error-text", "エラー"),
     };
     view! {
         <span class=format!("px-2 py-0.5 rounded-full text-xs font-semibold {}", color)>
@@ -92,7 +92,7 @@ mod host_tests {
         });
         assert!(html.contains("アラート"));
         assert!(html.contains("注意"));
-        assert!(html.contains("WARN"));
+        assert!(html.contains("警告"));
     }
 
     #[test]
