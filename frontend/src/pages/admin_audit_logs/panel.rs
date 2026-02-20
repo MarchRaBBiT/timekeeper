@@ -159,6 +159,57 @@ fn render_log_row(log: AuditLog, selected_metadata: RwSignal<Option<serde_json::
     .into_view()
 }
 
+fn render_log_card(log: AuditLog, selected_metadata: RwSignal<Option<serde_json::Value>>) -> View {
+    let occurred_at = log.occurred_at.format("%Y-%m-%d %H:%M:%S").to_string();
+    let actor = actor_label(log.actor_id);
+    let target = target_label(log.target_type, log.target_id);
+    let result_text = log.result;
+    let result_class = result_badge_class(&result_text);
+    let error_code_text = log.error_code.unwrap_or_default();
+    let has_error_code = !error_code_text.is_empty();
+    let metadata_payload = metadata_button_payload(log.metadata, 80);
+    let has_metadata = metadata_payload.is_some();
+    let metadata_display = metadata_payload
+        .as_ref()
+        .map(|(display, _)| display.clone())
+        .unwrap_or_default();
+    let metadata_value = store_value(
+        metadata_payload
+            .as_ref()
+            .map(|(_, metadata)| metadata.clone()),
+    );
+
+    view! {
+        <div class="rounded-xl border border-border bg-surface-elevated p-4 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-semibold text-fg">{log.event_type}</span>
+                <span class=result_class>{result_text}</span>
+            </div>
+            <div class="space-y-1 text-sm">
+                <div><span class="text-fg-muted">{"日時: "}</span><span class="text-fg">{occurred_at}</span></div>
+                <div><span class="text-fg-muted">{"ユーザー: "}</span><span class="text-fg">{actor}</span></div>
+                <div><span class="text-fg-muted">{"対象: "}</span><span class="text-fg">{target}</span></div>
+                <div><span class="text-fg-muted">{"リクエストID: "}</span><span class="text-fg">{log.request_id.unwrap_or_else(|| "-".to_string())}</span></div>
+                <Show when=move || has_error_code>
+                    <div><span class="text-fg-muted">{"エラー: "}</span><span class="text-status-error-text">{error_code_text.clone()}</span></div>
+                </Show>
+                <Show when=move || has_metadata>
+                    <div>
+                        <span class="text-fg-muted">{"詳細: "}</span>
+                        <button
+                            class="text-link hover:text-link-hover hover:underline text-left font-mono text-xs"
+                            on:click=move |_| selected_metadata.set(metadata_value.get_value())
+                        >
+                            {metadata_display.clone()}
+                        </button>
+                    </div>
+                </Show>
+            </div>
+        </div>
+    }
+    .into_view()
+}
+
 fn render_logs_content(
     result: Result<AuditLogListResponse, ApiError>,
     selected_metadata: RwSignal<Option<serde_json::Value>>,
@@ -188,6 +239,35 @@ fn render_logs_content(
         Err(error) => {
             view! { <tr><td colspan="6" class="p-4 text-center text-status-error-text">{error}</td></tr> }
                 .into_view()
+        }
+    }
+}
+
+fn render_logs_mobile_content(
+    result: Result<AuditLogListResponse, ApiError>,
+    selected_metadata: RwSignal<Option<serde_json::Value>>,
+) -> View {
+    match result {
+        Ok(response) => {
+            if response.items.is_empty() {
+                view! {
+                    <EmptyState
+                        title="ログがありません"
+                        description="検索条件に一致する監査ログは見つかりませんでした。"
+                    />
+                }
+                .into_view()
+            } else {
+                view! {
+                    <div class="space-y-3">
+                        {response.items.into_iter().map(|log| render_log_card(log, selected_metadata)).collect_view()}
+                    </div>
+                }
+                .into_view()
+            }
+        }
+        Err(error) => {
+            view! { <div class="p-4 text-center text-status-error-text">{error}</div> }.into_view()
         }
     }
 }
@@ -305,7 +385,13 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="bg-surface-elevated shadow overflow-hidden sm:rounded-lg overflow-x-auto">
+                    <div class="space-y-3 lg:hidden">
+                        <Suspense fallback=move || view! { <div class="p-4 text-center">"読み込み中..."</div> }>
+                            {move || vm.logs_resource.get().map(|res| render_logs_mobile_content(res, selected_metadata))}
+                        </Suspense>
+                    </div>
+
+                    <div class="hidden lg:block bg-surface-elevated shadow overflow-hidden sm:rounded-lg overflow-x-auto">
                         <table class="min-w-full divide-y divide-border">
                             <thead class="bg-surface-muted">
                                 <tr>
@@ -596,5 +682,29 @@ mod host_tests {
 
         let error_html = render_logs_html(Err(ApiError::unknown("fetch failed")));
         assert!(error_html.contains("fetch failed"));
+    }
+
+    #[test]
+    fn render_logs_mobile_content_renders_cards() {
+        let html = with_runtime(|| {
+            let selected_metadata = create_rw_signal(None::<serde_json::Value>);
+            render_logs_mobile_content(
+                Ok(sample_log_response(
+                    vec![sample_audit_log(
+                        Some("admin-1"),
+                        "success",
+                        None,
+                        Some(serde_json::json!({"key":"value"})),
+                    )],
+                    1,
+                    20,
+                )),
+                selected_metadata,
+            )
+            .render_to_string()
+            .to_string()
+        });
+        assert!(html.contains("リクエストID"));
+        assert!(html.contains("admin-1"));
     }
 }

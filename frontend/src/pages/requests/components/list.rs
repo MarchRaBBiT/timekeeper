@@ -54,7 +54,87 @@ pub fn RequestsList(
             </Show>
 
             <Show when=move || !summaries.get().is_empty()>
-                <div class="overflow-x-auto">
+                <div class="space-y-3 p-4 lg:hidden">
+                    <For
+                        each=move || summaries.get()
+                        key=|summary| summary.id.clone()
+                        children=move |summary: RequestSummary| {
+                            let summary = store_value(summary);
+                            let summary_value = summary.get_value();
+                            let status = summary_value.status.clone();
+                            let status_for_pending = status.clone();
+                            let status_for_not_pending = status.clone();
+                            let primary_label =
+                                summary_value.primary_label.clone().unwrap_or_else(|| "-".into());
+                            let secondary_label =
+                                summary_value.secondary_label.clone().unwrap_or_else(|| "-".into());
+                            let submitted_at =
+                                summary_value.submitted_at.clone().unwrap_or_else(|| "-".into());
+
+                            let status_style = match status.as_str() {
+                                "approved" => "bg-status-success-bg text-status-success-text",
+                                "rejected" => "bg-status-error-bg text-status-error-text",
+                                "pending" => "bg-status-warning-bg text-status-warning-text",
+                                _ => "bg-status-neutral-bg text-status-neutral-text",
+                            };
+
+                            view! {
+                                <div class="rounded-xl border border-border bg-surface-elevated p-4 space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-status-neutral-bg text-status-neutral-text uppercase">
+                                            {match summary_value.kind {
+                                                RequestKind::Leave => "休暇",
+                                                RequestKind::Overtime => "残業",
+                                                RequestKind::AttendanceCorrection => "勤怠修正",
+                                            }}
+                                        </span>
+                                        <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider {}", status_style)>
+                                            {status.clone()}
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-2 text-sm">
+                                        <div><span class="text-fg-muted">{"申請ID: "}</span><span class="text-fg">{summary_value.id.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{"期間 / 日付: "}</span><span class="text-fg font-bold">{primary_label.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{"補足: "}</span><span class="text-fg">{secondary_label.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{"提出日: "}</span><span class="text-fg">{submitted_at.clone()}</span></div>
+                                    </div>
+                                    <div class="pt-1 flex items-center justify-between">
+                                        <button
+                                            class="text-link hover:text-link-hover font-bold text-sm"
+                                            on:click=move |_| on_select.call(summary.get_value())
+                                        >
+                                            {"詳細"}
+                                        </button>
+                                        <Show when=move || status_for_pending == "pending">
+                                            <div class="flex gap-4">
+                                                <button
+                                                    class="text-link hover:text-link-hover font-bold flex items-center gap-1 transition-colors"
+                                                    on:click=move |_| on_edit.call(summary.get_value())
+                                                >
+                                                    <i class="fas fa-edit text-xs"></i>
+                                                    {"編集"}
+                                                </button>
+                                                <button
+                                                    class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
+                                                    on:click=move |_| on_cancel.call(summary.get_value())
+                                                >
+                                                    <i class="fas fa-times-circle text-xs"></i>
+                                                    {"取消"}
+                                                </button>
+                                            </div>
+                                        </Show>
+                                        <Show when=move || status_for_not_pending != "pending">
+                                            <span class="text-fg-muted text-sm">
+                                                <i class="fas fa-lock text-xs"></i>
+                                            </span>
+                                        </Show>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    />
+                </div>
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="min-w-full divide-y divide-border">
                         <thead>
                             <tr class="bg-surface-muted">
@@ -221,5 +301,6 @@ mod host_tests {
         assert!(html.contains("申請一覧"));
         assert!(html.contains("pending"));
         assert!(html.contains("休暇"));
+        assert!(html.contains("申請ID"));
     }
 }
