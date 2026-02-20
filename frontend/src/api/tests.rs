@@ -395,6 +395,17 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
         then.status(200).json_body(break_record_json("br-1"));
     });
     server.mock(|when, then| {
+        when.method(GET).path("/api/admin/breaks/active");
+        then.status(200).json_body(json!([{
+            "break_id": "br-1",
+            "attendance_id": "att-1",
+            "user_id": "u1",
+            "username": "alice",
+            "full_name": "Alice Example",
+            "break_start_time": "2025-01-02T12:00:00"
+        }]));
+    });
+    server.mock(|when, then| {
         when.method(GET).path("/api/attendance/me/summary");
         then.status(200).json_body(attendance_summary_json());
     });
@@ -476,6 +487,7 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
         .await
         .unwrap();
     client.admin_force_end_break("br-1").await.unwrap();
+    assert_eq!(client.admin_list_active_breaks().await.unwrap().len(), 1);
     let summary = client.get_my_summary(Some(2025), Some(1)).await.unwrap();
     assert_eq!(summary.total_work_days, 20);
     let export = client
