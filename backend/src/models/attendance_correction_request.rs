@@ -47,7 +47,7 @@ pub struct CreateAttendanceCorrectionRequest {
     pub clock_in_time: Option<NaiveDateTime>,
     pub clock_out_time: Option<NaiveDateTime>,
     pub breaks: Option<Vec<CorrectionBreakItem>>,
-    #[validate(length(max = 500))]
+    #[validate(length(min = 1, max = 500))]
     pub reason: String,
 }
 
@@ -56,13 +56,13 @@ pub struct UpdateAttendanceCorrectionRequest {
     pub clock_in_time: Option<NaiveDateTime>,
     pub clock_out_time: Option<NaiveDateTime>,
     pub breaks: Option<Vec<CorrectionBreakItem>>,
-    #[validate(length(max = 500))]
+    #[validate(length(min = 1, max = 500))]
     pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DecisionPayload {
-    #[validate(length(max = 500))]
+    #[validate(length(min = 1, max = 500))]
     pub comment: String,
 }
 
@@ -156,6 +156,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn create_attendance_correction_request_rejects_empty_reason() {
+        let payload = CreateAttendanceCorrectionRequest {
+            date: NaiveDate::from_ymd_opt(2026, 2, 1).expect("valid date"),
+            clock_in_time: None,
+            clock_out_time: None,
+            breaks: None,
+            reason: String::new(),
+        };
+
+        assert!(payload.validate().is_err());
+    }
+
+    #[test]
     fn create_attendance_correction_request_rejects_too_long_reason() {
         let payload = CreateAttendanceCorrectionRequest {
             date: NaiveDate::from_ymd_opt(2026, 2, 1).expect("valid date"),
@@ -182,6 +195,18 @@ mod tests {
     }
 
     #[test]
+    fn update_attendance_correction_request_rejects_empty_reason() {
+        let payload = UpdateAttendanceCorrectionRequest {
+            clock_in_time: None,
+            clock_out_time: None,
+            breaks: None,
+            reason: String::new(),
+        };
+
+        assert!(payload.validate().is_err());
+    }
+
+    #[test]
     fn update_attendance_correction_request_rejects_too_long_reason() {
         let payload = UpdateAttendanceCorrectionRequest {
             clock_in_time: None,
@@ -203,6 +228,15 @@ mod tests {
         };
 
         assert!(payload.validate().is_ok());
+    }
+
+    #[test]
+    fn decision_payload_rejects_empty_comment() {
+        let payload = DecisionPayload {
+            comment: String::new(),
+        };
+
+        assert!(payload.validate().is_err());
     }
 
     #[test]

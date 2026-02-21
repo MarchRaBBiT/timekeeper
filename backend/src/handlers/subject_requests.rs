@@ -25,10 +25,10 @@ pub async fn create_subject_request(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateDataSubjectRequest>,
 ) -> Result<Json<DataSubjectRequestResponse>, (StatusCode, Json<Value>)> {
-    payload.validate().map_err(|_| {
+    payload.validate().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "validation failed"})),
+            Json(json!({"error": e.to_string()})),
         )
     })?;
     let details = validate_details(payload.details)?;

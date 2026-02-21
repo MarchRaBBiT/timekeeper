@@ -28,10 +28,10 @@ pub async fn record_consent(
     headers: HeaderMap,
     Json(payload): Json<RecordConsentPayload>,
 ) -> Result<Json<ConsentLogResponse>, (StatusCode, Json<Value>)> {
-    payload.validate().map_err(|_| {
+    payload.validate().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "validation failed"})),
+            Json(json!({"error": e.to_string()})),
         )
     })?;
     let purpose = validate_string_field(&payload.purpose, "purpose", MAX_PURPOSE_LENGTH)?;
