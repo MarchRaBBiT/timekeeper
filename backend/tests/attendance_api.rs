@@ -3,6 +3,7 @@ use axum::{
     http::{Request, StatusCode},
     Extension, Router,
 };
+use chrono_tz::Asia::Tokyo;
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -80,6 +81,11 @@ fn test_router_with_state(pool: PgPool, user: User) -> Router {
         .with_state(state)
 }
 
+/// Returns today's date in Asia/Tokyo, matching the `time_zone: Tokyo` set in `test_config()`.
+fn today_in_test_timezone() -> chrono::NaiveDate {
+    chrono::Utc::now().with_timezone(&Tokyo).date_naive()
+}
+
 #[tokio::test]
 async fn test_clock_in_creates_attendance_record() {
     let _guard = integration_guard().await;
@@ -121,8 +127,9 @@ async fn test_clock_in_with_specific_date() {
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
 
+    let today = today_in_test_timezone();
     let payload = json!({
-        "date": "2024-07-15"
+        "date": today.to_string()
     });
     let request = Request::builder()
         .method("POST")
@@ -134,6 +141,36 @@ async fn test_clock_in_with_specific_date() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_clock_in_rejects_non_today_date() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let yesterday = today_in_test_timezone() - chrono::Duration::days(1);
+    let payload = json!({
+        "date": yesterday.to_string()
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/attendance/clock-in")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -234,6 +271,96 @@ async fn test_clock_out_after_clock_in_succeeds() {
         .unwrap();
     let response_out = app.oneshot(request_out).await.unwrap();
     assert_eq!(response_out.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_clock_out_rejects_non_today_date() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let tomorrow = today_in_test_timezone() + chrono::Duration::days(1);
+    let payload = ClockOutRequest {
+        date: Some(tomorrow),
+    };
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/attendance/clock-out")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!(payload).to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_clock_in_rejects_future_date() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let tomorrow = today_in_test_timezone() + chrono::Duration::days(1);
+    let payload = json!({
+        "date": tomorrow.to_string()
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/attendance/clock-in")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_clock_out_rejects_past_date() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let yesterday = today_in_test_timezone() - chrono::Duration::days(1);
+    let payload = ClockOutRequest {
+        date: Some(yesterday),
+    };
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/attendance/clock-out")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!(payload).to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
