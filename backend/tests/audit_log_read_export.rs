@@ -405,6 +405,13 @@ async fn audit_log_export_returns_json_file() {
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
     assert!(content_disposition.starts_with("attachment; filename=\"audit_logs_"));
+    assert_eq!(
+        response
+            .headers()
+            .get("x-truncated")
+            .and_then(|value| value.to_str().ok()),
+        Some("false")
+    );
 
     let body = to_bytes(response.into_body(), 1024 * 64)
         .await
