@@ -80,8 +80,7 @@ pub async fn export_audit_logs(
     filters: &AuditLogFilters,
     max_rows: i64,
 ) -> Result<Vec<AuditLog>, sqlx::Error> {
-    let safe_max_rows = max_rows.max(1);
-    query_audit_logs(pool, filters, Some((safe_max_rows, 0))).await
+    query_audit_logs(pool, filters, Some((max_rows, 0))).await
 }
 
 pub async fn delete_audit_logs_before(

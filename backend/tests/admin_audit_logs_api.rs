@@ -186,13 +186,7 @@ async fn test_export_audit_logs_is_capped_by_max_rows() {
             id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result
         )
         SELECT
-            lower(
-                substr(md5((g.i + 1000000)::text), 1, 8) || '-' ||
-                substr(md5((g.i + 1000000)::text), 9, 4) || '-' ||
-                substr(md5((g.i + 1000000)::text), 13, 4) || '-' ||
-                substr(md5((g.i + 1000000)::text), 17, 4) || '-' ||
-                substr(md5((g.i + 1000000)::text), 21, 12)
-            ),
+            gen_random_uuid(),
             NOW() - (g.i || ' seconds')::interval,
             $1::uuid,
             'user',
@@ -223,6 +217,10 @@ async fn test_export_audit_logs_is_capped_by_max_rows() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("X-Export-Truncated").unwrap(),
+        "true"
+    );
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await

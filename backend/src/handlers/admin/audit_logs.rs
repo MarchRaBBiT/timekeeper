@@ -181,15 +181,13 @@ pub async fn export_audit_logs(
 ) -> Result<Response, AppError> {
     ensure_audit_log_access(&state.write_pool, &user).await?;
 
+    let max_rows = state.config.audit_log_export_max_rows;
     let filters = validate_export_query(q)?;
-    let logs = audit_log::export_audit_logs(
-        state.read_pool(),
-        &filters,
-        state.config.audit_log_export_max_rows,
-    )
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let logs = audit_log::export_audit_logs(state.read_pool(), &filters, max_rows)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
+    let truncated = logs.len() as i64 == max_rows;
     let mask_pii = !user.is_system_admin();
     let payload: Vec<AuditLogResponse> = logs
         .into_iter()
@@ -214,6 +212,10 @@ pub async fn export_audit_logs(
     response.headers_mut().insert(
         "X-PII-Masked",
         HeaderValue::from_static(if mask_pii { "true" } else { "false" }),
+    );
+    response.headers_mut().insert(
+        "X-Export-Truncated",
+        HeaderValue::from_static(if truncated { "true" } else { "false" }),
     );
     Ok(response)
 }
