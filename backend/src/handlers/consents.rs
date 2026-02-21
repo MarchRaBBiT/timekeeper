@@ -5,6 +5,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::{
     middleware::request_id::RequestId,
@@ -27,6 +28,12 @@ pub async fn record_consent(
     headers: HeaderMap,
     Json(payload): Json<RecordConsentPayload>,
 ) -> Result<Json<ConsentLogResponse>, (StatusCode, Json<Value>)> {
+    payload.validate().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     let purpose = validate_string_field(&payload.purpose, "purpose", MAX_PURPOSE_LENGTH)?;
     let policy_version = validate_string_field(
         &payload.policy_version,

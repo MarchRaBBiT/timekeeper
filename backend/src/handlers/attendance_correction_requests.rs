@@ -4,6 +4,7 @@ use axum::{
 };
 use chrono::NaiveDateTime;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::error::AppError;
 use crate::models::{
@@ -26,6 +27,7 @@ pub async fn create_attendance_correction_request(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateAttendanceCorrectionRequest>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
+    payload.validate()?;
     validate_reason(&payload.reason)?;
 
     let attendance_repo = AttendanceRepository::new();
@@ -116,6 +118,7 @@ pub async fn update_my_attendance_correction_request(
     Path(id): Path<String>,
     Json(payload): Json<UpdateAttendanceCorrectionRequest>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
+    payload.validate()?;
     validate_reason(&payload.reason)?;
 
     let repo = AttendanceCorrectionRequestRepository::new();

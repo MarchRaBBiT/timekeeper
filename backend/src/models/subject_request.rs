@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::models::request::RequestStatus;
 
@@ -69,7 +70,7 @@ impl DataSubjectRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct CreateDataSubjectRequest {
     pub request_type: DataSubjectRequestType,
     pub details: Option<String>,
@@ -111,3 +112,4 @@ impl From<DataSubjectRequest> for DataSubjectRequestResponse {
         }
     }
 }
+
