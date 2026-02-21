@@ -3,6 +3,7 @@ use axum::{
     http::{Request, StatusCode},
     Extension, Router,
 };
+use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::audit_logs,
@@ -162,6 +163,71 @@ async fn test_system_admin_can_export_audit_logs() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_export_audit_logs_is_capped_by_max_rows() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let actor_id = employee.id.to_string();
+
+    let max_export_rows = test_config().audit_log_export_max_rows;
+    let total_rows = max_export_rows + 5;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_logs (
+            id, occurred_at, actor_id, actor_type, event_type, target_type, target_id, result
+        )
+        SELECT
+            gen_random_uuid(),
+            NOW() - (g.i || ' seconds')::interval,
+            $1::uuid,
+            'user',
+            'bulk_event',
+            'test_target',
+            g.i::text,
+            'success'
+        FROM generate_series(1, $2) AS g(i)
+        "#,
+    )
+    .bind(actor_id)
+    .bind(total_rows)
+    .execute(&pool)
+    .await
+    .expect("insert bulk audit logs");
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = test_router_with_state(pool.clone(), sysadmin.clone());
+    let from = (Utc::now() - Duration::days(1)).date_naive();
+    let to = (Utc::now() + Duration::days(1)).date_naive();
+    let request = Request::builder()
+        .uri(format!(
+            "/api/admin/audit-logs/export?from={from}&to={to}&event_type=bulk_event"
+        ))
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("X-Export-Truncated").unwrap(),
+        "true"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let items = json.as_array().expect("export response array");
+    assert_eq!(items.len() as i64, max_export_rows);
 }
 
 #[tokio::test]
