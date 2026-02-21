@@ -152,7 +152,9 @@ pub async fn clock_out(
 
 fn ensure_clock_date_is_today(date: NaiveDate, today: NaiveDate) -> Result<(), AppError> {
     if date != today {
-        return Err(AppError::BadRequest("Clock date must be today".to_string()));
+        return Err(AppError::BadRequest(
+            "Clock-in/out date must be today. Past and future dates are not allowed.".into(),
+        ));
     }
     Ok(())
 }

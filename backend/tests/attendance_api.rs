@@ -81,6 +81,7 @@ fn test_router_with_state(pool: PgPool, user: User) -> Router {
         .with_state(state)
 }
 
+/// Returns today's date in Asia/Tokyo, matching the `time_zone: Tokyo` set in `test_config()`.
 fn today_in_test_timezone() -> chrono::NaiveDate {
     chrono::Utc::now().with_timezone(&Tokyo).date_naive()
 }
