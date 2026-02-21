@@ -39,6 +39,7 @@ pub async fn approve_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    ensure_not_self_request(&state, &request_id, user.id).await?;
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
@@ -78,6 +79,7 @@ pub async fn reject_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
+    ensure_not_self_request(&state, &request_id, user.id).await?;
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
@@ -101,6 +103,43 @@ pub async fn reject_request(
     Err(AppError::NotFound(
         "Request not found or already processed".into(),
     ))
+}
+
+async fn ensure_not_self_request(
+    state: &AppState,
+    request_id: &str,
+    actor_id: crate::types::UserId,
+) -> Result<(), AppError> {
+    if let Ok(leave_request_id) = LeaveRequestId::from_str(request_id) {
+        let leave_repo = LeaveRequestRepository::new();
+        if let Ok(request) = leave_repo
+            .find_by_id(&state.write_pool, leave_request_id)
+            .await
+        {
+            if request.user_id == actor_id {
+                return Err(AppError::Forbidden(
+                    "Admins cannot approve or reject their own requests".into(),
+                ));
+            }
+            return Ok(());
+        }
+    }
+
+    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(request_id) {
+        let overtime_repo = OvertimeRequestRepository::new();
+        if let Ok(request) = overtime_repo
+            .find_by_id(&state.write_pool, overtime_request_id)
+            .await
+        {
+            if request.user_id == actor_id {
+                return Err(AppError::Forbidden(
+                    "Admins cannot approve or reject their own requests".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]

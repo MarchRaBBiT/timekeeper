@@ -91,12 +91,7 @@ pub async fn approve_attendance_correction_request(
 
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(&state.write_pool, &id).await?;
-
-    if request.status.db_value() != "pending" {
-        return Err(AppError::Conflict(
-            "Request not found or already processed".into(),
-        ));
-    }
+    ensure_not_self_request(request.user_id, user.id)?;
 
     let original_snapshot = request
         .parse_original_snapshot()
@@ -132,9 +127,23 @@ pub async fn reject_attendance_correction_request(
     validate_comment(&payload.comment)?;
 
     let repo = AttendanceCorrectionRequestRepository::new();
+    let request = repo.find_by_id(&state.write_pool, &id).await?;
+    ensure_not_self_request(request.user_id, user.id)?;
     repo.reject(&state.write_pool, &id, user.id, &payload.comment)
         .await?;
     Ok(Json(serde_json::json!({ "message": "Request rejected" })))
+}
+
+fn ensure_not_self_request(
+    request_user_id: crate::types::UserId,
+    actor_id: crate::types::UserId,
+) -> Result<(), AppError> {
+    if request_user_id == actor_id {
+        return Err(AppError::Forbidden(
+            "Admins cannot approve or reject their own requests".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_comment(comment: &str) -> Result<(), AppError> {

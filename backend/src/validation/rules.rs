@@ -2,35 +2,6 @@
 
 use validator::ValidationError;
 
-/// Validates password strength requirements.
-///
-/// Requirements:
-/// - At least 8 characters
-/// - Contains at least one uppercase letter
-/// - Contains at least one lowercase letter
-/// - Contains at least one digit
-pub fn validate_password_strength(password: &str) -> Result<(), ValidationError> {
-    if password.len() < 8 {
-        return Err(ValidationError::new("password_too_short"));
-    }
-
-    let has_uppercase = password.chars().any(|c| c.is_uppercase());
-    let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_digit = password.chars().any(|c| c.is_ascii_digit());
-
-    if !has_uppercase {
-        return Err(ValidationError::new("password_missing_uppercase"));
-    }
-    if !has_lowercase {
-        return Err(ValidationError::new("password_missing_lowercase"));
-    }
-    if !has_digit {
-        return Err(ValidationError::new("password_missing_digit"));
-    }
-
-    Ok(())
-}
-
 /// Validates username format.
 ///
 /// Requirements:
@@ -63,36 +34,6 @@ pub fn validate_planned_hours(hours: f64) -> Result<(), ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn password_strength_rejects_short_password() {
-        let result = validate_password_strength("Short1A");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn password_strength_rejects_no_uppercase() {
-        let result = validate_password_strength("lowercase123");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn password_strength_rejects_no_lowercase() {
-        let result = validate_password_strength("UPPERCASE123");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn password_strength_rejects_no_digit() {
-        let result = validate_password_strength("NoDigitsHere");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn password_strength_accepts_valid_password() {
-        let result = validate_password_strength("ValidPass123");
-        assert!(result.is_ok());
-    }
 
     #[test]
     fn username_rejects_empty() {

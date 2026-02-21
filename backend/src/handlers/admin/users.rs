@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::IntoParams;
 use validator::Validate;
 
 use crate::{
@@ -199,39 +199,54 @@ pub async fn update_user(
     Ok(Json(UserResponse::from(updated_user)))
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct ResetMfaPayload {
-    pub user_id: String,
-}
-
 pub async fn reset_user_mfa(
     State(state): State<AppState>,
     Extension(requester): Extension<User>,
-    Json(payload): Json<ResetMfaPayload>,
+    request_id: Option<Extension<RequestId>>,
+    audit_log_service: Option<Extension<Arc<dyn AuditLogServiceTrait>>>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     if !requester.is_system_admin() {
         return Err(AppError::Forbidden(
             "Only system administrators can reset MFA".into(),
         ));
     }
-    let success = user_repo::reset_mfa(&state.write_pool, &payload.user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    let parsed_user_id =
+        UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
+    let success =
+        user_repo::reset_mfa_and_revoke_refresh_tokens(&state.write_pool, parsed_user_id).await?;
 
     if !success {
         return Err(AppError::NotFound("User not found".into()));
     }
 
-    let user_id = UserId::from_str(&payload.user_id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID format".into()))?;
-
-    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    if let Some(Extension(audit_log_service)) = audit_log_service {
+        let entry = AuditLogEntry {
+            occurred_at: Utc::now(),
+            actor_id: Some(requester.id),
+            actor_type: "user".to_string(),
+            event_type: "mfa_reset".to_string(),
+            target_type: Some("user".to_string()),
+            target_id: Some(user_id.clone()),
+            result: "success".to_string(),
+            error_code: None,
+            metadata: Some(json!({ "reason": "admin_reset" })),
+            ip: extract_ip(&headers),
+            user_agent: extract_user_agent(&headers),
+            request_id: request_id.map(|Extension(id)| id.0),
+        };
+        tokio::spawn(async move {
+            if let Err(err) = audit_log_service.record_event(entry).await {
+                tracing::warn!(error = ?err, "Failed to record MFA reset audit log");
+            }
+        });
+    }
 
     Ok(Json(json!({
         "message": "MFA reset and refresh tokens revoked",
-        "user_id": payload.user_id
+        "user_id": user_id
     })))
 }
 
@@ -521,14 +536,6 @@ fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_reset_mfa_payload_structure() {
-        let payload = ResetMfaPayload {
-            user_id: "test-user-id".to_string(),
-        };
-        assert_eq!(payload.user_id, "test-user-id");
-    }
 
     #[test]
     fn test_delete_user_params_default() {

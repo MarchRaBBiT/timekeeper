@@ -111,6 +111,7 @@ pub async fn email_exists(pool: &PgPool, email_hash: &str) -> Result<bool, sqlx:
 }
 
 /// Resets MFA for a user.
+#[allow(dead_code)]
 pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE users SET mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
@@ -119,6 +120,36 @@ pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Resets MFA and revokes refresh tokens for a user atomically.
+pub async fn reset_mfa_and_revoke_refresh_tokens(
+    pool: &PgPool,
+    user_id: crate::types::UserId,
+) -> Result<bool, AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
+    let user_id = user_id.to_string();
+
+    let result = sqlx::query(
+        "UPDATE users SET mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    if result.rows_affected() == 0 {
+        return Ok(false);
+    }
+
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    transaction::commit_transaction(tx).await?;
+    Ok(true)
 }
 
 /// Checks if a username exists (for conflict check).
@@ -240,8 +271,15 @@ pub async fn soft_delete_user(
     // 3. Archive leave requests
     sqlx::query(
         r#"
-        INSERT INTO archived_leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, created_at, updated_at, archived_at)
-        SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, created_at, updated_at, $2
+        INSERT INTO archived_leave_requests (
+            id, user_id, leave_type, start_date, end_date, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, archived_at
+        )
+        SELECT
+            id, user_id, leave_type, start_date, end_date, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, $2
         FROM leave_requests
         WHERE user_id = $1
         "#,
@@ -254,8 +292,15 @@ pub async fn soft_delete_user(
     // 4. Archive overtime requests
     sqlx::query(
         r#"
-        INSERT INTO archived_overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, created_at, updated_at, archived_at)
-        SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, created_at, updated_at, $2
+        INSERT INTO archived_overtime_requests (
+            id, user_id, date, planned_hours, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, archived_at
+        )
+        SELECT
+            id, user_id, date, planned_hours, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, $2
         FROM overtime_requests
         WHERE user_id = $1
         "#,
@@ -279,7 +324,52 @@ pub async fn soft_delete_user(
     .execute(&mut *tx)
     .await?;
 
-    // 6. Archive user
+    // 6. Archive attendance correction requests
+    sqlx::query(
+        r#"
+        INSERT INTO archived_attendance_correction_requests (
+            id, user_id, attendance_id, date, status, reason,
+            original_snapshot_json, proposed_values_json, decision_comment,
+            approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, archived_at
+        )
+        SELECT
+            id, user_id, attendance_id, date, status, reason,
+            original_snapshot_json, proposed_values_json, decision_comment,
+            approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at, $2
+        FROM attendance_correction_requests
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    // 7. Archive attendance correction effective values
+    sqlx::query(
+        r#"
+        INSERT INTO archived_attendance_correction_effective_values (
+            attendance_id, source_request_id,
+            clock_in_time_corrected, clock_out_time_corrected,
+            break_records_corrected_json, applied_by, applied_at, updated_at, archived_at
+        )
+        SELECT
+            ev.attendance_id, ev.source_request_id,
+            ev.clock_in_time_corrected, ev.clock_out_time_corrected,
+            ev.break_records_corrected_json, ev.applied_by, ev.applied_at, ev.updated_at, $2
+        FROM attendance_correction_effective_values ev
+        INNER JOIN attendance_correction_requests r ON r.id = ev.source_request_id
+        WHERE r.user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    // 8. Archive user
     sqlx::query(
         r#"
         INSERT INTO archived_users (
@@ -301,7 +391,7 @@ pub async fn soft_delete_user(
     .execute(&mut *tx)
     .await?;
 
-    // 7. Delete user (will cascade delete related records and session tokens)
+    // 9. Delete user (will cascade delete related records and session tokens)
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(user_id)
         .execute(&mut *tx)
@@ -375,8 +465,15 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     // 4. Restore leave requests
     sqlx::query(
         r#"
-        INSERT INTO leave_requests (id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, created_at, updated_at)
-        SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, created_at, updated_at
+        INSERT INTO leave_requests (
+            id, user_id, leave_type, start_date, end_date, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
+        )
+        SELECT
+            id, user_id, leave_type, start_date, end_date, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
         FROM archived_leave_requests
         WHERE user_id = $1
         "#,
@@ -388,8 +485,15 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     // 5. Restore overtime requests
     sqlx::query(
         r#"
-        INSERT INTO overtime_requests (id, user_id, date, planned_hours, reason, status, approved_by, approved_at, created_at, updated_at)
-        SELECT id, user_id, date, planned_hours, reason, status, approved_by, approved_at, created_at, updated_at
+        INSERT INTO overtime_requests (
+            id, user_id, date, planned_hours, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
+        )
+        SELECT
+            id, user_id, date, planned_hours, reason, status,
+            approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
         FROM archived_overtime_requests
         WHERE user_id = $1
         "#,
@@ -411,7 +515,65 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     .execute(&mut *tx)
     .await?;
 
-    // 7. Delete from archive
+    // 7. Restore attendance correction requests
+    sqlx::query(
+        r#"
+        INSERT INTO attendance_correction_requests (
+            id, user_id, attendance_id, date, status, reason,
+            original_snapshot_json, proposed_values_json, decision_comment,
+            approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
+        )
+        SELECT
+            id, user_id, attendance_id, date, status, reason,
+            original_snapshot_json, proposed_values_json, decision_comment,
+            approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+            created_at, updated_at
+        FROM archived_attendance_correction_requests
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 8. Restore attendance correction effective values
+    sqlx::query(
+        r#"
+        INSERT INTO attendance_correction_effective_values (
+            attendance_id, source_request_id,
+            clock_in_time_corrected, clock_out_time_corrected,
+            break_records_corrected_json, applied_by, applied_at, updated_at
+        )
+        SELECT
+            ev.attendance_id, ev.source_request_id,
+            ev.clock_in_time_corrected, ev.clock_out_time_corrected,
+            ev.break_records_corrected_json, ev.applied_by, ev.applied_at, ev.updated_at
+        FROM archived_attendance_correction_effective_values ev
+        INNER JOIN archived_attendance_correction_requests r ON r.id = ev.source_request_id
+        WHERE r.user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 9. Delete from archive
+    sqlx::query(
+        r#"
+        DELETE FROM archived_attendance_correction_effective_values
+        WHERE source_request_id IN (
+            SELECT id FROM archived_attendance_correction_requests WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM archived_attendance_correction_requests WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM archived_holiday_exceptions WHERE user_id = $1")
         .bind(user_id)
         .execute(&mut *tx)
@@ -499,6 +661,23 @@ pub async fn hard_delete_archived_user(pool: &PgPool, user_id: &str) -> Result<(
         .await?;
 
     sqlx::query("DELETE FROM archived_holiday_exceptions WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM archived_attendance_correction_effective_values
+        WHERE source_request_id IN (
+            SELECT id FROM archived_attendance_correction_requests WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM archived_attendance_correction_requests WHERE user_id = $1")
         .bind(user_id)
         .execute(&mut *tx)
         .await?;

@@ -148,11 +148,14 @@ pub async fn upsert_attendance(
                         )
                     })
                     .map_err(|_| AppError::BadRequest("Invalid break_start_time".into()))?;
-            let be: Option<chrono::NaiveDateTime> = b.break_end_time.as_ref().and_then(|s| {
-                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-                    .ok()
-                    .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
-            });
+            let be: Option<chrono::NaiveDateTime> = match b.break_end_time.as_ref() {
+                Some(s) => Some(
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
+                        .map_err(|_| AppError::BadRequest("Invalid break_end_time".into()))?,
+                ),
+                None => None,
+            };
             let now_utc = time::now_utc(&state.config.time_zone);
             let mut br = crate::models::break_record::BreakRecord::new(att.id, bs, now_utc);
             if let Some(bev) = be {

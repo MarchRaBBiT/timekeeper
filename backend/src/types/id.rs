@@ -53,15 +53,19 @@ macro_rules! typed_id {
             }
         }
 
-        impl From<&str> for $name {
-            fn from(s: &str) -> Self {
-                Self(Uuid::parse_str(s).expect("Invalid UUID string"))
+        impl TryFrom<&str> for $name {
+            type Error = uuid::Error;
+
+            fn try_from(s: &str) -> Result<Self, Self::Error> {
+                Self::from_str(s)
             }
         }
 
-        impl From<String> for $name {
-            fn from(s: String) -> Self {
-                Self(Uuid::parse_str(&s).expect("Invalid UUID string"))
+        impl TryFrom<String> for $name {
+            type Error = uuid::Error;
+
+            fn try_from(s: String) -> Result<Self, Self::Error> {
+                Self::from_str(&s)
             }
         }
 
@@ -177,8 +181,8 @@ mod tests {
         let parsed = UserId::from_str(&as_string).expect("parse user id");
         assert_eq!(parsed, user_id);
 
-        let from_str_ref = UserId::from(as_string.as_str());
-        let from_string = UserId::from(as_string.clone());
+        let from_str_ref = UserId::try_from(as_string.as_str()).expect("try_from &str");
+        let from_string = UserId::try_from(as_string.clone()).expect("try_from String");
         assert_eq!(from_str_ref, user_id);
         assert_eq!(from_string, user_id);
 
@@ -200,14 +204,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid UUID string")]
-    fn from_str_ref_panics_for_invalid_uuid() {
-        let _ = UserId::from("invalid-uuid");
-    }
-
-    #[test]
-    #[should_panic(expected = "Invalid UUID string")]
-    fn from_string_panics_for_invalid_uuid() {
-        let _ = UserId::from("invalid-uuid".to_string());
+    fn try_from_rejects_invalid_uuid() {
+        assert!(UserId::try_from("invalid-uuid").is_err());
+        assert!(UserId::try_from("invalid-uuid".to_string()).is_err());
     }
 }

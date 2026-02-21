@@ -236,6 +236,106 @@ async fn admin_approval_sets_request_status_and_effective_values() {
 }
 
 #[tokio::test]
+async fn admin_cannot_approve_own_attendance_correction_request() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let user_app = user_router(pool.clone(), admin.clone());
+    let admin_app = admin_router(pool.clone(), admin.clone());
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+
+    let date = NaiveDate::from_ymd_opt(2026, 2, 11).expect("valid date");
+    let clock_in = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let clock_out = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(18, 0, 0).unwrap());
+    seed_attendance(&pool, admin.id, date, Some(clock_in), Some(clock_out)).await;
+
+    let create_payload = json!({
+        "date": date.to_string(),
+        "clock_out_time": (clock_out + Duration::minutes(20)).format("%Y-%m-%dT%H:%M:%S").to_string(),
+        "reason": "自分の申請"
+    });
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/attendance-corrections")
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(create_payload.to_string()))
+        .expect("build create request");
+    let create_res = user_app.oneshot(create_req).await.expect("create call");
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let create_json = response_json(create_res).await;
+    let request_id = create_json["id"].as_str().expect("request id");
+
+    let approve_payload = json!({ "comment": "自分で承認" });
+    let approve_req = Request::builder()
+        .method("PUT")
+        .uri(format!(
+            "/api/admin/attendance-corrections/{request_id}/approve"
+        ))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(approve_payload.to_string()))
+        .expect("build approve request");
+    let approve_res = admin_app.oneshot(approve_req).await.expect("approve call");
+    assert_eq!(approve_res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn admin_cannot_reject_own_attendance_correction_request() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let user_app = user_router(pool.clone(), admin.clone());
+    let admin_app = admin_router(pool.clone(), admin.clone());
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+
+    let date = NaiveDate::from_ymd_opt(2026, 2, 11).expect("valid date");
+    let clock_in = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let clock_out = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(18, 0, 0).unwrap());
+    seed_attendance(&pool, admin.id, date, Some(clock_in), Some(clock_out)).await;
+
+    let create_payload = json!({
+        "date": date.to_string(),
+        "clock_out_time": (clock_out + Duration::minutes(20)).format("%Y-%m-%dT%H:%M:%S").to_string(),
+        "reason": "自分の申請"
+    });
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/attendance-corrections")
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(create_payload.to_string()))
+        .expect("build create request");
+    let create_res = user_app.oneshot(create_req).await.expect("create call");
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let create_json = response_json(create_res).await;
+    let request_id = create_json["id"].as_str().expect("request id");
+
+    let reject_payload = json!({ "comment": "自分で却下" });
+    let reject_req = Request::builder()
+        .method("PUT")
+        .uri(format!(
+            "/api/admin/attendance-corrections/{request_id}/reject"
+        ))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(reject_payload.to_string()))
+        .expect("build reject request");
+    let reject_res = admin_app.oneshot(reject_req).await.expect("reject call");
+    assert_eq!(reject_res.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn admin_approval_fails_with_conflict_when_attendance_changed() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
@@ -453,4 +553,97 @@ async fn concurrent_approval_stress_allows_only_one_success() {
     .expect("fetch effective values");
     assert_eq!(effective.0, request_id);
     assert_eq!(effective.1, admin.id.to_string());
+}
+
+#[tokio::test]
+async fn concurrent_reject_stress_allows_only_one_success() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let user_app = user_router(pool.clone(), employee.clone());
+    let admin_app = admin_router(pool.clone(), admin.clone());
+    let user_token = create_test_token(employee.id, employee.role.clone());
+    let admin_token = create_test_token(admin.id, admin.role.clone());
+
+    let date = NaiveDate::from_ymd_opt(2026, 2, 14).expect("valid date");
+    let clock_in = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+    let clock_out = NaiveDateTime::new(date, chrono::NaiveTime::from_hms_opt(18, 0, 0).unwrap());
+    seed_attendance(&pool, employee.id, date, Some(clock_in), Some(clock_out)).await;
+
+    let create_payload = json!({
+        "date": date.to_string(),
+        "clock_out_time": (clock_out + Duration::minutes(25)).format("%Y-%m-%dT%H:%M:%S").to_string(),
+        "reason": "同時却下テスト"
+    });
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/attendance-corrections")
+        .header("Authorization", format!("Bearer {}", user_token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(create_payload.to_string()))
+        .expect("build create request");
+    let create_res = user_app.oneshot(create_req).await.expect("create call");
+    assert_eq!(create_res.status(), StatusCode::OK);
+    let create_json = response_json(create_res).await;
+    let request_id = create_json["id"].as_str().expect("request id").to_string();
+
+    let workers = 24usize;
+    let barrier = Arc::new(tokio::sync::Barrier::new(workers));
+    let mut handles = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let app = admin_app.clone();
+        let token = admin_token.clone();
+        let rid = request_id.clone();
+        let barrier = barrier.clone();
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            let reject_payload = json!({ "comment": "stress reject" });
+            let reject_req = Request::builder()
+                .method("PUT")
+                .uri(format!("/api/admin/attendance-corrections/{rid}/reject"))
+                .header("Authorization", format!("Bearer {}", token))
+                .header("Content-Type", "application/json")
+                .body(Body::from(reject_payload.to_string()))
+                .expect("build reject request");
+            app.oneshot(reject_req).await.expect("reject call").status()
+        }));
+    }
+
+    let mut ok_count = 0usize;
+    let mut conflict_count = 0usize;
+    for handle in handles {
+        let status = handle.await.expect("join reject task");
+        if status == StatusCode::OK {
+            ok_count += 1;
+        } else if status == StatusCode::CONFLICT {
+            conflict_count += 1;
+        } else {
+            panic!("unexpected status from concurrent reject: {status}");
+        }
+    }
+    assert_eq!(ok_count, 1, "only one reject must succeed");
+    assert_eq!(
+        conflict_count,
+        workers - 1,
+        "remaining rejects must conflict"
+    );
+
+    let row: (String, String, String) = sqlx::query_as(
+        "SELECT status, rejected_by, decision_comment
+         FROM attendance_correction_requests
+         WHERE id = $1",
+    )
+    .bind(&request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("fetch correction request");
+    assert_eq!(row.0, "rejected");
+    assert_eq!(row.1, admin.id.to_string());
+    assert_eq!(row.2, "stress reject");
 }

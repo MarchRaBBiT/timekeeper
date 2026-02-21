@@ -7,7 +7,7 @@ use crate::{
             AdminRequestListPageInfo, AdminRequestListResponse, AdminSessionResponse,
             ApprovePayload, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
             AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload, RequestListQuery,
-            ResetMfaPayload, SubjectRequestListQuery, SubjectRequestListResponse,
+            SubjectRequestListQuery, SubjectRequestListResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
         sessions::SessionResponse,
@@ -152,7 +152,6 @@ use utoipa::{
             AdminBreakItem,
             ApprovePayload,
             RejectPayload,
-            ResetMfaPayload,
             AdminHolidayListQuery,
             AdminHolidayListResponse,
             AdminHolidayKind,
@@ -617,8 +616,8 @@ fn admin_export_audit_logs_doc() {}
 
 #[utoipa::path(
     post,
-    path = "/api/admin/mfa/reset",
-    request_body = ResetMfaPayload,
+    path = "/api/admin/users/{id}/reset-mfa",
+    params(("id" = String, Path, description = "User ID")),
     responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]

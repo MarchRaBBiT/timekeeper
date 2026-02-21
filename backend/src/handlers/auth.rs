@@ -1,13 +1,15 @@
 use axum::{
     extract::{Extension, State},
-    http::{header, header::USER_AGENT, HeaderMap},
+    http::{header, header::USER_AGENT, HeaderMap, HeaderValue},
     Json,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::future::Future;
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
     config::Config,
@@ -208,7 +210,7 @@ pub async fn login(
     };
 
     let mut headers = HeaderMap::new();
-    set_auth_cookies(&mut headers, &session, &state.config);
+    set_auth_cookies(&mut headers, &session, &state.config)?;
     Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
@@ -261,77 +263,147 @@ pub async fn refresh(
 
     enforce_password_expiration(&user, &state.config)?;
 
-    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
-
     let session = create_auth_session(&user, &state.config).await?;
 
     let rt_data = session.refresh_token_data(state.config.refresh_token_expiration_days)?;
     let claims = session.access_claims(&state.config.jwt_secret)?;
+    let access_expires_at = DateTime::<Utc>::from_timestamp(claims.exp, 0)
+        .ok_or_else(|| internal_error("Token expiration overflow"))?;
     let previous_session =
         active_session::find_active_session_by_refresh_token_id(&state.write_pool, &stored.id)
             .await
             .map_err(|_| internal_error("Failed to fetch active session"))?;
-    let previous_device_label = previous_session
-        .as_ref()
-        .and_then(|session| session.device_label.clone());
+    let previous_device_label = sanitize_device_label(
+        previous_session
+            .as_ref()
+            .and_then(|session| session.device_label.clone()),
+    );
     let previous_access_jti = previous_session
         .as_ref()
         .and_then(|session| session.access_jti.clone());
-    persist_refresh_token(
-        &state.write_pool,
-        &rt_data,
-        "Failed to store new refresh token",
-    )
-    .await?;
+    let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
+    let mut tx = state
+        .write_pool
+        .begin()
+        .await
+        .map_err(|_| internal_error("Failed to start refresh token rotation transaction"))?;
+    let now = Utc::now();
 
-    persist_active_access_token(
-        &state.write_pool,
-        &claims,
-        Some(format!("refresh_{}", stored.id)),
+    sqlx::query(
+        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
-    .await?;
-
-    let updated = active_session::update_active_session_tokens(
-        &state.write_pool,
-        &stored.id,
-        &rt_data.id,
-        &claims.jti,
-        Utc::now(),
-        rt_data.expires_at,
-    )
+    .bind(&rt_data.id)
+    .bind(rt_data.user_id.to_string())
+    .bind(&rt_data.token_hash)
+    .bind(rt_data.expires_at)
+    .execute(&mut *tx)
     .await
-    .map_err(|_| internal_error("Failed to update active session"))?;
+    .map_err(|_| internal_error("Failed to store new refresh token"))?;
 
-    if !updated {
-        register_active_session(
-            &state.write_pool,
-            RegisterSessionParams {
-                token_cache: state.token_cache.as_ref(),
-                audit_log_service: Some(audit_log_service.clone()),
-                audit_context: audit_context.clone(),
-                config: &state.config,
-                user_id: user.id,
-                refresh_token: rt_data.clone(),
-                claims: claims.clone(),
-                device_label: previous_device_label,
-                source: "refresh",
-            },
+    sqlx::query(
+        "INSERT INTO active_access_tokens (jti, user_id, expires_at, context) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&claims.jti)
+    .bind(claims.sub.clone())
+    .bind(access_expires_at)
+    .bind(Some(format!("refresh_{}", stored.id)))
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to store active access token"))?;
+
+    let refreshed_session_id = if let Some(session_id) = sqlx::query_scalar::<_, String>(
+        r#"
+        UPDATE active_sessions
+        SET refresh_token_id = $1,
+            access_jti = $2,
+            last_seen_at = $3,
+            expires_at = $4
+        WHERE refresh_token_id = $5
+        RETURNING id
+        "#,
+    )
+    .bind(&rt_data.id)
+    .bind(&claims.jti)
+    .bind(now)
+    .bind(rt_data.expires_at)
+    .bind(&stored.id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to update active session"))?
+    {
+        session_id
+    } else {
+        let session_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO active_sessions \
+             (id, user_id, refresh_token_id, access_jti, device_label, last_seen_at, expires_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .await?;
+        .bind(&session_id)
+        .bind(user.id)
+        .bind(&rt_data.id)
+        .bind(&claims.jti)
+        .bind(previous_device_label.as_deref())
+        .bind(now)
+        .bind(rt_data.expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| internal_error("Failed to create active session"))?;
+        session_id
+    };
+
+    let revoked_old = sqlx::query_scalar::<_, String>(
+        "DELETE FROM refresh_tokens WHERE id = $1 AND token_hash = $2 RETURNING id",
+    )
+    .bind(&stored.id)
+    .bind(&stored.token_hash)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
+
+    if revoked_old.is_none() {
+        return Err(unauthorized("Invalid or already-rotated refresh token"));
     }
 
+    tx.commit()
+        .await
+        .map_err(|_| internal_error("Failed to commit refresh token rotation"))?;
+
+    record_session_audit_event(
+        Some(audit_log_service.clone()),
+        audit_context.clone(),
+        "session_create",
+        Some(refreshed_session_id),
+        Some(json!({
+            "source": "refresh",
+            "device_label": previous_device_label
+        })),
+    );
+
+    enforce_session_limit(
+        &state.write_pool,
+        state.token_cache.as_ref(),
+        Some(audit_log_service.clone()),
+        audit_context,
+        &state.config,
+        user.id,
+    )
+    .await?;
+
     if let Some(access_jti) = previous_access_jti.as_deref() {
-        auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti)
-            .await
-            .map_err(|_| internal_error("Failed to revoke previous access token"))?;
+        if let Err(err) =
+            auth_repo::delete_active_access_token_by_jti(&state.write_pool, access_jti).await
+        {
+            tracing::warn!(
+                error = %err,
+                access_jti = %access_jti,
+                "Failed to revoke previous access token after successful refresh rotation"
+            );
+        }
         if let Some(cache) = &state.token_cache {
             let _ = cache.invalidate_token(access_jti).await;
         }
     }
-
-    auth_repo::delete_refresh_token_by_id(&state.write_pool, &stored.id)
-        .await
-        .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
 
     if let Some(cache) = &state.token_cache {
         let user_id =
@@ -341,7 +413,7 @@ pub async fn refresh(
     }
 
     let mut headers = HeaderMap::new();
-    set_auth_cookies(&mut headers, &session, &state.config);
+    set_auth_cookies(&mut headers, &session, &state.config)?;
     Ok((headers, Json(LoginResponse { user: session.user })))
 }
 
@@ -386,7 +458,7 @@ pub async fn logout(
             );
         }
         let mut response_headers = HeaderMap::new();
-        clear_auth_cookies(&mut response_headers, &state.config);
+        clear_auth_cookies(&mut response_headers, &state.config)?;
         return Ok((
             response_headers,
             Json(json!({"message":"Logged out from all devices"})),
@@ -435,7 +507,7 @@ pub async fn logout(
         );
     }
     let mut response_headers = HeaderMap::new();
-    clear_auth_cookies(&mut response_headers, &state.config);
+    clear_auth_cookies(&mut response_headers, &state.config)?;
     Ok((response_headers, Json(json!({"message":"Logged out"}))))
 }
 
@@ -1119,18 +1191,26 @@ fn record_session_audit_event(
 }
 
 fn extract_ip(headers: &HeaderMap) -> Option<String> {
-    if let Some(value) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        return value
-            .split(',')
-            .next()
-            .map(|ip| ip.trim().to_string())
-            .filter(|ip| !ip.is_empty());
-    }
     headers
-        .get("x-real-ip")
+        .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
-        .map(|ip| ip.trim().to_string())
+        .and_then(parse_ip_from_header_value)
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_ip_from_header_value)
+        })
+}
+
+fn parse_ip_from_header_value(value: &str) -> Option<String> {
+    value
+        .split(',')
+        .next()
+        .map(str::trim)
         .filter(|ip| !ip.is_empty())
+        .and_then(|ip| ip.parse::<IpAddr>().ok())
+        .map(|ip| ip.to_string())
 }
 
 fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
@@ -1165,7 +1245,11 @@ impl AuthSession {
     }
 }
 
-fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Config) {
+fn set_auth_cookies(
+    headers: &mut HeaderMap,
+    session: &AuthSession,
+    config: &Config,
+) -> HandlerResult<()> {
     let options = CookieOptions {
         secure: config.cookie_secure,
         same_site: config.cookie_same_site,
@@ -1187,19 +1271,29 @@ fn set_auth_cookies(headers: &mut HeaderMap, session: &AuthSession, config: &Con
         REFRESH_COOKIE_PATH,
         options,
     );
-    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
-    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
+    let access_cookie_value = HeaderValue::from_str(&access_cookie)
+        .map_err(|_| internal_error("Failed to set access cookie header"))?;
+    let refresh_cookie_value = HeaderValue::from_str(&refresh_cookie)
+        .map_err(|_| internal_error("Failed to set refresh cookie header"))?;
+    headers.append(header::SET_COOKIE, access_cookie_value);
+    headers.append(header::SET_COOKIE, refresh_cookie_value);
+    Ok(())
 }
 
-fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) {
+fn clear_auth_cookies(headers: &mut HeaderMap, config: &Config) -> HandlerResult<()> {
     let options = CookieOptions {
         secure: config.cookie_secure,
         same_site: config.cookie_same_site,
     };
     let access_cookie = build_clear_cookie(ACCESS_COOKIE_NAME, ACCESS_COOKIE_PATH, options);
     let refresh_cookie = build_clear_cookie(REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH, options);
-    headers.append(header::SET_COOKIE, access_cookie.parse().unwrap());
-    headers.append(header::SET_COOKIE, refresh_cookie.parse().unwrap());
+    let access_cookie_value = HeaderValue::from_str(&access_cookie)
+        .map_err(|_| internal_error("Failed to clear access cookie header"))?;
+    let refresh_cookie_value = HeaderValue::from_str(&refresh_cookie)
+        .map_err(|_| internal_error("Failed to clear refresh cookie header"))?;
+    headers.append(header::SET_COOKIE, access_cookie_value);
+    headers.append(header::SET_COOKIE, refresh_cookie_value);
+    Ok(())
 }
 
 fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
@@ -1322,7 +1416,7 @@ fn record_login_audit_event(
         event_type: event_type.to_string(),
         target_type: Some("user".to_string()),
         target_id: Some(user_id.to_string()),
-        result: "success".to_string(),
+        result: login_audit_result(event_type).to_string(),
         error_code: None,
         metadata,
         ip: context.ip,
@@ -1338,6 +1432,14 @@ fn record_login_audit_event(
             );
         }
     });
+}
+
+fn login_audit_result(event_type: &str) -> &'static str {
+    if event_type == "login_failure" {
+        "failure"
+    } else {
+        "success"
+    }
 }
 
 async fn send_lockout_notification(
@@ -1590,6 +1692,22 @@ mod tests {
     }
 
     #[test]
+    fn extract_ip_ignores_invalid_forwarded_for_and_falls_back() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "invalid-ip-value".parse().unwrap());
+        headers.insert("x-real-ip", "2001:db8::1".parse().unwrap());
+        assert_eq!(extract_ip(&headers), Some("2001:db8::1".to_string()));
+    }
+
+    #[test]
+    fn extract_ip_returns_none_when_headers_are_invalid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "not-an-ip".parse().unwrap());
+        headers.insert("x-real-ip", "also-invalid".parse().unwrap());
+        assert_eq!(extract_ip(&headers), None);
+    }
+
+    #[test]
     fn extract_user_agent_trims_value() {
         let mut headers = HeaderMap::new();
         headers.insert(header::USER_AGENT, "  TestAgent/1.0 ".parse().unwrap());
@@ -1606,6 +1724,12 @@ mod tests {
         assert_eq!(cookie_header_value(&headers), Some("foo=bar; baz=qux"));
     }
 
+    #[test]
+    fn login_audit_result_is_failure_for_login_failure_event() {
+        assert_eq!(login_audit_result("login_failure"), "failure");
+        assert_eq!(login_audit_result("login_success"), "success");
+    }
+
     #[tokio::test]
     async fn set_and_clear_auth_cookies_append_expected_headers() {
         let mut headers = HeaderMap::new();
@@ -1614,9 +1738,23 @@ mod tests {
         let session = create_auth_session(&user, &config)
             .await
             .expect("create session");
-        set_auth_cookies(&mut headers, &session, &config);
+        set_auth_cookies(&mut headers, &session, &config).expect("set auth cookies");
         assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 2);
-        clear_auth_cookies(&mut headers, &config);
+        clear_auth_cookies(&mut headers, &config).expect("clear auth cookies");
         assert_eq!(headers.get_all(header::SET_COOKIE).iter().count(), 4);
+    }
+
+    #[test]
+    fn set_auth_cookies_returns_error_for_invalid_cookie_value() {
+        let mut headers = HeaderMap::new();
+        let config = config_stub();
+        let session = AuthSession {
+            access_token: "invalid\naccess".to_string(),
+            refresh_token: "valid-refresh".to_string(),
+            user: UserResponse::from(build_user()),
+        };
+
+        let result = set_auth_cookies(&mut headers, &session, &config);
+        assert!(matches!(result, Err(AppError::InternalServerError(_))));
     }
 }

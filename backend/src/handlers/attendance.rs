@@ -153,7 +153,7 @@ pub async fn clock_out(
 fn ensure_clock_date_is_today(date: NaiveDate, today: NaiveDate) -> Result<(), AppError> {
     if date != today {
         return Err(AppError::BadRequest(
-            "Clock-in/out date must be today. Past and future dates are not allowed.".into(),
+            "Clock-in/out date must be today. Past and future dates are not allowed.".to_string(),
         ));
     }
     Ok(())
@@ -279,7 +279,7 @@ pub async fn get_my_attendance(
             attendance,
             break_records,
             correction_map.get(&attendance_id),
-        ));
+        )?);
     }
 
     Ok(Json(responses))
@@ -407,7 +407,7 @@ pub async fn get_my_summary(
             attendance,
             break_records,
             correction_map.get(&attendance_id),
-        );
+        )?;
         if let Some(hours) = effective.total_work_hours {
             if hours > 0.0 {
                 total_work_hours += hours;
@@ -474,8 +474,11 @@ pub async fn export_my_attendance(
     for row in rows {
         let attendance_id = row.id;
         let breaks = break_map.remove(&attendance_id).unwrap_or_default();
-        let effective =
-            apply_effective_correction_to_response(row, breaks, correction_map.get(&attendance_id));
+        let effective = apply_effective_correction_to_response(
+            row,
+            breaks,
+            correction_map.get(&attendance_id),
+        )?;
         let username = user.username.clone();
         let full_name = user.full_name.clone();
         let date = effective.date.format("%Y-%m-%d").to_string();
@@ -532,8 +535,10 @@ fn build_attendance_response(
     }
 }
 
-fn load_break_items_from_json(value: &serde_json::Value) -> Vec<CorrectionBreakItem> {
-    serde_json::from_value(value.clone()).unwrap_or_default()
+fn load_break_items_from_json(
+    value: &serde_json::Value,
+) -> Result<Vec<CorrectionBreakItem>, AppError> {
+    serde_json::from_value(value.clone()).map_err(|e| AppError::InternalServerError(e.into()))
 }
 
 fn calc_total_work_hours_with_breaks(
@@ -567,9 +572,9 @@ fn apply_effective_correction_to_response(
     effective: Option<
         &crate::models::attendance_correction_request::AttendanceCorrectionEffectiveValue,
     >,
-) -> AttendanceResponse {
+) -> Result<AttendanceResponse, AppError> {
     if let Some(effective) = effective {
-        let corrected_breaks = load_break_items_from_json(&effective.break_records_corrected_json);
+        let corrected_breaks = load_break_items_from_json(&effective.break_records_corrected_json)?;
         let break_records = corrected_breaks
             .iter()
             .enumerate()
@@ -595,7 +600,7 @@ fn apply_effective_correction_to_response(
             .clock_out_time_corrected
             .or(attendance.clock_out_time);
 
-        return AttendanceResponse {
+        return Ok(AttendanceResponse {
             id: attendance.id,
             user_id: attendance.user_id,
             date: attendance.date,
@@ -608,9 +613,9 @@ fn apply_effective_correction_to_response(
                 &corrected_breaks,
             ),
             break_records,
-        };
+        });
     }
-    build_attendance_response(attendance, break_records)
+    Ok(build_attendance_response(attendance, break_records))
 }
 
 async fn load_effective_correction_map(
@@ -856,6 +861,13 @@ mod tests {
         assert_eq!(response.clock_in_time, attendance.clock_in_time);
         assert_eq!(response.clock_out_time, attendance.clock_out_time);
         assert!(response.break_records.is_empty());
+    }
+
+    #[test]
+    fn load_break_items_from_json_returns_error_for_invalid_payload() {
+        let invalid = serde_json::json!({"unexpected":"shape"});
+        let result = load_break_items_from_json(&invalid);
+        assert!(matches!(result, Err(AppError::InternalServerError(_))));
     }
 
     #[tokio::test]

@@ -25,6 +25,7 @@ use crate::{
 use chrono::Utc;
 use serde::Deserialize;
 use std::str::FromStr;
+use validator::ValidationError;
 
 pub async fn create_leave_request(
     State(state): State<AppState>,
@@ -117,19 +118,29 @@ pub async fn get_my_requests(
     Ok(Json(response))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct UpdateLeavePayload {
     pub leave_type: Option<crate::models::leave_request::LeaveType>,
     pub start_date: Option<chrono::NaiveDate>,
     pub end_date: Option<chrono::NaiveDate>,
+    #[validate(length(max = 500), custom(function = "validate_non_blank_reason"))]
     pub reason: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct UpdateOvertimePayload {
     pub date: Option<chrono::NaiveDate>,
+    #[validate(range(min = 0.5, max = 24.0))]
     pub planned_hours: Option<f64>,
+    #[validate(length(max = 500), custom(function = "validate_non_blank_reason"))]
     pub reason: Option<String>,
+}
+
+fn validate_non_blank_reason(reason: &str) -> Result<(), ValidationError> {
+    if reason.trim().is_empty() {
+        return Err(ValidationError::new("reason_required"));
+    }
+    Ok(())
 }
 
 pub async fn update_request(
@@ -156,6 +167,7 @@ pub async fn update_request(
         }
         let upd: UpdateLeavePayload = serde_json::from_value(payload.clone())
             .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
+        upd.validate()?;
         let mut updated = req;
         let new_type = upd.leave_type.unwrap_or_else(|| updated.leave_type.clone());
         let new_start = upd.start_date.unwrap_or(updated.start_date);
@@ -192,11 +204,9 @@ pub async fn update_request(
         }
         let upd: UpdateOvertimePayload = serde_json::from_value(payload.clone())
             .map_err(|_| AppError::BadRequest("Invalid payload".into()))?;
+        upd.validate()?;
         let new_date = upd.date.unwrap_or(req.date);
         let new_hours = upd.planned_hours.unwrap_or(req.planned_hours);
-        if new_hours <= 0.0 {
-            return Err(AppError::BadRequest("planned_hours must be > 0".into()));
-        }
         let new_reason = upd.reason.or(req.reason.clone());
         let now = Utc::now();
         let mut updated = req;

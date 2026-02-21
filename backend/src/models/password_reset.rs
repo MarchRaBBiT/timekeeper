@@ -7,7 +7,6 @@ use utoipa::ToSchema;
 use validator::Validate;
 
 use crate::types::UserId;
-use crate::validation::rules;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of a password reset token.
@@ -40,6 +39,6 @@ pub struct ResetPasswordPayload {
     /// Password reset token from the email.
     #[validate(length(min = 32, message = "Invalid reset token"))]
     pub token: String,
-    #[validate(custom(function = "rules::validate_password_strength"))]
+    #[validate(length(min = 1, message = "Password is required"))]
     pub new_password: String,
 }

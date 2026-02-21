@@ -44,12 +44,18 @@ impl TokenCacheServiceTrait for TokenCacheService {
         let mut conn = self.pool.get().await?;
         let key = Self::token_key(jti);
         let user_key = Self::user_tokens_key(user_id);
+        let current_user_set_ttl: i64 = conn.ttl(&user_key).await?;
+        let next_user_set_ttl = if current_user_set_ttl > 0 {
+            current_user_set_ttl.max(ttl_seconds as i64)
+        } else {
+            ttl_seconds as i64
+        };
 
         redis::pipe()
             .atomic()
             .set_ex(&key, user_id.to_string(), ttl_seconds)
             .sadd(&user_key, jti)
-            .expire(&user_key, ttl_seconds as i64)
+            .expire(&user_key, next_user_set_ttl)
             .query_async::<_, ()>(&mut *conn)
             .await?;
 
