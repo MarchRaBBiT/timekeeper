@@ -1,6 +1,7 @@
 use crate::api::ApiError;
 use crate::components::{
-    empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner,
+    confirm_dialog::ConfirmDialog, empty_state::EmptyState, error::InlineErrorMessage,
+    layout::LoadingSpinner,
 };
 use crate::pages::requests::types::{RequestKind, RequestSummary};
 use leptos::*;
@@ -15,6 +16,17 @@ pub fn RequestsList(
     on_cancel: Callback<RequestSummary>,
     message: RwSignal<crate::pages::requests::utils::MessageState>,
 ) -> impl IntoView {
+    let pending_cancel_request = create_rw_signal(None::<RequestSummary>);
+    let confirm_cancel_request = Callback::new({
+        move |_| {
+            if let Some(summary) = pending_cancel_request.get_untracked() {
+                on_cancel.call(summary);
+                pending_cancel_request.set(None);
+            }
+        }
+    });
+    let dismiss_cancel_dialog = Callback::new(move |_| pending_cancel_request.set(None));
+
     view! {
         <div class="bg-surface-elevated shadow-premium rounded-3xl overflow-hidden border border-border">
             <div class="px-8 py-6 border-b border-border">
@@ -132,7 +144,7 @@ pub fn RequestsList(
                                                             class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
                                                             on:click=move |ev| {
                                                                 ev.stop_propagation();
-                                                                on_cancel.call(summary.get_value());
+                                                                pending_cancel_request.set(Some(summary.get_value()));
                                                             }
                                                         >
                                                             <i class="fas fa-times-circle text-xs"></i>
@@ -154,6 +166,15 @@ pub fn RequestsList(
                     </table>
                 </div>
             </Show>
+
+            <ConfirmDialog
+                is_open=Signal::derive(move || pending_cancel_request.get().is_some())
+                title="申請取消の確認"
+                message="本当にこの申請を取り消しますか？"
+                on_confirm=confirm_cancel_request
+                on_cancel=dismiss_cancel_dialog
+                destructive=true
+            />
         </div>
     }
 }
