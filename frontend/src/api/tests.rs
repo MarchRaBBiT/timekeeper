@@ -736,6 +736,21 @@ async fn api_client_login_surfaces_api_error_payload() {
 }
 
 #[tokio::test]
+async fn api_client_get_me_masks_parse_error_details() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(GET).path("/api/auth/me");
+        then.status(500);
+    });
+
+    let client = api_client(&server);
+    let err = client.get_me().await.expect_err("get_me should fail");
+    assert_eq!(err.code, "UNKNOWN");
+    assert_eq!(err.error, "サーバーエラーが発生しました。");
+}
+
+#[tokio::test]
 async fn api_client_refresh_override_can_return_error() {
     let client = ApiClient::new_with_base_url("http://127.0.0.1:9/api");
     super::auth::queue_refresh_override(

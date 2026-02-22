@@ -77,12 +77,19 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
-    fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
+    const GENERIC_SERVER_ERROR: &'static str = "サーバーエラーが発生しました。";
+
+    pub(super) fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
             .get("X-PII-Masked")
             .and_then(|value| value.to_str().ok())
             .map(|value| value.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
+    }
+
+    pub(super) fn map_error_payload_parse_failure(error: reqwest::Error) -> ApiError {
+        log::error!("Failed to parse error response payload: {}", error);
+        ApiError::unknown(Self::GENERIC_SERVER_ERROR)
     }
 
     pub fn new() -> Self {
@@ -238,7 +245,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -270,7 +277,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -297,7 +304,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -320,7 +327,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -347,7 +354,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -369,7 +376,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -394,7 +401,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -418,7 +425,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -441,7 +448,7 @@ impl ApiClient {
             let error: ApiError = resp
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -485,7 +492,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -515,7 +522,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -538,7 +545,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -568,7 +575,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -599,7 +606,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -625,7 +632,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -655,7 +662,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -678,7 +685,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -712,7 +719,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -775,7 +782,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -801,7 +808,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -834,7 +841,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }

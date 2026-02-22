@@ -190,7 +190,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
@@ -215,7 +215,7 @@ impl ApiClient {
             let error: ApiError = response
                 .json()
                 .await
-                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
     }
