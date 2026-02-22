@@ -1,6 +1,7 @@
 use crate::api::types::*;
 use crate::config;
 use chrono::NaiveDate;
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
 use uuid::Uuid;
@@ -59,6 +60,26 @@ pub(crate) trait TestResponder: Send + Sync {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 static MOCK_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<dyn TestResponder>>>> = OnceLock::new();
+
+const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b'?')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'`')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
+
+pub(super) fn encode_path_segment(value: &str) -> String {
+    utf8_percent_encode(value, PATH_SEGMENT_ENCODE_SET).to_string()
+}
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) fn register_mock(base_url: String, responder: Arc<dyn TestResponder>) {
@@ -328,11 +349,12 @@ impl ApiClient {
     /// Delete a user (soft delete by default, hard delete if `hard` is true).
     pub async fn admin_delete_user(&self, user_id: &str, hard: bool) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_user_id = encode_path_segment(user_id);
         let resp = self
             .send_with_refresh(|| {
                 let mut request = self
                     .client
-                    .delete(format!("{}/admin/users/{}", base_url, user_id));
+                    .delete(format!("{}/admin/users/{}", base_url, encoded_user_id));
                 if hard {
                     request = request.query(&[("hard", "true")]);
                 }
@@ -354,11 +376,13 @@ impl ApiClient {
 
     pub async fn admin_unlock_user(&self, user_id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_user_id = encode_path_segment(user_id);
         let resp = self
             .send_with_refresh(|| {
-                Ok(self
-                    .client
-                    .post(format!("{}/admin/users/{}/unlock", base_url, user_id)))
+                Ok(self.client.post(format!(
+                    "{}/admin/users/{}/unlock",
+                    base_url, encoded_user_id
+                )))
             })
             .await?;
         let status = resp.status();
@@ -402,11 +426,12 @@ impl ApiClient {
     /// Restore an archived user.
     pub async fn admin_restore_archived_user(&self, user_id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_user_id = encode_path_segment(user_id);
         let resp = self
             .send_with_refresh(|| {
                 Ok(self.client.post(format!(
                     "{}/admin/archived-users/{}/restore",
-                    base_url, user_id
+                    base_url, encoded_user_id
                 )))
             })
             .await?;
@@ -426,11 +451,13 @@ impl ApiClient {
     /// Permanently delete an archived user.
     pub async fn admin_delete_archived_user(&self, user_id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_user_id = encode_path_segment(user_id);
         let resp = self
             .send_with_refresh(|| {
-                Ok(self
-                    .client
-                    .delete(format!("{}/admin/archived-users/{}", base_url, user_id)))
+                Ok(self.client.delete(format!(
+                    "{}/admin/archived-users/{}",
+                    base_url, encoded_user_id
+                )))
             })
             .await?;
         let status = resp.status();
@@ -522,11 +549,12 @@ impl ApiClient {
 
     pub async fn admin_delete_holiday(&self, id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .client
-                    .delete(format!("{}/admin/holidays/{}", base_url, id)))
+                    .delete(format!("{}/admin/holidays/{}", base_url, encoded_id)))
             })
             .await?;
 
@@ -662,11 +690,12 @@ impl ApiClient {
 
     pub async fn admin_delete_weekly_holiday(&self, id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .client
-                    .delete(format!("{}/admin/holidays/weekly/{}", base_url, id)))
+                    .delete(format!("{}/admin/holidays/weekly/{}", base_url, encoded_id)))
             })
             .await?;
 
