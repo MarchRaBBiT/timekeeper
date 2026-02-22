@@ -15,7 +15,7 @@ pub fn HistorySection(
     error: Signal<Option<crate::api::ApiError>>,
 ) -> impl IntoView {
     view! {
-        <div class="bg-surface-elevated shadow-premium rounded-3xl overflow-hidden border border-border">
+        <div class="bg-surface-elevated rounded-2xl shadow-sm overflow-hidden border border-border">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
                 <h3 class="text-lg font-display font-bold text-fg">{"勤怠履歴"}</h3>
                 <Show when=move || loading.get()>

@@ -48,9 +48,9 @@ pub fn LeaveRequestForm(
     let end_signal = state.end_signal();
     let reason_signal = state.reason_signal();
     view! {
-        <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
+        <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div>
-                <h3 class="text-lg font-medium text-fg">{"休暇申請"}</h3>
+                <h3 class="text-lg font-display font-bold text-fg">{"休暇申請"}</h3>
                 <p class="text-sm text-fg-muted">{"休暇の種類と期間を入力して申請を送信します。"} </p>
                 <Show
                     when=move || {

@@ -206,13 +206,7 @@ impl ApiClient {
             let location = window.location();
             if let Ok(pathname) = location.pathname() {
                 // Public paths where 401 is expected (not logged in) and should not trigger redirect
-                let public_paths = [
-                    "/",
-                    "/login",
-                    "/forgot-password",
-                    "/reset-password",
-                    "/mfa/register",
-                ];
+                let public_paths = ["/", "/login", "/forgot-password", "/reset-password"];
                 if public_paths.contains(&pathname.as_str()) {
                     return;
                 }
