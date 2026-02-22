@@ -3,6 +3,7 @@ use crate::{
     state::auth::{self, use_auth},
 };
 use leptos::*;
+use leptos_router::A;
 
 #[component]
 pub fn Header() -> impl IntoView {
@@ -54,33 +55,33 @@ pub fn Header() -> impl IntoView {
                     </div>
                     <div class="flex items-center">
                         <nav class="hidden lg:flex space-x-4">
-                            <a href="/dashboard" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                            <A href="/dashboard" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                 "ダッシュボード"
-                            </a>
-                            <a href="/attendance" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                            </A>
+                            <A href="/attendance" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                 "勤怠"
-                            </a>
-                            <a href="/requests" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                            </A>
+                            <A href="/requests" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                 "申請"
-                            </a>
-                            <a href="/settings" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                            </A>
+                            <A href="/settings" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                 "設定"
-                            </a>
+                            </A>
                             <Show when=move || can_access_admin()>
-                                <a href="/admin" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                                <A href="/admin" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                     "管理"
-                                </a>
-                                <a href="/admin/export" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                                </A>
+                                <A href="/admin/export" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                     "データエクスポート"
-                                </a>
-                                <a href="/admin/audit-logs" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                                </A>
+                                <A href="/admin/audit-logs" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                     "監査ログ"
-                                </a>
+                                </A>
                             </Show>
                             <Show when=move || can_manage_users()>
-                                <a href="/admin/users" class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover">
+                                <A href="/admin/users" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                     "ユーザー追加"
-                                </a>
+                                </A>
                             </Show>
                             <button
                                 on:click=on_logout
@@ -134,65 +135,81 @@ pub fn Header() -> impl IntoView {
                 <Show when=move || menu_open.get()>
                     <div id="mobile-nav" class="lg:hidden border-t border-border">
                         <nav class="px-4 py-3 space-y-2">
-                            <a
+                            <A
                                 href="/dashboard"
+                                exact=true
                                 class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                active_class="text-fg bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "ダッシュボード"
-                            </a>
-                            <a
+                            </A>
+                            <A
                                 href="/attendance"
+                                exact=true
                                 class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                active_class="text-fg bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "勤怠"
-                            </a>
-                            <a
+                            </A>
+                            <A
                                 href="/requests"
+                                exact=true
                                 class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                active_class="text-fg bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "申請"
-                            </a>
-                            <a
+                            </A>
+                            <A
                                 href="/settings"
+                                exact=true
                                 class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                active_class="text-fg bg-action-ghost-bg-hover"
                                 on:click=move |_| set_menu_open.set(false)
                             >
                                 "設定"
-                            </a>
+                            </A>
                             <Show when=move || can_access_admin()>
-                                <a
+                                <A
                                     href="/admin"
+                                    exact=true
                                     class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                    active_class="text-fg bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "管理"
-                                </a>
-                                <a
+                                </A>
+                                <A
                                     href="/admin/export"
+                                    exact=true
                                     class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                    active_class="text-fg bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "データエクスポート"
-                                </a>
-                                <a
+                                </A>
+                                <A
                                     href="/admin/audit-logs"
+                                    exact=true
                                     class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                    active_class="text-fg bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "監査ログ"
-                                </a>
+                                </A>
                             </Show>
                             <Show when=move || can_manage_users()>
-                                <a
+                                <A
                                     href="/admin/users"
+                                    exact=true
                                     class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                    active_class="text-fg bg-action-ghost-bg-hover"
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     "ユーザー追加"
-                                </a>
+                                </A>
                             </Show>
                             <button
                                 on:click=on_logout
@@ -339,6 +356,7 @@ mod host_tests {
     use super::*;
     use crate::test_support::helpers::{admin_user, provide_auth, set_time_zone_ok};
     use crate::test_support::ssr::render_to_string;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     fn set_time_zone_warning() {
         crate::config::overwrite_time_zone_status_for_test(TimeZoneStatus {
@@ -352,8 +370,11 @@ mod host_tests {
     #[test]
     fn header_renders_admin_links() {
         let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/dashboard".to_string(),
+            }));
             provide_auth(Some(admin_user(true)));
-            view! { <Header /> }
+            view! { <Router><Header /></Router> }
         });
         assert!(html.contains("管理"));
         assert!(html.contains("ユーザー追加"));
@@ -363,8 +384,11 @@ mod host_tests {
     fn layout_renders_children() {
         set_time_zone_warning();
         let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/dashboard".to_string(),
+            }));
             provide_auth(Some(admin_user(true)));
-            view! { <Layout><div>"child"</div></Layout> }
+            view! { <Router><Layout><div>"child"</div></Layout></Router> }
         });
         assert!(html.contains("child"));
     }
