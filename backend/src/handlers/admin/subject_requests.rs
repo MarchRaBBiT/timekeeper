@@ -63,7 +63,7 @@ pub async fn list_subject_requests(
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
     let (items, total) =
-        subject_request::list_subject_requests(&state.write_pool, &filters, per_page, offset)
+        subject_request::list_subject_requests(state.read_pool(), &filters, per_page, offset)
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "failed to list subject requests");

@@ -121,7 +121,7 @@ pub async fn list_audit_logs(
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogListQuery>,
 ) -> Result<Response, AppError> {
-    ensure_audit_log_access(&state.write_pool, &user).await?;
+    ensure_audit_log_access(state.read_pool(), &user).await?;
 
     let (page, per_page, filters) = validate_list_query(q)?;
     let offset = (page - 1) * per_page;
@@ -154,7 +154,7 @@ pub async fn get_audit_log_detail(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
-    ensure_audit_log_access(&state.write_pool, &user).await?;
+    ensure_audit_log_access(state.read_pool(), &user).await?;
 
     let audit_log_id = AuditLogId::from_str(&id)
         .map_err(|_| AppError::BadRequest("Invalid audit log ID".into()))?;
@@ -179,7 +179,7 @@ pub async fn export_audit_logs(
     Extension(user): Extension<User>,
     Query(q): Query<AuditLogExportQuery>,
 ) -> Result<Response, AppError> {
-    ensure_audit_log_access(&state.write_pool, &user).await?;
+    ensure_audit_log_access(state.read_pool(), &user).await?;
 
     let max_rows = state.config.audit_log_export_max_rows;
     let filters = validate_export_query(q)?;
