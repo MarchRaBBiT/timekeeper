@@ -6,9 +6,6 @@ use serde_json::json;
 use uuid::Uuid;
 use web_sys::Storage;
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
-use crate::utils::storage as storage_utils;
-#[cfg(all(test, target_arch = "wasm32"))]
 use crate::utils::storage as storage_utils;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use std::collections::HashMap;
@@ -77,6 +74,10 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
+    const SESSION_EXPIRED_ERROR: &'static str =
+        "セッションが期限切れです。再度ログインしてください。";
+    const SESSION_EXPIRED_CODE: &'static str = "SESSION_EXPIRED";
+
     fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
             .get("X-PII-Masked")
@@ -192,7 +193,19 @@ impl ApiClient {
             return Ok(retry_response);
         }
 
-        Ok(response)
+        Self::clear_auth_session();
+        Self::handle_unauthorized_status(StatusCode::UNAUTHORIZED);
+        Err(ApiError {
+            error: Self::SESSION_EXPIRED_ERROR.to_string(),
+            code: Self::SESSION_EXPIRED_CODE.to_string(),
+            details: None,
+        })
+    }
+
+    fn clear_auth_session() {
+        if let Ok(storage) = storage_utils::local_storage() {
+            let _ = storage.remove_item("device_label");
+        }
     }
 
     fn redirect_to_login_if_needed() {

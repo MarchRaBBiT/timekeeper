@@ -712,6 +712,37 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
 }
 
 #[tokio::test]
+async fn api_client_returns_session_expired_when_refresh_fails() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(GET).path("/api/auth/me");
+        then.status(401)
+            .json_body(json!({ "error": "unauthorized", "code": "UNAUTHORIZED" }));
+    });
+
+    let client = api_client(&server);
+    super::auth::queue_refresh_override(
+        &client,
+        Err(ApiError {
+            error: "refresh failed".into(),
+            code: "UNAUTHORIZED".into(),
+            details: None,
+        }),
+    );
+
+    let err = client
+        .get_me()
+        .await
+        .expect_err("refresh failure should map to session expiration");
+    assert_eq!(err.code, "SESSION_EXPIRED");
+    assert_eq!(
+        err.error,
+        "セッションが期限切れです。再度ログインしてください。"
+    );
+}
+
+#[tokio::test]
 async fn api_client_login_surfaces_api_error_payload() {
     let server = MockServer::start_async().await;
 
