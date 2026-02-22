@@ -5,6 +5,7 @@ use super::{
     types::{
         ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest, CreateOvertimeRequest,
         LeaveRequestResponse, OvertimeRequestResponse, UpdateAttendanceCorrectionRequest,
+        UpdateLeaveRequest, UpdateOvertimeRequest,
     },
 };
 
@@ -80,17 +81,20 @@ impl ApiClient {
         self.map_json_response(response).await
     }
 
-    pub async fn update_request(&self, id: &str, payload: Value) -> Result<Value, ApiError> {
-        let base_url = self.resolved_base_url().await;
-        let response = self
-            .send_with_refresh(|| {
-                Ok(self
-                    .http_client()
-                    .put(format!("{}/requests/{}", base_url, id))
-                    .json(&payload))
-            })
-            .await?;
-        self.map_json_response(response).await
+    pub async fn update_leave_request(
+        &self,
+        id: &str,
+        payload: UpdateLeaveRequest,
+    ) -> Result<Value, ApiError> {
+        self.update_request_payload(id, payload).await
+    }
+
+    pub async fn update_overtime_request(
+        &self,
+        id: &str,
+        payload: UpdateOvertimeRequest,
+    ) -> Result<Value, ApiError> {
+        self.update_request_payload(id, payload).await
     }
 
     pub async fn cancel_request(&self, id: &str) -> Result<Value, ApiError> {
@@ -193,6 +197,22 @@ impl ApiClient {
                 .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
             Err(error)
         }
+    }
+
+    async fn update_request_payload<T>(&self, id: &str, payload: T) -> Result<Value, ApiError>
+    where
+        T: serde::Serialize + Clone,
+    {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .put(format!("{}/requests/{}", base_url, id))
+                    .json(&payload))
+            })
+            .await?;
+        self.map_json_response(response).await
     }
 
     pub async fn get_my_requests(&self) -> Result<Value, ApiError> {

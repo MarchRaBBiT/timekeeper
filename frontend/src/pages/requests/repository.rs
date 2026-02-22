@@ -1,7 +1,7 @@
 use crate::api::{
     ApiClient, ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
     CreateOvertimeRequest, LeaveRequestResponse, OvertimeRequestResponse,
-    UpdateAttendanceCorrectionRequest,
+    UpdateAttendanceCorrectionRequest, UpdateLeaveRequest, UpdateOvertimeRequest,
 };
 use serde_json::Value;
 use std::rc::Rc;
@@ -44,8 +44,26 @@ impl RequestsRepository {
             .map(|_| ())
     }
 
-    pub async fn update_request(&self, id: &str, payload: Value) -> Result<(), ApiError> {
-        self.client.update_request(id, payload).await.map(|_| ())
+    pub async fn update_leave(
+        &self,
+        id: &str,
+        payload: UpdateLeaveRequest,
+    ) -> Result<(), ApiError> {
+        self.client
+            .update_leave_request(id, payload)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn update_overtime(
+        &self,
+        id: &str,
+        payload: UpdateOvertimeRequest,
+    ) -> Result<(), ApiError> {
+        self.client
+            .update_overtime_request(id, payload)
+            .await
+            .map(|_| ())
     }
 
     pub async fn cancel_request(&self, id: &str) -> Result<(), ApiError> {
@@ -161,9 +179,17 @@ mod host_tests {
         })
         .await
         .unwrap();
-        repo.update_request("req-1", serde_json::json!({ "status": "updated" }))
-            .await
-            .unwrap();
+        repo.update_leave(
+            "req-1",
+            UpdateLeaveRequest {
+                leave_type: "annual".into(),
+                start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+                end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                reason: Some("updated".into()),
+            },
+        )
+        .await
+        .unwrap();
         repo.cancel_request("req-1").await.unwrap();
         repo.list_my_requests().await.unwrap();
     }

@@ -491,7 +491,15 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
     client.admin_approve_request("req-1", "ok").await.unwrap();
     client.admin_reject_request("req-1", "no").await.unwrap();
     client
-        .update_request("req-1", json!({ "status": "updated" }))
+        .update_leave_request(
+            "req-1",
+            UpdateLeaveRequest {
+                leave_type: "annual".into(),
+                start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
+                end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                reason: Some("updated".into()),
+            },
+        )
         .await
         .unwrap();
     client.cancel_request("req-1").await.unwrap();
