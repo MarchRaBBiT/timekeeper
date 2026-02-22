@@ -4,8 +4,8 @@ use serde_json::{json, Value};
 use super::{
     client::ApiClient,
     types::{
-        AdminAttendanceUpsert, ApiError, AttendanceResponse, AttendanceStatusResponse,
-        AttendanceSummary, BreakRecordResponse,
+        ActiveBreakResponse, AdminAttendanceUpsert, ApiError, AttendanceResponse,
+        AttendanceStatusResponse, AttendanceSummary, BreakRecordResponse,
     },
 };
 
@@ -278,6 +278,31 @@ impl ApiClient {
                 Ok(self
                     .http_client()
                     .put(format!("{}/admin/breaks/{}/force-end", base_url, break_id)))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse error: {}", e)))?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_list_active_breaks(&self) -> Result<Vec<ActiveBreakResponse>, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .get(format!("{}/admin/breaks/active", base_url)))
             })
             .await?;
         let status = response.status();

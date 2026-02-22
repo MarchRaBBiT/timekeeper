@@ -1,7 +1,7 @@
 use crate::api::{
-    AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient, ApiError,
-    CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse, SubjectRequestListResponse,
-    UserResponse, WeeklyHolidayResponse,
+    ActiveBreakResponse, AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient,
+    ApiError, CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse,
+    SubjectRequestListResponse, UserResponse, WeeklyHolidayResponse,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -153,6 +153,10 @@ impl AdminRepository {
             .map(|_| ())
     }
 
+    pub async fn list_active_breaks(&self) -> Result<Vec<ActiveBreakResponse>, ApiError> {
+        self.client.admin_list_active_breaks().await
+    }
+
     pub async fn list_holidays(
         &self,
         query: HolidayListQuery,
@@ -299,6 +303,17 @@ mod host_tests {
             }));
         });
         server.mock(|when, then| {
+            when.method(GET).path("/api/admin/breaks/active");
+            then.status(200).json_body(serde_json::json!([{
+                "break_id": "br-1",
+                "attendance_id": "att-1",
+                "user_id": "u1",
+                "username": "alice",
+                "full_name": "Alice Example",
+                "break_start_time": "2025-01-02T12:00:00"
+            }]));
+        });
+        server.mock(|when, then| {
             when.method(GET).path("/api/admin/holidays");
             then.status(200).json_body(serde_json::json!({
                 "page": 1,
@@ -372,6 +387,7 @@ mod host_tests {
         .await
         .unwrap();
         repo.force_end_break("br-1").await.unwrap();
+        assert_eq!(repo.list_active_breaks().await.unwrap().len(), 1);
         repo.list_holidays(HolidayListQuery::default())
             .await
             .unwrap();

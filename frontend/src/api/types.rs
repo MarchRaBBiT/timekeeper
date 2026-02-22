@@ -304,6 +304,16 @@ pub struct AdminBreakItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveBreakResponse {
+    pub break_id: String,
+    pub attendance_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub full_name: Option<String>,
+    pub break_start_time: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateUser {
     pub username: String,
     pub password: String,

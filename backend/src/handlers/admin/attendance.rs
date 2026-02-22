@@ -6,7 +6,8 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use std::str::FromStr;
 use utoipa::ToSchema;
 
@@ -77,6 +78,46 @@ pub struct AdminAttendanceUpsert {
 pub struct AdminBreakItem {
     pub break_start_time: String,
     pub break_end_time: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema, FromRow)]
+pub struct ActiveBreakResponse {
+    pub break_id: BreakRecordId,
+    pub attendance_id: AttendanceId,
+    pub user_id: UserId,
+    pub username: String,
+    pub full_name: Option<String>,
+    pub break_start_time: chrono::NaiveDateTime,
+}
+
+pub async fn list_active_breaks(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+) -> Result<Json<Vec<ActiveBreakResponse>>, AppError> {
+    if !user.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    let rows = sqlx::query_as::<_, ActiveBreakResponse>(
+        r#"
+        SELECT
+            br.id AS break_id,
+            br.attendance_id,
+            a.user_id,
+            u.username,
+            NULLIF(u.full_name, '') AS full_name,
+            br.break_start_time
+        FROM break_records br
+        INNER JOIN attendance a ON a.id = br.attendance_id
+        INNER JOIN users u ON u.id = a.user_id
+        WHERE br.break_end_time IS NULL
+        ORDER BY br.break_start_time DESC
+        "#,
+    )
+    .fetch_all(state.read_pool())
+    .await?;
+
+    Ok(Json(rows))
 }
 
 pub async fn upsert_attendance(
