@@ -35,6 +35,7 @@ pub fn LoginForm(
     login_action: Action<LoginRequest, Result<(), ApiError>>,
 ) -> impl IntoView {
     let pending = login_action.pending();
+    let show_mfa = create_rw_signal(false);
 
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -93,23 +94,45 @@ pub fn LoginForm(
                                 }
                             />
                         </div>
-                        <div>
-                            <label for="totp_code" class="sr-only">{"MFAコード"}</label>
-                            <input
-                                id="totp_code"
-                                name="totp_code"
-                                type="text"
-                                inputmode="numeric"
-                                autocomplete="one-time-code"
-                                class="appearance-none rounded relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
-                                placeholder="MFAコード (必要な場合)"
-                                prop:value=form.totp_code
-                                on:input=move |ev| {
-                                    let target = event_target::<HtmlInputElement>(&ev);
-                                    form.totp_code.set(target.value());
+                    </div>
+                    <div class="space-y-2">
+                        <button
+                            type="button"
+                            class="text-sm font-medium text-link hover:text-link-hover"
+                            on:click=move |_| {
+                                show_mfa.update(|value| *value = !*value);
+                                if !show_mfa.get_untracked() {
+                                    form.totp_code.set(String::new());
                                 }
-                            />
-                        </div>
+                            }
+                        >
+                            {move || {
+                                if show_mfa.get() {
+                                    "MFAコード入力を閉じる"
+                                } else {
+                                    "MFAコードを入力する"
+                                }
+                            }}
+                        </button>
+                        <Show when=move || show_mfa.get()>
+                            <div class="animate-pop-in">
+                                <label for="totp_code" class="sr-only">{"MFAコード"}</label>
+                                <input
+                                    id="totp_code"
+                                    name="totp_code"
+                                    type="text"
+                                    inputmode="numeric"
+                                    autocomplete="one-time-code"
+                                    class="appearance-none rounded relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
+                                    placeholder="MFAコード"
+                                    prop:value=form.totp_code
+                                    on:input=move |ev| {
+                                        let target = event_target::<HtmlInputElement>(&ev);
+                                        form.totp_code.set(target.value());
+                                    }
+                                />
+                            </div>
+                        </Show>
                     </div>
 
                     <div class="flex items-center justify-between">
@@ -176,6 +199,8 @@ mod host_tests {
         assert!(html.contains("Timekeeper にログイン"));
         assert!(html.contains("ユーザー名"));
         assert!(html.contains("パスワード"));
+        assert!(html.contains("MFAコードを入力する"));
+        assert!(!html.contains("placeholder=\"MFAコード\""));
     }
 
     #[test]
