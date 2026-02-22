@@ -203,7 +203,17 @@ pub async fn await_api_base_url() -> String {
             return cache_base_url(&url);
         }
     }
-    cache_base_url("http://localhost:3000/api")
+    cache_base_url(&default_api_base_url())
+}
+
+fn default_api_base_url() -> String {
+    if cfg!(debug_assertions) {
+        "http://localhost:3000/api".to_string()
+    } else {
+        panic!(
+            "API base URL is not configured. Set window.__TIMEKEEPER_ENV.API_BASE_URL or provide config.json."
+        );
+    }
 }
 
 fn parse_time_zone(value: &str) -> Tz {
@@ -317,6 +327,13 @@ mod tests {
         assert!(!refreshed.is_fallback);
         assert!(refreshed.last_error.is_none());
         assert_eq!(refreshed.time_zone.as_deref(), Some("Asia/Tokyo"));
+    }
+
+    #[test]
+    fn default_api_base_url_uses_localhost_in_debug_builds() {
+        if cfg!(debug_assertions) {
+            assert_eq!(default_api_base_url(), "http://localhost:3000/api");
+        }
     }
 }
 
