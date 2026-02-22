@@ -1,9 +1,69 @@
 use crate::pages::requests::types::{RequestKind, RequestSummary};
+use leptos::ev::KeyboardEvent;
+use leptos::html;
 use leptos::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
 #[component]
 pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl IntoView {
-    let on_close = { move |_| selected.set(None) };
+    let header_close_ref = create_node_ref::<html::Button>();
+    let footer_close_ref = create_node_ref::<html::Button>();
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = (&header_close_ref, &footer_close_ref);
+    #[cfg(target_arch = "wasm32")]
+    let previously_focused = create_rw_signal(None::<web_sys::HtmlElement>);
+
+    let on_dialog_keydown = move |ev: KeyboardEvent| match ev.key().as_str() {
+        "Escape" => {
+            ev.prevent_default();
+            selected.set(None);
+            #[cfg(target_arch = "wasm32")]
+            if let Some(element) = previously_focused.get_untracked() {
+                let _ = element.focus();
+                previously_focused.set(None);
+            }
+        }
+        "Tab" => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let active_id = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.active_element())
+                    .and_then(|element| element.get_attribute("id"))
+                    .unwrap_or_default();
+                if ev.shift_key() && active_id == "request-detail-modal-header-close" {
+                    ev.prevent_default();
+                    if let Some(button) = footer_close_ref.get() {
+                        let _ = button.focus();
+                    }
+                } else if !ev.shift_key() && active_id == "request-detail-modal-footer-close" {
+                    ev.prevent_default();
+                    if let Some(button) = header_close_ref.get() {
+                        let _ = button.focus();
+                    }
+                }
+            }
+        }
+        _ => {}
+    };
+
+    create_effect(move |_| {
+        if selected.get().is_some() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let active = web_sys::window()
+                    .and_then(|window| window.document())
+                    .and_then(|document| document.active_element())
+                    .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok());
+                previously_focused.set(active);
+                if let Some(button) = header_close_ref.get() {
+                    let _ = button.focus();
+                }
+            }
+        }
+    });
+
     view! {
         <Show when=move || selected.get().is_some()>
             {move || {
@@ -12,8 +72,24 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                     .map(|summary| {
                         view! {
                             <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-                                <div class="fixed inset-0 bg-overlay-backdrop" on:click=on_close></div>
-                                <div class="relative bg-surface-elevated rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+                                <div
+                                    class="fixed inset-0 bg-overlay-backdrop"
+                                    on:click=move |_| {
+                                        selected.set(None);
+                                        #[cfg(target_arch = "wasm32")]
+                                        if let Some(element) = previously_focused.get_untracked() {
+                                            let _ = element.focus();
+                                            previously_focused.set(None);
+                                        }
+                                    }
+                                ></div>
+                                <div
+                                    class="relative bg-surface-elevated rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-primary-focus"
+                                    role="dialog"
+                                    aria-modal="true"
+                                    tabindex="-1"
+                                    on:keydown=on_dialog_keydown
+                                >
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="text-sm text-fg-muted">{"申請の詳細"}</p>
@@ -25,7 +101,20 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                                 }}
                                             </p>
                                         </div>
-                                        <button class="text-fg-muted hover:text-fg" on:click=on_close>
+                                        <button
+                                            id="request-detail-modal-header-close"
+                                            node_ref=header_close_ref
+                                            aria-label="閉じる"
+                                            class="text-fg-muted hover:text-fg"
+                                            on:click=move |_| {
+                                                selected.set(None);
+                                                #[cfg(target_arch = "wasm32")]
+                                                if let Some(element) = previously_focused.get_untracked() {
+                                                    let _ = element.focus();
+                                                    previously_focused.set(None);
+                                                }
+                                            }
+                                        >
                                             {"✕"}
                                         </button>
                                     </div>
@@ -52,7 +141,19 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                         </div>
                                     </div>
                                     <div class="flex justify-end">
-                                        <button class="px-4 py-2 rounded bg-surface-muted text-fg hover:bg-surface-elevated" on:click=on_close>
+                                        <button
+                                            id="request-detail-modal-footer-close"
+                                            node_ref=footer_close_ref
+                                            class="px-4 py-2 rounded bg-surface-muted text-fg hover:bg-surface-elevated"
+                                            on:click=move |_| {
+                                                selected.set(None);
+                                                #[cfg(target_arch = "wasm32")]
+                                                if let Some(element) = previously_focused.get_untracked() {
+                                                    let _ = element.focus();
+                                                    previously_focused.set(None);
+                                                }
+                                            }
+                                        >
                                             {"閉じる"}
                                         </button>
                                     </div>
@@ -87,6 +188,9 @@ mod host_tests {
             view! { <RequestDetailModal selected=selected /> }
         });
         assert!(html.contains("休暇申請"));
+        assert!(html.contains("role=\"dialog\""));
+        assert!(html.contains("aria-modal=\"true\""));
+        assert!(html.contains("aria-label=\"閉じる\""));
         assert!(html.contains("pending"));
         assert!(html.contains("family"));
     }
