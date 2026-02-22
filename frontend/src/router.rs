@@ -33,6 +33,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/dashboard",
     "/attendance",
     "/requests",
+    "/mfa/register",
     "/settings",
     "/admin",
     "/admin/users",
@@ -40,13 +41,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/admin/audit-logs",
 ];
 
-pub const PUBLIC_ROUTE_PATHS: &[&str] = &[
-    "/",
-    "/login",
-    "/mfa/register",
-    "/forgot-password",
-    "/reset-password",
-];
+pub const PUBLIC_ROUTE_PATHS: &[&str] = &["/", "/login", "/forgot-password", "/reset-password"];
 
 pub fn mount_app() {
     mount_to_body(app_root);
@@ -65,7 +60,7 @@ pub fn app_root() -> impl IntoView {
                     <Route path="/dashboard" view=ProtectedDashboard/>
                     <Route path="/attendance" view=ProtectedAttendance/>
                     <Route path="/requests" view=ProtectedRequests/>
-                    <Route path="/mfa/register" view=MfaRegisterPage/> // Keeping for direct access if needed, or redirect?
+                    <Route path="/mfa/register" view=ProtectedMfaRegister/>
                     <Route path="/settings" view=ProtectedSettings/>
                     <Route path="/admin" view=ProtectedAdmin/>
                     <Route path="/admin/users" view=ProtectedAdminUsers/>
@@ -90,6 +85,11 @@ fn ProtectedAttendance() -> impl IntoView {
 #[component]
 fn ProtectedRequests() -> impl IntoView {
     view! { <RequireAuth><RequestsPage/></RequireAuth> }
+}
+
+#[component]
+fn ProtectedMfaRegister() -> impl IntoView {
+    view! { <RequireAuth><MfaRegisterPage/></RequireAuth> }
 }
 
 #[component]
@@ -164,6 +164,12 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn mfa_register_route_is_protected() {
+        assert!(PROTECTED_ROUTE_PATHS.contains(&"/mfa/register"));
+        assert!(!PUBLIC_ROUTE_PATHS.contains(&"/mfa/register"));
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -200,6 +206,7 @@ mod host_tests {
                     <ProtectedDashboard />
                     <ProtectedAttendance />
                     <ProtectedRequests />
+                    <ProtectedMfaRegister />
                     <ProtectedSettings />
                     <ProtectedAdmin />
                     <ProtectedAdminUsers />
