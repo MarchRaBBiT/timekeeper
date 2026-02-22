@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::str::FromStr;
 use utoipa::ToSchema;
+use validator::Validate;
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -87,8 +88,9 @@ impl From<Holiday> for HolidayResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct CreateWeeklyHolidayPayload {
+    #[validate(range(min = 0, max = 6))]
     pub weekday: u8,
     pub starts_on: NaiveDate,
     #[serde(default)]
@@ -238,5 +240,16 @@ mod tests {
         assert_eq!(weekly_response.weekday, 6);
         assert_eq!(weekly_response.starts_on, date);
         assert!(weekly_response.ends_on.is_none());
+    }
+
+    #[test]
+    fn create_weekly_holiday_payload_rejects_invalid_weekday() {
+        let payload = CreateWeeklyHolidayPayload {
+            weekday: 7,
+            starts_on: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
+            ends_on: None,
+        };
+
+        assert!(payload.validate().is_err());
     }
 }
