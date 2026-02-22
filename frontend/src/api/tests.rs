@@ -608,6 +608,19 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
         .unwrap();
 }
 
+#[test]
+fn api_client_audit_log_with_policy_reads_pii_masked_header() {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("X-PII-Masked", "TRUE".parse().unwrap());
+    assert!(ApiClient::parse_pii_masked_header(&headers));
+
+    headers.insert("X-PII-Masked", "false".parse().unwrap());
+    assert!(!ApiClient::parse_pii_masked_header(&headers));
+
+    headers.remove("X-PII-Masked");
+    assert!(!ApiClient::parse_pii_masked_header(&headers));
+}
+
 #[tokio::test]
 async fn api_client_auth_login_and_refresh_use_test_overrides() {
     let server = MockServer::start_async().await;

@@ -77,7 +77,7 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
-    fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
+    pub(super) fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
             .get("X-PII-Masked")
             .and_then(|value| value.to_str().ok())
