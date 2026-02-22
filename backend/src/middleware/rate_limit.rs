@@ -5,10 +5,11 @@ use axum::{
     middleware::Next,
     response::Response as AxumResponse,
 };
+use bb8_redis::redis::{self};
 use governor::middleware::StateInformationMiddleware;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tower_governor::{
     governor::GovernorConfigBuilder, key_extractor::PeerIpKeyExtractor, GovernorError,
     GovernorLayer,
@@ -69,38 +70,11 @@ pub async fn user_rate_limit(
 
     let max_requests = state.config.rate_limit_user_max_requests.max(1);
     let window = Duration::from_secs(state.config.rate_limit_user_window_seconds.max(1));
-    let now = Instant::now();
-
-    let rejection = {
-        let mut store = user_rate_limit_store()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if store.len() > user_rate_limit_cleanup_threshold() {
-            store.retain(|_, entry| now.duration_since(entry.started_at) < window);
-        }
-
-        let entry = store.entry(key).or_insert(UserRateLimitWindow {
-            started_at: now,
-            count: 0,
-        });
-
-        if now.duration_since(entry.started_at) >= window {
-            entry.started_at = now;
-            entry.count = 0;
-        }
-
-        if entry.count >= max_requests {
-            let elapsed = now.duration_since(entry.started_at);
-            let retry_after = window.saturating_sub(elapsed).as_secs().max(1);
-            Some(json_error_response(
-                StatusCode::TOO_MANY_REQUESTS,
-                "rate_limit_exceeded",
-                "Too many requests. Please try again later.",
-                Some(retry_after),
-            ))
-        } else {
-            entry.count += 1;
-            None
+    let rejection = match enforce_user_rate_limit_redis(&state, &key, max_requests, window).await {
+        Ok(rejection) => rejection,
+        Err(error) => {
+            tracing::warn!(error = %error, "Redis user rate limit unavailable, falling back to in-memory store");
+            enforce_user_rate_limit_in_memory(&key, max_requests, window)
         }
     };
 
@@ -109,6 +83,110 @@ pub async fn user_rate_limit(
     }
 
     next.run(request).await
+}
+
+const USER_RATE_LIMIT_REDIS_SCRIPT: &str = r#"
+local key = KEYS[1]
+local window = tonumber(ARGV[1])
+local current = redis.call('INCR', key)
+if current == 1 then
+    redis.call('EXPIRE', key, window)
+end
+return current
+"#;
+
+async fn enforce_user_rate_limit_redis(
+    state: &AppState,
+    key: &str,
+    max_requests: u32,
+    window: Duration,
+) -> Result<Option<AxumResponse>, redis::RedisError> {
+    let Some(pool) = state.redis() else {
+        return Err(redis::RedisError::from((
+            redis::ErrorKind::IoError,
+            "redis pool unavailable",
+        )));
+    };
+
+    let now_epoch = current_unix_seconds();
+    let window_seconds = window.as_secs().max(1);
+    let window_start = (now_epoch / window_seconds) * window_seconds;
+    let redis_key = format!("rate_limit:user:{key}:{window_start}");
+    let retry_after = (window_start + window_seconds)
+        .saturating_sub(now_epoch)
+        .max(1);
+
+    let mut conn = pool.get().await.map_err(|err| {
+        redis::RedisError::from((
+            redis::ErrorKind::IoError,
+            "failed to get redis connection",
+            err.to_string(),
+        ))
+    })?;
+
+    let current: i64 = redis::cmd("EVAL")
+        .arg(USER_RATE_LIMIT_REDIS_SCRIPT)
+        .arg(1)
+        .arg(redis_key)
+        .arg(window_seconds as i64)
+        .query_async(&mut *conn)
+        .await?;
+
+    if current > i64::from(max_requests) {
+        return Ok(Some(json_error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_exceeded",
+            "Too many requests. Please try again later.",
+            Some(retry_after),
+        )));
+    }
+
+    Ok(None)
+}
+
+fn enforce_user_rate_limit_in_memory(
+    key: &str,
+    max_requests: u32,
+    window: Duration,
+) -> Option<AxumResponse> {
+    let now = Instant::now();
+    let mut store = user_rate_limit_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if store.len() > user_rate_limit_cleanup_threshold() {
+        store.retain(|_, entry| now.duration_since(entry.started_at) < window);
+    }
+
+    let entry = store.entry(key.to_string()).or_insert(UserRateLimitWindow {
+        started_at: now,
+        count: 0,
+    });
+
+    if now.duration_since(entry.started_at) >= window {
+        entry.started_at = now;
+        entry.count = 0;
+    }
+
+    if entry.count >= max_requests {
+        let elapsed = now.duration_since(entry.started_at);
+        let retry_after = window.saturating_sub(elapsed).as_secs().max(1);
+        Some(json_error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_exceeded",
+            "Too many requests. Please try again later.",
+            Some(retry_after),
+        ))
+    } else {
+        entry.count += 1;
+        None
+    }
+}
+
+fn current_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 pub fn create_auth_rate_limiter(
