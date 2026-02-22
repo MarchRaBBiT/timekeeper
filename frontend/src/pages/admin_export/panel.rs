@@ -160,11 +160,11 @@ fn AdminExportPanel() -> impl IntoView {
                         </div>
                     </div>
                     <DatePicker
-                        label=Some("From")
+                        label=Some("開始日")
                         value=vm.from_date
                     />
                     <DatePicker
-                        label=Some("To")
+                        label=Some("終了日")
                         value=vm.to_date
                     />
                 </div>
@@ -233,5 +233,7 @@ mod host_tests {
         });
         assert!(html.contains("データエクスポート"));
         assert!(html.contains("CSVをエクスポート"));
+        assert!(html.contains("開始日"));
+        assert!(html.contains("終了日"));
     }
 }
