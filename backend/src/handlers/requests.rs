@@ -11,9 +11,10 @@ use crate::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
-    repositories::request::{RequestCreate, RequestRecord, RequestRepository},
     requests::application::user_requests::{
-        cancel_my_request, get_my_requests_view, update_my_request,
+        cancel_my_request, create_leave_request as create_leave_request_use_case,
+        create_overtime_request as create_overtime_request_use_case, get_my_requests_view,
+        update_my_request,
     },
     state::AppState,
 };
@@ -35,18 +36,7 @@ pub async fn create_leave_request(
         payload.reason,
     );
 
-    let repo = RequestRepository::new();
-    let saved = repo
-        .create_request_with_history(&state.write_pool, RequestCreate::Leave(&leave_request))
-        .await?;
-    let response = match saved {
-        RequestRecord::Leave(item) => LeaveRequestResponse::from(item),
-        RequestRecord::Overtime(_) => {
-            return Err(AppError::InternalServerError(anyhow::anyhow!(
-                "Repository returned OvertimeRequest when LeaveRequest was expected"
-            )))
-        }
-    };
+    let response = create_leave_request_use_case(&state.write_pool, &leave_request).await?;
     Ok(Json(response))
 }
 
@@ -62,21 +52,7 @@ pub async fn create_overtime_request(
     let overtime_request =
         OvertimeRequest::new(user_id, payload.date, payload.planned_hours, payload.reason);
 
-    let repo = RequestRepository::new();
-    let saved = repo
-        .create_request_with_history(
-            &state.write_pool,
-            RequestCreate::Overtime(&overtime_request),
-        )
-        .await?;
-    let response = match saved {
-        RequestRecord::Overtime(item) => OvertimeRequestResponse::from(item),
-        RequestRecord::Leave(_) => {
-            return Err(AppError::InternalServerError(anyhow::anyhow!(
-                "Repository returned LeaveRequest when OvertimeRequest was expected"
-            )))
-        }
-    };
+    let response = create_overtime_request_use_case(&state.write_pool, &overtime_request).await?;
     Ok(Json(response))
 }
 

@@ -8,13 +8,14 @@ use crate::{
     error::AppError,
     models::{
         attendance_correction_request::AttendanceCorrectionResponse,
-        leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse,
+        leave_request::{LeaveRequest, LeaveRequestResponse},
+        overtime_request::{OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{
         attendance_correction_request::AttendanceCorrectionRequestRepository,
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
-        request::RequestRepository,
+        request::{RequestCreate, RequestRecord, RequestRepository},
     },
     types::{LeaveRequestId, OvertimeRequestId, UserId},
 };
@@ -71,6 +72,38 @@ pub async fn get_my_requests_view(
             .collect(),
         attendance_corrections,
     })
+}
+
+pub async fn create_leave_request(
+    write_pool: &DbPool,
+    leave_request: &LeaveRequest,
+) -> Result<LeaveRequestResponse, AppError> {
+    let repo = RequestRepository::new();
+    let saved = repo
+        .create_request_with_history(write_pool, RequestCreate::Leave(leave_request))
+        .await?;
+    match saved {
+        RequestRecord::Leave(item) => Ok(LeaveRequestResponse::from(item)),
+        RequestRecord::Overtime(_) => Err(AppError::InternalServerError(anyhow::anyhow!(
+            "Repository returned OvertimeRequest when LeaveRequest was expected"
+        ))),
+    }
+}
+
+pub async fn create_overtime_request(
+    write_pool: &DbPool,
+    overtime_request: &OvertimeRequest,
+) -> Result<OvertimeRequestResponse, AppError> {
+    let repo = RequestRepository::new();
+    let saved = repo
+        .create_request_with_history(write_pool, RequestCreate::Overtime(overtime_request))
+        .await?;
+    match saved {
+        RequestRecord::Overtime(item) => Ok(OvertimeRequestResponse::from(item)),
+        RequestRecord::Leave(_) => Err(AppError::InternalServerError(anyhow::anyhow!(
+            "Repository returned LeaveRequest when OvertimeRequest was expected"
+        ))),
+    }
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -279,5 +312,40 @@ mod tests {
         };
 
         assert_eq!(result.message, "Leave request updated");
+    }
+
+    #[test]
+    fn create_result_types_compile_as_expected() {
+        let _leave = LeaveRequestResponse {
+            id: LeaveRequestId::new(),
+            user_id: UserId::new(),
+            leave_type: crate::models::leave_request::LeaveType::Annual,
+            start_date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date"),
+            end_date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date"),
+            reason: None,
+            status: crate::models::request::RequestStatus::Pending,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+        };
+        let _overtime = OvertimeRequestResponse {
+            id: OvertimeRequestId::new(),
+            user_id: UserId::new(),
+            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date"),
+            planned_hours: 1.0,
+            reason: None,
+            status: crate::models::request::RequestStatus::Pending,
+            approved_by: None,
+            approved_at: None,
+            rejected_by: None,
+            rejected_at: None,
+            cancelled_at: None,
+            decision_comment: None,
+            created_at: Utc::now(),
+        };
     }
 }
