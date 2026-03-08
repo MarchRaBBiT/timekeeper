@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod attendance;
 pub mod config;
 pub mod db;
