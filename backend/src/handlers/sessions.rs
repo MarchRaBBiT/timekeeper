@@ -11,12 +11,10 @@ use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
-    identity::application::sessions::{list_user_sessions, SessionView},
+    identity::application::sessions::{list_user_sessions, revoke_user_session, SessionView},
     middleware::request_id::RequestId,
-    models::{active_session::ActiveSession, user::User},
-    repositories::{active_session, auth as auth_repo},
+    models::user::User,
     services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
-    services::token_cache::TokenCacheServiceTrait,
     state::AppState,
     utils::jwt::Claims,
 };
@@ -66,31 +64,14 @@ pub async fn revoke_session(
     headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    if session_id.trim().is_empty() {
-        return Err(AppError::BadRequest("Session ID is required".into()));
-    }
-
-    let session = active_session::find_active_session_by_id(&state.write_pool, &session_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?
-        .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
-
-    if session.user_id != user.id {
-        return Err(AppError::Forbidden("Forbidden".into()));
-    }
-
-    if session
-        .access_jti
-        .as_deref()
-        .map(|jti| jti == claims.jti.as_str())
-        .unwrap_or(false)
-    {
-        return Err(AppError::BadRequest(
-            "Cannot revoke current session; use logout instead".into(),
-        ));
-    }
-
-    revoke_session_tokens(&state.write_pool, state.token_cache.as_ref(), &session).await?;
+    let revoked = revoke_user_session(
+        &state.write_pool,
+        state.token_cache.as_ref(),
+        user.id,
+        &claims.jti,
+        &session_id,
+    )
+    .await?;
 
     record_session_audit_event(
         Some(audit_log_service),
@@ -98,39 +79,14 @@ pub async fn revoke_session(
         &headers,
         &request_id,
         "session_destroy",
-        Some(session.id.clone()),
+        Some(revoked.session_id.clone()),
         Some(json!({ "reason": "user_revoke" })),
     );
 
     Ok(Json(json!({
         "message": "Session revoked",
-        "session_id": session_id
+        "session_id": revoked.session_id
     })))
-}
-
-async fn revoke_session_tokens(
-    pool: &sqlx::PgPool,
-    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
-    session: &ActiveSession,
-) -> Result<(), AppError> {
-    if let Some(access_jti) = session.access_jti.as_deref() {
-        auth_repo::delete_active_access_token_by_jti(pool, access_jti)
-            .await
-            .map_err(|e| AppError::InternalServerError(e.into()))?;
-        if let Some(cache) = token_cache {
-            let _ = cache.invalidate_token(access_jti).await;
-        }
-    }
-
-    auth_repo::delete_refresh_token_by_id(pool, &session.refresh_token_id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    active_session::delete_active_session_by_id(pool, &session.id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    Ok(())
 }
 
 fn record_session_audit_event(

@@ -3,8 +3,10 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
-    db::connection::DbPool, error::AppError, models::active_session::ActiveSession, types::UserId,
+    db::connection::DbPool, error::AppError, models::active_session::ActiveSession,
+    services::token_cache::TokenCacheServiceTrait, types::UserId,
 };
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
 pub struct SessionView {
@@ -51,6 +53,75 @@ pub async fn list_user_sessions(
         .collect())
 }
 
+pub async fn revoke_user_session(
+    write_pool: &DbPool,
+    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    actor_user_id: UserId,
+    current_jti: &str,
+    session_id: &str,
+) -> Result<RevokedSession, AppError> {
+    if session_id.trim().is_empty() {
+        return Err(AppError::BadRequest("Session ID is required".into()));
+    }
+
+    let session =
+        crate::repositories::active_session::find_active_session_by_id(write_pool, session_id)
+            .await
+            .map_err(|error| AppError::InternalServerError(error.into()))?
+            .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
+
+    if session.user_id != actor_user_id {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    if session
+        .access_jti
+        .as_deref()
+        .map(|jti| jti == current_jti)
+        .unwrap_or(false)
+    {
+        return Err(AppError::BadRequest(
+            "Cannot revoke current session; use logout instead".into(),
+        ));
+    }
+
+    revoke_session_tokens(write_pool, token_cache, &session).await?;
+
+    Ok(RevokedSession {
+        session_id: session.id,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevokedSession {
+    pub session_id: String,
+}
+
+async fn revoke_session_tokens(
+    pool: &DbPool,
+    token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
+    session: &ActiveSession,
+) -> Result<(), AppError> {
+    if let Some(access_jti) = session.access_jti.as_deref() {
+        crate::repositories::auth::delete_active_access_token_by_jti(pool, access_jti)
+            .await
+            .map_err(|error| AppError::InternalServerError(error.into()))?;
+        if let Some(cache) = token_cache {
+            let _ = cache.invalidate_token(access_jti).await;
+        }
+    }
+
+    crate::repositories::auth::delete_refresh_token_by_id(pool, &session.refresh_token_id)
+        .await
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
+
+    crate::repositories::active_session::delete_active_session_by_id(pool, &session.id)
+        .await
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +163,14 @@ mod tests {
         let view = SessionView::from_session(session, "current-jti");
 
         assert!(!view.is_current);
+    }
+
+    #[test]
+    fn revoked_session_keeps_session_id() {
+        let revoked = RevokedSession {
+            session_id: "session-3".to_string(),
+        };
+
+        assert_eq!(revoked.session_id, "session-3");
     }
 }
