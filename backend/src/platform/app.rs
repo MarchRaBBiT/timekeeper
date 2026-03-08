@@ -18,6 +18,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
+    attendance,
     config::Config,
     docs, handlers, identity,
     middleware::{self, rate_limit::user_rate_limit},
@@ -40,6 +41,11 @@ pub fn build_app(state: AppState, services: AppServices) -> Router {
     Router::new()
         .merge(identity::interface::http::public_routes(state.clone()))
         .merge(identity::interface::http::user_routes(state.clone()))
+        .merge(attendance::interface::http::user_routes(state.clone()))
+        .merge(attendance::interface::http::admin_routes(state.clone()))
+        .merge(attendance::interface::http::system_admin_routes(
+            state.clone(),
+        ))
         .merge(public_routes(state.clone()))
         .merge(user_routes(state.clone()))
         .merge(admin_routes(state.clone()))
@@ -87,53 +93,6 @@ pub fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) 
 pub fn public_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
-            "/api/attendance/clock-in",
-            post(handlers::attendance::clock_in),
-        )
-        .route(
-            "/api/attendance/clock-out",
-            post(handlers::attendance::clock_out),
-        )
-        .route(
-            "/api/attendance/break-start",
-            post(handlers::attendance::break_start),
-        )
-        .route(
-            "/api/attendance/break-end",
-            post(handlers::attendance::break_end),
-        )
-        .route(
-            "/api/attendance/status",
-            get(handlers::attendance::get_attendance_status),
-        )
-        .route("/api/attendance/me", get(handlers::attendance::get_my_attendance))
-        .route(
-            "/api/attendance/me/summary",
-            get(handlers::attendance::get_my_summary),
-        )
-        .route(
-            "/api/attendance/{id}/breaks",
-            get(handlers::attendance::get_breaks_by_attendance),
-        )
-        .route(
-            "/api/attendance/export",
-            get(handlers::attendance::export_my_attendance),
-        )
-        .route(
-            "/api/attendance-corrections",
-            post(handlers::attendance_correction_requests::create_attendance_correction_request),
-        )
-        .route(
-            "/api/attendance-corrections/me",
-            get(handlers::attendance_correction_requests::list_my_attendance_correction_requests),
-        )
-        .route(
-            "/api/attendance-corrections/{id}",
-            get(handlers::attendance_correction_requests::get_my_attendance_correction_request)
-                .put(handlers::attendance_correction_requests::update_my_attendance_correction_request)
-                .delete(handlers::attendance_correction_requests::cancel_my_attendance_correction_request),
-        )
-        .route(
             "/api/requests/leave",
             post(handlers::requests::create_leave_request),
         )
@@ -142,13 +101,19 @@ pub fn public_routes(state: AppState) -> Router<AppState> {
             post(handlers::requests::create_overtime_request),
         )
         .route("/api/requests/me", get(handlers::requests::get_my_requests))
-        .route("/api/requests/{id}", put(handlers::requests::update_request))
+        .route(
+            "/api/requests/{id}",
+            put(handlers::requests::update_request),
+        )
         .route(
             "/api/requests/{id}",
             delete(handlers::requests::cancel_request),
         )
         .route("/api/consents", post(handlers::consents::record_consent))
-        .route("/api/consents/me", get(handlers::consents::list_my_consents))
+        .route(
+            "/api/consents/me",
+            get(handlers::consents::list_my_consents),
+        )
         .route(
             "/api/subject-requests",
             post(handlers::subject_requests::create_subject_request),
@@ -161,8 +126,14 @@ pub fn public_routes(state: AppState) -> Router<AppState> {
             "/api/subject-requests/{id}",
             delete(handlers::subject_requests::cancel_subject_request),
         )
-        .route("/api/holidays", get(handlers::holidays::list_public_holidays))
-        .route("/api/holidays/check", get(handlers::holidays::check_holiday))
+        .route(
+            "/api/holidays",
+            get(handlers::holidays::list_public_holidays),
+        )
+        .route(
+            "/api/holidays/check",
+            get(handlers::holidays::check_holiday),
+        )
         .route(
             "/api/holidays/month",
             get(handlers::holidays::list_month_holidays),
@@ -195,22 +166,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/requests/{id}/reject",
             put(handlers::admin::reject_request),
-        )
-        .route(
-            "/api/admin/attendance-corrections",
-            get(handlers::admin::list_attendance_correction_requests),
-        )
-        .route(
-            "/api/admin/attendance-corrections/{id}",
-            get(handlers::admin::get_attendance_correction_request_detail),
-        )
-        .route(
-            "/api/admin/attendance-corrections/{id}/approve",
-            put(handlers::admin::approve_attendance_correction_request),
-        )
-        .route(
-            "/api/admin/attendance-corrections/{id}/reject",
-            put(handlers::admin::reject_attendance_correction_request),
         )
         .route(
             "/api/admin/subject-requests",
@@ -258,10 +213,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
             delete(handlers::admin::revoke_session),
         )
         .route(
-            "/api/admin/attendance",
-            get(handlers::admin::get_all_attendance),
-        )
-        .route(
             "/api/admin/holidays/{id}",
             delete(handlers::admin::delete_holiday),
         )
@@ -296,14 +247,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
 pub fn admin_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/admin/users", post(handlers::admin::create_user))
-        .route(
-            "/api/admin/attendance",
-            put(handlers::admin::upsert_attendance),
-        )
-        .route(
-            "/api/admin/breaks/{id}/force-end",
-            put(handlers::admin::force_end_break),
-        )
         .route(
             "/api/admin/users/{id}/reset-mfa",
             post(handlers::admin::reset_user_mfa),

@@ -1,3 +1,4 @@
+pub mod attendance;
 pub mod config;
 pub mod db;
 pub mod docs;
