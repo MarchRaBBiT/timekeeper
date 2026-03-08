@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
+    identity::application::sessions::{list_user_sessions, SessionView},
     middleware::request_id::RequestId,
     models::{active_session::ActiveSession, user::User},
     repositories::{active_session, auth as auth_repo},
@@ -30,20 +31,15 @@ pub struct SessionResponse {
     pub is_current: bool,
 }
 
-impl SessionResponse {
-    fn from_session(session: ActiveSession, current_jti: &str) -> Self {
-        let is_current = session
-            .access_jti
-            .as_deref()
-            .map(|jti| jti == current_jti)
-            .unwrap_or(false);
+impl From<SessionView> for SessionResponse {
+    fn from(view: SessionView) -> Self {
         Self {
-            id: session.id,
-            device_label: session.device_label,
-            created_at: session.created_at,
-            last_seen_at: session.last_seen_at,
-            expires_at: session.expires_at,
-            is_current,
+            id: view.id,
+            device_label: view.device_label,
+            created_at: view.created_at,
+            last_seen_at: view.last_seen_at,
+            expires_at: view.expires_at,
+            is_current: view.is_current,
         }
     }
 }
@@ -53,12 +49,10 @@ pub async fn list_sessions(
     Extension(user): Extension<User>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<SessionResponse>>, AppError> {
-    let sessions = active_session::list_active_sessions_for_user(state.read_pool(), user.id)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
-    let responses = sessions
+    let responses = list_user_sessions(state.read_pool(), user.id, &claims.jti)
+        .await?
         .into_iter()
-        .map(|session| SessionResponse::from_session(session, &claims.jti))
+        .map(SessionResponse::from)
         .collect();
     Ok(Json(responses))
 }
