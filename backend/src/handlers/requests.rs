@@ -17,7 +17,7 @@ use crate::{
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
         request::{RequestCreate, RequestRecord, RequestRepository},
     },
-    requests::application::user_requests::get_my_requests_view,
+    requests::application::user_requests::{cancel_my_request, get_my_requests_view},
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
 };
@@ -239,45 +239,8 @@ pub async fn cancel_request(
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let user_id = user.id;
-    let now = Utc::now();
-
-    // Try leave cancellation first
-    let leave_request_id = LeaveRequestId::from_str(&request_id)
-        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    let leave_repo = LeaveRequestRepository::new();
-    let result = leave_repo
-        .cancel(&state.write_pool, leave_request_id, user_id, now)
-        .await?;
-    if result > 0 {
-        return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
-    }
-
-    // Try overtime cancellation
-    let overtime_request_id = OvertimeRequestId::from_str(&request_id)
-        .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    let overtime_repo = OvertimeRequestRepository::new();
-    let result = overtime_repo
-        .cancel(&state.write_pool, overtime_request_id, user_id, Utc::now())
-        .await?;
-    if result > 0 {
-        return Ok(Json(json!({"id": request_id, "status":"cancelled"})));
-    }
-
-    // Try attendance correction cancellation
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    match correction_repo
-        .cancel_pending_for_user(&state.write_pool, &request_id, user_id)
-        .await
-    {
-        Ok(_) => return Ok(Json(json!({"id": request_id, "status":"cancelled"}))),
-        Err(AppError::Conflict(_)) | Err(AppError::NotFound(_)) => {}
-        Err(err) => return Err(err),
-    }
-
-    Err(AppError::NotFound(
-        "Request not found or not cancellable".into(),
-    ))
+    let result = cancel_my_request(&state.write_pool, user.id, &request_id).await?;
+    Ok(Json(json!(result)))
 }
 
 #[cfg(test)]
