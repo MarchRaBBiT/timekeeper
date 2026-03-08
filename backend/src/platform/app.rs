@@ -20,7 +20,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::{
     attendance,
     config::Config,
-    docs, handlers, identity,
+    docs, handlers, holiday, identity,
     middleware::{self, rate_limit::user_rate_limit},
     requests,
     services::{
@@ -47,6 +47,8 @@ pub fn build_app(state: AppState, services: AppServices) -> Router {
         .merge(attendance::interface::http::system_admin_routes(
             state.clone(),
         ))
+        .merge(holiday::interface::http::user_routes(state.clone()))
+        .merge(holiday::interface::http::admin_routes(state.clone()))
         .merge(requests::interface::http::user_routes(state.clone()))
         .merge(requests::interface::http::admin_routes(state.clone()))
         .merge(public_routes(state.clone()))
@@ -93,32 +95,8 @@ pub fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) 
     )
 }
 
-pub fn public_routes(state: AppState) -> Router<AppState> {
+pub fn public_routes(_state: AppState) -> Router<AppState> {
     Router::new()
-        .route(
-            "/api/holidays",
-            get(handlers::holidays::list_public_holidays),
-        )
-        .route(
-            "/api/holidays/check",
-            get(handlers::holidays::check_holiday),
-        )
-        .route(
-            "/api/holidays/month",
-            get(handlers::holidays::list_month_holidays),
-        )
-        .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
-            user_rate_limit,
-        ))
-        .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
-            middleware::auth,
-        ))
-        .route_layer(axum_middleware::from_fn_with_state(
-            state,
-            middleware::audit_log,
-        ))
 }
 
 pub fn user_routes(state: AppState) -> Router<AppState> {
@@ -135,18 +113,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
             "/api/admin/audit-logs/{id}",
             get(handlers::admin::get_audit_log_detail),
         )
-        .route(
-            "/api/admin/holidays",
-            get(handlers::admin::list_holidays).post(handlers::admin::create_holiday),
-        )
-        .route(
-            "/api/admin/holidays/weekly",
-            get(handlers::admin::list_weekly_holidays).post(handlers::admin::create_weekly_holiday),
-        )
-        .route(
-            "/api/admin/holidays/weekly/{id}",
-            delete(handlers::admin::delete_weekly_holiday),
-        )
         .route("/api/admin/users", get(handlers::admin::get_users))
         .route(
             "/api/admin/users/{id}/sessions",
@@ -155,23 +121,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/sessions/{id}",
             delete(handlers::admin::revoke_session),
-        )
-        .route(
-            "/api/admin/holidays/{id}",
-            delete(handlers::admin::delete_holiday),
-        )
-        .route(
-            "/api/admin/holidays/google",
-            get(handlers::holidays::fetch_google_holidays),
-        )
-        .route(
-            "/api/admin/users/{user_id}/holiday-exceptions",
-            post(handlers::holiday_exceptions::create_holiday_exception)
-                .get(handlers::holiday_exceptions::list_holiday_exceptions),
-        )
-        .route(
-            "/api/admin/users/{user_id}/holiday-exceptions/{id}",
-            delete(handlers::holiday_exceptions::delete_holiday_exception),
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
         .route_layer(axum_middleware::from_fn_with_state(

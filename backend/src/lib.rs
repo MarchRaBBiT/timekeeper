@@ -4,6 +4,7 @@ pub mod db;
 pub mod docs;
 pub mod error;
 pub mod handlers;
+pub mod holiday;
 pub mod identity;
 pub mod middleware;
 pub mod models;
