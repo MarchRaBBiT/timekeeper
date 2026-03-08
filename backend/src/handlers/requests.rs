@@ -8,7 +8,6 @@ use validator::Validate;
 use crate::{
     error::AppError,
     models::{
-        attendance_correction_request::AttendanceCorrectionResponse,
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
@@ -18,6 +17,7 @@ use crate::{
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
         request::{RequestCreate, RequestRecord, RequestRepository},
     },
+    requests::application::user_requests::get_my_requests_view,
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
 };
@@ -92,29 +92,8 @@ pub async fn get_my_requests(
     State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = user.id;
-
-    let repo = RequestRepository::new();
-    let requests = repo.get_user_requests(state.read_pool(), user_id).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let corrections = correction_repo
-        .list_by_user(state.read_pool(), user_id)
-        .await?;
-    let correction_responses: Vec<AttendanceCorrectionResponse> = corrections
-        .iter()
-        .map(|item| {
-            item.to_response()
-                .map_err(|e| AppError::InternalServerError(e.into()))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let response = json!({
-        "leave_requests": requests.leave_requests.into_iter().map(LeaveRequestResponse::from).collect::<Vec<_>>(),
-        "overtime_requests": requests.overtime_requests.into_iter().map(OvertimeRequestResponse::from).collect::<Vec<_>>(),
-        "attendance_corrections": correction_responses
-    });
-
-    Ok(Json(response))
+    let response = get_my_requests_view(state.read_pool(), user.id).await?;
+    Ok(Json(json!(response)))
 }
 
 #[derive(Deserialize)]
