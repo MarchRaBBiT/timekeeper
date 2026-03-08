@@ -5,24 +5,19 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::str::FromStr;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
     models::user::User,
-    repositories::{
-        leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
-        overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
-        request::{RequestRepository, RequestStatusUpdate},
-    },
     requests::application::admin_requests::{
         get_request_detail as get_request_detail_view, list_requests as list_requests_view,
         paginate_requests as paginate_request_values,
-        parse_filter_datetime as parse_filter_datetime_value, RequestListParams,
+        parse_filter_datetime as parse_filter_datetime_value, process_request_decision,
+        validate_decision_comment as validate_decision_comment_value, DecisionKind,
+        RequestListParams,
     },
     state::AppState,
-    types::{LeaveRequestId, OvertimeRequestId},
     utils::time,
 };
 
@@ -47,30 +42,17 @@ pub async fn approve_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    ensure_not_self_request(&state, &request_id, user.id).await?;
     validate_decision_comment(&body.comment)?;
-    let approver_id = user.id;
-    let comment = body.comment;
-    let now_utc = time::now_utc(&state.config.time_zone);
-    let request_repo = RequestRepository::new();
-    if request_repo
-        .update_request_status(
-            &state.write_pool,
-            &request_id,
-            RequestStatusUpdate::Approve {
-                approver_id,
-                comment: &comment,
-                timestamp: now_utc,
-            },
-        )
-        .await?
-    {
-        return Ok(Json(json!({"message": "Request approved"})));
-    }
-
-    Err(AppError::NotFound(
-        "Request not found or already processed".into(),
-    ))
+    let result = process_request_decision(
+        &state.write_pool,
+        &request_id,
+        user.id,
+        &body.comment,
+        time::now_utc(&state.config.time_zone),
+        DecisionKind::Approve,
+    )
+    .await?;
+    Ok(Json(json!(result)))
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -87,67 +69,17 @@ pub async fn reject_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    ensure_not_self_request(&state, &request_id, user.id).await?;
     validate_decision_comment(&body.comment)?;
-    let approver_id = user.id;
-    let comment = body.comment;
-    let now_utc = time::now_utc(&state.config.time_zone);
-    let request_repo = RequestRepository::new();
-    if request_repo
-        .update_request_status(
-            &state.write_pool,
-            &request_id,
-            RequestStatusUpdate::Reject {
-                approver_id,
-                comment: &comment,
-                timestamp: now_utc,
-            },
-        )
-        .await?
-    {
-        return Ok(Json(json!({"message": "Request rejected"})));
-    }
-
-    Err(AppError::NotFound(
-        "Request not found or already processed".into(),
-    ))
-}
-
-async fn ensure_not_self_request(
-    state: &AppState,
-    request_id: &str,
-    actor_id: crate::types::UserId,
-) -> Result<(), AppError> {
-    if let Ok(leave_request_id) = LeaveRequestId::from_str(request_id) {
-        let leave_repo = LeaveRequestRepository::new();
-        if let Ok(request) = leave_repo
-            .find_by_id(&state.write_pool, leave_request_id)
-            .await
-        {
-            if request.user_id == actor_id {
-                return Err(AppError::Forbidden(
-                    "Admins cannot approve or reject their own requests".into(),
-                ));
-            }
-            return Ok(());
-        }
-    }
-
-    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(request_id) {
-        let overtime_repo = OvertimeRequestRepository::new();
-        if let Ok(request) = overtime_repo
-            .find_by_id(&state.write_pool, overtime_request_id)
-            .await
-        {
-            if request.user_id == actor_id {
-                return Err(AppError::Forbidden(
-                    "Admins cannot approve or reject their own requests".into(),
-                ));
-            }
-        }
-    }
-
-    Ok(())
+    let result = process_request_decision(
+        &state.write_pool,
+        &request_id,
+        user.id,
+        &body.comment,
+        time::now_utc(&state.config.time_zone),
+        DecisionKind::Reject,
+    )
+    .await?;
+    Ok(Json(json!(result)))
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -210,18 +142,7 @@ fn parse_filter_datetime_for_test(value: &str, end_of_day: bool) -> Option<DateT
 }
 
 pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
-    if comment.trim().is_empty() {
-        return Err(AppError::BadRequest("comment is required".into()));
-    }
-
-    if comment.chars().count() > MAX_DECISION_COMMENT_LENGTH {
-        return Err(AppError::BadRequest(format!(
-            "comment must be between 1 and {} characters",
-            MAX_DECISION_COMMENT_LENGTH
-        )));
-    }
-
-    Ok(())
+    validate_decision_comment_value(comment, MAX_DECISION_COMMENT_LENGTH)
 }
 
 #[cfg(test)]

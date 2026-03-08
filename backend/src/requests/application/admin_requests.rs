@@ -9,9 +9,9 @@ use crate::{
     repositories::{
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
-        request::{RequestListFilters, RequestRepository},
+        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
     },
-    types::{LeaveRequestId, OvertimeRequestId},
+    types::{LeaveRequestId, OvertimeRequestId, UserId},
 };
 
 #[derive(Debug, Clone)]
@@ -45,6 +45,17 @@ pub enum RequestDetailView {
     Leave(LeaveRequestResponse),
     #[serde(rename = "overtime")]
     Overtime(OvertimeRequestResponse),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DecisionKind {
+    Approve,
+    Reject,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct DecisionResult {
+    pub message: &'static str,
 }
 
 pub async fn list_requests(
@@ -134,6 +145,96 @@ pub async fn get_request_detail(
     }
 
     Err(AppError::NotFound("Request not found".into()))
+}
+
+pub async fn process_request_decision(
+    write_pool: &DbPool,
+    request_id: &str,
+    approver_id: UserId,
+    comment: &str,
+    timestamp: DateTime<Utc>,
+    kind: DecisionKind,
+) -> Result<DecisionResult, AppError> {
+    ensure_not_self_request(write_pool, request_id, approver_id).await?;
+
+    let request_repo = RequestRepository::new();
+    let update = match kind {
+        DecisionKind::Approve => RequestStatusUpdate::Approve {
+            approver_id,
+            comment,
+            timestamp,
+        },
+        DecisionKind::Reject => RequestStatusUpdate::Reject {
+            approver_id,
+            comment,
+            timestamp,
+        },
+    };
+
+    if request_repo
+        .update_request_status(write_pool, request_id, update)
+        .await?
+    {
+        return Ok(DecisionResult {
+            message: match kind {
+                DecisionKind::Approve => "Request approved",
+                DecisionKind::Reject => "Request rejected",
+            },
+        });
+    }
+
+    Err(AppError::NotFound(
+        "Request not found or already processed".into(),
+    ))
+}
+
+pub async fn ensure_not_self_request(
+    write_pool: &DbPool,
+    request_id: &str,
+    actor_id: UserId,
+) -> Result<(), AppError> {
+    if let Ok(leave_request_id) = request_id.parse::<LeaveRequestId>() {
+        let leave_repo = LeaveRequestRepository::new();
+        if let Ok(request) = leave_repo.find_by_id(write_pool, leave_request_id).await {
+            if request.user_id == actor_id {
+                return Err(AppError::Forbidden(
+                    "Admins cannot approve or reject their own requests".into(),
+                ));
+            }
+            return Ok(());
+        }
+    }
+
+    if let Ok(overtime_request_id) = request_id.parse::<OvertimeRequestId>() {
+        let overtime_repo = OvertimeRequestRepository::new();
+        if let Ok(request) = overtime_repo
+            .find_by_id(write_pool, overtime_request_id)
+            .await
+        {
+            if request.user_id == actor_id {
+                return Err(AppError::Forbidden(
+                    "Admins cannot approve or reject their own requests".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn validate_decision_comment(comment: &str, max_len: usize) -> Result<(), AppError> {
+    if comment.trim().is_empty() {
+        return Err(AppError::BadRequest("comment is required".into()));
+    }
+
+    if comment.chars().count() > max_len {
+        return Err(AppError::BadRequest(format!(
+            "comment must be between 1 and {} characters",
+            max_len
+        )));
+    }
+
+    Ok(())
 }
 
 pub fn paginate_requests(
@@ -270,5 +371,43 @@ mod tests {
             Some("leave")
         );
         assert!(json.get("data").is_some());
+    }
+
+    #[test]
+    fn validate_decision_comment_accepts_valid_comment() {
+        assert!(validate_decision_comment("approved", 500).is_ok());
+    }
+
+    #[test]
+    fn validate_decision_comment_rejects_empty_comment() {
+        assert!(matches!(
+            validate_decision_comment("", 500),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn validate_decision_comment_rejects_whitespace_only_comment() {
+        assert!(matches!(
+            validate_decision_comment("   ", 500),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn validate_decision_comment_rejects_too_long_comment() {
+        assert!(matches!(
+            validate_decision_comment(&"a".repeat(501), 500),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn decision_result_keeps_message() {
+        let result = DecisionResult {
+            message: "Request approved",
+        };
+
+        assert_eq!(result.message, "Request approved");
     }
 }
