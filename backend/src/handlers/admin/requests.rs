@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -10,13 +10,16 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
-    models::{
-        leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
-    },
+    models::user::User,
     repositories::{
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
-        request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
+        request::{RequestRepository, RequestStatusUpdate},
+    },
+    requests::application::admin_requests::{
+        get_request_detail as get_request_detail_view, list_requests as list_requests_view,
+        paginate_requests as paginate_request_values,
+        parse_filter_datetime as parse_filter_datetime_value, RequestListParams,
     },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId},
@@ -24,6 +27,11 @@ use crate::{
 };
 
 const MAX_DECISION_COMMENT_LENGTH: usize = 500;
+
+pub type AdminRequestListResponse =
+    crate::requests::application::admin_requests::AdminRequestListResponse;
+pub type AdminRequestListPageInfo =
+    crate::requests::application::admin_requests::AdminRequestListPageInfo;
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovePayload {
@@ -155,19 +163,6 @@ pub struct RequestListQuery {
     pub per_page: Option<i64>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminRequestListResponse {
-    pub leave_requests: Vec<LeaveRequestResponse>,
-    pub overtime_requests: Vec<OvertimeRequestResponse>,
-    pub page_info: AdminRequestListPageInfo,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminRequestListPageInfo {
-    pub page: i64,
-    pub per_page: i64,
-}
-
 pub async fn list_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
@@ -176,64 +171,42 @@ pub async fn list_requests(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    let (page, per_page, offset) = paginate_requests(&q)?;
+    let response = list_requests_view(
+        state.read_pool(),
+        RequestListParams {
+            status: q.status,
+            request_type: q.r#type,
+            user_id: q.user_id,
+            from: q.from,
+            to: q.to,
+            page: q.page,
+            per_page: q.per_page,
+        },
+    )
+    .await?;
 
-    let type_filter = q.r#type.as_deref().map(|s| s.to_ascii_lowercase());
-    let (include_leave, include_overtime) = match type_filter.as_deref() {
-        Some("leave") => (true, false),
-        Some("overtime") => (false, true),
-        Some("all") => (true, true),
-        _ => (true, true),
-    };
-
-    let filters = RequestListFilters {
-        status: q.status,
-        user_id: q.user_id,
-        from: q
-            .from
-            .as_deref()
-            .and_then(|value| parse_filter_datetime(value, false)),
-        to: q
-            .to
-            .as_deref()
-            .and_then(|value| parse_filter_datetime(value, true)),
-    };
-
-    let request_repo = RequestRepository::new();
-    let result = request_repo
-        .get_requests_with_relations(
-            state.read_pool(),
-            &filters,
-            per_page,
-            offset,
-            include_leave,
-            include_overtime,
-        )
-        .await?;
-
-    Ok(Json(AdminRequestListResponse {
-        leave_requests: result
-            .leave_requests
-            .into_iter()
-            .map(LeaveRequestResponse::from)
-            .collect::<Vec<_>>(),
-        overtime_requests: result
-            .overtime_requests
-            .into_iter()
-            .map(OvertimeRequestResponse::from)
-            .collect::<Vec<_>>(),
-        page_info: AdminRequestListPageInfo { page, per_page },
-    }))
+    Ok(Json(response))
 }
 
-pub fn paginate_requests(q: &RequestListQuery) -> Result<(i64, i64, i64), AppError> {
-    let page = q.page.unwrap_or(1).max(1);
-    let per_page = q.per_page.unwrap_or(20).clamp(1, 100);
-    let offset = page
-        .checked_sub(1)
-        .and_then(|p| p.checked_mul(per_page))
-        .ok_or(AppError::BadRequest("page is too large".into()))?;
-    Ok((page, per_page, offset))
+pub(crate) fn paginate_requests(q: &RequestListQuery) -> Result<(i64, i64, i64), AppError> {
+    paginate_request_values(q.page, q.per_page)
+}
+
+pub async fn get_request_detail(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(request_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    if !user.is_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    let detail = get_request_detail_view(state.read_pool(), &request_id).await?;
+    Ok(Json(json!(detail)))
+}
+
+fn parse_filter_datetime_for_test(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
+    parse_filter_datetime_value(value, end_of_day)
 }
 
 pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
@@ -249,73 +222,6 @@ pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
     }
 
     Ok(())
-}
-
-pub async fn get_request_detail(
-    State(state): State<AppState>,
-    Extension(user): Extension<User>,
-    Path(request_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
-    }
-
-    // Try as leave request
-    if let Ok(leave_request_id) = LeaveRequestId::from_str(&request_id) {
-        let leave_repo = LeaveRequestRepository::new();
-        match leave_repo
-            .find_by_id(state.read_pool(), leave_request_id)
-            .await
-        {
-            Ok(item) => {
-                return Ok(Json(
-                    json!({"kind":"leave","data": LeaveRequestResponse::from(item)}),
-                ));
-            }
-            Err(AppError::NotFound(_)) => {}
-            Err(err) => return Err(err),
-        }
-    }
-
-    // Try as overtime request
-    if let Ok(overtime_request_id) = OvertimeRequestId::from_str(&request_id) {
-        let overtime_repo = OvertimeRequestRepository::new();
-        match overtime_repo
-            .find_by_id(state.read_pool(), overtime_request_id)
-            .await
-        {
-            Ok(item) => {
-                return Ok(Json(
-                    json!({"kind":"overtime","data": OvertimeRequestResponse::from(item)}),
-                ));
-            }
-            Err(AppError::NotFound(_)) => {}
-            Err(err) => return Err(err),
-        }
-    }
-
-    Err(AppError::NotFound("Request not found".into()))
-}
-
-fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let dt = if end_of_day {
-            date.and_hms_opt(23, 59, 59)?
-        } else {
-            date.and_hms_opt(0, 0, 0)?
-        };
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    None
 }
 
 #[cfg(test)]
@@ -370,7 +276,7 @@ mod tests {
             page: None,
             per_page: None,
         };
-        let result = paginate_requests(&query).unwrap();
+        let result = super::paginate_requests(&query).unwrap();
         assert_eq!(result.0, 1);
         assert_eq!(result.1, 20);
         assert_eq!(result.2, 0);
@@ -387,7 +293,7 @@ mod tests {
             page: Some(3),
             per_page: Some(50),
         };
-        let result = paginate_requests(&query).unwrap();
+        let result = super::paginate_requests(&query).unwrap();
         assert_eq!(result.0, 3);
         assert_eq!(result.1, 50);
         assert_eq!(result.2, 100);
@@ -404,7 +310,7 @@ mod tests {
             page: Some(1),
             per_page: Some(200),
         };
-        let result = paginate_requests(&query).unwrap();
+        let result = super::paginate_requests(&query).unwrap();
         assert_eq!(result.1, 100);
     }
 
@@ -419,7 +325,7 @@ mod tests {
             page: Some(0),
             per_page: None,
         };
-        let result = paginate_requests(&query).unwrap();
+        let result = super::paginate_requests(&query).unwrap();
         assert_eq!(result.0, 1);
     }
 
@@ -434,21 +340,21 @@ mod tests {
             page: Some(1),
             per_page: Some(-5),
         };
-        let result = paginate_requests(&query).unwrap();
+        let result = super::paginate_requests(&query).unwrap();
         assert_eq!(result.1, 1);
     }
 
     #[test]
     fn test_parse_filter_datetime_parses_rfc3339() {
         let input = "2024-01-15T10:30:00Z";
-        let result = parse_filter_datetime(input, false);
+        let result = parse_filter_datetime_for_test(input, false);
         assert!(result.is_some());
     }
 
     #[test]
     fn test_parse_filter_datetime_parses_date_only_start() {
         let input = "2024-01-15";
-        let result = parse_filter_datetime(input, false);
+        let result = parse_filter_datetime_for_test(input, false);
         assert!(result.is_some());
         let dt = result.unwrap();
         assert_eq!(dt.hour(), 0);
@@ -459,7 +365,7 @@ mod tests {
     #[test]
     fn test_parse_filter_datetime_parses_date_only_end() {
         let input = "2024-01-15";
-        let result = parse_filter_datetime(input, true);
+        let result = parse_filter_datetime_for_test(input, true);
         assert!(result.is_some());
         let dt = result.unwrap();
         assert_eq!(dt.hour(), 23);
@@ -470,7 +376,7 @@ mod tests {
     #[test]
     fn test_parse_filter_datetime_returns_none_for_invalid() {
         let input = "invalid-date";
-        let result = parse_filter_datetime(input, false);
+        let result = parse_filter_datetime_for_test(input, false);
         assert!(result.is_none());
     }
 
