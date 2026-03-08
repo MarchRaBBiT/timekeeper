@@ -19,11 +19,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
     config::Config,
-    docs, handlers,
-    middleware::{
-        self,
-        rate_limit::{create_auth_rate_limiter, user_rate_limit},
-    },
+    docs, handlers, identity,
+    middleware::{self, rate_limit::user_rate_limit},
     services::{
         audit_log::AuditLogServiceTrait, holiday::HolidayServiceTrait,
         holiday_exception::HolidayExceptionServiceTrait,
@@ -41,6 +38,8 @@ pub fn build_app(state: AppState, services: AppServices) -> Router {
     let openapi = docs::ApiDoc::openapi();
 
     Router::new()
+        .merge(identity::interface::http::public_routes(state.clone()))
+        .merge(identity::interface::http::user_routes(state.clone()))
         .merge(public_routes(state.clone()))
         .merge(user_routes(state.clone()))
         .merge(admin_routes(state.clone()))
@@ -86,27 +85,6 @@ pub fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) 
 }
 
 pub fn public_routes(state: AppState) -> Router<AppState> {
-    let rate_limiter = create_auth_rate_limiter(&state.config);
-    Router::new()
-        .route("/api/auth/login", post(handlers::auth::login))
-        .route("/api/auth/refresh", post(handlers::auth::refresh))
-        .route(
-            "/api/auth/request-password-reset",
-            post(handlers::auth::request_password_reset),
-        )
-        .route(
-            "/api/auth/reset-password",
-            post(handlers::auth::reset_password),
-        )
-        .route("/api/config/timezone", get(handlers::config::get_time_zone))
-        .route_layer(rate_limiter)
-        .route_layer(axum_middleware::from_fn_with_state(
-            state.clone(),
-            middleware::audit_log,
-        ))
-}
-
-pub fn user_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/api/attendance/clock-in",
@@ -183,23 +161,6 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
             "/api/subject-requests/{id}",
             delete(handlers::subject_requests::cancel_subject_request),
         )
-        .route("/api/auth/mfa", get(handlers::auth::mfa_status))
-        .route("/api/auth/mfa", delete(handlers::auth::mfa_disable))
-        .route("/api/auth/mfa/register", post(handlers::auth::mfa_register))
-        .route("/api/auth/mfa/setup", post(handlers::auth::mfa_setup))
-        .route("/api/auth/mfa/activate", post(handlers::auth::mfa_activate))
-        .route("/api/auth/me", get(handlers::auth::me))
-        .route("/api/auth/me", put(handlers::auth::update_profile))
-        .route("/api/auth/sessions", get(handlers::sessions::list_sessions))
-        .route(
-            "/api/auth/sessions/{id}",
-            delete(handlers::sessions::revoke_session),
-        )
-        .route(
-            "/api/auth/change-password",
-            put(handlers::auth::change_password),
-        )
-        .route("/api/auth/logout", post(handlers::auth::logout))
         .route("/api/holidays", get(handlers::holidays::list_public_holidays))
         .route("/api/holidays/check", get(handlers::holidays::check_holiday))
         .route(
@@ -220,7 +181,7 @@ pub fn user_routes(state: AppState) -> Router<AppState> {
         ))
 }
 
-pub fn admin_routes(state: AppState) -> Router<AppState> {
+pub fn user_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
         .route(
@@ -332,7 +293,7 @@ pub fn admin_routes(state: AppState) -> Router<AppState> {
         ))
 }
 
-pub fn system_admin_routes(state: AppState) -> Router<AppState> {
+pub fn admin_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/admin/users", post(handlers::admin::create_user))
         .route(
@@ -380,6 +341,10 @@ pub fn system_admin_routes(state: AppState) -> Router<AppState> {
             state,
             middleware::audit_log,
         ))
+}
+
+pub fn system_admin_routes(_state: AppState) -> Router<AppState> {
+    Router::new()
 }
 
 pub fn cors_layer(config: &Config) -> CorsLayer {
@@ -519,7 +484,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_user_admin_and_system_routes_require_auth() {
+    async fn test_domain_route_groups_require_auth() {
         let state = test_state_with_config(test_config(vec!["*".to_string()]));
 
         let mut user_app = Router::new()
@@ -527,7 +492,7 @@ mod tests {
             .with_state(state.clone());
         let request = Request::builder()
             .method("GET")
-            .uri("/api/auth/me")
+            .uri("/api/admin/users")
             .body(Body::empty())
             .expect("build user route request");
         let response = user_app.call(request).await.expect("call user route");
@@ -556,7 +521,7 @@ mod tests {
             .call(request)
             .await
             .expect("call system admin route");
-        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
     }
 
     #[test]
