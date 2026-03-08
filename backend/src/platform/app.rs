@@ -22,6 +22,7 @@ use crate::{
     config::Config,
     docs, handlers, identity,
     middleware::{self, rate_limit::user_rate_limit},
+    requests,
     services::{
         audit_log::AuditLogServiceTrait, holiday::HolidayServiceTrait,
         holiday_exception::HolidayExceptionServiceTrait,
@@ -46,6 +47,8 @@ pub fn build_app(state: AppState, services: AppServices) -> Router {
         .merge(attendance::interface::http::system_admin_routes(
             state.clone(),
         ))
+        .merge(requests::interface::http::user_routes(state.clone()))
+        .merge(requests::interface::http::admin_routes(state.clone()))
         .merge(public_routes(state.clone()))
         .merge(user_routes(state.clone()))
         .merge(admin_routes(state.clone()))
@@ -93,40 +96,6 @@ pub fn build_http_request_span(request: &axum::http::Request<axum::body::Body>) 
 pub fn public_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
-            "/api/requests/leave",
-            post(handlers::requests::create_leave_request),
-        )
-        .route(
-            "/api/requests/overtime",
-            post(handlers::requests::create_overtime_request),
-        )
-        .route("/api/requests/me", get(handlers::requests::get_my_requests))
-        .route(
-            "/api/requests/{id}",
-            put(handlers::requests::update_request),
-        )
-        .route(
-            "/api/requests/{id}",
-            delete(handlers::requests::cancel_request),
-        )
-        .route("/api/consents", post(handlers::consents::record_consent))
-        .route(
-            "/api/consents/me",
-            get(handlers::consents::list_my_consents),
-        )
-        .route(
-            "/api/subject-requests",
-            post(handlers::subject_requests::create_subject_request),
-        )
-        .route(
-            "/api/subject-requests/me",
-            get(handlers::subject_requests::list_my_subject_requests),
-        )
-        .route(
-            "/api/subject-requests/{id}",
-            delete(handlers::subject_requests::cancel_subject_request),
-        )
-        .route(
             "/api/holidays",
             get(handlers::holidays::list_public_holidays),
         )
@@ -154,31 +123,6 @@ pub fn public_routes(state: AppState) -> Router<AppState> {
 
 pub fn user_routes(state: AppState) -> Router<AppState> {
     Router::new()
-        .route("/api/admin/requests", get(handlers::admin::list_requests))
-        .route(
-            "/api/admin/requests/{id}",
-            get(handlers::admin::get_request_detail),
-        )
-        .route(
-            "/api/admin/requests/{id}/approve",
-            put(handlers::admin::approve_request),
-        )
-        .route(
-            "/api/admin/requests/{id}/reject",
-            put(handlers::admin::reject_request),
-        )
-        .route(
-            "/api/admin/subject-requests",
-            get(handlers::admin::list_subject_requests),
-        )
-        .route(
-            "/api/admin/subject-requests/{id}/approve",
-            put(handlers::admin::approve_subject_request),
-        )
-        .route(
-            "/api/admin/subject-requests/{id}/reject",
-            put(handlers::admin::reject_subject_request),
-        )
         .route(
             "/api/admin/audit-logs",
             get(handlers::admin::list_audit_logs),

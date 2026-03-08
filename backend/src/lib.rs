@@ -9,6 +9,7 @@ pub mod middleware;
 pub mod models;
 pub mod platform;
 pub mod repositories;
+pub mod requests;
 pub mod services;
 pub mod state;
 pub use state::AppState;
