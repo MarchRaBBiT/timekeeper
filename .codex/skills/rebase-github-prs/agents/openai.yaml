@@ -1,0 +1,7 @@
+interface:
+  display_name: "Rebase GitHub PRs"
+  short_description: "Rebase one or more PR numbers with jj and gh"
+  default_prompt: "Use $rebase-github-prs to resolve the specified GitHub PR numbers, fetch the correct branches with jj, rebase them onto the latest base branch, and push rewritten PR branches only if explicitly requested."
+
+policy:
+  allow_implicit_invocation: true
