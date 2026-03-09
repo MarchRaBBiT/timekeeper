@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 
-use super::requests::validate_decision_comment;
 use crate::{
-    error::AppError,
+    admin::application::http_errors::map_app_error,
     models::{subject_request::DataSubjectRequestResponse, user::User},
+    requests::application::admin_requests::validate_decision_comment as validate_decision_comment_value,
     requests::application::admin_subject_requests::{
         list_subject_requests as list_subject_requests_view, process_subject_request_decision,
         DecisionKind, SubjectRequestListParams,
@@ -85,7 +85,7 @@ pub async fn approve_subject_request(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    validate_decision_comment(&body.comment).map_err(map_app_error)?;
+    validate_decision_comment_value(&body.comment, 500).map_err(map_app_error)?;
     let result = process_subject_request_decision(
         &state.write_pool,
         &request_id,
@@ -109,7 +109,7 @@ pub async fn reject_subject_request(
     if !user.is_admin() {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
-    validate_decision_comment(&body.comment).map_err(map_app_error)?;
+    validate_decision_comment_value(&body.comment, 500).map_err(map_app_error)?;
     let result = process_subject_request_decision(
         &state.write_pool,
         &request_id,
@@ -124,37 +124,11 @@ pub async fn reject_subject_request(
     Ok(Json(json!(result)))
 }
 
-fn map_app_error(err: AppError) -> (StatusCode, Json<Value>) {
-    match err {
-        AppError::BadRequest(message) => bad_request_helper(&message),
-        AppError::Forbidden(message) => (StatusCode::FORBIDDEN, Json(json!({ "error": message }))),
-        AppError::Unauthorized(message) => {
-            (StatusCode::UNAUTHORIZED, Json(json!({ "error": message })))
-        }
-        AppError::Conflict(message) => (StatusCode::CONFLICT, Json(json!({ "error": message }))),
-        AppError::NotFound(message) => (StatusCode::NOT_FOUND, Json(json!({ "error": message }))),
-        AppError::Validation(errors) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Validation failed", "details": { "errors": errors } })),
-        ),
-        AppError::InternalServerError(err) => {
-            tracing::error!(error = %err, "internal server error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            )
-        }
-    }
-}
-
-fn bad_request_helper(message: &str) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
+        admin::application::http_errors::bad_request,
         models::{request::RequestStatus, subject_request::DataSubjectRequestType},
         requests::application::admin_subject_requests::{
             normalize_filter, parse_datetime_value, parse_from_datetime, parse_request_status,
@@ -383,43 +357,8 @@ mod tests {
     }
 
     #[test]
-    fn map_app_error_maps_each_variant() {
-        let bad = map_app_error(AppError::BadRequest("bad".to_string()));
-        assert_eq!(bad.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&bad), "bad");
-
-        let forbidden = map_app_error(AppError::Forbidden("forbidden".to_string()));
-        assert_eq!(forbidden.0, StatusCode::FORBIDDEN);
-        assert_eq!(err_message(&forbidden), "forbidden");
-
-        let unauthorized = map_app_error(AppError::Unauthorized("unauthorized".to_string()));
-        assert_eq!(unauthorized.0, StatusCode::UNAUTHORIZED);
-        assert_eq!(err_message(&unauthorized), "unauthorized");
-
-        let conflict = map_app_error(AppError::Conflict("conflict".to_string()));
-        assert_eq!(conflict.0, StatusCode::CONFLICT);
-        assert_eq!(err_message(&conflict), "conflict");
-
-        let not_found = map_app_error(AppError::NotFound("missing".to_string()));
-        assert_eq!(not_found.0, StatusCode::NOT_FOUND);
-        assert_eq!(err_message(&not_found), "missing");
-
-        let validation = map_app_error(AppError::Validation(vec!["field: code".to_string()]));
-        assert_eq!(validation.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&validation), "Validation failed");
-        assert_eq!(
-            validation.1 .0["details"]["errors"][0],
-            json!("field: code")
-        );
-
-        let internal = map_app_error(AppError::InternalServerError(anyhow::anyhow!("boom")));
-        assert_eq!(internal.0, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(err_message(&internal), "Internal server error");
-    }
-
-    #[test]
     fn bad_request_helper_builds_error_payload() {
-        let err = bad_request_helper(HolidayReason::None.label());
+        let err = bad_request(HolidayReason::None.label());
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
         assert_eq!(err_message(&err), "working day");
     }

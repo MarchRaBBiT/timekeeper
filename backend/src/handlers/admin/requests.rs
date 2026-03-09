@@ -2,7 +2,6 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
@@ -42,7 +41,7 @@ pub async fn approve_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    validate_decision_comment(&body.comment)?;
+    validate_decision_comment_value(&body.comment, MAX_DECISION_COMMENT_LENGTH)?;
     let result = process_request_decision(
         &state.write_pool,
         &request_id,
@@ -69,7 +68,7 @@ pub async fn reject_request(
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
-    validate_decision_comment(&body.comment)?;
+    validate_decision_comment_value(&body.comment, MAX_DECISION_COMMENT_LENGTH)?;
     let result = process_request_decision(
         &state.write_pool,
         &request_id,
@@ -120,10 +119,6 @@ pub async fn list_requests(
     Ok(Json(response))
 }
 
-pub(crate) fn paginate_requests(q: &RequestListQuery) -> Result<(i64, i64, i64), AppError> {
-    paginate_request_values(q.page, q.per_page)
-}
-
 pub async fn get_request_detail(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
@@ -137,14 +132,6 @@ pub async fn get_request_detail(
     Ok(Json(json!(detail)))
 }
 
-fn parse_filter_datetime_for_test(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
-    parse_filter_datetime_value(value, end_of_day)
-}
-
-pub(crate) fn validate_decision_comment(comment: &str) -> Result<(), AppError> {
-    validate_decision_comment_value(comment, MAX_DECISION_COMMENT_LENGTH)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,13 +140,13 @@ mod tests {
     #[test]
     fn test_validate_decision_comment_accepts_valid_comment() {
         let comment = "This is a valid decision comment";
-        assert!(validate_decision_comment(comment).is_ok());
+        assert!(validate_decision_comment_value(comment, MAX_DECISION_COMMENT_LENGTH).is_ok());
     }
 
     #[test]
     fn test_validate_decision_comment_rejects_empty_comment() {
         let comment = "";
-        let result = validate_decision_comment(comment);
+        let result = validate_decision_comment_value(comment, MAX_DECISION_COMMENT_LENGTH);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
     }
@@ -167,7 +154,7 @@ mod tests {
     #[test]
     fn test_validate_decision_comment_rejects_whitespace_only_comment() {
         let comment = "   ";
-        let result = validate_decision_comment(comment);
+        let result = validate_decision_comment_value(comment, MAX_DECISION_COMMENT_LENGTH);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
     }
@@ -175,7 +162,7 @@ mod tests {
     #[test]
     fn test_validate_decision_comment_rejects_too_long_comment() {
         let comment = "a".repeat(MAX_DECISION_COMMENT_LENGTH + 1);
-        let result = validate_decision_comment(&comment);
+        let result = validate_decision_comment_value(&comment, MAX_DECISION_COMMENT_LENGTH);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::BadRequest(_)));
     }
@@ -183,7 +170,7 @@ mod tests {
     #[test]
     fn test_validate_decision_comment_accepts_max_length_comment() {
         let comment = "a".repeat(MAX_DECISION_COMMENT_LENGTH);
-        assert!(validate_decision_comment(&comment).is_ok());
+        assert!(validate_decision_comment_value(&comment, MAX_DECISION_COMMENT_LENGTH).is_ok());
     }
 
     #[test]
@@ -197,7 +184,7 @@ mod tests {
             page: None,
             per_page: None,
         };
-        let result = super::paginate_requests(&query).unwrap();
+        let result = paginate_request_values(query.page, query.per_page).unwrap();
         assert_eq!(result.0, 1);
         assert_eq!(result.1, 20);
         assert_eq!(result.2, 0);
@@ -214,7 +201,7 @@ mod tests {
             page: Some(3),
             per_page: Some(50),
         };
-        let result = super::paginate_requests(&query).unwrap();
+        let result = paginate_request_values(query.page, query.per_page).unwrap();
         assert_eq!(result.0, 3);
         assert_eq!(result.1, 50);
         assert_eq!(result.2, 100);
@@ -231,7 +218,7 @@ mod tests {
             page: Some(1),
             per_page: Some(200),
         };
-        let result = super::paginate_requests(&query).unwrap();
+        let result = paginate_request_values(query.page, query.per_page).unwrap();
         assert_eq!(result.1, 100);
     }
 
@@ -246,7 +233,7 @@ mod tests {
             page: Some(0),
             per_page: None,
         };
-        let result = super::paginate_requests(&query).unwrap();
+        let result = paginate_request_values(query.page, query.per_page).unwrap();
         assert_eq!(result.0, 1);
     }
 
@@ -261,21 +248,21 @@ mod tests {
             page: Some(1),
             per_page: Some(-5),
         };
-        let result = super::paginate_requests(&query).unwrap();
+        let result = paginate_request_values(query.page, query.per_page).unwrap();
         assert_eq!(result.1, 1);
     }
 
     #[test]
     fn test_parse_filter_datetime_parses_rfc3339() {
         let input = "2024-01-15T10:30:00Z";
-        let result = parse_filter_datetime_for_test(input, false);
+        let result = parse_filter_datetime_value(input, false);
         assert!(result.is_some());
     }
 
     #[test]
     fn test_parse_filter_datetime_parses_date_only_start() {
         let input = "2024-01-15";
-        let result = parse_filter_datetime_for_test(input, false);
+        let result = parse_filter_datetime_value(input, false);
         assert!(result.is_some());
         let dt = result.unwrap();
         assert_eq!(dt.hour(), 0);
@@ -286,7 +273,7 @@ mod tests {
     #[test]
     fn test_parse_filter_datetime_parses_date_only_end() {
         let input = "2024-01-15";
-        let result = parse_filter_datetime_for_test(input, true);
+        let result = parse_filter_datetime_value(input, true);
         assert!(result.is_some());
         let dt = result.unwrap();
         assert_eq!(dt.hour(), 23);
@@ -297,7 +284,7 @@ mod tests {
     #[test]
     fn test_parse_filter_datetime_returns_none_for_invalid() {
         let input = "invalid-date";
-        let result = parse_filter_datetime_for_test(input, false);
+        let result = parse_filter_datetime_value(input, false);
         assert!(result.is_none());
     }
 
