@@ -3,7 +3,6 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
@@ -11,20 +10,14 @@ use utoipa::{IntoParams, ToSchema};
 use super::requests::validate_decision_comment;
 use crate::{
     error::AppError,
-    models::{
-        request::RequestStatus,
-        subject_request::{DataSubjectRequestResponse, DataSubjectRequestType},
-        user::User,
+    models::{subject_request::DataSubjectRequestResponse, user::User},
+    requests::application::admin_subject_requests::{
+        list_subject_requests as list_subject_requests_view, process_subject_request_decision,
+        DecisionKind, SubjectRequestListParams,
     },
-    repositories::subject_request::{self, SubjectRequestFilters},
     state::AppState,
     utils::time,
 };
-
-const DEFAULT_PAGE: i64 = 1;
-const DEFAULT_PER_PAGE: i64 = 25;
-const MAX_PER_PAGE: i64 = 100;
-const MAX_PAGE: i64 = 1_000;
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
 pub struct SubjectRequestListQuery {
@@ -60,27 +53,26 @@ pub async fn list_subject_requests(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
 
-    let (page, per_page, filters) = validate_list_query(q)?;
-    let offset = (page - 1) * per_page;
-    let (items, total) =
-        subject_request::list_subject_requests(state.read_pool(), &filters, per_page, offset)
-            .await
-            .map_err(|err| {
-                tracing::error!(error = %err, "failed to list subject requests");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Database error"})),
-                )
-            })?;
+    let response = list_subject_requests_view(
+        state.read_pool(),
+        SubjectRequestListParams {
+            status: q.status,
+            request_type: q.r#type,
+            user_id: q.user_id,
+            from: q.from,
+            to: q.to,
+            page: q.page,
+            per_page: q.per_page,
+        },
+    )
+    .await
+    .map_err(map_app_error)?;
 
     Ok(Json(SubjectRequestListResponse {
-        page,
-        per_page,
-        total,
-        items: items
-            .into_iter()
-            .map(DataSubjectRequestResponse::from)
-            .collect(),
+        page: response.page,
+        per_page: response.per_page,
+        total: response.total,
+        items: response.items,
     }))
 }
 
@@ -94,34 +86,18 @@ pub async fn approve_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&state.write_pool, &request_id).await?;
-    let now = time::now_utc(&state.config.time_zone);
-    let approver_id = user.id.to_string();
-
-    let rows = subject_request::approve_subject_request(
+    let result = process_subject_request_decision(
         &state.write_pool,
         &request_id,
-        &approver_id,
+        user.id,
         &body.comment,
-        now,
+        time::now_utc(&state.config.time_zone),
+        DecisionKind::Approve,
     )
     .await
-    .map_err(|err| {
-        tracing::error!(error = %err, "failed to approve subject request");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(map_app_error)?;
 
-    if rows == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
-        ));
-    }
-
-    Ok(Json(json!({"message": "Subject request approved"})))
+    Ok(Json(json!(result)))
 }
 
 pub async fn reject_subject_request(
@@ -134,165 +110,18 @@ pub async fn reject_subject_request(
         return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
     }
     validate_decision_comment(&body.comment).map_err(map_app_error)?;
-    ensure_pending_request(&state.write_pool, &request_id).await?;
-    let now = time::now_utc(&state.config.time_zone);
-    let approver_id = user.id.to_string();
-
-    let rows = subject_request::reject_subject_request(
+    let result = process_subject_request_decision(
         &state.write_pool,
         &request_id,
-        &approver_id,
+        user.id,
         &body.comment,
-        now,
+        time::now_utc(&state.config.time_zone),
+        DecisionKind::Reject,
     )
     .await
-    .map_err(|err| {
-        tracing::error!(error = %err, "failed to reject subject request");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(map_app_error)?;
 
-    if rows == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
-        ));
-    }
-
-    Ok(Json(json!({"message": "Subject request rejected"})))
-}
-
-async fn ensure_pending_request(
-    pool: &sqlx::PgPool,
-    request_id: &str,
-) -> Result<(), (StatusCode, Json<Value>)> {
-    let existing = subject_request::fetch_subject_request(pool, request_id)
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to fetch subject request");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
-
-    match existing {
-        Some(request) if matches!(request.status, RequestStatus::Pending) => Ok(()),
-        _ => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
-        )),
-    }
-}
-
-fn validate_list_query(
-    q: SubjectRequestListQuery,
-) -> Result<(i64, i64, SubjectRequestFilters), (StatusCode, Json<Value>)> {
-    let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
-    let per_page = q
-        .per_page
-        .unwrap_or(DEFAULT_PER_PAGE)
-        .clamp(1, MAX_PER_PAGE);
-
-    let from = parse_from_datetime(q.from.as_deref()).map_err(bad_request_helper)?;
-    let to = parse_to_datetime(q.to.as_deref()).map_err(bad_request_helper)?;
-
-    if let (Some(from), Some(to)) = (from, to) {
-        if from > to {
-            return Err(bad_request_helper("`from` must be before or equal to `to`"));
-        }
-    }
-
-    let status = q.status.as_deref().map(parse_request_status).transpose()?;
-    let request_type = q.r#type.as_deref().map(parse_request_type).transpose()?;
-
-    let user_id = normalize_filter(q.user_id);
-
-    Ok((
-        page,
-        per_page,
-        SubjectRequestFilters {
-            status,
-            request_type,
-            user_id,
-            from,
-            to,
-        },
-    ))
-}
-
-fn normalize_filter(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn parse_request_status(value: &str) -> Result<RequestStatus, (StatusCode, Json<Value>)> {
-    match value.to_ascii_lowercase().as_str() {
-        "pending" => Ok(RequestStatus::Pending),
-        "approved" => Ok(RequestStatus::Approved),
-        "rejected" => Ok(RequestStatus::Rejected),
-        "cancelled" => Ok(RequestStatus::Cancelled),
-        _ => Err(bad_request_helper(
-            "`status` must be pending, approved, rejected, or cancelled",
-        )),
-    }
-}
-
-fn parse_request_type(value: &str) -> Result<DataSubjectRequestType, (StatusCode, Json<Value>)> {
-    match value.to_ascii_lowercase().as_str() {
-        "access" => Ok(DataSubjectRequestType::Access),
-        "rectify" => Ok(DataSubjectRequestType::Rectify),
-        "delete" => Ok(DataSubjectRequestType::Delete),
-        "stop" => Ok(DataSubjectRequestType::Stop),
-        _ => Err(bad_request_helper(
-            "`type` must be access, rectify, delete, or stop",
-        )),
-    }
-}
-
-fn parse_from_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, true)
-            .ok_or("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_to_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, false)
-            .ok_or("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let time = if is_start {
-            NaiveTime::from_hms_opt(0, 0, 0)
-        } else {
-            NaiveTime::from_hms_opt(23, 59, 59)
-        }?;
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDateTime::new(date, time),
-            Utc,
-        ));
-    }
-    None
+    Ok(Json(json!(result)))
 }
 
 fn map_app_error(err: AppError) -> (StatusCode, Json<Value>) {
@@ -325,8 +154,15 @@ fn bad_request_helper(message: &str) -> (StatusCode, Json<Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::holiday::HolidayReason;
-    use chrono::{TimeZone, Timelike};
+    use crate::{
+        models::{request::RequestStatus, subject_request::DataSubjectRequestType},
+        requests::application::admin_subject_requests::{
+            normalize_filter, parse_datetime_value, parse_from_datetime, parse_request_status,
+            parse_request_type, parse_to_datetime, validate_list_params, SubjectRequestListParams,
+        },
+        services::holiday::HolidayReason,
+    };
+    use chrono::{NaiveDate, TimeZone, Timelike, Utc};
 
     fn err_message(err: &(StatusCode, Json<Value>)) -> String {
         err.1
@@ -370,6 +206,7 @@ mod tests {
     #[test]
     fn parse_request_status_rejects_unknown_value() {
         let err = parse_request_status("unknown").expect_err("invalid status");
+        let err = map_app_error(err);
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
         assert!(err_message(&err).contains("`status`"));
     }
@@ -397,6 +234,7 @@ mod tests {
     #[test]
     fn parse_request_type_rejects_unknown_value() {
         let err = parse_request_type("archive").expect_err("invalid type");
+        let err = map_app_error(err);
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
         assert!(err_message(&err).contains("`type`"));
     }
@@ -448,9 +286,9 @@ mod tests {
 
     #[test]
     fn validate_list_query_applies_defaults_and_clamps() {
-        let (page, per_page, filters) = validate_list_query(SubjectRequestListQuery {
+        let (page, per_page, filters) = validate_list_params(SubjectRequestListParams {
             status: None,
-            r#type: None,
+            request_type: None,
             user_id: None,
             from: None,
             to: None,
@@ -470,9 +308,9 @@ mod tests {
 
     #[test]
     fn validate_list_query_parses_all_filters() {
-        let (page, per_page, filters) = validate_list_query(SubjectRequestListQuery {
+        let (page, per_page, filters) = validate_list_params(SubjectRequestListParams {
             status: Some("approved".to_string()),
-            r#type: Some("access".to_string()),
+            request_type: Some("access".to_string()),
             user_id: Some("  user-123  ".to_string()),
             from: Some("2026-01-01".to_string()),
             to: Some("2026-01-31".to_string()),
@@ -501,9 +339,9 @@ mod tests {
 
     #[test]
     fn validate_list_query_rejects_invalid_filters() {
-        let bad_status = validate_list_query(SubjectRequestListQuery {
+        let bad_status = validate_list_params(SubjectRequestListParams {
             status: Some("bad".to_string()),
-            r#type: None,
+            request_type: None,
             user_id: None,
             from: None,
             to: None,
@@ -511,11 +349,11 @@ mod tests {
             per_page: None,
         })
         .expect_err("invalid status");
-        assert_eq!(bad_status.0, StatusCode::BAD_REQUEST);
+        assert_eq!(map_app_error(bad_status).0, StatusCode::BAD_REQUEST);
 
-        let bad_type = validate_list_query(SubjectRequestListQuery {
+        let bad_type = validate_list_params(SubjectRequestListParams {
             status: None,
-            r#type: Some("bad".to_string()),
+            request_type: Some("bad".to_string()),
             user_id: None,
             from: None,
             to: None,
@@ -523,14 +361,14 @@ mod tests {
             per_page: None,
         })
         .expect_err("invalid type");
-        assert_eq!(bad_type.0, StatusCode::BAD_REQUEST);
+        assert_eq!(map_app_error(bad_type).0, StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn validate_list_query_rejects_inverted_date_range() {
-        let err = validate_list_query(SubjectRequestListQuery {
+        let err = validate_list_params(SubjectRequestListParams {
             status: None,
-            r#type: None,
+            request_type: None,
             user_id: None,
             from: Some("2026-02-10".to_string()),
             to: Some("2026-02-01".to_string()),
@@ -539,6 +377,7 @@ mod tests {
         })
         .expect_err("invalid date range");
 
+        let err = map_app_error(err);
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
         assert!(err_message(&err).contains("`from`"));
     }
