@@ -4,13 +4,11 @@ use super::{
     client::{ensure_device_label, ApiClient},
     types::{ApiError, LoginRequest, LoginResponse, MfaSetupResponse, MfaStatusResponse},
 };
-use crate::utils::storage as storage_utils;
 
 impl ApiClient {
     pub async fn login(&self, mut request: LoginRequest) -> Result<LoginResponse, ApiError> {
         if request.device_label.is_none() {
-            let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
-            request.device_label = Some(ensure_device_label(&storage)?);
+            request.device_label = Some(ensure_device_label()?);
         }
         let base_url = self.resolved_base_url().await;
         let response = self
@@ -42,8 +40,7 @@ impl ApiClient {
             return result;
         }
 
-        let storage = storage_utils::local_storage().map_err(ApiError::unknown)?;
-        let device_label = ensure_device_label(&storage)?;
+        let device_label = ensure_device_label()?;
 
         let base_url = self.resolved_base_url().await;
         let payload = json!({

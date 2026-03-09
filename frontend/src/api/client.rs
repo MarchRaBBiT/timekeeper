@@ -4,8 +4,8 @@ use chrono::NaiveDate;
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
+use std::cell::RefCell;
 use uuid::Uuid;
-use web_sys::Storage;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::utils::storage as storage_utils;
@@ -60,6 +60,9 @@ pub(crate) trait TestResponder: Send + Sync {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 static MOCK_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<dyn TestResponder>>>> = OnceLock::new();
+thread_local! {
+    static DEVICE_LABEL: RefCell<Option<String>> = const { RefCell::new(None) };
+}
 
 const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b' ')
@@ -869,16 +872,17 @@ impl ApiClient {
     }
 }
 
-pub(super) fn ensure_device_label(storage: &Storage) -> Result<String, ApiError> {
-    if let Ok(Some(label)) = storage.get_item("device_label") {
-        if !label.trim().is_empty() {
-            return Ok(label);
+pub(super) fn ensure_device_label() -> Result<String, ApiError> {
+    let label = DEVICE_LABEL.with(|cached| {
+        if let Some(existing) = cached.borrow().clone() {
+            return existing;
         }
-    }
-    let label = format!("device-{}", Uuid::new_v4());
-    storage
-        .set_item("device_label", &label)
-        .map_err(|_| ApiError::unknown("Failed to persist device label"))?;
+
+        let generated = format!("device-{}", Uuid::new_v4());
+        *cached.borrow_mut() = Some(generated.clone());
+        generated
+    });
+
     Ok(label)
 }
 
@@ -889,25 +893,29 @@ mod tests {
 
     wasm_bindgen_test_configure!(run_in_browser);
 
-    fn storage() -> Storage {
-        storage_utils::local_storage().expect("local_storage available")
-    }
-
     fn cleanup(keys: &[&str]) {
-        let store = storage();
+        let store = storage_utils::local_storage().expect("local_storage available");
         for key in keys {
             let _ = store.remove_item(key);
         }
     }
 
-    #[wasm_bindgen_test]
-    fn ensure_device_label_persists_value() {
-        cleanup(&["device_label"]);
-        let store = storage();
-        let first = ensure_device_label(&store).expect("label generated");
+    #[test]
+    fn ensure_device_label_reuses_in_memory_value() {
+        let first = ensure_device_label().expect("label generated");
         assert!(first.starts_with("device-"));
-        assert_eq!(store.get_item("device_label").unwrap().unwrap(), first);
-        let second = ensure_device_label(&store).expect("label reused");
+        let second = ensure_device_label().expect("label reused");
+        assert_eq!(first, second);
+    }
+
+    #[wasm_bindgen_test]
+    fn ensure_device_label_uses_in_memory_cache() {
+        cleanup(&["device_label"]);
+        let store = storage_utils::local_storage().expect("local_storage available");
+        let first = ensure_device_label().expect("label generated");
+        assert!(first.starts_with("device-"));
+        assert_eq!(store.get_item("device_label").unwrap(), None);
+        let second = ensure_device_label().expect("label reused");
         assert_eq!(first, second);
         cleanup(&["device_label"]);
     }
