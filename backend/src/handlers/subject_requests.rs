@@ -7,62 +7,44 @@ use serde_json::{json, Value};
 
 use crate::{
     models::{
-        subject_request::{
-            CreateDataSubjectRequest, DataSubjectRequest, DataSubjectRequestResponse,
-        },
+        subject_request::{CreateDataSubjectRequest, DataSubjectRequestResponse},
         user::User,
     },
-    repositories::subject_request,
+    requests::application::user_subject_requests::{
+        cancel_subject_request as cancel_subject_request_use_case,
+        create_subject_request as create_subject_request_use_case, list_user_subject_requests,
+        validate_details as validate_details_value,
+    },
     state::AppState,
     utils::time,
 };
-
-const MAX_DETAILS_LENGTH: usize = 2000;
 
 pub async fn create_subject_request(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateDataSubjectRequest>,
 ) -> Result<Json<DataSubjectRequestResponse>, (StatusCode, Json<Value>)> {
-    let details = validate_details(payload.details)?;
-    let now = time::now_utc(&state.config.time_zone);
-    let user_id = user.id.to_string();
-    let request = DataSubjectRequest::new(user_id, payload.request_type, details, now);
+    let response = create_subject_request_use_case(
+        &state.write_pool,
+        user.id,
+        payload,
+        time::now_utc(&state.config.time_zone),
+    )
+    .await
+    .map_err(map_app_error)?;
 
-    subject_request::insert_subject_request(&state.write_pool, &request)
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to create subject request");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
-
-    Ok(Json(DataSubjectRequestResponse::from(request)))
+    Ok(Json(response))
 }
 
 pub async fn list_my_subject_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<DataSubjectRequestResponse>>, (StatusCode, Json<Value>)> {
-    let user_id = user.id.to_string();
-    let requests = subject_request::list_subject_requests_by_user(state.read_pool(), &user_id)
+    let requests = list_user_subject_requests(state.read_pool(), user.id)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to list subject requests");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+        .map_err(map_app_error)?;
 
-    Ok(Json(
-        requests
-            .into_iter()
-            .map(DataSubjectRequestResponse::from)
-            .collect(),
-    ))
+    Ok(Json(requests))
 }
 
 pub async fn cancel_subject_request(
@@ -70,49 +52,57 @@ pub async fn cancel_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let now = time::now_utc(&state.config.time_zone);
-    let user_id = user.id.to_string();
-    let rows =
-        subject_request::cancel_subject_request(&state.write_pool, &request_id, &user_id, now)
-            .await
-            .map_err(|err| {
-                tracing::error!(error = %err, "failed to cancel subject request");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Database error"})),
-                )
-            })?;
+    let result = cancel_subject_request_use_case(
+        &state.write_pool,
+        user.id,
+        &request_id,
+        time::now_utc(&state.config.time_zone),
+    )
+    .await
+    .map_err(map_app_error)?;
 
-    if rows == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or not cancellable"})),
-        ));
-    }
-
-    Ok(Json(json!({"id": request_id, "status": "cancelled"})))
+    Ok(Json(json!(result)))
 }
 
 fn validate_details(details: Option<String>) -> Result<Option<String>, (StatusCode, Json<Value>)> {
-    if let Some(details) = details {
-        let trimmed = details.trim();
-        if trimmed.is_empty() {
-            return Ok(None);
+    validate_details_value(details).map_err(map_app_error)
+}
+
+fn map_app_error(err: crate::error::AppError) -> (StatusCode, Json<Value>) {
+    match err {
+        crate::error::AppError::BadRequest(message) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
         }
-        if trimmed.chars().count() > MAX_DETAILS_LENGTH {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "details is too long"})),
-            ));
+        crate::error::AppError::Forbidden(message) => {
+            (StatusCode::FORBIDDEN, Json(json!({ "error": message })))
         }
-        return Ok(Some(trimmed.to_string()));
+        crate::error::AppError::Unauthorized(message) => {
+            (StatusCode::UNAUTHORIZED, Json(json!({ "error": message })))
+        }
+        crate::error::AppError::Conflict(message) => {
+            (StatusCode::CONFLICT, Json(json!({ "error": message })))
+        }
+        crate::error::AppError::NotFound(message) => {
+            (StatusCode::NOT_FOUND, Json(json!({ "error": message })))
+        }
+        crate::error::AppError::Validation(errors) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Validation failed", "details": { "errors": errors } })),
+        ),
+        crate::error::AppError::InternalServerError(err) => {
+            tracing::error!(error = %err, "internal server error");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Internal server error" })),
+            )
+        }
     }
-    Ok(None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    const MAX_DETAILS_LENGTH: usize = 2000;
 
     #[test]
     fn validate_details_returns_none_for_none() {
