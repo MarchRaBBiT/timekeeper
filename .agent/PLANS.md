@@ -1600,9 +1600,10 @@
 ## JJ Snapshot Log
 - [x] `jj status`
 - [x] validation commands pass
-- [ ] `jj commit -m "refactor(application): finish typed response and clock cleanup"`
+- [x] `jj commit -m "refactor(application): finish typed response and clock cleanup"`
 
 ## Progress Notes
 - 2026-03-09: `auth` に `RefreshPayload` / `LogoutPayload` を追加し、MFA / password / logout 系レスポンスを `MessageResponse` に統一。API 形状は維持したため `BREAKING_CHANGES.md` は更新なし。
 - 2026-03-09: `requests` / `sessions` / admin requests / admin subject requests / admin users / admin holidays を typed DTO に寄せ、`attendance` export と admin export / audit_logs / attendance / holiday validation を `SYSTEM_CLOCK` に切り替えた。
 - 2026-03-09: `rg -n "Json<Value>|time::now_in_timezone|time::now_utc|time::today_local" src/handlers src/*/application -g '!**/tests/**'` は production code では一致なしとなった。
+- 2026-03-09: `jj commit -m "refactor(application): finish typed response and clock cleanup"` を実行し、今回の適用漏れ整理を保存した。
