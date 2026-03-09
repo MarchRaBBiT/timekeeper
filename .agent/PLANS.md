@@ -1191,10 +1191,11 @@
 - [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
 
 ## JJ Snapshot Log
-- [ ] `jj status`
+- [x] `jj status`
 - [x] admin users refactor tests pass
-- [ ] `jj commit -m "refactor(admin): extract admin user application helpers"`
+- [x] `jj commit -m "refactor(admin): extract admin user application helpers"`
 
 ## Progress Notes
 - 2026-03-09: `admin/users` の責務を一覧・作成更新・MFA/unlock・アーカイブ操作に分け、application 層へ移す作業に着手。
 - 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::users::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::users::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin user application helpers"` を実行し、`0cd5c807` に保存。
