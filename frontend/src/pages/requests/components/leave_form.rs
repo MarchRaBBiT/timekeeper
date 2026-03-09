@@ -1,4 +1,4 @@
-use crate::api::{ApiError, CreateLeaveRequest};
+use crate::api::{ApiError, CreateLeaveRequest, UpdateLeaveRequest};
 use crate::components::error::InlineErrorMessage;
 use crate::components::forms::DatePicker;
 use crate::components::layout::SuccessMessage;
@@ -8,7 +8,6 @@ use crate::pages::requests::{
     view_model::EditPayload,
 };
 use leptos::*;
-use serde_json::to_value;
 
 #[component]
 pub fn LeaveRequestForm(
@@ -30,8 +29,18 @@ pub fn LeaveRequestForm(
                 Ok(payload) => {
                     message.update(|msg| msg.clear());
                     if let Some(target) = editing.get() {
-                        update_action
-                            .dispatch((target.id, to_value(payload).unwrap_or_default()).into());
+                        update_action.dispatch(
+                            (
+                                target.id,
+                                UpdateLeaveRequest {
+                                    leave_type: payload.leave_type,
+                                    start_date: payload.start_date,
+                                    end_date: payload.end_date,
+                                    reason: payload.reason,
+                                },
+                            )
+                                .into(),
+                        );
                     } else {
                         action.dispatch(payload);
                     }
