@@ -1261,10 +1261,11 @@
 - [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
 
 ## JJ Snapshot Log
-- [ ] `jj status`
+- [x] `jj status`
 - [x] admin attendance refactor tests pass
-- [ ] `jj commit -m "refactor(admin): extract admin attendance application helpers"`
+- [x] `jj commit -m "refactor(admin): extract admin attendance application helpers"`
 
 ## Progress Notes
 - 2026-03-09: `admin/attendance` の責務を一覧・upsert・強制休憩終了に分け、application 層へ移す作業に着手。
 - 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::attendance::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::attendance::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin attendance application helpers"` を実行し、`dbc7439c` に保存。
