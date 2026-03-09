@@ -1226,10 +1226,11 @@
 - [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
 
 ## JJ Snapshot Log
-- [ ] `jj status`
+- [x] `jj status`
 - [x] admin audit log refactor tests pass
-- [ ] `jj commit -m "refactor(admin): extract admin audit log application helpers"`
+- [x] `jj commit -m "refactor(admin): extract admin audit log application helpers"`
 
 ## Progress Notes
 - 2026-03-09: `admin/audit_logs` の責務を access control・filter 正規化・PII masking・export に分け、application 層へ移す作業に着手。
 - 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::audit_logs::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::audit_logs::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin audit log application helpers"` を実行し、`f5f11a61` に保存。
