@@ -46,15 +46,6 @@ fn audit_log_params(
 }
 
 impl ApiClient {
-    fn pii_masked_from_response(response: &reqwest::Response) -> bool {
-        response
-            .headers()
-            .get("X-PII-Masked")
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    }
-
     pub async fn list_audit_logs(
         &self,
         page: i64,
@@ -101,7 +92,7 @@ impl ApiClient {
             .await?;
 
         let status = response.status();
-        let pii_masked = Self::pii_masked_from_response(&response);
+        let pii_masked = Self::parse_pii_masked_header(response.headers());
         Self::handle_unauthorized_status(status);
         if status.is_success() {
             let data = response
@@ -152,7 +143,7 @@ impl ApiClient {
             .await?;
 
         let status = response.status();
-        let pii_masked = Self::pii_masked_from_response(&response);
+        let pii_masked = Self::parse_pii_masked_header(response.headers());
         Self::handle_unauthorized_status(status);
         if status.is_success() {
             let data = response
