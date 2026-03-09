@@ -162,6 +162,13 @@ async fn test_system_admin_can_export_audit_logs() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-truncated")
+            .and_then(|value| value.to_str().ok()),
+        Some("false")
+    );
 }
 
 #[tokio::test]

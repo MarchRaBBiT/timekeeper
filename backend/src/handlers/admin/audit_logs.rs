@@ -33,6 +33,7 @@ const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
 const MAX_PER_PAGE: i64 = 100;
 const MAX_PAGE: i64 = 1_000;
+const DEFAULT_EXPORT_MAX_ROWS: i64 = 10_000;
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
 pub struct AuditLogListQuery {
@@ -182,9 +183,10 @@ pub async fn export_audit_logs(
     ensure_audit_log_access(&state.write_pool, &user).await?;
 
     let filters = validate_export_query(q)?;
-    let logs = audit_log::export_audit_logs(state.read_pool(), &filters)
-        .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    let (logs, truncated) =
+        audit_log::export_audit_logs(state.read_pool(), &filters, DEFAULT_EXPORT_MAX_ROWS)
+            .await
+            .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     let mask_pii = !user.is_system_admin();
     let payload: Vec<AuditLogResponse> = logs
@@ -210,6 +212,10 @@ pub async fn export_audit_logs(
     response.headers_mut().insert(
         "X-PII-Masked",
         HeaderValue::from_static(if mask_pii { "true" } else { "false" }),
+    );
+    response.headers_mut().insert(
+        "X-Truncated",
+        HeaderValue::from_static(if truncated { "true" } else { "false" }),
     );
     Ok(response)
 }
