@@ -103,14 +103,14 @@ EOF
 )"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    printf '[dry-run] codex -a never -s danger-full-access exec -C %q - <<%q\n' "$PWD" "PROMPT"
+    printf '[dry-run] codex --dangerously-bypass-approvals-and-sandbox exec -C %q - <<%q\n' "$PWD" "PROMPT"
     printf '%s\n' "$prompt"
     printf '%s\n' "PROMPT"
     return 0
   fi
 
   log "Handing conflict on '$bookmark_name' to Codex for semantic resolution"
-  codex -a never -s danger-full-access exec -C "$PWD" - <<<"$prompt"
+  codex --dangerously-bypass-approvals-and-sandbox exec -C "$PWD" - <<<"$prompt"
 }
 
 require_cmds() {
