@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -13,32 +13,33 @@ use utoipa::{IntoParams, ToSchema};
 use crate::attendance::application::queries::{
     build_attendance_status, resolve_attendance_range, resolve_summary_month,
 };
+use crate::attendance::application::reports::{
+    build_monthly_summary, export_user_attendance, list_effective_attendance_in_range,
+    AttendanceRange,
+};
 use crate::error::AppError;
 use crate::handlers::attendance_utils::{
     ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
     ensure_not_clocked_out, fetch_attendance_by_id, fetch_attendance_by_user_date,
-    get_break_records, get_break_records_map, insert_attendance_record, update_clock_in,
-    update_clock_out,
+    get_break_records, insert_attendance_record, update_clock_in, update_clock_out,
 };
 use crate::repositories::{
     attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    attendance_correction_request::AttendanceCorrectionRequestRepository,
     break_record::BreakRecordRepository,
     repository::Repository,
 };
 use crate::state::AppState;
-use crate::types::{AttendanceId, BreakRecordId, UserId};
+use crate::types::{AttendanceId, UserId};
 use crate::{
     models::{
         attendance::{
             Attendance, AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest,
         },
-        attendance_correction_request::CorrectionBreakItem,
         break_record::{BreakRecord, BreakRecordResponse},
         user::User,
     },
     services::holiday::HolidayServiceTrait,
-    utils::{csv::append_csv_row, time},
+    utils::time,
 };
 
 pub type AttendanceQuery = crate::attendance::application::queries::AttendanceQuery;
@@ -215,28 +216,12 @@ pub async fn get_my_attendance(
     let (from, to) =
         resolve_attendance_range(&params, time::today_local(tz), time::now_in_timezone(tz))?;
 
-    let repo = AttendanceRepository::new();
-    let attendances = repo
-        .find_by_user_and_range(state.read_pool(), user_id, from, to)
-        .await?;
-
-    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
-
-    let mut responses = Vec::new();
-    for attendance in attendances {
-        let attendance_id = attendance.id;
-        let break_records = break_map.remove(&attendance_id).unwrap_or_default();
-        responses.push(apply_effective_correction_to_response(
-            attendance,
-            break_records,
-            correction_map.get(&attendance_id),
-        ));
-    }
-
+    let responses = list_effective_attendance_in_range(
+        state.read_pool(),
+        user_id,
+        AttendanceRange { from, to },
+    )
+    .await?;
     Ok(Json(responses))
 }
 
@@ -295,49 +280,17 @@ pub async fn get_my_summary(
     let (year, month, first_day, last_day) =
         resolve_summary_month(&params, time::now_in_timezone(&state.config.time_zone))?;
 
-    let repo = AttendanceRepository::new();
-    let attendances = repo
-        .find_by_user_and_range(state.read_pool(), user_id, first_day, last_day)
-        .await?;
-    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
-
-    let mut total_work_hours = 0.0;
-    let mut total_work_days_i64 = 0i64;
-    for attendance in attendances {
-        let attendance_id = attendance.id;
-        let break_records = break_map.remove(&attendance_id).unwrap_or_default();
-        let effective = apply_effective_correction_to_response(
-            attendance,
-            break_records,
-            correction_map.get(&attendance_id),
-        );
-        if let Some(hours) = effective.total_work_hours {
-            if hours > 0.0 {
-                total_work_hours += hours;
-                total_work_days_i64 += 1;
-            }
-        }
-    }
-
-    let total_work_days = total_work_days_i64 as i32;
-    let average_daily_hours = if total_work_days > 0 {
-        total_work_hours / total_work_days as f64
-    } else {
-        0.0
-    };
-
-    let summary = AttendanceSummary {
-        month,
+    let summary = build_monthly_summary(
+        state.read_pool(),
+        user_id,
         year,
-        total_work_hours,
-        total_work_days,
-        average_daily_hours,
-    };
-
+        month,
+        AttendanceRange {
+            from: first_day,
+            to: last_day,
+        },
+    )
+    .await?;
     Ok(Json(summary))
 }
 
@@ -346,81 +299,19 @@ pub async fn export_my_attendance(
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceExportQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let from = params.from;
-    let to = params.to;
-
-    if let (Some(f), Some(t)) = (from, to) {
-        if f > t {
-            return Err(AppError::BadRequest("from must be <= to".into()));
-        }
-    }
-
-    let repo = AttendanceRepository::new();
-    let rows = repo
-        .find_by_user_with_range_options(state.read_pool(), user.id, from, to)
-        .await?;
-    let attendance_ids: Vec<AttendanceId> = rows.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
-
-    let mut csv_data = String::new();
-    append_csv_row(
-        &mut csv_data,
-        &[
-            "Username".to_string(),
-            "Full Name".to_string(),
-            "Date".to_string(),
-            "Clock In".to_string(),
-            "Clock Out".to_string(),
-            "Total Hours".to_string(),
-            "Status".to_string(),
-        ],
-    );
-    for row in rows {
-        let attendance_id = row.id;
-        let breaks = break_map.remove(&attendance_id).unwrap_or_default();
-        let effective =
-            apply_effective_correction_to_response(row, breaks, correction_map.get(&attendance_id));
-        let username = user.username.clone();
-        let full_name = user.full_name.clone();
-        let date = effective.date.format("%Y-%m-%d").to_string();
-        let clock_in = effective
-            .clock_in_time
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let clock_out = effective
-            .clock_out_time
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let total_hours = effective
-            .total_work_hours
-            .map(|h| format!("{:.2}", h))
-            .unwrap_or_else(|| "0.00".to_string());
-        let status = effective.status.db_value().to_string();
-
-        append_csv_row(
-            &mut csv_data,
-            &[
-                username,
-                full_name,
-                date,
-                clock_in,
-                clock_out,
-                total_hours,
-                status,
-            ],
-        );
-    }
-
-    Ok(Json(json!({
-        "csv_data": csv_data,
-        "filename": format!(
-            "my_attendance_export_{}.csv",
-            time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
-        )
-    })))
+    let export = export_user_attendance(
+        state.read_pool(),
+        user.id,
+        &user.username,
+        &user.full_name,
+        params.from,
+        params.to,
+        &time::now_in_timezone(&state.config.time_zone)
+            .format("%Y%m%d_%H%M%S")
+            .to_string(),
+    )
+    .await?;
+    Ok(Json(json!(export)))
 }
 
 fn build_attendance_response(
@@ -437,106 +328,6 @@ fn build_attendance_response(
         total_work_hours: attendance.total_work_hours,
         break_records,
     }
-}
-
-fn load_break_items_from_json(value: &serde_json::Value) -> Vec<CorrectionBreakItem> {
-    serde_json::from_value(value.clone()).unwrap_or_default()
-}
-
-fn calc_total_work_hours_with_breaks(
-    clock_in_time: Option<NaiveDateTime>,
-    clock_out_time: Option<NaiveDateTime>,
-    breaks: &[CorrectionBreakItem],
-) -> Option<f64> {
-    let (Some(clock_in), Some(clock_out)) = (clock_in_time, clock_out_time) else {
-        return None;
-    };
-    let mut break_minutes = 0i64;
-    for br in breaks {
-        if let Some(end) = br.break_end_time {
-            let mins = end
-                .signed_duration_since(br.break_start_time)
-                .num_minutes()
-                .max(0);
-            break_minutes += mins;
-        }
-    }
-    let gross_minutes = clock_out
-        .signed_duration_since(clock_in)
-        .num_minutes()
-        .max(0);
-    Some((gross_minutes - break_minutes).max(0) as f64 / 60.0)
-}
-
-fn apply_effective_correction_to_response(
-    attendance: Attendance,
-    break_records: Vec<BreakRecordResponse>,
-    effective: Option<
-        &crate::models::attendance_correction_request::AttendanceCorrectionEffectiveValue,
-    >,
-) -> AttendanceResponse {
-    if let Some(effective) = effective {
-        let corrected_breaks = load_break_items_from_json(&effective.break_records_corrected_json);
-        let break_records = corrected_breaks
-            .iter()
-            .enumerate()
-            .map(|(idx, br)| BreakRecordResponse {
-                id: {
-                    let _ = idx;
-                    BreakRecordId::new()
-                },
-                attendance_id: attendance.id,
-                break_start_time: br.break_start_time,
-                break_end_time: br.break_end_time,
-                duration_minutes: br.break_end_time.map(|end| {
-                    end.signed_duration_since(br.break_start_time)
-                        .num_minutes()
-                        .max(0) as i32
-                }),
-            })
-            .collect::<Vec<_>>();
-        let clock_in_time = effective
-            .clock_in_time_corrected
-            .or(attendance.clock_in_time);
-        let clock_out_time = effective
-            .clock_out_time_corrected
-            .or(attendance.clock_out_time);
-
-        return AttendanceResponse {
-            id: attendance.id,
-            user_id: attendance.user_id,
-            date: attendance.date,
-            clock_in_time,
-            clock_out_time,
-            status: attendance.status,
-            total_work_hours: calc_total_work_hours_with_breaks(
-                clock_in_time,
-                clock_out_time,
-                &corrected_breaks,
-            ),
-            break_records,
-        };
-    }
-    build_attendance_response(attendance, break_records)
-}
-
-async fn load_effective_correction_map(
-    pool: &PgPool,
-    repo: &AttendanceCorrectionRequestRepository,
-    attendance_ids: &[AttendanceId],
-) -> Result<
-    std::collections::HashMap<
-        AttendanceId,
-        crate::models::attendance_correction_request::AttendanceCorrectionEffectiveValue,
-    >,
-    AppError,
-> {
-    let corrections = repo.get_effective_values(pool, attendance_ids).await?;
-    let map = corrections
-        .into_iter()
-        .map(|item| (item.attendance_id, item))
-        .collect();
-    Ok(map)
 }
 
 pub(crate) async fn total_break_minutes(
