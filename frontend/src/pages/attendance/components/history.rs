@@ -4,8 +4,10 @@ use crate::{
     pages::attendance::repository,
     state::attendance::describe_holiday_reason,
 };
+use leptos::ev::KeyboardEvent;
 use leptos::*;
 use log::error;
+use std::rc::Rc;
 
 #[component]
 pub fn HistorySection(
@@ -70,9 +72,9 @@ fn HistoryRow(
             .map(|entry| entry.reason.clone())
     });
 
-    let toggle = {
+    let toggle: Rc<dyn Fn()> = Rc::new({
         let attendance_id = item.id.clone();
-        move |_| {
+        move || {
             let now_expanded = !expanded.get();
             expanded.set(now_expanded);
             if now_expanded && breaks.get().is_empty() {
@@ -94,11 +96,33 @@ fn HistoryRow(
                 });
             }
         }
+    });
+    let on_click = {
+        let toggle = Rc::clone(&toggle);
+        move |_| toggle()
+    };
+    let on_keydown = {
+        let toggle = Rc::clone(&toggle);
+        move |ev: KeyboardEvent| match ev.key().as_str() {
+            "Enter" => toggle(),
+            " " | "Spacebar" => {
+                ev.prevent_default();
+                toggle();
+            }
+            _ => {}
+        }
     };
 
     view! {
         <li class="group transition-all duration-200 hover:bg-surface-muted rounded-2xl mx-1 my-1">
-            <div class="px-4 py-4 sm:px-6 cursor-pointer" on:click=toggle>
+            <div
+                class="px-4 py-4 sm:px-6 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-primary-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                tabindex="0"
+                role="button"
+                aria-expanded={move || expanded.get().to_string()}
+                on:click=on_click
+                on:keydown=on_keydown
+            >
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-surface-elevated border border-border shadow-sm flex flex-col items-center justify-center group-hover:border-action-primary-border group-hover:bg-primary-subtle transition-colors">
@@ -260,5 +284,27 @@ mod host_tests {
         });
         assert!(html.contains("勤怠履歴"));
         assert!(html.contains("勤務時間"));
+    }
+
+    #[test]
+    fn history_rows_include_keyboard_accessibility_attributes() {
+        let html = render_to_string(move || {
+            let (history, _) = create_signal(vec![sample_attendance()]);
+            let history_signal = Signal::derive(move || history.get());
+            let holiday_signal = Signal::derive(|| Vec::new());
+            let loading = Signal::derive(|| false);
+            let error = Signal::derive(|| None::<crate::api::ApiError>);
+            view! {
+                <HistorySection
+                    history=history_signal
+                    holiday_entries=holiday_signal
+                    loading=loading
+                    error=error
+                />
+            }
+        });
+        assert!(html.contains("tabindex=\"0\""));
+        assert!(html.contains("role=\"button\""));
+        assert!(html.contains("aria-expanded=\"false\""));
     }
 }
