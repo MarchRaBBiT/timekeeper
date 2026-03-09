@@ -213,6 +213,66 @@ async fn login_rejects_invalid_password() {
 }
 
 #[tokio::test]
+async fn login_rejects_unknown_username() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let app = auth_router(pool.clone());
+    let refresh_token_count_before =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens")
+            .fetch_one(&pool)
+            .await
+            .expect("count refresh tokens before");
+    let access_token_count_before =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_access_tokens")
+            .fetch_one(&pool)
+            .await
+            .expect("count active access tokens before");
+    let active_session_count_before =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_sessions")
+            .fetch_one(&pool)
+            .await
+            .expect("count active sessions before");
+
+    let payload = json!({
+        "username": "missing-user",
+        "password": "Wrong123!",
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let refresh_token_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens")
+        .fetch_one(&pool)
+        .await
+        .expect("count refresh tokens");
+    let access_token_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_access_tokens")
+            .fetch_one(&pool)
+            .await
+            .expect("count active access tokens");
+    let active_session_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_sessions")
+        .fetch_one(&pool)
+        .await
+        .expect("count active sessions");
+
+    assert_eq!(refresh_token_count, refresh_token_count_before);
+    assert_eq!(access_token_count, access_token_count_before);
+    assert_eq!(active_session_count, active_session_count_before);
+}
+
+#[tokio::test]
 async fn login_locks_account_after_reaching_failure_threshold() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
