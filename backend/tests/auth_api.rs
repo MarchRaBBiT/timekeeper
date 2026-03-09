@@ -10,7 +10,13 @@ use timekeeper_backend::{
     error::AppError,
     handlers::auth::process_login_for_user,
     models::user::{LoginRequest, User, UserRole},
-    utils::{cookies::SameSite, mfa::generate_totp_secret, password::hash_password},
+    types::UserId,
+    utils::{
+        cookies::SameSite,
+        jwt::{Claims, RefreshToken},
+        mfa::generate_totp_secret,
+        password::hash_password,
+    },
 };
 
 const TEST_PASSWORD: &str = "correct-horse-battery-staple";
@@ -105,7 +111,7 @@ fn login_succeeds_when_password_matches_without_db() {
         &config,
         {
             let recorded = Arc::clone(&recorded);
-            move |token| {
+            move |token: RefreshToken| {
                 let recorded = Arc::clone(&recorded);
                 async move {
                     recorded.lock().unwrap().push(token.encoded());
@@ -115,7 +121,7 @@ fn login_succeeds_when_password_matches_without_db() {
         },
         {
             let recorded = Arc::clone(&recorded);
-            move |claims, _| {
+            move |claims: Claims, _: Option<String>| {
                 let recorded = Arc::clone(&recorded);
                 async move {
                     recorded.lock().unwrap().push(claims.jti.clone());
@@ -159,9 +165,9 @@ fn login_rejects_invalid_password_without_db() {
         user,
         payload,
         &config,
-        |_| async { Ok(()) },
-        |_, _| async { Ok(()) },
-        |_, _, _, _| async { Ok(()) },
+        |_: RefreshToken| async { Ok(()) },
+        |_: Claims, _: Option<String>| async { Ok(()) },
+        |_: UserId, _: RefreshToken, _: Claims, _: Option<String>| async { Ok(()) },
     ))
     .expect_err("mismatched password should fail");
     match err {
@@ -186,9 +192,9 @@ fn login_rejects_invalid_totp_code_when_mfa_is_enabled() {
         user,
         payload,
         &config,
-        |_| async { Ok(()) },
-        |_, _| async { Ok(()) },
-        |_, _, _, _| async { Ok(()) },
+        |_: RefreshToken| async { Ok(()) },
+        |_: Claims, _: Option<String>| async { Ok(()) },
+        |_: UserId, _: RefreshToken, _: Claims, _: Option<String>| async { Ok(()) },
     ))
     .expect_err("invalid code should be rejected");
     match err {
@@ -213,9 +219,9 @@ fn login_requires_totp_code_when_mfa_is_enabled() {
         user,
         payload,
         &config,
-        |_| async { Ok(()) },
-        |_, _| async { Ok(()) },
-        |_, _, _, _| async { Ok(()) },
+        |_: RefreshToken| async { Ok(()) },
+        |_: Claims, _: Option<String>| async { Ok(()) },
+        |_: UserId, _: RefreshToken, _: Claims, _: Option<String>| async { Ok(()) },
     ))
     .expect_err("missing code should be rejected");
     match err {
@@ -254,12 +260,12 @@ fn login_accepts_valid_totp_code_when_mfa_is_enabled() {
         user,
         payload,
         &config,
-        |_| async { Ok(()) },
-        |_, context| async move {
+        |_: RefreshToken| async { Ok(()) },
+        |_: Claims, context: Option<String>| async move {
             assert_eq!(context.as_deref(), Some("device"));
             Ok(())
         },
-        |_, _, _, _| async { Ok(()) },
+        |_: UserId, _: RefreshToken, _: Claims, _: Option<String>| async { Ok(()) },
     ))
     .expect("valid code should pass");
 }

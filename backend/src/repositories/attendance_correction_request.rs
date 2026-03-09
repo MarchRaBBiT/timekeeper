@@ -16,6 +16,7 @@ impl AttendanceCorrectionRequestRepository {
         Self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         db: &PgPool,
@@ -235,6 +236,7 @@ impl AttendanceCorrectionRequestRepository {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn approve_and_apply_effective_values(
         &self,
         db: &PgPool,

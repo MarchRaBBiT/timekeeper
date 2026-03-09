@@ -249,6 +249,344 @@
 - 2026-02-12: `*_enc` への一本化と平文列削除migration（032）を追加。
 - 2026-02-12: 既存seed由来の `NULL` を補正するmigration（033）を追加し、統合テスト群のデータ投入を暗号化前提に更新。
 
+# EP-20260309-requests-application-create-request
+
+## Goal
+- user request handler の create 系ロジックを requests application 層へ移し、HTTP 層を adapter に近づける
+
+## Scope
+- In: `backend/src/handlers/requests.rs`, `backend/src/requests/application/user_requests.rs`, `.agent/PLANS.md`
+- Out: request API path/method/payload 変更、DB schema 変更、admin request flow の再設計
+
+## Done Criteria (Observable)
+- [x] leave/overtime request 作成時の repository 呼び出しが `requests::application::user_requests` に移っている
+- [x] handler は payload 検証と domain model 構築、HTTP response 変換に集中している
+- [x] requests 関連ユニットテストと app router build テストが成功する
+
+## Constraints / Non-goals
+- 既存 API の JSON 形状は維持する
+- `BREAKING_CHANGES.md` は API 互換が崩れた場合のみ更新する
+
+## Task Breakdown
+1. [x] create leave/overtime request の repository bridge を application 層へ抽出
+2. [x] handler から直接 `RequestRepository` を触る責務を除去
+3. [x] fmt + clippy + 対象テストで回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib planned_hours_validation`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+- [ ] `cargo clippy --all-targets -- -D warnings`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(requests): move create request into application service"`
+
+## Progress Notes
+- 2026-03-09: `create_leave_request` / `create_overtime_request` の永続化橋渡しを application 層へ移し、handler 側は validation と model 構築に限定。
+- 2026-03-09: `cargo clippy --all-targets -- -D warnings` は `utoipa-swagger-ui` の build artifact path 不整合で失敗。今回の差分由来の lint 警告は未検出。
+
+# EP-20260309-admin-request-read-application
+
+## Goal
+- admin request の read 系ユースケースを requests application 層へ移し、admin handler を権限確認と HTTP adapter に寄せる
+
+## Scope
+- In: `backend/src/handlers/admin/requests.rs`, `backend/src/requests/application/admin_requests.rs`, `backend/src/requests/application/mod.rs`, `.agent/PLANS.md`
+- Out: approve/reject 更新系の再設計、API path/method/payload 変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] admin request 一覧取得の filter 解釈と response 組み立てが application 層に移っている
+- [x] admin request 詳細取得の kind/data 判定が application 層に移っている
+- [x] 既存 admin request API の JSON 形状を維持したまま関連ユニットテストが成功する
+
+## Constraints / Non-goals
+- OpenAPI で参照している request/query 型は handler 側に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests::application::admin_requests` を追加し、一覧/詳細の query 解釈と response 変換を移設
+2. [x] `handlers::admin::requests` から read 系 repository 呼び出しを除去
+3. [x] fmt + 対象テスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::admin_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(requests): extract admin request read application service"`
+
+## Progress Notes
+- 2026-03-09: admin request の一覧/詳細取得と filter/page 解釈を `requests::application::admin_requests` へ移動開始。handler 側は auth と query 受け渡しに集中させる。
+
+# EP-20260309-admin-request-decision-application
+
+## Goal
+- admin request の approve/reject と自己承認防止を requests application 層へ移し、admin handler を更新系でも adapter に寄せる
+
+## Scope
+- In: `backend/src/handlers/admin/requests.rs`, `backend/src/requests/application/admin_requests.rs`, `.agent/PLANS.md`
+- Out: request API path/method/payload 変更、DB schema 変更、監査ミドルウェア仕様変更
+
+## Done Criteria (Observable)
+- [x] approve/reject の status update 呼び出しが application 層に移っている
+- [x] 自己承認防止と comment validation の業務ルールが application/handler 境界で明確になっている
+- [x] 既存 admin request 更新系 API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- admin 権限チェック自体は handler に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests::application::admin_requests` に decision use case と自己承認防止ロジックを追加
+2. [x] `handlers::admin::requests` から直接 repository 更新を除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::admin_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(requests): move admin request decisions into application service"`
+
+## Progress Notes
+- 2026-03-09: approve/reject の repository 更新と自己承認防止を application 層へ移し、handler は auth・body 受け取り・HTTP 変換に限定。
+
+# EP-20260309-admin-subject-request-application
+
+## Goal
+- admin subject request の一覧/承認却下ロジックを application 層へ移し、handler を HTTP adapter に寄せる
+
+## Scope
+- In: `backend/src/handlers/admin/subject_requests.rs`, `backend/src/requests/application/admin_subject_requests.rs`, `backend/src/requests/application/mod.rs`, `.agent/PLANS.md`
+- Out: subject request API path/method/payload 変更、DB schema 変更、user subject request handler の再設計
+
+## Done Criteria (Observable)
+- [x] subject request 一覧の filter 解釈と response 組み立てが application 層に移っている
+- [x] approve/reject と pending 判定が application 層に移っている
+- [x] 既存 admin subject request API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- admin 権限チェックと `AppError -> HTTP` 変換は handler に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests::application::admin_subject_requests` を追加し、一覧/decision/pending 判定を移設
+2. [x] `handlers::admin::subject_requests` から直接 repository 呼び出しと query 解釈を除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::admin_subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(requests): extract admin subject request application service"`
+
+## Progress Notes
+- 2026-03-09: admin subject request の query 解釈・一覧整形・pending 判定・承認却下を application 層へ移動開始。handler 側は auth と HTTP エラー変換に限定。
+
+# EP-20260309-user-subject-request-application
+
+## Goal
+- user subject request の create/list/cancel を application 層へ移し、handler を HTTP adapter に寄せる
+
+## Scope
+- In: `backend/src/handlers/subject_requests.rs`, `backend/src/requests/application/user_subject_requests.rs`, `backend/src/requests/application/mod.rs`, `.agent/PLANS.md`
+- Out: subject request API path/method/payload 変更、DB schema 変更、admin subject request flow 変更
+
+## Done Criteria (Observable)
+- [x] create/list/cancel の repository 呼び出しが application 層に移っている
+- [x] details validation が application 層に移っている
+- [x] 既存 user subject request API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- HTTP エラーマッピングは handler に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests::application::user_subject_requests` を追加し、create/list/cancel と details validation を移設
+2. [x] `handlers::subject_requests` から直接 repository 呼び出しを除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(requests): extract user subject request application service"`
+
+## Progress Notes
+- 2026-03-09: user subject request の create/list/cancel と details validation を application 層へ移し、handler 側は HTTP エラーマッピングと DTO 受け渡しに限定。
+
+# EP-20260309-attendance-read-query-application
+
+## Goal
+- attendance read 系の期間解釈とステータス整形を application 層へ移し、handler の分岐を減らす
+
+## Scope
+- In: `backend/src/attendance/application/*`, `backend/src/attendance/mod.rs`, `backend/src/handlers/attendance.rs`, `.agent/PLANS.md`
+- Out: clock in/out・break 更新系の再設計、API path/method/payload 変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `get_my_attendance` の期間解釈が application 層に移っている
+- [x] `get_attendance_status` のステータス組み立てが application 層に移っている
+- [x] `get_my_summary` の月次期間解釈が application 層に移っている
+- [x] 既存 attendance read API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- 既存 docs 用の query/response 型名は維持する
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `attendance::application::queries` を追加し、期間解釈とステータス整形を移設
+2. [x] `handlers::attendance` から read 系の重い条件分岐を除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::queries::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(attendance): extract read query application helpers"`
+
+## Progress Notes
+- 2026-03-09: attendance read 系の期間解釈とステータス整形を `attendance::application::queries` へ移し、handler では repository 呼び出しと HTTP 変換に集中させる。
+
+# EP-20260309-attendance-report-application
+
+## Goal
+- attendance の summary/export と補正適用ロジックを application 層へ移し、read 系 handler の集計責務を減らす
+
+## Scope
+- In: `backend/src/attendance/application/reports.rs`, `backend/src/attendance/application/mod.rs`, `backend/src/handlers/attendance.rs`, `.agent/PLANS.md`
+- Out: clock in/out・break 更新系の再設計、API path/method/payload 変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `get_my_attendance` の補正適用と response 組み立てが application 層で共通化されている
+- [x] `get_my_summary` の集計が application 層へ移っている
+- [x] `export_my_attendance` の CSV 組み立てが application 層へ移っている
+- [x] 既存 attendance read/export API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- `build_attendance_response` と更新系 helper は handler 側に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `attendance::application::reports` を追加し、補正適用・summary・export を移設
+2. [x] `handlers::attendance` から read/export 系の集計責務を除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::reports::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(attendance): move report application helpers"`
+
+## Progress Notes
+- 2026-03-09: attendance の補正適用・summary 集計・export CSV 生成を `attendance::application::reports` へ移し、handler 側は query 解釈済み引数の受け渡しに集中させる。
+
+# EP-20260309-attendance-command-application
+
+## Goal
+- attendance の更新系 use-case を application 層へ移し、handler から clock/break の状態遷移責務を除去する
+
+## Scope
+- In: `backend/src/attendance/application/commands.rs`, `backend/src/attendance/application/mod.rs`, `backend/src/handlers/attendance.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload 変更、attendance repository 再設計、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `clock_in` / `clock_out` の状態遷移と holiday 判定が application 層に移っている
+- [x] `break_start` / `break_end` の状態遷移が application 層に移っている
+- [x] 既存 attendance update API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- 時刻取得自体は handler に残し、application には確定値を渡す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `attendance::application::commands` を追加し、clock/break use-case と holiday 判定を移設
+2. [x] `handlers::attendance` から更新系の状態遷移ロジックを除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::commands::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(attendance): move command application helpers"`
+
+## Progress Notes
+- 2026-03-09: attendance の clock/break 更新系と holiday 判定を `attendance::application::commands` へ移し、handler 側は時刻決定と HTTP 変換に集中させる。
+
+# EP-20260309-holiday-query-application
+
+## Goal
+- holiday の user/admin read 系と Google ICS 解析を application 層へ移し、handler を HTTP adapter に寄せる
+
+## Scope
+- In: `backend/src/holiday/application/*`, `backend/src/holiday/mod.rs`, `backend/src/handlers/holidays.rs`, `.agent/PLANS.md`
+- Out: admin holiday create/delete の再設計、API path/method/payload 変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] public holiday 一覧取得が application 層へ移っている
+- [x] holiday check/month query が application 層へ移っている
+- [x] Google ICS fetch/parse が application 層へ移っている
+- [x] 既存 holiday API の JSON 形状を維持したまま関連テストが成功する
+
+## Constraints / Non-goals
+- admin 権限チェックは handler に残す
+- API 互換が崩れない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `holiday::application::queries` を追加し、一覧・判定・月間取得・ICS fetch/parse を移設
+2. [x] `handlers::holidays` から read/query 系ロジックを除去
+3. [x] fmt + 関連ユニットテスト + app router build で回帰確認
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib holiday::application::queries::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::holidays::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [x] validation commands pass
+- [ ] `jj commit -m "refactor(holiday): extract holiday query application helpers"`
+
+## Progress Notes
+- 2026-03-09: holiday 一覧・判定・月間取得・Google ICS 解析を `holiday::application::queries` へ移し、handler 側は auth と HTTP 変換に限定。
+
 # EP-20260213-attendance-correction-request
 
 ## Goal
@@ -257,6 +595,413 @@
 ## Scope
 - In: `backend`（migration/model/repository/handler/router）、`frontend`（API/types/requests画面）、関連テスト
 - Out: メール通知、既存過去データ移行、上長ロール新設
+
+# EP-20260308-backend-architecture-foundation
+
+## Goal
+- バックエンド全面再構築に向けた最初の土台として、起動/bootstrap とルーティング構成を `platform` 層へ分離し、`main.rs` を薄くする
+
+## Scope
+- In: `backend/src/main.rs`, 新規 `backend/src/platform/*`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: handler の業務ロジック再設計、DB schema 再設計、API 互換性変更
+
+## Done Criteria (Observable)
+- [x] `main.rs` がアプリ組み立ての委譲のみを行う
+- [x] 既存の public/user/admin/system-admin ルーティング組み立てが `platform` モジュールに移動している
+- [x] CORS/cleanup/bootstrap の既存挙動をユニットテストで維持確認できる
+
+## Constraints / Non-goals
+- 既存 handler / middleware / state の外部挙動は変えない
+- 今回は新規アーキテクチャの受け皿作成までに留め、業務モジュール分解は別タスクとする
+
+## Task Breakdown
+1. [x] `platform` モジュール追加と `main.rs` の薄型化
+2. [x] ルーティング・共通 layer・cleanup 起動処理の移設
+3. [x] 既存 `main.rs` テストの移設と回帰確認
+4. [x] fmt + 対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib platform::`
+- [x] `cargo test -p timekeeper-backend --bin timekeeper-backend`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] `cargo test -p timekeeper-backend --lib platform::` pass
+- [x] `cargo test -p timekeeper-backend --bin timekeeper-backend` pass
+- [ ] `jj commit -m "refactor(backend): move app bootstrap into platform module"`
+
+## Progress Notes
+- 2026-03-08: 専用ブランチ `topic/backend-rebuild-architecture` を作成。
+- 2026-03-08: `platform::{app,runtime}` を追加し、`main.rs` の起動・ルーティング・cleanup 初期化を移設。platform ユニットテストと bin テストビルド成功。
+
+# EP-20260308-identity-http-boundary
+
+## Goal
+- 認証・セッション関連の HTTP 入口を `identity` モジュールへ移し、`platform` は業務モジュール合成に集中させる
+
+## Scope
+- In: 新規 `backend/src/identity/*`, `backend/src/platform/app.rs`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: auth/sessions handler 本体のリライト、API contract 変更、DB 変更
+
+## Done Criteria (Observable)
+- [x] `/api/auth/*` と関連 public config route のルーティング定義が `identity/interface/http.rs` に集約されている
+- [x] `platform::app::build_app` が identity ルータを合成している
+- [x] identity と platform の対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API path / method / payload は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `identity` モジュール追加
+2. [x] auth/sessions/config の route 定義を `identity/interface/http.rs` へ移設
+3. [x] `platform::app` から identity ルータを合成するよう変更
+4. [x] identity / platform の対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib user_identity_routes_require_auth`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+- [x] `cargo test -p timekeeper-backend --lib test_domain_route_groups_require_auth`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(identity): extract auth http routes into identity module"`
+
+## Progress Notes
+- 2026-03-08: `identity/interface/http.rs` を追加し、認証・セッション系ルートを `platform` から切り離した。既存 API 変更はなし。
+
+# EP-20260308-attendance-http-boundary
+
+## Goal
+- 勤怠・勤怠修正申請の HTTP 入口を `attendance` モジュールへ移し、`platform` はモジュール合成責務へ寄せる
+
+## Scope
+- In: 新規 `backend/src/attendance/*`, `backend/src/platform/app.rs`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: attendance handler 本体の再実装、holiday ルート分離、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `/api/attendance*` と `/api/admin/attendance*` の route 定義が `attendance/interface/http.rs` に集約されている
+- [x] admin と system-admin の勤怠系権限制御が従来どおり分離されている
+- [x] attendance / platform の対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API path / method / payload は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `attendance` モジュール追加
+2. [x] attendance / attendance-correction admin route を `attendance/interface/http.rs` へ移設
+3. [x] `platform::app` から attendance ルータを合成するよう変更
+4. [x] attendance / platform の対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib attendance::interface::http::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(attendance): extract attendance http routes into module"`
+
+## Progress Notes
+- 2026-03-08: `attendance/interface/http.rs` を追加し、user/admin/system-admin の勤怠系 route 定義を `platform` から切り離した。既存 API 変更はなし。
+
+# EP-20260308-requests-http-boundary
+
+## Goal
+- 申請・同意・本人開示請求の HTTP 入口を `requests` モジュールへ移し、`platform` はモジュール合成責務へ寄せる
+
+## Scope
+- In: 新規 `backend/src/requests/*`, `backend/src/platform/app.rs`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: request handler 本体の再実装、audit/holiday ルート分離、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `/api/requests*`, `/api/consents*`, `/api/subject-requests*`, `/api/admin/requests*`, `/api/admin/subject-requests*` の route 定義が `requests/interface/http.rs` に集約されている
+- [x] user/admin の申請系権限制御が従来どおり維持されている
+- [x] requests / platform の対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API path / method / payload は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests` モジュール追加
+2. [x] request/consent/subject-request 系 route を `requests/interface/http.rs` へ移設
+3. [x] `platform::app` から requests ルータを合成するよう変更
+4. [x] requests / platform の対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::interface::http::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+- [x] `cargo test -p timekeeper-backend --lib test_domain_route_groups_require_auth`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(requests): extract request http routes into module"`
+
+## Progress Notes
+- 2026-03-08: `requests/interface/http.rs` を追加し、申請・同意・本人開示請求系 route 定義を `platform` から切り離した。既存 API 変更はなし。
+
+# EP-20260309-holiday-http-boundary
+
+## Goal
+- 祝日・週次休日・個別祝日例外の HTTP 入口を `holiday` モジュールへ移し、`platform` はモジュール合成責務へ寄せる
+
+## Scope
+- In: 新規 `backend/src/holiday/*`, `backend/src/platform/app.rs`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: holiday handler 本体の再実装、audit/admin user ルート分離、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `/api/holidays*`, `/api/admin/holidays*`, `/api/admin/users/{user_id}/holiday-exceptions*` の route 定義が `holiday/interface/http.rs` に集約されている
+- [x] user/admin の holiday 系権限制御が従来どおり維持されている
+- [x] holiday / platform の対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API path / method / payload は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `holiday` モジュール追加
+2. [x] holiday / holiday-exception 系 route を `holiday/interface/http.rs` へ移設
+3. [x] `platform::app` から holiday ルータを合成するよう変更
+4. [x] holiday / platform の対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib holiday::interface::http::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(holiday): extract holiday http routes into module"`
+
+## Progress Notes
+- 2026-03-09: `holiday/interface/http.rs` を追加し、祝日・週次休日・祝日例外の route 定義を `platform` から切り離した。既存 API 変更はなし。
+
+# EP-20260309-admin-http-boundary
+
+## Goal
+- 管理画面向けユーザー管理・監査ログ・CSV export の HTTP 入口を `admin` モジュールへ移し、`platform` の route 定義を空に近づける
+
+## Scope
+- In: 新規 `backend/src/admin/*`, `backend/src/platform/app.rs`, `backend/src/lib.rs`, 関連ユニットテスト
+- Out: admin handler 本体の再実装、application/use-case 層抽出、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `/api/admin/users*`, `/api/admin/archived-users*`, `/api/admin/audit-logs*`, `/api/admin/export` の route 定義が `admin/interface/http.rs` に集約されている
+- [x] admin / system-admin の権限制御が従来どおり維持されている
+- [x] `platform` の route group 関数が空ルータになり、対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API path / method / payload は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `admin` モジュール追加
+2. [x] admin/audit/export 系 route を `admin/interface/http.rs` へ移設
+3. [x] `platform::app` から admin ルータを合成するよう変更
+4. [x] admin / platform の対象テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::interface::http::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+- [x] `cargo test -p timekeeper-backend --lib platform_route_groups_are_empty_after_extraction`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(admin): extract admin http routes into module"`
+
+## Progress Notes
+- 2026-03-09: `admin/interface/http.rs` を追加し、管理者向けユーザー管理・監査ログ・export route 定義を `platform` から切り離した。既存 API 変更はなし。
+
+# EP-20260309-identity-application-sessions
+
+## Goal
+- `identity` モジュールに最初の application/use-case を導入し、session 一覧取得の整形責務を handler から外す
+
+## Scope
+- In: 新規 `backend/src/identity/application/*`, `backend/src/handlers/sessions.rs`, 関連ユニットテスト
+- Out: session revoke のユースケース化、auth handler 全体の再設計、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `list sessions` の repository 呼び出しと DTO 変換が `identity/application/sessions.rs` に移動している
+- [x] `handlers/sessions.rs` は application 層の結果を HTTP レスポンスへ変換するだけになっている
+- [x] 新旧対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API response 形状は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `identity/application/sessions.rs` を追加
+2. [x] `list_sessions` の session view 生成を application 層へ移設
+3. [x] `handlers/sessions.rs` を application 呼び出しへ差し替え
+4. [x] application / handler / app build テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::sessions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib extract_ip_`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(identity): add sessions application service"`
+
+## Progress Notes
+- 2026-03-09: `identity/application/sessions.rs` を追加し、session 一覧取得の整形責務を handler から移設した。既存 API 変更はなし。
+
+# EP-20260309-identity-application-revoke-session
+
+## Goal
+- `identity` の session revoke 業務ロジックを application/use-case 化し、handler から削除・整合性チェック責務を外す
+
+## Scope
+- In: `backend/src/identity/application/sessions.rs`, `backend/src/handlers/sessions.rs`, 関連ユニットテスト
+- Out: 監査ログ組み立ての完全移設、admin session revoke の共通化、API contract 変更
+
+## Done Criteria (Observable)
+- [x] session revoke のバリデーション・所有者確認・トークン削除が `identity/application/sessions.rs` に移動している
+- [x] `handlers/sessions.rs` は application 層の結果を使って監査イベントと HTTP レスポンスを返すだけになっている
+- [x] 新旧対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API response 形状は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] revoke 用の application 関数と戻り値型を追加
+2. [x] token/session 削除処理を handler から application 層へ移設
+3. [x] `handlers/sessions.rs` を application 呼び出しへ差し替え
+4. [x] application / handler / app build テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::sessions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib extract_ip_`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(identity): move session revoke into application service"`
+
+## Progress Notes
+- 2026-03-09: session revoke の整合性チェックと削除処理を `identity/application/sessions.rs` に移し、handler には監査と HTTP 応答だけを残した。既存 API 変更はなし。
+
+# EP-20260309-requests-application-my-requests
+
+## Goal
+- `requests` の `get_my_requests` を application/use-case 化し、handler から repository 集約とレスポンス組み立て責務を外す
+
+## Scope
+- In: 新規 `backend/src/requests/application/*`, `backend/src/handlers/requests.rs`, 関連ユニットテスト
+- Out: create/update/cancel request のユースケース化、admin request handler の再設計、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `get_my_requests` の leave/overtime/correction 集約と view 組み立てが `requests/application/user_requests.rs` に移動している
+- [x] `handlers/requests.rs` は application 層の結果を JSON 応答へ変換するだけになっている
+- [x] 新旧対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API response 形状は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] `requests/application/user_requests.rs` を追加
+2. [x] `get_my_requests` の集約・整形を application 層へ移設
+3. [x] `handlers/requests.rs` を application 呼び出しへ差し替え
+4. [x] application / app build テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib get_my_requests`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(requests): add my-requests application service"`
+
+## Progress Notes
+- 2026-03-09: `requests/application/user_requests.rs` を追加し、`get_my_requests` の request/correction 集約とレスポンス組み立てを handler から移設した。既存 API 変更はなし。
+
+# EP-20260309-requests-application-cancel-request
+
+## Goal
+- `requests` の `cancel_request` を application/use-case 化し、handler から cancel 分岐と状態遷移責務を外す
+
+## Scope
+- In: `backend/src/requests/application/user_requests.rs`, `backend/src/handlers/requests.rs`, 関連ユニットテスト
+- Out: `update_request` のユースケース化、admin request 操作の再設計、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `cancel_request` の leave/overtime/attendance-correction 分岐と cancel 実行が `requests/application/user_requests.rs` に移動している
+- [x] `handlers/requests.rs` は application 層の結果を JSON 応答へ変換するだけになっている
+- [x] 新旧対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API response 形状は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] cancel 用の application 関数と戻り値型を追加
+2. [x] request/correction cancel 分岐を handler から application 層へ移設
+3. [x] `handlers/requests.rs` を application 呼び出しへ差し替え
+4. [x] application / handler / app build テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib planned_hours_validation`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(requests): move cancel request into application service"`
+
+## Progress Notes
+- 2026-03-09: `cancel_request` の leave/overtime/attendance-correction cancel 分岐を `requests/application/user_requests.rs` に移し、handler には HTTP 応答だけを残した。既存 API 変更はなし。
+
+# EP-20260309-requests-application-update-request
+
+## Goal
+- `requests` の `update_request` を application/use-case 化し、handler から update 分岐とバリデーション責務を外す
+
+## Scope
+- In: `backend/src/requests/application/user_requests.rs`, `backend/src/handlers/requests.rs`, 関連ユニットテスト
+- Out: create request のユースケース化、admin request 操作の再設計、API contract 変更
+
+## Done Criteria (Observable)
+- [x] `update_request` の leave/overtime/attendance-correction 分岐と更新バリデーションが `requests/application/user_requests.rs` に移動している
+- [x] `handlers/requests.rs` は application 層の結果を JSON 応答へ変換するだけになっている
+- [x] 新旧対象テストが成功する
+
+## Constraints / Non-goals
+- 既存 API response 形状は変更しない
+- 破壊的変更が出ない限り `BREAKING_CHANGES.md` は更新しない
+
+## Task Breakdown
+1. [x] update 用の application 関数と戻り値型を追加
+2. [x] request/correction update 分岐とバリデーションを handler から application 層へ移設
+3. [x] `handlers/requests.rs` を application 呼び出しへ差し替え
+4. [x] application / handler / app build テスト実行
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib planned_hours_validation`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [ ] `jj commit -m "refactor(requests): move update request into application service"`
+
+## Progress Notes
+- 2026-03-09: `update_request` の leave/overtime/attendance-correction 更新分岐とバリデーションを `requests/application/user_requests.rs` に移し、handler には HTTP 応答だけを残した。既存 API 変更はなし。
 
 ## Done Criteria (Observable)
 - [x] 従業員が1日単位の勤怠修正依頼（出勤/退勤/休憩明細+理由）を作成/更新/取消できる
@@ -291,3 +1036,577 @@
 ## Progress Notes
 - 2026-02-13: 計画作成
 - 2026-02-13: migration/handler/repository/frontend requests UI まで実装し、`cargo fmt --all`、`cargo test -p timekeeper-backend --lib`、`cargo test -p timekeeper-backend --test requests_api -- --nocapture`、`cargo test -p timekeeper-frontend requests:: -- --nocapture` を通過。
+
+# EP-20260306-auth-security-topics
+
+## Goal
+- backend 認証フローのレビュー指摘 4 件を、それぞれ独立した topic branch で修正する
+
+## Scope
+- In: `backend/src/handlers/auth.rs`, `backend/src/repositories/password_reset.rs`, `backend/src/models/user.rs`, `backend/src/utils/security.rs`, `backend/src/middleware/auth.rs`, `backend/tests/*`, `.agent/PLANS.md`
+- Out: frontend 変更、既存 `.takt/.gitignore` 変更、インフラ設定の本番反映
+
+## Done Criteria (Observable)
+- [x] パスワードリセット token が単回利用になり、旧 token を無効化できる
+- [x] メール変更時に再認証が必要になる
+- [x] Cookie ベース認証の状態変更 API で CSRF 防御が統一される
+- [x] ログインで未知ユーザーと既知ユーザーの処理差が緩和される
+- [x] 各修正が独立した `jj` topic branch / snapshot として分離されている
+
+## Constraints / Non-goals
+- 既存の [`.takt/.gitignore`](/home/mrabbit/Documents/timekeeper/.takt/.gitignore) には触れない
+- 各修正は `@-` を起点にした別 workspace で行い、ユーザーの未コミット変更を混ぜない
+- SQLx migration 変更は必要な場合のみ新規追加で対応する
+
+## Task Breakdown
+1. [x] `jj workspace` を 4 つ作成し、各 topic branch の起点を分離する
+2. [x] Finding 1: password reset の単回利用保証と旧 token 無効化を実装する
+3. [x] Finding 2: メール変更に current password 再認証を導入する
+4. [x] Finding 3: refresh/logout/session 操作に Origin 検証を統一適用する
+5. [x] Finding 4: ダミーハッシュでログインのタイミング差を緩和する
+6. [x] 各 workspace で関連テストを実行し、成功ごとに `jj commit` する
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --test password_reset_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --test auth_flow_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --test auth_api -- --nocapture`
+- [x] 必要に応じて追加の unit/integration test を実行する
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] topic 1 tests pass
+- [x] `jj commit -m "fix(auth): harden password reset token lifecycle"`
+- [x] topic 2 tests pass
+- [x] `jj commit -m "fix(auth): require re-authentication for email changes"`
+- [x] topic 3 tests pass
+- [x] `jj commit -m "fix(auth): enforce origin checks on cookie auth actions"`
+- [x] topic 4 tests pass
+- [x] `jj commit -m "fix(auth): reduce login timing side-channel"`
+
+## Progress Notes
+- 2026-03-06: 計画作成。既存 `.takt/.gitignore` 変更を避けるため、`jj workspace` で 4 件を分離して対応する方針に決定。
+- 2026-03-06: `topic/auth-reset-token-lifecycle` を `75b3060d` に配置。`password_reset_api` は 9 passed。未使用 token の事前失効と、token 消費の原子的更新で単回利用を担保。
+- 2026-03-06: `topic/auth-email-reauth` を `7e10dea6` に配置。`auth_flow_api` と `user_update_api` が成功。メール変更時のみ `current_password` を必須化。
+- 2026-03-06: `topic/auth-origin-checks` を `f96bdcea` に配置。`verify_origin_if_cookie_present` の unit test、`session_api`、`auth_flow_api` が成功。Cookie 認証の状態変更 API に Origin 検証を統一適用。
+- 2026-03-06: `topic/auth-login-timing` を `422b56aa` に配置。`auth_flow_api` 17 passed、`auth_api` 5 passed、`verify_missing_user_login_returns_unauthorized` も成功。未知ユーザー時もダミー Argon2 hash を検証してタイミング差を緩和。
+
+# EP-20260309-holiday-exception-application
+
+## Goal
+- `holiday_exceptions` handler から権限確認・ID 解析・service 呼び出し・エラーマッピングを application 層へ移し、HTTP adapter を薄くする
+
+## Scope
+- In: `backend/src/holiday/application/*`, `backend/src/holiday/mod.rs`, `backend/src/handlers/holiday_exceptions.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `holiday_exceptions` handler が application helper を呼ぶだけの構成になる
+- [x] holiday exception のエラーマッピングと admin/system-admin gate が application 層に移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Constraints / Non-goals
+- 既存 service / repository の振る舞いは変えない
+- `BREAKING_CHANGES.md` は API 互換が崩れた場合のみ更新する
+
+## Task Breakdown
+1. [x] `backend/src/holiday/application/exceptions.rs` を追加する
+2. [x] handler から holiday exception の orchestration を application 層へ移す
+3. [x] unit test を application 側へ移し、handler 側は adapter として成立する最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib holiday::application::exceptions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::holiday_exceptions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] holiday exception refactor tests pass
+- [x] `jj commit -m "refactor(holiday): extract holiday exception application helpers"`
+
+## Progress Notes
+- 2026-03-09: holiday query 抽出の次段として、holiday exception handler の adapter 化に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib holiday::application::exceptions::tests::`、`cargo test -p timekeeper-backend --lib handlers::holiday_exceptions::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(holiday): extract holiday exception application helpers"` を実行し、`76716ea0` に保存。working copy はクリーン。
+
+# EP-20260309-admin-holiday-application
+
+## Goal
+- `handlers/admin/holidays.rs` の query/command ロジックを holiday application 層へ移し、handler を HTTP adapter に薄くする
+
+## Scope
+- In: `backend/src/holiday/application/*`, `backend/src/handlers/admin/holidays.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] admin holiday list/create/delete と weekly holiday list/create/delete が application helper を経由する
+- [x] query 正規化と weekly holiday バリデーションが application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/holiday/application/admin.rs` を追加する
+2. [x] `handlers/admin/holidays.rs` から orchestration を application 層へ移す
+3. [x] query/validation unit test を application 側へ移し、handler 側は DTO の最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib holiday::application::admin::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::holidays::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin holiday refactor tests pass
+- [x] `jj commit -m "refactor(holiday): extract admin holiday application helpers"`
+
+## Progress Notes
+- 2026-03-09: holiday exception 抽出の次段として、admin holiday handler の adapter 化に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib holiday::application::admin::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::holidays::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(holiday): extract admin holiday application helpers"` を実行し、`649ff3e4` に保存。
+
+# EP-20260309-admin-users-application
+
+## Goal
+- `handlers/admin/users.rs` を分解し、一覧・作成更新・MFA/unlock・アーカイブ操作の orchestration を admin application 層へ移す
+
+## Scope
+- In: `backend/src/admin/application/*`, `backend/src/admin/mod.rs`, `backend/src/handlers/admin/users.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `admin/users` handler が application helper 呼び出し中心の adapter 構成になる
+- [x] PII 復号/マスク、作成更新、MFA/unlock 監査、アーカイブ復元削除のロジックが application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/admin/application/users.rs` を追加する
+2. [x] `handlers/admin/users.rs` から orchestration と共通 helper を application 層へ移す
+3. [x] ロジック unit test を application 側へ移し、handler 側は DTO/adapter の最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::users::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::users::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin users refactor tests pass
+- [x] `jj commit -m "refactor(admin): extract admin user application helpers"`
+
+## Progress Notes
+- 2026-03-09: `admin/users` の責務を一覧・作成更新・MFA/unlock・アーカイブ操作に分け、application 層へ移す作業に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::users::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::users::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin user application helpers"` を実行し、`0cd5c807` に保存。
+
+# EP-20260309-admin-audit-log-application
+
+## Goal
+- `handlers/admin/audit_logs.rs` の権限確認・filter 正規化・PII policy・export 組み立てを admin application 層へ移す
+
+## Scope
+- In: `backend/src/admin/application/*`, `backend/src/handlers/admin/audit_logs.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] admin audit log handler が application helper 呼び出し中心の adapter 構成になる
+- [x] filter 正規化、access control、PII masking、export 用 payload 生成が application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/admin/application/audit_logs.rs` を追加する
+2. [x] `handlers/admin/audit_logs.rs` から orchestration と helper を application 層へ移す
+3. [x] ロジック unit test を application 側へ移し、handler 側は DTO/adapter の最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::audit_logs::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::audit_logs::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin audit log refactor tests pass
+- [x] `jj commit -m "refactor(admin): extract admin audit log application helpers"`
+
+## Progress Notes
+- 2026-03-09: `admin/audit_logs` の責務を access control・filter 正規化・PII masking・export に分け、application 層へ移す作業に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::audit_logs::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::audit_logs::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin audit log application helpers"` を実行し、`f5f11a61` に保存。
+
+# EP-20260309-admin-attendance-application
+
+## Goal
+- `handlers/admin/attendance.rs` の一覧・upsert・強制休憩終了ロジックを admin application 層へ移す
+
+## Scope
+- In: `backend/src/admin/application/*`, `backend/src/handlers/admin/attendance.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] admin attendance handler が application helper 呼び出し中心の adapter 構成になる
+- [x] 一覧の pagination 集約、upsert の parse/transaction、強制休憩終了と再計算が application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/admin/application/attendance.rs` を追加する
+2. [x] `handlers/admin/attendance.rs` から orchestration と helper を application 層へ移す
+3. [x] ロジック unit test を application 側へ移し、handler 側は DTO/adapter の最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin attendance refactor tests pass
+- [x] `jj commit -m "refactor(admin): extract admin attendance application helpers"`
+
+## Progress Notes
+- 2026-03-09: `admin/attendance` の責務を一覧・upsert・強制休憩終了に分け、application 層へ移す作業に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::attendance::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::attendance::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin attendance application helpers"` を実行し、`dbc7439c` に保存。
+
+# EP-20260309-admin-export-application
+
+## Goal
+- `handlers/admin/export.rs` の query 正規化・DB 取得・PII masking・CSV 組み立てを admin application 層へ移す
+
+## Scope
+- In: `backend/src/admin/application/*`, `backend/src/handlers/admin/export.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] admin export handler が application helper 呼び出し中心の adapter 構成になる
+- [x] export query の date 検証、attendance export SQL、CSV 組み立て、PII masking が application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/admin/application/export.rs` を追加する
+2. [x] `handlers/admin/export.rs` から orchestration と helper を application 層へ移す
+3. [x] ロジック unit test を application 側へ移し、handler 側は DTO/adapter の最小確認に寄せる
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::export::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::export::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin export refactor tests pass
+- [x] `jj commit -m "refactor(admin): extract admin export application helpers"`
+
+## Progress Notes
+- 2026-03-09: `admin/export` の責務を query 正規化・attendance export 取得・CSV 組み立てに分け、application 層へ移す作業に着手。
+- 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib admin::application::export::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::export::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): extract admin export application helpers"` を実行し、`be9259e7` に保存。
+
+# EP-20260309-admin-handler-followups
+
+## Goal
+- admin handler の残存ロジックを優先度順に application/use-case パターンへ寄せる
+
+## Scope
+- In: `backend/src/admin/application/*`, `backend/src/handlers/admin/*`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `attendance_correction_requests` の承認/却下 orchestration が application 層へ移る
+- [x] `sessions` の list/revoke と audit helper が application 層へ移る
+- [x] `subject_requests` と `requests` に残っていた handler helper が application/common へ整理される
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `admin/application/attendance_correction_requests.rs` と `admin/application/sessions.rs` を追加する
+2. [x] 対応する handler を adapter 構成へ差し替える
+3. [x] `admin/application/http_errors.rs` を追加し、subject request error mapping を移す
+4. [x] `handlers/admin/requests.rs` に残る wrapper/helper を整理する
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::attendance_correction_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::sessions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::http_errors::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::attendance_correction_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::sessions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] admin follow-up refactor tests pass
+- [x] `jj commit -m "refactor(admin): move remaining handler orchestration into application"`
+
+## Progress Notes
+- 2026-03-09: 優先度高の `attendance_correction_requests` と `sessions` を先に application 化し、その後 `subject_requests` / `requests` に残っていた handler helper を整理。
+- 2026-03-09: 上記 9 本の検証コマンドが成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): move remaining handler orchestration into application"` を実行し、`b536e506` に保存。
+
+# EP-20260309-remaining-handler-followups
+
+## Goal
+- top-level handler に残っている優先度高の orchestration を application/use-case パターンへ寄せる
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `auth` handler が login/refresh/logout/MFA/password 系で application helper 呼び出し中心の adapter 構成になる
+- [x] user 側 `attendance_correction_requests`、`sessions`、`consents` の orchestration が application 層へ移る
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `identity/application/auth.rs` を追加し、auth orchestration を移す
+2. [x] `attendance/application/correction_requests.rs` を追加し、user correction request の create/update/cancel を移す
+3. [x] `identity/application/sessions.rs` と `identity/application/consents.rs` に残存 helper を移す
+4. [x] handler を adapter 化し、関連テストを更新する
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --lib handlers::auth::tests::build_login_response_sets_auth_cookies -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::validate_reason_rejects_empty_and_long_values -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::validate_string_field_rejects_empty_and_long_values -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::sessions::tests::extract_ip_prefers_x_forwarded_for -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib platform::app::tests::test_app_router_builds -- --exact`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] remaining handler refactor tests pass
+- [x] `jj commit -m "refactor(handler): move remaining top-level orchestration into application"`
+
+## Progress Notes
+- 2026-03-09: `auth` を最優先に、続いて user 側 `attendance_correction_requests`、`sessions`、`consents` の application 化に着手。
+- 2026-03-09: `identity/application/auth.rs`、`identity/application/consents.rs`、`attendance/application/correction_requests.rs` を追加し、top-level handler の orchestration を application 層へ移行。互換 API は維持し、`BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、代表ユニットテスト 5 本が成功。
+- 2026-03-09: `jj commit -m "refactor(handler): move remaining top-level orchestration into application"` を実行し、`a5584e14` に保存。working copy はクリーン。
+
+# EP-20260309-final-handler-cleanup
+
+## Goal
+- handler 配下に残っていた read/access helper と admin utility を application/use-case 側へ寄せ、handler 層を adapter と互換 re-export 中心にする
+
+## Scope
+- In: `backend/src/attendance/application/*`, `backend/src/admin/application/*`, `backend/src/handlers/attendance.rs`, `backend/src/handlers/subject_requests.rs`, `backend/src/handlers/admin/*`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `attendance` handler に残っていた status/break lookup が application query を経由する
+- [x] `attendance_utils` と `admin/common` の実装本体が application 側へ移る
+- [x] `subject_requests` handler の error mapping / details test helper が整理される
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::helpers::tests::ensure_authorized_access_rejects_other_user -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::queries::tests::resolve_attendance_range_uses_explicit_range -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_subject_requests::tests::validate_details_accepts_valid_details -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::common::tests::push_clause_switches_between_where_and_and -- --exact`
+- [x] `cargo test -p timekeeper-backend --lib platform::app::tests::test_app_router_builds -- --exact`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] final handler cleanup tests pass
+- [x] `jj commit -m "refactor(handler): finish handler-layer cleanup"`
+
+## Progress Notes
+- 2026-03-09: `attendance` の status/break lookup を `attendance/application/queries.rs` へ移し、`subject_requests` の local error mapping を共通 helper 利用に変更。
+- 2026-03-09: `admin/application/common.rs` と `attendance/application/helpers.rs` を追加し、`handlers/admin/common.rs` と `handlers/attendance_utils.rs` は互換 re-export に差し替え。API 互換は維持し、`BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: fmt / clippy / 代表ユニットテスト 5 本が成功。
+- 2026-03-09: `jj commit -m "refactor(handler): finish handler-layer cleanup"` を実行し、今回の handler cleanup 差分を保存。
+
+# EP-20260309-handler-remaining-followups
+
+## Goal
+- 残っている高優先度の user-side handler ロジックを application/use-case 層へ寄せ、HTTP 層を adapter に薄くする
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `auth` handler の login/refresh/logout/MFA/password 系 orchestration が identity application 層へ移る
+- [x] user-side attendance correction request の create/update/cancel/snapshot validation が attendance application 層へ移る
+- [x] user-side sessions / consents handler が application helper 呼び出し中心の adapter 構成になる
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/identity/application/auth.rs` を追加し、auth orchestration と helper を移す
+2. [x] `backend/src/attendance/application/correction_requests.rs` を追加し、attendance correction request orchestration を移す
+3. [x] `backend/src/identity/application/sessions.rs` と新規 `consents.rs` へ user-side session/consent logic を整理する
+4. [x] 対象 handler を adapter 構成へ差し替え、関連 unit test を通す
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::auth::`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::consents::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::sessions::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::attendance_correction_requests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::auth::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::sessions::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::consents::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+- [x] `cargo test -p timekeeper-backend --test auth_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --test requests_api -- --nocapture`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] remaining handler follow-up tests pass
+- [ ] `jj commit -m "refactor(identity): move remaining user handler orchestration into application"`
+
+## Progress Notes
+- 2026-03-09: `auth`、user-side `attendance_correction_requests`、`sessions`、`consents` を優先順に application/use-case 化する計画を作成。
+- 2026-03-09: `identity/application/auth.rs` と `consents.rs`、`attendance/application/correction_requests.rs` を追加し、対応 handler を adapter 化。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、対象 unit test 群、`auth_api`、`requests_api` が成功。
+
+# EP-20260309-remaining-handler-application
+
+## Goal
+- 残っている高優先度 handler ロジックを優先順に application/use-case パターンへ移し、HTTP 層を adapter に寄せる
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `auth` handler の主要 orchestration が identity application 層へ移る
+- [x] user 側 attendance correction request の create/update/cancel/list/detail ロジックが attendance application 層へ移る
+- [x] user sessions と consents handler が application helper 呼び出し中心の adapter 構成になる
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `identity/application/auth.rs` を追加し、login/refresh/logout/profile/MFA/password reset の orchestration を移す
+2. [x] `attendance/application/correction_requests.rs` を追加し、user 側 attendance correction request ロジックを移す
+3. [x] `identity/application/sessions.rs` と `identity/application/consents.rs` に user sessions / consents の helper を揃える
+4. [x] 対応 handler を adapter 構成へ差し替え、既存テストを application 側中心に通す
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --test auth_api`
+- [x] `cargo test -p timekeeper-backend --test requests_api`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::auth::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] remaining handler refactor tests pass
+- [x] `jj commit -m "refactor(handler): extract remaining user application helpers"`
+
+## Progress Notes
+- 2026-03-09: `auth`、user attendance correction requests、user sessions、consents の順で残存 handler orchestration を application/use-case へ移す計画を作成。
+- 2026-03-09: `identity/application/auth.rs` と `identity/application/consents.rs`、`attendance/application/correction_requests.rs` を追加し、`auth` / `consents` / user attendance correction / user sessions の handler を adapter 化。`cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、`cargo test -p timekeeper-backend --test auth_api`、`cargo test -p timekeeper-backend --test requests_api`、`cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`、`cargo test -p timekeeper-backend --lib identity::application::consents::tests::`、`cargo test -p timekeeper-backend --lib handlers::auth::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(handler): extract remaining user application helpers"` を実行し、`9f9a67c8` に保存。
+
+# EP-20260309-application-common-abstractions
+
+## Goal
+- application 層の共通 `error` / DTO / clock 抽象を追加し、既存 handler/application の重複実装を減らす
+
+## Scope
+- In: `backend/src/application/*`, `backend/src/identity/application/consents.rs`, `backend/src/requests/application/user_subject_requests.rs`, `backend/src/admin/application/{http_errors,sessions,attendance_correction_requests}.rs`, `backend/src/handlers/{attendance,consents,subject_requests}.rs`, `backend/src/handlers/admin/{requests,subject_requests,sessions,attendance_correction_requests}.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更、認証フローの再設計
+
+## Done Criteria (Observable)
+- [x] 共通 `application::clock` / `application::dto` / `application::http` が追加されている
+- [x] `consents` と `subject_requests` が共通 HTTP error と DTO を利用する
+- [x] `attendance` と request decision 系 handler が共通 clock 抽象を利用する
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `backend/src/application/` を追加し、共通 clock / DTO / HTTP error mapper を実装する
+2. [x] `admin::application::http_errors` を共通 mapper への互換層へ置き換える
+3. [x] `consents` / `subject_requests` / admin sessions / admin attendance correction に共通 DTO を適用する
+4. [x] `attendance` / request decision 系 handler に共通 clock 抽象を適用する
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --lib application::clock::tests::`
+- [x] `cargo test -p timekeeper-backend --lib application::http::tests::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::sessions::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::attendance_correction_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] validation commands pass
+- [x] `jj commit -m "refactor(application): add shared error dto and clock abstractions"`
+
+## Progress Notes
+- 2026-03-09: `backend/src/application/clock.rs`、[`backend/src/application/dto.rs`](/home/mrabbit/Documents/timekeeper/backend/src/application/dto.rs)、[`backend/src/application/http.rs`](/home/mrabbit/Documents/timekeeper/backend/src/application/http.rs) を追加し、共通 clock / DTO / HTTP error mapper を導入。
+- 2026-03-09: `identity/application/consents.rs` と `handlers/consents.rs`、`handlers/subject_requests.rs`、`handlers/admin/subject_requests.rs` を共通 error/clock に寄せ、`requests/application/user_subject_requests.rs`、`admin/application/sessions.rs`、`admin/application/attendance_correction_requests.rs` で共通 DTO を使う形に整理。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `cargo test -p timekeeper-backend --lib handlers::attendance::tests::` と `cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::` を追加で通し、`jj commit -m "refactor(application): add shared error dto and clock abstractions"` を実行する。
+
+# EP-20260309-application-abstraction-followup
+
+## Goal
+- 共通 application 抽象の適用漏れを解消し、主要 handler から `Json<Value>` と `utils::time` 直接依存を除去する
+
+## Scope
+- In: `backend/src/handlers/{auth,attendance,requests,sessions}.rs`, `backend/src/handlers/admin/{requests,subject_requests,users,holidays,export,audit_logs}.rs`, `backend/src/identity/application/{auth,sessions}.rs`, `backend/src/requests/application/{user_requests,admin_requests,admin_subject_requests}.rs`, `backend/src/holiday/application/admin.rs`, `backend/src/admin/application/{attendance,users}.rs`, `backend/src/application/dto.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更、OpenAPI の大規模再設計
+
+## Done Criteria (Observable)
+- [x] `auth` / `requests` / `sessions` の action response が typed DTO で返る
+- [x] admin requests / subject_requests / users / holidays の action response が typed DTO で返る
+- [x] `attendance` export と admin export / audit_logs / attendance / holiday validation が共通 clock を使う
+- [x] `backend/src/handlers` / `backend/src/*/application` の production code に `Json<Value>` と `utils::time` 直接依存が残らない
+
+## Task Breakdown
+1. [x] `auth` の request/response を typed DTO に寄せる
+2. [x] user/admin request・session・holiday・user action response を共通 DTO または typed struct へ寄せる
+3. [x] admin/export・audit_logs・attendance・holiday validation の time 依存を `SYSTEM_CLOCK` に置き換える
+4. [x] fmt / clippy / 影響テストを通し、残差分を確認する
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --lib handlers::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::auth::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::sessions::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::sessions::`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::user_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::admin_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib requests::application::admin_subject_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::users::tests::`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::users::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::holidays::tests::`
+- [x] `cargo test -p timekeeper-backend --lib holiday::application::admin::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::audit_logs::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::admin::export::tests::`
+- [x] `cargo test -p timekeeper-backend --lib admin::application::attendance::tests::`
+- [x] `cargo test -p timekeeper-backend --lib platform::app::tests::test_app_router_builds -- --exact`
+- [x] `cargo test -p timekeeper-backend --test auth_api`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] validation commands pass
+- [x] `jj commit -m "refactor(application): finish typed response and clock cleanup"`
+
+## Progress Notes
+- 2026-03-09: `auth` に `RefreshPayload` / `LogoutPayload` を追加し、MFA / password / logout 系レスポンスを `MessageResponse` に統一。API 形状は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `requests` / `sessions` / admin requests / admin subject requests / admin users / admin holidays を typed DTO に寄せ、`attendance` export と admin export / audit_logs / attendance / holiday validation を `SYSTEM_CLOCK` に切り替えた。
+- 2026-03-09: `rg -n "Json<Value>|time::now_in_timezone|time::now_utc|time::today_local" src/handlers src/*/application -g '!**/tests/**'` は production code では一致なしとなった。
+- 2026-03-09: `jj commit -m "refactor(application): finish typed response and clock cleanup"` を実行し、今回の適用漏れ整理を保存した。
+- 2026-03-09: `application::http::forbidden_error` を追加し、handler / application に残っていた直接 `AppError::Forbidden("Forbidden".into())` を共通化した。
+- 2026-03-09: `handlers/subject_requests.rs` と `handlers/admin/subject_requests.rs` を `crate::application::http::map_app_error` へ切り替え、互換層 `admin/application/http_errors.rs` を削除した。
+- 2026-03-09: `cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、`cargo test -p timekeeper-backend --lib application::http::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::requests::tests::`、`cargo test -p timekeeper-backend --lib handlers::holidays::tests::`、`cargo test -p timekeeper-backend --lib handlers::subject_requests::tests::`、`cargo test -p timekeeper-backend --lib handlers::admin::subject_requests::tests::`、`cargo test -p timekeeper-backend --lib platform::app::tests::test_app_router_builds -- --exact` を通し、`rg -n 'AppError::Forbidden\\(\"Forbidden\"\\.into\\(\\)\\)|admin::application::http_errors|pub mod http_errors' backend/src` は一致なしを確認した。
