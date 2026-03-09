@@ -1121,10 +1121,11 @@
 - [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
 
 ## JJ Snapshot Log
-- [ ] `jj status`
+- [x] `jj status`
 - [x] holiday exception refactor tests pass
-- [ ] `jj commit -m "refactor(holiday): extract holiday exception application helpers"`
+- [x] `jj commit -m "refactor(holiday): extract holiday exception application helpers"`
 
 ## Progress Notes
 - 2026-03-09: holiday query 抽出の次段として、holiday exception handler の adapter 化に着手。
 - 2026-03-09: `cargo fmt --all`、`cargo test -p timekeeper-backend --lib holiday::application::exceptions::tests::`、`cargo test -p timekeeper-backend --lib handlers::holiday_exceptions::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(holiday): extract holiday exception application helpers"` を実行し、`76716ea0` に保存。working copy はクリーン。
