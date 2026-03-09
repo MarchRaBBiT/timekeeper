@@ -6,7 +6,7 @@ use axum::{
     response::Response as AxumResponse,
 };
 use governor::middleware::StateInformationMiddleware;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tower_governor::{
@@ -19,10 +19,9 @@ use crate::models::user::User;
 use crate::state::AppState;
 use crate::utils::jwt::Claims;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct UserRateLimitWindow {
-    started_at: Instant,
-    count: u32,
+    requests: VecDeque<Instant>,
 }
 
 fn user_rate_limit_store() -> &'static Mutex<HashMap<String, UserRateLimitWindow>> {
@@ -71,44 +70,70 @@ pub async fn user_rate_limit(
     let window = Duration::from_secs(state.config.rate_limit_user_window_seconds.max(1));
     let now = Instant::now();
 
-    let rejection = {
+    let retry_after = {
         let mut store = user_rate_limit_store()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if store.len() > user_rate_limit_cleanup_threshold() {
-            store.retain(|_, entry| now.duration_since(entry.started_at) < window);
-        }
-
-        let entry = store.entry(key).or_insert(UserRateLimitWindow {
-            started_at: now,
-            count: 0,
-        });
-
-        if now.duration_since(entry.started_at) >= window {
-            entry.started_at = now;
-            entry.count = 0;
-        }
-
-        if entry.count >= max_requests {
-            let elapsed = now.duration_since(entry.started_at);
-            let retry_after = window.saturating_sub(elapsed).as_secs().max(1);
-            Some(json_error_response(
-                StatusCode::TOO_MANY_REQUESTS,
-                "rate_limit_exceeded",
-                "Too many requests. Please try again later.",
-                Some(retry_after),
-            ))
-        } else {
-            entry.count += 1;
-            None
-        }
+        evaluate_user_rate_limit(&mut store, key, max_requests, window, now).err()
     };
 
-    if let Some(response) = rejection {
-        return response;
+    if let Some(retry_after) = retry_after {
+        return json_error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_exceeded",
+            "Too many requests. Please try again later.",
+            Some(retry_after),
+        );
     }
 
     next.run(request).await
+}
+
+fn evaluate_user_rate_limit(
+    store: &mut HashMap<String, UserRateLimitWindow>,
+    key: String,
+    max_requests: u32,
+    window: Duration,
+    now: Instant,
+) -> Result<(), u64> {
+    if store.len() > user_rate_limit_cleanup_threshold() {
+        store.retain(|_, entry| {
+            prune_expired_requests(entry, now, window);
+            !entry.requests.is_empty()
+        });
+    }
+
+    let entry = store.entry(key).or_insert(UserRateLimitWindow {
+        requests: VecDeque::new(),
+    });
+    prune_expired_requests(entry, now, window);
+
+    if entry.requests.len() >= max_requests as usize {
+        let retry_after = entry
+            .requests
+            .front()
+            .map(|oldest| {
+                window
+                    .saturating_sub(now.duration_since(*oldest))
+                    .as_secs()
+                    .max(1)
+            })
+            .unwrap_or(1);
+        return Err(retry_after);
+    }
+
+    entry.requests.push_back(now);
+    Ok(())
+}
+
+fn prune_expired_requests(entry: &mut UserRateLimitWindow, now: Instant, window: Duration) {
+    while let Some(oldest) = entry.requests.front() {
+        if now.duration_since(*oldest) >= window {
+            entry.requests.pop_front();
+        } else {
+            break;
+        }
+    }
 }
 
 pub fn create_auth_rate_limiter(
@@ -223,6 +248,49 @@ mod tests {
     #[test]
     fn parse_cleanup_threshold_accepts_positive_values() {
         assert_eq!(parse_cleanup_threshold(Some("500".to_string())), 500);
+    }
+
+    #[test]
+    fn user_rate_limit_rejects_burst_at_window_boundary() {
+        clear_user_rate_limit_store();
+        let mut store = HashMap::new();
+        let key = "boundary-user".to_string();
+        let max_requests = 5u32;
+        let window = Duration::from_secs(60);
+        let base = Instant::now();
+
+        assert!(
+            evaluate_user_rate_limit(&mut store, key.clone(), max_requests, window, base).is_ok()
+        );
+
+        for _ in 0..(max_requests - 1) {
+            assert!(evaluate_user_rate_limit(
+                &mut store,
+                key.clone(),
+                max_requests,
+                window,
+                base + Duration::from_millis(59_900)
+            )
+            .is_ok());
+        }
+
+        assert!(evaluate_user_rate_limit(
+            &mut store,
+            key.clone(),
+            max_requests,
+            window,
+            base + Duration::from_millis(60_100)
+        )
+        .is_ok());
+
+        let rejected = evaluate_user_rate_limit(
+            &mut store,
+            key,
+            max_requests,
+            window,
+            base + Duration::from_millis(60_100),
+        );
+        assert!(rejected.is_err());
     }
 
     #[test]
