@@ -4,13 +4,12 @@ use axum::{
     Json,
 };
 use serde::Serialize;
-use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::{
-    admin::application::sessions as application, error::AppError,
-    middleware::request_id::RequestId, models::user::User,
+    admin::application::sessions as application, application::dto::SessionActionResponse,
+    error::AppError, middleware::request_id::RequestId, models::user::User,
     services::audit_log::AuditLogServiceTrait, state::AppState, utils::jwt::Claims,
 };
 
@@ -61,7 +60,7 @@ pub async fn revoke_session(
     Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Path(session_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<SessionActionResponse>, AppError> {
     Ok(Json(
         application::revoke_session(
             &state.write_pool,

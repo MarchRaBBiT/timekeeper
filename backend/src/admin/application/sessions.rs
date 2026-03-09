@@ -1,11 +1,15 @@
 use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::Arc;
 
 use crate::{
     admin::application::users::{extract_ip, extract_user_agent},
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        dto::SessionActionResponse,
+    },
     error::AppError,
     middleware::request_id::RequestId,
     models::{active_session::ActiveSession, user::User},
@@ -75,7 +79,7 @@ pub async fn revoke_session(
     audit_log_service: Arc<dyn AuditLogServiceTrait>,
     headers: &HeaderMap,
     session_id: &str,
-) -> Result<Value, AppError> {
+) -> Result<SessionActionResponse, AppError> {
     ensure_admin_or_system(user)?;
 
     if session_id.trim().is_empty() {
@@ -95,16 +99,13 @@ pub async fn revoke_session(
         request_id,
         "session_destroy",
         Some(session.id.clone()),
-        Some(json!({
+        Some(serde_json::json!({
             "reason": "admin_revoke",
             "target_user_id": session.user_id.to_string()
         })),
     );
 
-    Ok(json!({
-        "message": "Session revoked",
-        "session_id": session_id
-    }))
+    Ok(SessionActionResponse::new("Session revoked", session_id))
 }
 
 pub async fn revoke_session_tokens(
@@ -145,7 +146,7 @@ pub fn record_session_audit_event(
         return;
     };
     let entry = AuditLogEntry {
-        occurred_at: Utc::now(),
+        occurred_at: SYSTEM_CLOCK.now_utc(&chrono_tz::UTC),
         actor_id: Some(*actor_id),
         actor_type: "user".to_string(),
         event_type: event_type.to_string(),

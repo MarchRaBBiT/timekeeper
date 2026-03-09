@@ -1,12 +1,15 @@
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode,
     Json,
 };
-use serde_json::{json, Value};
 
 use crate::{
     admin::application::http_errors::map_app_error,
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        dto::IdStatusResponse,
+        http::HttpError,
+    },
     models::{
         subject_request::{CreateDataSubjectRequest, DataSubjectRequestResponse},
         user::User,
@@ -16,7 +19,6 @@ use crate::{
         create_subject_request as create_subject_request_use_case, list_user_subject_requests,
     },
     state::AppState,
-    utils::time,
 };
 
 #[cfg(test)]
@@ -26,12 +28,12 @@ pub async fn create_subject_request(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateDataSubjectRequest>,
-) -> Result<Json<DataSubjectRequestResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<DataSubjectRequestResponse>, HttpError> {
     let response = create_subject_request_use_case(
         &state.write_pool,
         user.id,
         payload,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
     )
     .await
     .map_err(map_app_error)?;
@@ -42,7 +44,7 @@ pub async fn create_subject_request(
 pub async fn list_my_subject_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
-) -> Result<Json<Vec<DataSubjectRequestResponse>>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Vec<DataSubjectRequestResponse>>, HttpError> {
     let requests = list_user_subject_requests(state.read_pool(), user.id)
         .await
         .map_err(map_app_error)?;
@@ -54,17 +56,17 @@ pub async fn cancel_subject_request(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<IdStatusResponse>, HttpError> {
     let result = cancel_subject_request_use_case(
         &state.write_pool,
         user.id,
         &request_id,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
     )
     .await
     .map_err(map_app_error)?;
 
-    Ok(Json(json!(result)))
+    Ok(Json(result))
 }
 #[cfg(test)]
 mod tests {

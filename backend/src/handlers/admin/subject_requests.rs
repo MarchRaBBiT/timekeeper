@@ -1,14 +1,17 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     admin::application::http_errors::map_app_error,
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        http::{forbidden, HttpError},
+    },
     models::{subject_request::DataSubjectRequestResponse, user::User},
     requests::application::admin_requests::validate_decision_comment as validate_decision_comment_value,
     requests::application::admin_subject_requests::{
@@ -16,7 +19,6 @@ use crate::{
         DecisionKind, SubjectRequestListParams,
     },
     state::AppState,
-    utils::time,
 };
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -48,9 +50,9 @@ pub async fn list_subject_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<SubjectRequestListQuery>,
-) -> Result<Json<SubjectRequestListResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<SubjectRequestListResponse>, HttpError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(forbidden("Forbidden"));
     }
 
     let response = list_subject_requests_view(
@@ -81,9 +83,9 @@ pub async fn approve_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(forbidden("Forbidden"));
     }
     validate_decision_comment_value(&body.comment, 500).map_err(map_app_error)?;
     let result = process_subject_request_decision(
@@ -91,13 +93,15 @@ pub async fn approve_subject_request(
         &request_id,
         user.id,
         &body.comment,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
         DecisionKind::Approve,
     )
     .await
     .map_err(map_app_error)?;
 
-    Ok(Json(json!(result)))
+    Ok(Json(
+        serde_json::to_value(result).expect("decision result serializes"),
+    ))
 }
 
 pub async fn reject_subject_request(
@@ -105,9 +109,9 @@ pub async fn reject_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(forbidden("Forbidden"));
     }
     validate_decision_comment_value(&body.comment, 500).map_err(map_app_error)?;
     let result = process_subject_request_decision(
@@ -115,20 +119,23 @@ pub async fn reject_subject_request(
         &request_id,
         user.id,
         &body.comment,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
         DecisionKind::Reject,
     )
     .await
     .map_err(map_app_error)?;
 
-    Ok(Json(json!(result)))
+    Ok(Json(
+        serde_json::to_value(result).expect("decision result serializes"),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        admin::application::http_errors::bad_request,
+        application::dto::ErrorResponse,
+        application::http::bad_request,
         models::{request::RequestStatus, subject_request::DataSubjectRequestType},
         requests::application::admin_subject_requests::{
             normalize_filter, parse_datetime_value, parse_from_datetime, parse_request_status,
@@ -137,14 +144,10 @@ mod tests {
         services::holiday::HolidayReason,
     };
     use chrono::{NaiveDate, TimeZone, Timelike, Utc};
+    use axum::http::StatusCode;
 
-    fn err_message(err: &(StatusCode, Json<Value>)) -> String {
-        err.1
-             .0
-            .get("error")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string()
+    fn err_message(err: &HttpError) -> String {
+        err.1 .0.error.clone()
     }
 
     #[test]
@@ -360,6 +363,6 @@ mod tests {
     fn bad_request_helper_builds_error_payload() {
         let err = bad_request(HolidayReason::None.label());
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&err), "working day");
+        assert_eq!(err.1 .0, ErrorResponse::new("working day"));
     }
 }

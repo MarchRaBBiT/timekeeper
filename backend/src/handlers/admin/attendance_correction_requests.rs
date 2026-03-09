@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::{
     admin::application::attendance_correction_requests as application,
+    application::dto::MessageResponse,
     error::AppError,
     models::attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload},
     models::user::User,
@@ -56,7 +57,7 @@ pub async fn approve_attendance_correction_request(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
     Json(payload): Json<DecisionPayload>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<MessageResponse>, AppError> {
     Ok(Json(
         application::approve_attendance_correction_request(&state.write_pool, &user, &id, payload)
             .await?,
@@ -68,7 +69,7 @@ pub async fn reject_attendance_correction_request(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
     Json(payload): Json<DecisionPayload>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<MessageResponse>, AppError> {
     Ok(Json(
         application::reject_attendance_correction_request(&state.write_pool, &user, &id, payload)
             .await?,

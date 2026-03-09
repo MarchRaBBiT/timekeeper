@@ -1,8 +1,9 @@
-use axum::http::{header::USER_AGENT, HeaderMap, StatusCode};
-use serde_json::{json, Value};
+use axum::http::{header::USER_AGENT, HeaderMap};
+use chrono::Utc;
 use uuid::Uuid;
 
 use crate::{
+    application::http::{bad_request, internal_server_error, HttpError},
     middleware::request_id::RequestId,
     models::consent_log::{ConsentLog, ConsentLogResponse, RecordConsentPayload},
     repositories::consent_log,
@@ -18,8 +19,8 @@ pub async fn record_consent(
     request_id: &RequestId,
     headers: &HeaderMap,
     payload: RecordConsentPayload,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<ConsentLogResponse, (StatusCode, axum::Json<Value>)> {
+    now: chrono::DateTime<Utc>,
+) -> Result<ConsentLogResponse, HttpError> {
     let purpose = validate_string_field(&payload.purpose, "purpose", MAX_PURPOSE_LENGTH)?;
     let policy_version = validate_string_field(
         &payload.policy_version,
@@ -43,10 +44,7 @@ pub async fn record_consent(
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to insert consent log");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(json!({"error": "Database error"})),
-            )
+            internal_server_error(&err.into())
         })?;
 
     Ok(log.into())
@@ -55,15 +53,12 @@ pub async fn record_consent(
 pub async fn list_user_consents(
     read_pool: &sqlx::PgPool,
     user_id: UserId,
-) -> Result<Vec<ConsentLogResponse>, (StatusCode, axum::Json<Value>)> {
+) -> Result<Vec<ConsentLogResponse>, HttpError> {
     let logs = consent_log::list_consent_logs_for_user(read_pool, &user_id.to_string())
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "failed to list consent logs");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(json!({"error": "Database error"})),
-            )
+            internal_server_error(&err.into())
         })?;
 
     Ok(logs.into_iter().map(ConsentLogResponse::from).collect())
@@ -73,19 +68,13 @@ pub fn validate_string_field(
     value: &str,
     field: &str,
     max_len: usize,
-) -> Result<String, (StatusCode, axum::Json<Value>)> {
+) -> Result<String, HttpError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            axum::Json(json!({"error": format!("{} is required", field)})),
-        ));
+        return Err(bad_request(format!("{field} is required")));
     }
     if trimmed.chars().count() > max_len {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            axum::Json(json!({"error": format!("{} is too long", field)})),
-        ));
+        return Err(bad_request(format!("{field} is too long")));
     }
     Ok(trimmed.to_string())
 }
@@ -119,10 +108,19 @@ pub fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::dto::ErrorResponse;
+    use axum::http::StatusCode;
 
     #[test]
     fn validate_string_field_rejects_empty_and_long_values() {
         assert!(validate_string_field("   ", "purpose", 10).is_err());
         assert!(validate_string_field(&"a".repeat(11), "purpose", 10).is_err());
+    }
+
+    #[test]
+    fn validate_string_field_uses_shared_error_payload() {
+        let err = validate_string_field("   ", "purpose", 10).expect_err("empty should fail");
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert_eq!(err.1 .0, ErrorResponse::new("purpose is required"));
     }
 }

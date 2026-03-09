@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 
 use crate::{
+    application::dto::IdStatusResponse,
     error::AppError,
     models::subject_request::{
         CreateDataSubjectRequest, DataSubjectRequest, DataSubjectRequestResponse,
@@ -11,12 +11,6 @@ use crate::{
 };
 
 const MAX_DETAILS_LENGTH: usize = 2000;
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct CancelSubjectRequestResult {
-    pub id: String,
-    pub status: &'static str,
-}
 
 pub async fn create_subject_request(
     pool: &sqlx::PgPool,
@@ -53,7 +47,7 @@ pub async fn cancel_subject_request(
     user_id: UserId,
     request_id: &str,
     now: DateTime<Utc>,
-) -> Result<CancelSubjectRequestResult, AppError> {
+) -> Result<IdStatusResponse, AppError> {
     let rows = subject_request::cancel_subject_request(pool, request_id, &user_id.to_string(), now)
         .await
         .map_err(|err| AppError::InternalServerError(err.into()))?;
@@ -64,10 +58,7 @@ pub async fn cancel_subject_request(
         ));
     }
 
-    Ok(CancelSubjectRequestResult {
-        id: request_id.to_string(),
-        status: "cancelled",
-    })
+    Ok(IdStatusResponse::new(request_id, "cancelled"))
 }
 
 pub fn validate_details(details: Option<String>) -> Result<Option<String>, AppError> {
@@ -140,10 +131,7 @@ mod tests {
 
     #[test]
     fn cancel_subject_request_result_keeps_cancelled_status() {
-        let result = CancelSubjectRequestResult {
-            id: "req-1".to_string(),
-            status: "cancelled",
-        };
+        let result = IdStatusResponse::new("req-1", "cancelled");
         assert_eq!(result.id, "req-1");
         assert_eq!(result.status, "cancelled");
     }

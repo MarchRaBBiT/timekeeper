@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::{
+    application::dto::MessageResponse,
     error::AppError,
     models::{
         attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload},
@@ -63,7 +63,7 @@ pub async fn approve_attendance_correction_request(
     user: &User,
     id: &str,
     payload: DecisionPayload,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<MessageResponse, AppError> {
     ensure_admin(user)?;
     validate_comment(&payload.comment)?;
 
@@ -89,7 +89,7 @@ pub async fn approve_attendance_correction_request(
     )
     .await?;
 
-    Ok(json!({ "message": "Request approved" }))
+    Ok(MessageResponse::new("Request approved"))
 }
 
 pub async fn reject_attendance_correction_request(
@@ -97,7 +97,7 @@ pub async fn reject_attendance_correction_request(
     user: &User,
     id: &str,
     payload: DecisionPayload,
-) -> Result<serde_json::Value, AppError> {
+) -> Result<MessageResponse, AppError> {
     ensure_admin(user)?;
     validate_comment(&payload.comment)?;
 
@@ -107,7 +107,7 @@ pub async fn reject_attendance_correction_request(
     repo.reject(write_pool, id, user.id, &payload.comment)
         .await?;
 
-    Ok(json!({ "message": "Request rejected" }))
+    Ok(MessageResponse::new("Request rejected"))
 }
 
 fn ensure_admin(user: &User) -> Result<(), AppError> {

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 
+use crate::application::clock::{Clock, SYSTEM_CLOCK};
 use crate::requests::application::admin_requests::paginate_requests as paginate_request_values;
 
 #[cfg(test)]
@@ -20,7 +21,6 @@ use crate::{
         DecisionKind, RequestListParams,
     },
     state::AppState,
-    utils::time,
 };
 
 const MAX_DECISION_COMMENT_LENGTH: usize = 500;
@@ -54,7 +54,7 @@ pub async fn approve_request(
         &request_id,
         user.id,
         &body.comment,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
         DecisionKind::Approve,
     )
     .await?;
@@ -81,7 +81,7 @@ pub async fn reject_request(
         &request_id,
         user.id,
         &body.comment,
-        time::now_utc(&state.config.time_zone),
+        SYSTEM_CLOCK.now_utc(&state.config.time_zone),
         DecisionKind::Reject,
     )
     .await?;

@@ -13,6 +13,7 @@ use crate::attendance::application::commands::{build_attendance_response, reject
 #[cfg(test)]
 use crate::models::attendance::Attendance;
 
+use crate::application::clock::{Clock, SYSTEM_CLOCK};
 use crate::attendance::application::commands::{
     break_end as break_end_use_case, break_start as break_start_use_case,
     clock_in as clock_in_use_case, clock_out as clock_out_use_case,
@@ -34,7 +35,6 @@ use crate::{
         user::User,
     },
     services::holiday::HolidayServiceTrait,
-    utils::time,
 };
 
 pub type AttendanceQuery = crate::attendance::application::queries::AttendanceQuery;
@@ -57,7 +57,7 @@ pub async fn clock_in(
     let user_id = user.id;
 
     let tz = &state.config.time_zone;
-    let now_local = time::now_in_timezone(tz);
+    let now_local = SYSTEM_CLOCK.now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_in_time = now_local.naive_local();
@@ -83,7 +83,7 @@ pub async fn clock_out(
     let user_id = user.id;
 
     let tz = &state.config.time_zone;
-    let now_local = time::now_in_timezone(tz);
+    let now_local = SYSTEM_CLOCK.now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_out_time = now_local.naive_local();
@@ -106,7 +106,7 @@ pub async fn break_start(
     Json(payload): Json<crate::models::attendance::BreakStartRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
     let tz = &state.config.time_zone;
-    let now_local = time::now_in_timezone(tz);
+    let now_local = SYSTEM_CLOCK.now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_start_time = now_local.naive_local();
 
@@ -127,7 +127,7 @@ pub async fn break_end(
     Json(payload): Json<crate::models::attendance::BreakEndRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
     let tz = &state.config.time_zone;
-    let now_local = time::now_in_timezone(tz);
+    let now_local = SYSTEM_CLOCK.now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_end_time = now_local.naive_local();
 
@@ -150,8 +150,11 @@ pub async fn get_my_attendance(
     let user_id = user.id;
 
     let tz = &state.config.time_zone;
-    let (from, to) =
-        resolve_attendance_range(&params, time::today_local(tz), time::now_in_timezone(tz))?;
+    let (from, to) = resolve_attendance_range(
+        &params,
+        SYSTEM_CLOCK.today_local(tz),
+        SYSTEM_CLOCK.now_in_timezone(tz),
+    )?;
 
     let responses = list_effective_attendance_in_range(
         state.read_pool(),
@@ -169,7 +172,7 @@ pub async fn get_attendance_status(
 ) -> Result<Json<AttendanceStatusResponse>, AppError> {
     let date = resolve_status_date(
         params.get("date").map(String::as_str),
-        time::today_local(&state.config.time_zone),
+        SYSTEM_CLOCK.today_local(&state.config.time_zone),
     );
     Ok(Json(
         get_attendance_status_use_case(state.read_pool(), user.id, date).await?,
@@ -193,8 +196,10 @@ pub async fn get_my_summary(
 ) -> Result<Json<AttendanceSummary>, AppError> {
     let user_id = user.id;
 
-    let (year, month, first_day, last_day) =
-        resolve_summary_month(&params, time::now_in_timezone(&state.config.time_zone))?;
+    let (year, month, first_day, last_day) = resolve_summary_month(
+        &params,
+        SYSTEM_CLOCK.now_in_timezone(&state.config.time_zone),
+    )?;
 
     let summary = build_monthly_summary(
         state.read_pool(),
@@ -222,7 +227,8 @@ pub async fn export_my_attendance(
         &user.full_name,
         params.from,
         params.to,
-        &time::now_in_timezone(&state.config.time_zone)
+        &SYSTEM_CLOCK
+            .now_in_timezone(&state.config.time_zone)
             .format("%Y%m%d_%H%M%S")
             .to_string(),
     )
