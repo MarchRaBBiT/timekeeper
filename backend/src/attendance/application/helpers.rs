@@ -1,3 +1,4 @@
+use crate::application::http::forbidden_error;
 use crate::models::break_record::BreakRecordResponse;
 use crate::repositories::attendance::{AttendanceRepository, AttendanceRepositoryTrait};
 use crate::repositories::break_record::BreakRecordRepository;
@@ -11,7 +12,7 @@ pub fn ensure_authorized_access(attendance: &Attendance, user_id: UserId) -> Res
     if attendance.user_id == user_id {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

@@ -6,11 +6,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    admin::application::http_errors::map_app_error,
     application::{
         clock::{Clock, SYSTEM_CLOCK},
         dto::MessageResponse,
-        http::{forbidden, HttpError},
+        http::{forbidden, map_app_error, HttpError},
     },
     models::{subject_request::DataSubjectRequestResponse, user::User},
     requests::application::admin_requests::validate_decision_comment as validate_decision_comment_value,

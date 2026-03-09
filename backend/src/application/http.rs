@@ -17,6 +17,10 @@ pub fn forbidden(message: impl Into<String>) -> HttpError {
     error(StatusCode::FORBIDDEN, message)
 }
 
+pub fn forbidden_error(message: impl Into<String>) -> AppError {
+    AppError::Forbidden(message.into())
+}
+
 pub fn unauthorized(message: impl Into<String>) -> HttpError {
     error(StatusCode::UNAUTHORIZED, message)
 }
@@ -77,5 +81,13 @@ mod tests {
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
         assert_eq!(err.1 .0.error, "Validation failed");
         assert!(err.1 .0.details.is_some());
+    }
+
+    #[test]
+    fn forbidden_error_builds_app_error() {
+        assert!(matches!(
+            forbidden_error("Forbidden"),
+            AppError::Forbidden(message) if message == "Forbidden"
+        ));
     }
 }

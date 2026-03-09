@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::str::FromStr;
 
 use crate::{
+    application::http::forbidden_error,
     error::AppError,
     models::{audit_log::AuditLog, user::User},
     repositories::{
@@ -213,7 +214,7 @@ pub async fn ensure_audit_log_access(pool: &sqlx::PgPool, user: &User) -> Result
     if allowed {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

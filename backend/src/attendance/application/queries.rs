@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
+    application::http::forbidden_error,
     error::AppError,
     models::{
         attendance::Attendance,
@@ -154,7 +155,7 @@ pub async fn get_break_records_for_user(
     let attendance = attendance_repo.find_by_id(read_pool, attendance_id).await?;
 
     if attendance.user_id != user_id {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
 
     let break_repo = BreakRecordRepository::new();

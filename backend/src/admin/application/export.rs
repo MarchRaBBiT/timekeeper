@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Postgres, QueryBuilder, Row};
 
 use crate::{
+    application::http::forbidden_error,
     error::AppError,
     models::user::User,
     utils::{csv::append_csv_row, encryption::decrypt_pii, pii::mask_name},
@@ -197,7 +198,7 @@ fn ensure_admin(user: &User) -> Result<(), AppError> {
     if user.is_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

@@ -10,6 +10,7 @@ use crate::holiday::application::queries::{decode_ics_text, parse_google_calenda
 use chrono::NaiveDate;
 
 use crate::{
+    application::http::forbidden_error,
     error::AppError,
     holiday::application::queries::{
         check_holiday as check_holiday_use_case,
@@ -41,7 +42,7 @@ pub async fn fetch_google_holidays(
     Query(params): Query<GoogleHolidayQuery>,
 ) -> Result<Json<Vec<CreateHolidayPayload>>, AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
     Ok(Json(fetch_google_holidays_use_case(params.year).await?))
 }

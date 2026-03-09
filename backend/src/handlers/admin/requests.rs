@@ -5,7 +5,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::application::clock::{Clock, SYSTEM_CLOCK};
+use crate::application::{
+    clock::{Clock, SYSTEM_CLOCK},
+    http::forbidden_error,
+};
 use crate::requests::application::admin_requests::paginate_requests as paginate_request_values;
 
 #[cfg(test)]
@@ -45,7 +48,7 @@ pub async fn approve_request(
     Json(body): Json<ApprovePayload>,
 ) -> Result<Json<crate::application::dto::MessageResponse>, AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
     validate_decision_comment_value(&body.comment, MAX_DECISION_COMMENT_LENGTH)?;
     let result = process_request_decision(
@@ -72,7 +75,7 @@ pub async fn reject_request(
     Json(body): Json<RejectPayload>,
 ) -> Result<Json<crate::application::dto::MessageResponse>, AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
     validate_decision_comment_value(&body.comment, MAX_DECISION_COMMENT_LENGTH)?;
     let result = process_request_decision(
@@ -106,7 +109,7 @@ pub async fn list_requests(
     Query(q): Query<RequestListQuery>,
 ) -> Result<Json<AdminRequestListResponse>, AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
     let response = list_requests_view(
         state.read_pool(),
@@ -131,7 +134,7 @@ pub async fn get_request_detail(
     Path(request_id): Path<String>,
 ) -> Result<Json<crate::requests::application::admin_requests::RequestDetailView>, AppError> {
     if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
 
     let detail = get_request_detail_view(state.read_pool(), &request_id).await?;

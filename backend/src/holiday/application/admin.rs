@@ -8,6 +8,7 @@ use crate::{
     application::{
         clock::{Clock, SYSTEM_CLOCK},
         dto::IdMessageResponse,
+        http::forbidden_error,
     },
     config::Config,
     error::AppError,
@@ -257,7 +258,7 @@ pub fn ensure_admin(user: &User) -> Result<(), AppError> {
     if user.is_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

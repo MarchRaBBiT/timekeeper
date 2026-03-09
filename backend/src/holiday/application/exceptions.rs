@@ -3,6 +3,7 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 
 use crate::{
+    application::http::forbidden_error,
     error::AppError,
     models::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
@@ -82,7 +83,7 @@ pub fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
     if user.is_admin() || user.is_system_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

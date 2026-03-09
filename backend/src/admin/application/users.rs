@@ -6,7 +6,10 @@ use std::sync::Arc;
 use validator::Validate;
 
 use crate::{
-    application::clock::{Clock, SYSTEM_CLOCK},
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        http::forbidden_error,
+    },
     config::Config,
     error::AppError,
     middleware::request_id::RequestId,
@@ -495,7 +498,7 @@ fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
     if user.is_admin() || user.is_system_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

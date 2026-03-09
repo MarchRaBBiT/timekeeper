@@ -4,11 +4,10 @@ use axum::{
 };
 
 use crate::{
-    admin::application::http_errors::map_app_error,
     application::{
         clock::{Clock, SYSTEM_CLOCK},
         dto::IdStatusResponse,
-        http::HttpError,
+        http::{map_app_error, HttpError},
     },
     models::{
         subject_request::{CreateDataSubjectRequest, DataSubjectRequestResponse},

@@ -1,5 +1,8 @@
 use crate::{
-    application::clock::{Clock, SYSTEM_CLOCK},
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        http::forbidden_error,
+    },
     attendance::application::{
         commands::recalculate_total_hours,
         helpers::{get_break_records, get_break_records_map},
@@ -164,7 +167,7 @@ fn ensure_system_admin(user: &User) -> Result<(), AppError> {
     if user.is_system_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

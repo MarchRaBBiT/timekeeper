@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use crate::{
     application::dto::MessageResponse,
+    application::http::forbidden_error,
     error::AppError,
     models::{
         attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload},
@@ -114,7 +115,7 @@ fn ensure_admin(user: &User) -> Result<(), AppError> {
     if user.is_admin() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Forbidden".into()))
+        Err(forbidden_error("Forbidden"))
     }
 }
 

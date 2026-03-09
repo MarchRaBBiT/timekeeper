@@ -8,6 +8,7 @@ use crate::{
     application::{
         clock::{Clock, SYSTEM_CLOCK},
         dto::SessionActionResponse,
+        http::forbidden_error,
     },
     db::connection::DbPool,
     error::AppError,
@@ -84,7 +85,7 @@ pub async fn revoke_user_session(
             .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
 
     if session.user_id != actor_user_id {
-        return Err(AppError::Forbidden("Forbidden".into()));
+        return Err(forbidden_error("Forbidden"));
     }
 
     if session
