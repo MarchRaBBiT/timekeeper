@@ -1,5 +1,6 @@
 use crate::api::types::*;
 use crate::config;
+use crate::utils::storage as storage_utils;
 use chrono::NaiveDate;
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::{Client, StatusCode};
@@ -7,10 +8,6 @@ use serde_json::json;
 use std::cell::RefCell;
 use uuid::Uuid;
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
-use crate::utils::storage as storage_utils;
-#[cfg(all(test, target_arch = "wasm32"))]
-use crate::utils::storage as storage_utils;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use std::collections::HashMap;
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -101,6 +98,10 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
+    const SESSION_EXPIRED_ERROR: &'static str =
+        "セッションが期限切れです。再度ログインしてください。";
+    const SESSION_EXPIRED_CODE: &'static str = "SESSION_EXPIRED";
+
     fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
             .get("X-PII-Masked")
@@ -216,7 +217,20 @@ impl ApiClient {
             return Ok(retry_response);
         }
 
-        Ok(response)
+        Self::clear_auth_session();
+        Self::handle_unauthorized_status(StatusCode::UNAUTHORIZED);
+        Err(ApiError {
+            error: Self::SESSION_EXPIRED_ERROR.to_string(),
+            code: Self::SESSION_EXPIRED_CODE.to_string(),
+            details: None,
+        })
+    }
+
+    fn clear_auth_session() {
+        DEVICE_LABEL.with(|cached| *cached.borrow_mut() = None);
+        if let Ok(storage) = storage_utils::local_storage() {
+            let _ = storage.remove_item("device_label");
+        }
     }
 
     fn redirect_to_login_if_needed() {
@@ -887,6 +901,11 @@ pub(super) fn ensure_device_label() -> Result<String, ApiError> {
 }
 
 #[cfg(test)]
+pub(crate) fn reset_device_label_for_test() {
+    DEVICE_LABEL.with(|cached| *cached.borrow_mut() = None);
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use wasm_bindgen_test::*;
@@ -894,6 +913,7 @@ mod tests {
     wasm_bindgen_test_configure!(run_in_browser);
 
     fn cleanup(keys: &[&str]) {
+        reset_device_label_for_test();
         let store = storage_utils::local_storage().expect("local_storage available");
         for key in keys {
             let _ = store.remove_item(key);
