@@ -102,7 +102,7 @@ impl ApiClient {
         "セッションが期限切れです。再度ログインしてください。";
     const SESSION_EXPIRED_CODE: &'static str = "SESSION_EXPIRED";
 
-    fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
+    pub(super) fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
             .get("X-PII-Masked")
             .and_then(|value| value.to_str().ok())
