@@ -4,7 +4,7 @@
 - 保存期間を 0（記録しない）〜無限（削除しない）まで設定可能にし、既定は 365 日とする。
 
 ## 依存
-- `documents/issues/002-audit-log-schema-model.md`
+- `docs/product-specs/issues/002-audit-log-schema-model.md`
 
 ## 作業タスク
 - [ ] 設定項目を追加する（例: `AUDIT_LOG_RETENTION_DAYS` と `AUDIT_LOG_RETENTION_FOREVER`）

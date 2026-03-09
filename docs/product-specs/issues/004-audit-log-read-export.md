@@ -4,8 +4,8 @@
 - 監査ログの一覧/詳細/JSON エクスポートをシステム管理者向けに提供する。
 
 ## 依存
-- `documents/issues/001-audit-log-event-catalog.md`
-- `documents/issues/002-audit-log-schema-model.md`
+- `docs/product-specs/issues/001-audit-log-event-catalog.md`
+- `docs/product-specs/issues/002-audit-log-schema-model.md`
 
 ## 作業タスク
 - [ ] `GET /api/admin/audit-logs` で一覧を取得できるようにする（期間/actor/event_type/target/result で絞り込み + ページング）

@@ -4,7 +4,7 @@
 - 監査ログ保存用のテーブルと Rust モデル/リポジトリを追加する。
 
 ## 依存
-- `documents/issues/001-audit-log-event-catalog.md`
+- `docs/product-specs/issues/001-audit-log-event-catalog.md`
 
 ## 作業タスク
 - [ ] `backend/migrations` に `audit_logs` テーブル作成 SQL を追加する

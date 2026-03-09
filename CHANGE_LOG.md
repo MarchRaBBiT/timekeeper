@@ -11,5 +11,5 @@
 - **feat:** `/api/config/timezone` を公開し、フロントエンドがバックエンドと同じタイムゾーン設定を取得できるようにしました。
 - **ui:** 休日判定メッセージや定休設定フォームなど、各 UI コンポーネントにバリデーションとトーストを追加し、操作フィードバックを改善しました。
 - **test:** `backend/tests/holiday_service.rs`、`holiday_api.rs`、`attendance_holiday.rs` を追加し、サービスロジック・APIバリデーション・勤怠ブロック挙動を TDD でカバーしました。
-- **docs:** `API_DOCS.md` に休日 API と定休管理 API を追記し、`documents/holiday-implementation-plan.md` / `holiday-test-cases.md` で設計とテスト計画を共有しました。
+- **docs:** `API_DOCS.md` に休日 API と定休管理 API を追記し、`docs/holiday-implementation-plan.md` / `holiday-test-cases.md` で設計とテスト計画を共有しました。
 - **ui:** フロントエンドが `/api/config/timezone` のフェッチに失敗した場合に、ページ上部へ警告バナーと手動再取得ボタンを表示し、バックエンド時刻とのズレを検知できるようにしました。

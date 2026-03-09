@@ -4,8 +4,8 @@
 - 監査ログの保持期間に基づき、古いログを外部バッチで定期削除する。
 
 ## 依存
-- `documents/issues/002-audit-log-schema-model.md`
-- `documents/issues/003-audit-log-write-path.md`
+- `docs/product-specs/issues/002-audit-log-schema-model.md`
+- `docs/product-specs/issues/003-audit-log-write-path.md`
 
 ## 作業タスク
 - [ ] 削除対象の監査ログを取得するSQLクエリを作成する

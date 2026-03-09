@@ -4,8 +4,8 @@
 - 各ハンドラの文脈に応じた metadata を監査ログへ付与する。
 
 ## 依存
-- `documents/issues/001-audit-log-event-catalog.md`
-- `documents/issues/003-audit-log-write-path.md`
+- `docs/product-specs/issues/001-audit-log-event-catalog.md`
+- `docs/product-specs/issues/003-audit-log-write-path.md`
 
 ## 作業タスク
 - [x] 打刻系 API で metadata（例: clock_type, timezone, source）を追加する

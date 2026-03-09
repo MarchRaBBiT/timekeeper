@@ -4,9 +4,9 @@
 - 監査ログの記録処理をサービスに集約し、API 呼出を起点に成功/失敗を記録する。
 
 ## 依存
-- `documents/issues/001-audit-log-event-catalog.md`
-- `documents/issues/002-audit-log-schema-model.md`
-- `documents/issues/005-audit-log-retention.md`
+- `docs/product-specs/issues/001-audit-log-event-catalog.md`
+- `docs/product-specs/issues/002-audit-log-schema-model.md`
+- `docs/product-specs/issues/005-audit-log-retention.md`
 
 ## 作業タスク
 - [ ] `AuditLogService` を追加し、`record_event` API を提供する

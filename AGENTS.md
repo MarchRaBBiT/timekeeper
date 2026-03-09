@@ -97,12 +97,16 @@ timekeeper/
 ## EXEC PLAN 運用 (Codex)
 - 複雑タスク（複数レイヤー横断・長時間実装・仕様判断が多い変更）では `ExecPlan` を必須とする
 - 小さな修正（単一ファイルの軽微修正、文言修正、明確なバグ1点修正）は従来フローのままでよい
-- 計画書は `.agent/PLANS.md` を使い、完了条件を「観測できる挙動」で定義する
+- テンプレートは `.agent/PLANS.md` を使い、実際の計画は `docs/generated/exec-plans/active/` に作成する
 - `ExecPlan` では検証コマンドと結果を残し、テスト成功の節目ごとに `jj` スナップショットを作成する
 - 実装中は計画のチェックボックスを更新し、未完了項目を明示する
 
 ## COMMANDS
 ```bash
+# ハーネス（推奨）
+bash ./scripts/harness.sh
+bash ./scripts/harness.sh smoke --backend-url http://localhost:3000 --frontend-url http://localhost:8000
+
 # バックエンド起動
 cd backend; cargo run
 # バックエンド（Podman経由）
@@ -129,6 +133,7 @@ cd e2e; node run.mjs
 - PID ファイル: `.backend.pid`, `.frontend.pid` でプロセス管理（`.gitignore` に追加済み）
 - マイグレーション: バックエンド起動時に自動実行
 - 詳細ガイド: `CODING_STANDARD.md`（関数設計・リファクタリング）
+- ハーネス運用: `docs/manual/HARNESS.md`, `docs/design-docs/harness-engineering.md`
 
 ## SUBDIRECTORIES
 - `backend/AGENTS.md` - バックエンド詳細（ハンドラー・リポジトリ・テスト）

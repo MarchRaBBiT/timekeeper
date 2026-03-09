@@ -1,5 +1,10 @@
 // playwright login test
-import { chromium } from "playwright";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { chromium } = require(require.resolve("playwright", {
+  paths: ["./e2e", process.cwd()],
+}));
 const base = process.env.FRONTEND_BASE_URL || "http://localhost:8080";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
