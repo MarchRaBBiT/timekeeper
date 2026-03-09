@@ -2,6 +2,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::Serialize;
 
 use crate::{
+    application::dto::MessageResponse,
     error::AppError,
     models::{
         request::RequestStatus,
@@ -41,11 +42,6 @@ pub enum DecisionKind {
     Reject,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct DecisionResult {
-    pub message: &'static str,
-}
-
 pub async fn list_subject_requests(
     pool: &sqlx::PgPool,
     params: SubjectRequestListParams,
@@ -74,7 +70,7 @@ pub async fn process_subject_request_decision(
     comment: &str,
     now: DateTime<Utc>,
     kind: DecisionKind,
-) -> Result<DecisionResult, AppError> {
+) -> Result<MessageResponse, AppError> {
     ensure_pending_request(pool, request_id).await?;
     let actor_id = actor_id.to_string();
 
@@ -95,12 +91,10 @@ pub async fn process_subject_request_decision(
         ));
     }
 
-    Ok(DecisionResult {
-        message: match kind {
-            DecisionKind::Approve => "Subject request approved",
-            DecisionKind::Reject => "Subject request rejected",
-        },
-    })
+    Ok(MessageResponse::new(match kind {
+        DecisionKind::Approve => "Subject request approved",
+        DecisionKind::Reject => "Subject request rejected",
+    }))
 }
 
 pub fn validate_list_params(
@@ -460,9 +454,7 @@ mod tests {
 
     #[test]
     fn decision_result_keeps_message() {
-        let result = DecisionResult {
-            message: "Subject request approved",
-        };
+        let result = MessageResponse::new("Subject request approved");
         assert_eq!(result.message, "Subject request approved");
     }
 }

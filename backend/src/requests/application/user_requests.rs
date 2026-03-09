@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::str::FromStr;
 
 use crate::{
+    application::dto::{IdStatusResponse, MessageResponse},
     db::connection::DbPool,
     error::AppError,
     models::{
@@ -103,17 +104,11 @@ pub async fn create_overtime_request(
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct CancelRequestResult {
-    pub id: String,
-    pub status: &'static str,
-}
-
 pub async fn cancel_my_request(
     write_pool: &DbPool,
     user_id: UserId,
     request_id: &str,
-) -> Result<CancelRequestResult, AppError> {
+) -> Result<IdStatusResponse, AppError> {
     let now = Utc::now();
 
     let leave_request_id = LeaveRequestId::from_str(request_id)
@@ -123,10 +118,7 @@ pub async fn cancel_my_request(
         .cancel(write_pool, leave_request_id, user_id, now)
         .await?;
     if result > 0 {
-        return Ok(CancelRequestResult {
-            id: request_id.to_string(),
-            status: "cancelled",
-        });
+        return Ok(IdStatusResponse::new(request_id, "cancelled"));
     }
 
     let overtime_request_id = OvertimeRequestId::from_str(request_id)
@@ -136,10 +128,7 @@ pub async fn cancel_my_request(
         .cancel(write_pool, overtime_request_id, user_id, Utc::now())
         .await?;
     if result > 0 {
-        return Ok(CancelRequestResult {
-            id: request_id.to_string(),
-            status: "cancelled",
-        });
+        return Ok(IdStatusResponse::new(request_id, "cancelled"));
     }
 
     let correction_repo = AttendanceCorrectionRequestRepository::new();
@@ -147,10 +136,7 @@ pub async fn cancel_my_request(
         .cancel_pending_for_user(write_pool, request_id, user_id)
         .await
     {
-        Ok(_) => Ok(CancelRequestResult {
-            id: request_id.to_string(),
-            status: "cancelled",
-        }),
+        Ok(_) => Ok(IdStatusResponse::new(request_id, "cancelled")),
         Err(AppError::Conflict(_)) | Err(AppError::NotFound(_)) => Err(AppError::NotFound(
             "Request not found or not cancellable".into(),
         )),
@@ -158,17 +144,12 @@ pub async fn cancel_my_request(
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct UpdateRequestResult {
-    pub message: &'static str,
-}
-
 pub async fn update_my_request(
     write_pool: &DbPool,
     user_id: UserId,
     request_id: &str,
     payload: Value,
-) -> Result<UpdateRequestResult, AppError> {
+) -> Result<MessageResponse, AppError> {
     let leave_request_id = LeaveRequestId::from_str(request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
 
@@ -200,9 +181,7 @@ pub async fn update_my_request(
         updated.reason = new_reason;
         updated.updated_at = Utc::now();
         leave_repo.update(write_pool, &updated).await?;
-        return Ok(UpdateRequestResult {
-            message: "Leave request updated",
-        });
+        return Ok(MessageResponse::new("Leave request updated"));
     }
 
     let overtime_request_id = OvertimeRequestId::from_str(request_id)
@@ -231,9 +210,7 @@ pub async fn update_my_request(
         updated.reason = new_reason;
         updated.updated_at = Utc::now();
         overtime_repo.update(write_pool, &updated).await?;
-        return Ok(UpdateRequestResult {
-            message: "Overtime request updated",
-        });
+        return Ok(MessageResponse::new("Overtime request updated"));
     }
 
     let correction_repo = AttendanceCorrectionRequestRepository::new();
@@ -265,9 +242,9 @@ pub async fn update_my_request(
             correction_repo
                 .update_pending_for_user(write_pool, request_id, user_id, &reason, &proposed)
                 .await?;
-            Ok(UpdateRequestResult {
-                message: "Attendance correction request updated",
-            })
+            Ok(MessageResponse::new(
+                "Attendance correction request updated",
+            ))
         }
         Err(AppError::NotFound(_)) => Err(AppError::NotFound("Request not found".into())),
         Err(err) => Err(err),
@@ -293,10 +270,7 @@ mod tests {
 
     #[test]
     fn cancel_request_result_uses_cancelled_status() {
-        let result = CancelRequestResult {
-            id: "request-1".to_string(),
-            status: "cancelled",
-        };
+        let result = IdStatusResponse::new("request-1", "cancelled");
 
         assert_eq!(result.id, "request-1");
         assert_eq!(result.status, "cancelled");
@@ -304,9 +278,7 @@ mod tests {
 
     #[test]
     fn update_request_result_keeps_message() {
-        let result = UpdateRequestResult {
-            message: "Leave request updated",
-        };
+        let result = MessageResponse::new("Leave request updated");
 
         assert_eq!(result.message, "Leave request updated");
     }

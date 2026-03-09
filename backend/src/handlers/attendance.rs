@@ -4,7 +4,6 @@ use axum::{
 };
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
-use serde_json::{json, Value};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
@@ -24,7 +23,7 @@ use crate::attendance::application::queries::{
 };
 use crate::attendance::application::reports::{
     build_monthly_summary, export_user_attendance, list_effective_attendance_in_range,
-    AttendanceRange,
+    AttendanceExportResult, AttendanceRange,
 };
 use crate::error::AppError;
 use crate::state::AppState;
@@ -219,7 +218,7 @@ pub async fn export_my_attendance(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<AttendanceExportQuery>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<AttendanceExportResult>, AppError> {
     let export = export_user_attendance(
         state.read_pool(),
         user.id,
@@ -233,7 +232,7 @@ pub async fn export_my_attendance(
             .to_string(),
     )
     .await?;
-    Ok(Json(json!(export)))
+    Ok(Json(export))
 }
 
 #[cfg(test)]

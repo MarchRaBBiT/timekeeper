@@ -1,4 +1,5 @@
 use crate::{
+    application::clock::{Clock, SYSTEM_CLOCK},
     attendance::application::{
         commands::recalculate_total_hours,
         helpers::{get_break_records, get_break_records_map},
@@ -17,7 +18,6 @@ use crate::{
         transaction,
     },
     types::{AttendanceId, BreakRecordId, UserId},
-    utils::time,
 };
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use serde::Deserialize;
@@ -74,7 +74,7 @@ pub async fn upsert_attendance(
     ensure_system_admin(user)?;
 
     let parsed = parse_admin_attendance_upsert(body)?;
-    let now_utc = time::now_utc(time_zone);
+    let now_utc = SYSTEM_CLOCK.now_utc(time_zone);
     let mut tx = transaction::begin_transaction(write_pool).await?;
 
     let attendance_repo = AttendanceRepository::new();
@@ -130,7 +130,7 @@ pub async fn force_end_break(
 
     let break_record_id = BreakRecordId::from_str(break_id)
         .map_err(|_| AppError::BadRequest("Invalid break record ID format".into()))?;
-    let now_local = time::now_in_timezone(time_zone);
+    let now_local = SYSTEM_CLOCK.now_in_timezone(time_zone);
     let now_utc = now_local.with_timezone(&Utc);
     let now = now_local.naive_local();
 

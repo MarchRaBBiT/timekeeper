@@ -5,7 +5,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 use utoipa::IntoParams;
 
@@ -61,7 +60,7 @@ pub async fn reset_user_mfa(
     audit_log_service: Option<Extension<Arc<dyn AuditLogServiceTrait>>>,
     headers: HeaderMap,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<application::UserActionMessage>, AppError> {
     let response = application::reset_user_mfa(
         &state.write_pool,
         &requester,
@@ -72,9 +71,7 @@ pub async fn reset_user_mfa(
     )
     .await?;
 
-    Ok(Json(
-        serde_json::to_value(response).expect("serialize reset user MFA response"),
-    ))
+    Ok(Json(response))
 }
 
 pub async fn unlock_user_account(
@@ -84,7 +81,7 @@ pub async fn unlock_user_account(
     audit_log_service: Option<Extension<Arc<dyn AuditLogServiceTrait>>>,
     headers: HeaderMap,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<application::UserActionMessage>, AppError> {
     let response = application::unlock_user_account(
         &state.write_pool,
         &requester,
@@ -95,9 +92,7 @@ pub async fn unlock_user_account(
     )
     .await?;
 
-    Ok(Json(
-        serde_json::to_value(response).expect("serialize unlock user response"),
-    ))
+    Ok(Json(response))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -111,12 +106,10 @@ pub async fn delete_user(
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
     Query(params): Query<DeleteUserParams>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<application::DeleteUserMessage>, AppError> {
     let response =
         application::delete_user(&state.write_pool, &requester, &user_id, params.hard).await?;
-    Ok(Json(
-        serde_json::to_value(response).expect("serialize delete user response"),
-    ))
+    Ok(Json(response))
 }
 
 #[derive(Debug, Serialize)]
@@ -147,25 +140,21 @@ pub async fn restore_archived_user(
     State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<application::UserActionMessage>, AppError> {
     let response =
         application::restore_archived_user(&state.write_pool, &state.config, &requester, &user_id)
             .await?;
-    Ok(Json(
-        serde_json::to_value(response).expect("serialize restore archived user response"),
-    ))
+    Ok(Json(response))
 }
 
 pub async fn delete_archived_user(
     State(state): State<AppState>,
     Extension(requester): Extension<User>,
     Path(user_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<application::UserActionMessage>, AppError> {
     let response =
         application::delete_archived_user(&state.write_pool, &requester, &user_id).await?;
-    Ok(Json(
-        serde_json::to_value(response).expect("serialize delete archived user response"),
-    ))
+    Ok(Json(response))
 }
 
 impl From<application::ArchivedUserResponse> for ArchivedUserResponse {

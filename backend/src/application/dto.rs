@@ -50,6 +50,21 @@ impl IdResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct IdMessageResponse {
+    pub id: String,
+    pub message: String,
+}
+
+impl IdMessageResponse {
+    pub fn new(id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct IdStatusResponse {
     pub id: String,
     pub status: String,

@@ -3,13 +3,13 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     admin::application::http_errors::map_app_error,
     application::{
         clock::{Clock, SYSTEM_CLOCK},
+        dto::MessageResponse,
         http::{forbidden, HttpError},
     },
     models::{subject_request::DataSubjectRequestResponse, user::User},
@@ -83,7 +83,7 @@ pub async fn approve_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, HttpError> {
+) -> Result<Json<MessageResponse>, HttpError> {
     if !user.is_admin() {
         return Err(forbidden("Forbidden"));
     }
@@ -99,9 +99,7 @@ pub async fn approve_subject_request(
     .await
     .map_err(map_app_error)?;
 
-    Ok(Json(
-        serde_json::to_value(result).expect("decision result serializes"),
-    ))
+    Ok(Json(result))
 }
 
 pub async fn reject_subject_request(
@@ -109,7 +107,7 @@ pub async fn reject_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, HttpError> {
+) -> Result<Json<MessageResponse>, HttpError> {
     if !user.is_admin() {
         return Err(forbidden("Forbidden"));
     }
@@ -125,9 +123,7 @@ pub async fn reject_subject_request(
     .await
     .map_err(map_app_error)?;
 
-    Ok(Json(
-        serde_json::to_value(result).expect("decision result serializes"),
-    ))
+    Ok(Json(result))
 }
 
 #[cfg(test)]
@@ -143,8 +139,8 @@ mod tests {
         },
         services::holiday::HolidayReason,
     };
-    use chrono::{NaiveDate, TimeZone, Timelike, Utc};
     use axum::http::StatusCode;
+    use chrono::{NaiveDate, TimeZone, Timelike, Utc};
 
     fn err_message(err: &HttpError) -> String {
         err.1 .0.error.clone()

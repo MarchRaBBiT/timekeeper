@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::application::clock::{Clock, SYSTEM_CLOCK};
@@ -44,7 +43,7 @@ pub async fn approve_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<ApprovePayload>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<crate::application::dto::MessageResponse>, AppError> {
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
@@ -58,7 +57,7 @@ pub async fn approve_request(
         DecisionKind::Approve,
     )
     .await?;
-    Ok(Json(json!(result)))
+    Ok(Json(result))
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -71,7 +70,7 @@ pub async fn reject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<RejectPayload>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<crate::application::dto::MessageResponse>, AppError> {
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
@@ -85,7 +84,7 @@ pub async fn reject_request(
         DecisionKind::Reject,
     )
     .await?;
-    Ok(Json(json!(result)))
+    Ok(Json(result))
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -130,13 +129,13 @@ pub async fn get_request_detail(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<crate::requests::application::admin_requests::RequestDetailView>, AppError> {
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let detail = get_request_detail_view(state.read_pool(), &request_id).await?;
-    Ok(Json(json!(detail)))
+    Ok(Json(detail))
 }
 
 #[cfg(test)]

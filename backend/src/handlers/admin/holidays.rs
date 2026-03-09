@@ -3,10 +3,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
+    application::dto::IdMessageResponse,
     error::AppError,
     holiday::application::admin as application,
     models::{
@@ -54,7 +54,7 @@ pub async fn delete_holiday(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(holiday_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<IdMessageResponse>, AppError> {
     Ok(Json(
         application::delete_holiday(&state.write_pool, &user, &holiday_id).await?,
     ))
@@ -84,7 +84,7 @@ pub async fn delete_weekly_holiday(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Path(id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<IdMessageResponse>, AppError> {
     Ok(Json(
         application::delete_weekly_holiday(&state.write_pool, &user, &id).await?,
     ))

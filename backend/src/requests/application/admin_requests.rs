@@ -3,6 +3,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
+    application::dto::MessageResponse,
     db::connection::DbPool,
     error::AppError,
     models::{leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse},
@@ -51,11 +52,6 @@ pub enum RequestDetailView {
 pub enum DecisionKind {
     Approve,
     Reject,
-}
-
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct DecisionResult {
-    pub message: &'static str,
 }
 
 pub async fn list_requests(
@@ -154,7 +150,7 @@ pub async fn process_request_decision(
     comment: &str,
     timestamp: DateTime<Utc>,
     kind: DecisionKind,
-) -> Result<DecisionResult, AppError> {
+) -> Result<MessageResponse, AppError> {
     ensure_not_self_request(write_pool, request_id, approver_id).await?;
 
     let request_repo = RequestRepository::new();
@@ -175,12 +171,10 @@ pub async fn process_request_decision(
         .update_request_status(write_pool, request_id, update)
         .await?
     {
-        return Ok(DecisionResult {
-            message: match kind {
-                DecisionKind::Approve => "Request approved",
-                DecisionKind::Reject => "Request rejected",
-            },
-        });
+        return Ok(MessageResponse::new(match kind {
+            DecisionKind::Approve => "Request approved",
+            DecisionKind::Reject => "Request rejected",
+        }));
     }
 
     Err(AppError::NotFound(
@@ -404,9 +398,7 @@ mod tests {
 
     #[test]
     fn decision_result_keeps_message() {
-        let result = DecisionResult {
-            message: "Request approved",
-        };
+        let result = MessageResponse::new("Request approved");
 
         assert_eq!(result.message, "Request approved");
     }

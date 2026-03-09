@@ -8,8 +8,11 @@ use serde_json::json;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-    admin::application::export as application, error::AppError, models::user::User,
-    state::AppState, utils::time,
+    admin::application::export as application,
+    application::clock::{Clock, SYSTEM_CLOCK},
+    error::AppError,
+    models::user::User,
+    state::AppState,
 };
 
 #[derive(Deserialize, ToSchema, IntoParams)]
@@ -26,7 +29,9 @@ pub async fn export_data(
 ) -> Result<impl IntoResponse, AppError> {
     let filename = format!(
         "attendance_export_{}.csv",
-        time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
+        SYSTEM_CLOCK
+            .now_in_timezone(&state.config.time_zone)
+            .format("%Y%m%d_%H%M%S")
     );
 
     let (headers, response) = application::export_attendance_data(

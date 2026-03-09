@@ -3,10 +3,11 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use serde_json::Value;
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::{
+    application::dto::MessageResponse,
     config::Config,
     error::AppError,
     identity::application::auth::{
@@ -68,7 +69,7 @@ pub async fn refresh(
     Extension(request_id): Extension<RequestId>,
     Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
-    Json(payload): Json<Value>,
+    Json(payload): Json<RefreshPayload>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     let refresh_token = crate::utils::cookies::extract_cookie_value(
         headers
@@ -77,12 +78,7 @@ pub async fn refresh(
             .unwrap_or_default(),
         crate::utils::cookies::REFRESH_COOKIE_NAME,
     )
-    .or_else(|| {
-        payload
-            .get("refresh_token")
-            .and_then(|value| value.as_str())
-            .map(ToOwned::to_owned)
-    })
+    .or(payload.refresh_token)
     .ok_or_else(|| AppError::BadRequest("Refresh token is required".into()))?;
 
     let session = refresh_use_case(
@@ -106,27 +102,20 @@ pub async fn logout(
     Extension(request_id): Extension<RequestId>,
     Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
-    Json(payload): Json<Value>,
+    Json(payload): Json<LogoutPayload>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
-    let all = payload
-        .get("all")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
-    let refresh_token = payload
-        .get("refresh_token")
-        .and_then(|value| value.as_str())
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            headers
-                .get(axum::http::header::COOKIE)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| {
-                    crate::utils::cookies::extract_cookie_value(
-                        value,
-                        crate::utils::cookies::REFRESH_COOKIE_NAME,
-                    )
-                })
-        });
+    let all = payload.all.unwrap_or(false);
+    let refresh_token = payload.refresh_token.or_else(|| {
+        headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| {
+                crate::utils::cookies::extract_cookie_value(
+                    value,
+                    crate::utils::cookies::REFRESH_COOKIE_NAME,
+                )
+            })
+    });
 
     let result = logout_use_case(
         &state.write_pool,
@@ -198,7 +187,7 @@ pub async fn mfa_activate(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
-) -> HandlerResult<Json<Value>> {
+) -> HandlerResult<Json<MessageResponse>> {
     verify_request_origin(&headers, &state.config)?;
     Ok(Json(
         activate_mfa_use_case(
@@ -217,7 +206,7 @@ pub async fn mfa_disable(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<MfaCodeRequest>,
-) -> HandlerResult<Json<Value>> {
+) -> HandlerResult<Json<MessageResponse>> {
     verify_request_origin(&headers, &state.config)?;
     Ok(Json(
         disable_mfa_use_case(
@@ -236,7 +225,7 @@ pub async fn change_password(
     headers: HeaderMap,
     Extension(user): Extension<User>,
     Json(payload): Json<ChangePasswordRequest>,
-) -> HandlerResult<Json<Value>> {
+) -> HandlerResult<Json<MessageResponse>> {
     verify_request_origin(&headers, &state.config)?;
     payload.validate()?;
     Ok(Json(
@@ -254,7 +243,7 @@ pub async fn change_password(
 pub async fn request_password_reset(
     State(state): State<AppState>,
     Json(payload): Json<RequestPasswordResetPayload>,
-) -> HandlerResult<impl axum::response::IntoResponse> {
+) -> HandlerResult<Json<MessageResponse>> {
     payload.validate()?;
     Ok(Json(
         request_password_reset_use_case(&state.write_pool, &state.config, payload).await?,
@@ -264,7 +253,7 @@ pub async fn request_password_reset(
 pub async fn reset_password(
     State(state): State<AppState>,
     Json(payload): Json<ResetPasswordPayload>,
-) -> HandlerResult<impl axum::response::IntoResponse> {
+) -> HandlerResult<Json<MessageResponse>> {
     payload.validate()?;
     Ok(Json(
         reset_password_use_case(
@@ -281,6 +270,17 @@ fn build_login_response(session: AuthSession, config: &Config) -> (HeaderMap, Js
     let mut headers = HeaderMap::new();
     set_auth_cookies(&mut headers, &session, config);
     (headers, Json(LoginResponse { user: session.user }))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct RefreshPayload {
+    pub refresh_token: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct LogoutPayload {
+    pub all: Option<bool>,
+    pub refresh_token: Option<String>,
 }
 
 #[cfg(test)]

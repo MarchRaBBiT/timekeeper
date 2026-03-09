@@ -5,11 +5,11 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Value};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::{
+    application::dto::SessionActionResponse,
     error::AppError,
     identity::application::sessions::{
         list_user_sessions, record_session_audit_event, revoke_user_session, SessionView,
@@ -65,7 +65,7 @@ pub async fn revoke_session(
     Extension(audit_log_service): Extension<Arc<dyn AuditLogServiceTrait>>,
     headers: HeaderMap,
     Path(session_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<SessionActionResponse>, AppError> {
     let revoked = revoke_user_session(
         &state.write_pool,
         state.token_cache.as_ref(),
@@ -82,11 +82,8 @@ pub async fn revoke_session(
         &request_id,
         "session_destroy",
         Some(revoked.session_id.clone()),
-        Some(json!({ "reason": "user_revoke" })),
+        Some(serde_json::json!({ "reason": "user_revoke" })),
     );
 
-    Ok(Json(json!({
-        "message": "Session revoked",
-        "session_id": revoked.session_id
-    })))
+    Ok(Json(revoked))
 }

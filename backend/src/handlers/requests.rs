@@ -2,10 +2,10 @@ use axum::{
     extract::{Extension, Path, State},
     Json,
 };
-use serde_json::{json, Value};
 use validator::Validate;
 
 use crate::{
+    application::dto::{IdStatusResponse, MessageResponse},
     error::AppError,
     models::{
         leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
@@ -59,9 +59,9 @@ pub async fn create_overtime_request(
 pub async fn get_my_requests(
     State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<crate::requests::application::user_requests::MyRequestsView>, AppError> {
     let response = get_my_requests_view(state.read_pool(), user.id).await?;
-    Ok(Json(json!(response)))
+    Ok(Json(response))
 }
 
 pub async fn update_request(
@@ -69,18 +69,18 @@ pub async fn update_request(
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<MessageResponse>, AppError> {
     let result = update_my_request(&state.write_pool, user.id, &request_id, payload).await?;
-    Ok(Json(json!(result)))
+    Ok(Json(result))
 }
 
 pub async fn cancel_request(
     State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
     Path(request_id): Path<String>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Json<IdStatusResponse>, AppError> {
     let result = cancel_my_request(&state.write_pool, user.id, &request_id).await?;
-    Ok(Json(json!(result)))
+    Ok(Json(result))
 }
 
 #[cfg(test)]

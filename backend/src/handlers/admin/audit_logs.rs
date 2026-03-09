@@ -15,10 +15,10 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     admin::application::audit_logs as application,
+    application::clock::{Clock, SYSTEM_CLOCK},
     error::AppError,
     models::{audit_log::AuditLog, user::User},
     state::AppState,
-    utils::time,
 };
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -182,7 +182,9 @@ pub async fn export_audit_logs(
 
     let filename = format!(
         "audit_logs_{}.json",
-        time::now_in_timezone(&state.config.time_zone).format("%Y%m%d_%H%M%S")
+        SYSTEM_CLOCK
+            .now_in_timezone(&state.config.time_zone)
+            .format("%Y%m%d_%H%M%S")
     );
     let mut response = Response::new(Body::from(result.body));
     response

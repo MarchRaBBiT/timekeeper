@@ -2,10 +2,13 @@ use std::str::FromStr;
 
 use chrono::{Duration, NaiveDate};
 use serde::Serialize;
-use serde_json::{json, Value};
 
 use crate::{
     admin::application::common::parse_optional_date,
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        dto::IdMessageResponse,
+    },
     config::Config,
     error::AppError,
     models::{
@@ -21,7 +24,6 @@ use crate::{
         repository::Repository,
         weekly_holiday::WeeklyHolidayRepository,
     },
-    utils::time,
 };
 
 const DEFAULT_PAGE: i64 = 1;
@@ -101,7 +103,7 @@ pub async fn delete_holiday(
     write_pool: &sqlx::PgPool,
     user: &User,
     holiday_id: &str,
-) -> Result<Value, AppError> {
+) -> Result<IdMessageResponse, AppError> {
     ensure_admin(user)?;
 
     let id = crate::types::HolidayId::from_str(holiday_id)
@@ -110,7 +112,7 @@ pub async fn delete_holiday(
     let repo = HolidayRepository::new();
     repo.delete(write_pool, id).await?;
 
-    Ok(json!({"message":"Holiday deleted","id": holiday_id}))
+    Ok(IdMessageResponse::new(holiday_id, "Holiday deleted"))
 }
 
 pub async fn list_weekly_holidays(
@@ -146,7 +148,7 @@ pub async fn delete_weekly_holiday(
     write_pool: &sqlx::PgPool,
     user: &User,
     id: &str,
-) -> Result<Value, AppError> {
+) -> Result<IdMessageResponse, AppError> {
     ensure_admin(user)?;
 
     let id = crate::types::WeeklyHolidayId::from_str(id)
@@ -155,7 +157,10 @@ pub async fn delete_weekly_holiday(
     let repo = WeeklyHolidayRepository::new();
     repo.delete(write_pool, id).await?;
 
-    Ok(json!({"message":"Weekly holiday deleted","id": id}))
+    Ok(IdMessageResponse::new(
+        id.to_string(),
+        "Weekly holiday deleted",
+    ))
 }
 
 pub fn validate_admin_holiday_query(
@@ -210,7 +215,7 @@ pub fn validate_weekly_holiday_payload(
         }
     }
 
-    let today = time::today_local(&config.time_zone);
+    let today = SYSTEM_CLOCK.today_local(&config.time_zone);
     let tomorrow = today + Duration::days(1);
     if !user.is_system_admin() && payload.starts_on < tomorrow {
         return Err(AppError::BadRequest(
@@ -440,7 +445,7 @@ mod tests {
 
     #[test]
     fn validate_weekly_holiday_payload_allows_system_admin_today() {
-        let today = time::today_local(&config().time_zone);
+        let today = SYSTEM_CLOCK.today_local(&config().time_zone);
         let result = validate_weekly_holiday_payload(
             &CreateWeeklyHolidayPayload {
                 weekday: 1,

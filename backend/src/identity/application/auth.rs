@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
+    application::dto::MessageResponse,
     config::Config,
     error::AppError,
     middleware::request_id::RequestId,
@@ -389,7 +390,7 @@ pub async fn logout(
     headers: &HeaderMap,
     all: bool,
     refresh_token: Option<&str>,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     if all {
         let sessions = active_session::list_active_sessions_for_user(write_pool, user.id)
             .await
@@ -417,7 +418,7 @@ pub async fn logout(
                 Some(json!({ "reason": "logout_all" })),
             );
         }
-        return Ok(json!({"message":"Logged out from all devices"}));
+        return Ok(MessageResponse::new("Logged out from all devices"));
     }
 
     if let Some(rt_str) = refresh_token {
@@ -454,7 +455,7 @@ pub async fn logout(
         );
     }
 
-    Ok(json!({"message":"Logged out"}))
+    Ok(MessageResponse::new("Logged out"))
 }
 
 pub async fn update_profile(
@@ -533,7 +534,7 @@ pub async fn activate_mfa(
     config: &Config,
     user: &User,
     payload: MfaCodeRequest,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     let secret = user
         .mfa_secret
         .as_ref()
@@ -557,7 +558,7 @@ pub async fn activate_mfa(
     }
 
     revoke_all_user_sessions(write_pool, token_cache, user.id).await?;
-    Ok(json!({"message": "MFA enabled"}))
+    Ok(MessageResponse::new("MFA enabled"))
 }
 
 pub async fn disable_mfa(
@@ -566,7 +567,7 @@ pub async fn disable_mfa(
     config: &Config,
     user: &User,
     payload: MfaCodeRequest,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     if !user.is_mfa_enabled() {
         return Err(bad_request("MFA is not enabled"));
     }
@@ -593,7 +594,7 @@ pub async fn disable_mfa(
     }
 
     revoke_all_user_sessions(write_pool, token_cache, user.id).await?;
-    Ok(json!({"message": "MFA disabled"}))
+    Ok(MessageResponse::new("MFA disabled"))
 }
 
 pub async fn change_password(
@@ -602,7 +603,7 @@ pub async fn change_password(
     config: &Config,
     user: &User,
     payload: ChangePasswordRequest,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     payload.validate()?;
     validate_password_complexity(&payload.new_password, config)
         .map_err(|e| bad_request(e.to_string()))?;
@@ -647,14 +648,14 @@ pub async fn change_password(
     .map_err(|_| internal_error("Failed to update password"))?;
 
     revoke_all_user_sessions(write_pool, token_cache, user.id).await?;
-    Ok(json!({"message": "Password changed successfully"}))
+    Ok(MessageResponse::new("Password changed successfully"))
 }
 
 pub async fn request_password_reset(
     write_pool: &sqlx::PgPool,
     config: &Config,
     payload: RequestPasswordResetPayload,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     payload.validate()?;
 
     let email_hash = hash_email(&payload.email, config);
@@ -677,9 +678,9 @@ pub async fn request_password_reset(
         }
     }
 
-    Ok(json!({
-        "message": "If the email exists, a password reset link has been sent"
-    }))
+    Ok(MessageResponse::new(
+        "If the email exists, a password reset link has been sent",
+    ))
 }
 
 pub async fn reset_password(
@@ -687,7 +688,7 @@ pub async fn reset_password(
     token_cache: Option<&Arc<dyn TokenCacheServiceTrait>>,
     config: &Config,
     payload: ResetPasswordPayload,
-) -> HandlerResult<Value> {
+) -> HandlerResult<MessageResponse> {
     payload.validate()?;
     validate_password_complexity(&payload.new_password, config)
         .map_err(|e| bad_request(e.to_string()))?;
@@ -753,9 +754,7 @@ pub async fn reset_password(
         tracing::error!("Failed to send password changed notification: {:?}", error);
     }
 
-    Ok(json!({
-        "message": "Password has been reset successfully"
-    }))
+    Ok(MessageResponse::new("Password has been reset successfully"))
 }
 
 pub async fn process_login_for_user<PF, AF, SF, PFut, AFut, SFut>(

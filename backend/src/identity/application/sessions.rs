@@ -5,6 +5,10 @@ use serde_json::Value;
 use utoipa::ToSchema;
 
 use crate::{
+    application::{
+        clock::{Clock, SYSTEM_CLOCK},
+        dto::SessionActionResponse,
+    },
     db::connection::DbPool,
     error::AppError,
     middleware::request_id::RequestId,
@@ -68,7 +72,7 @@ pub async fn revoke_user_session(
     actor_user_id: UserId,
     current_jti: &str,
     session_id: &str,
-) -> Result<RevokedSession, AppError> {
+) -> Result<SessionActionResponse, AppError> {
     if session_id.trim().is_empty() {
         return Err(AppError::BadRequest("Session ID is required".into()));
     }
@@ -96,14 +100,7 @@ pub async fn revoke_user_session(
 
     revoke_session_tokens(write_pool, token_cache, &session).await?;
 
-    Ok(RevokedSession {
-        session_id: session.id,
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RevokedSession {
-    pub session_id: String,
+    Ok(SessionActionResponse::new("Session revoked", session.id))
 }
 
 pub fn record_session_audit_event(
@@ -119,7 +116,7 @@ pub fn record_session_audit_event(
         return;
     };
     let entry = AuditLogEntry {
-        occurred_at: Utc::now(),
+        occurred_at: SYSTEM_CLOCK.now_utc(&chrono_tz::UTC),
         actor_id: Some(*actor_id),
         actor_type: "user".to_string(),
         event_type: event_type.to_string(),
@@ -238,9 +235,7 @@ mod tests {
 
     #[test]
     fn revoked_session_keeps_session_id() {
-        let revoked = RevokedSession {
-            session_id: "session-3".to_string(),
-        };
+        let revoked = SessionActionResponse::new("Session revoked", "session-3");
 
         assert_eq!(revoked.session_id, "session-3");
     }

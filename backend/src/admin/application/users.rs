@@ -1,5 +1,4 @@
 use axum::http::{header::USER_AGENT, HeaderMap};
-use chrono::Utc;
 use serde::Serialize;
 use serde_json::json;
 use std::str::FromStr;
@@ -7,6 +6,7 @@ use std::sync::Arc;
 use validator::Validate;
 
 use crate::{
+    application::clock::{Clock, SYSTEM_CLOCK},
     config::Config,
     error::AppError,
     middleware::request_id::RequestId,
@@ -520,7 +520,7 @@ fn build_audit_entry(
     request_id: Option<RequestId>,
 ) -> AuditLogEntry {
     AuditLogEntry {
-        occurred_at: Utc::now(),
+        occurred_at: SYSTEM_CLOCK.now_utc(&chrono_tz::UTC),
         actor_id: Some(requester.id),
         actor_type: "user".to_string(),
         event_type: event_type.to_string(),
@@ -554,6 +554,7 @@ mod tests {
     use super::*;
     use crate::{models::user::UserRole, utils::cookies::SameSite};
     use axum::http::{header, HeaderValue};
+    use chrono::Utc;
     use chrono_tz::UTC;
 
     fn sample_user(role: UserRole, is_system_admin: bool) -> User {
