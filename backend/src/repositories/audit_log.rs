@@ -78,8 +78,15 @@ pub async fn list_audit_logs(
 pub async fn export_audit_logs(
     pool: &PgPool,
     filters: &AuditLogFilters,
-) -> Result<Vec<AuditLog>, sqlx::Error> {
-    query_audit_logs(pool, filters, None).await
+    max_rows: i64,
+) -> Result<(Vec<AuditLog>, bool), sqlx::Error> {
+    let safe_max_rows = max_rows.max(1);
+    let mut rows = query_audit_logs(pool, filters, Some((safe_max_rows + 1, 0))).await?;
+    let truncated = rows.len() as i64 > safe_max_rows;
+    if truncated {
+        rows.truncate(safe_max_rows as usize);
+    }
+    Ok((rows, truncated))
 }
 
 pub async fn delete_audit_logs_before(

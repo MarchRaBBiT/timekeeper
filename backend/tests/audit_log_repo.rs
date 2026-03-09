@@ -162,3 +162,55 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
         .await
         .expect("truncate audit logs");
 }
+
+#[tokio::test]
+async fn audit_log_export_reports_truncation_when_over_max_rows() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    sqlx::query("TRUNCATE audit_logs")
+        .execute(&pool)
+        .await
+        .expect("truncate audit logs");
+
+    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    for idx in 0..3 {
+        let log = AuditLog {
+            id: AuditLogId::new(),
+            occurred_at: Utc::now() + ChronoDuration::seconds(idx),
+            actor_id: Some(user.id),
+            actor_type: "user".into(),
+            event_type: "export_test".into(),
+            target_type: Some("audit".into()),
+            target_id: Some(Uuid::new_v4().to_string()),
+            result: "success".into(),
+            error_code: None,
+            metadata: None,
+            ip: None,
+            user_agent: None,
+            request_id: Some(format!("req-{idx}")),
+        };
+        audit_log::insert_audit_log(&pool, &log)
+            .await
+            .expect("insert log");
+    }
+
+    let filters = audit_log::AuditLogFilters {
+        event_type: Some("export_test".to_string()),
+        ..Default::default()
+    };
+    let (rows, truncated) = audit_log::export_audit_logs(&pool, &filters, 2)
+        .await
+        .expect("export logs");
+
+    assert_eq!(rows.len(), 2);
+    assert!(truncated);
+
+    sqlx::query("TRUNCATE audit_logs")
+        .execute(&pool)
+        .await
+        .expect("truncate audit logs");
+}
