@@ -5,7 +5,6 @@ use axum::{
 use chrono::{NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::str::FromStr;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
@@ -19,22 +18,15 @@ use crate::attendance::application::commands::{
     clock_in as clock_in_use_case, clock_out as clock_out_use_case,
 };
 use crate::attendance::application::queries::{
-    build_attendance_status, resolve_attendance_range, resolve_summary_month,
+    get_attendance_status as get_attendance_status_use_case, get_break_records_for_user,
+    resolve_attendance_range, resolve_status_date, resolve_summary_month,
 };
 use crate::attendance::application::reports::{
     build_monthly_summary, export_user_attendance, list_effective_attendance_in_range,
     AttendanceRange,
 };
 use crate::error::AppError;
-use crate::handlers::attendance_utils::{
-    ensure_authorized_access, fetch_attendance_by_id, get_break_records,
-};
-use crate::repositories::{
-    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    break_record::BreakRecordRepository,
-};
 use crate::state::AppState;
-use crate::types::AttendanceId;
 use crate::{
     models::{
         attendance::{AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest},
@@ -55,8 +47,6 @@ pub struct AttendanceExportQuery {
 
 pub type AttendanceStatusResponse =
     crate::attendance::application::queries::AttendanceStatusResponse;
-
-pub(crate) use crate::attendance::application::commands::recalculate_total_hours;
 
 pub async fn clock_in(
     State(state): State<AppState>,
@@ -177,31 +167,13 @@ pub async fn get_attendance_status(
     Extension(user): Extension<User>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<AttendanceStatusResponse>, AppError> {
-    let user_id = user.id;
-    let date = params
-        .get("date")
-        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-        .unwrap_or_else(|| time::today_local(&state.config.time_zone));
-
-    let repo = AttendanceRepository::new();
-    let attendance = repo
-        .find_by_user_and_date(state.read_pool(), user_id, date)
-        .await?;
-
-    if let Some(att) = attendance {
-        // Check active break
-        let break_repo = BreakRecordRepository::new();
-        let active_break = break_repo
-            .find_active_break(state.read_pool(), att.id)
-            .await?;
-
-        Ok(Json(build_attendance_status(
-            Some(&att),
-            active_break.as_ref(),
-        )))
-    } else {
-        Ok(Json(build_attendance_status(None, None)))
-    }
+    let date = resolve_status_date(
+        params.get("date").map(String::as_str),
+        time::today_local(&state.config.time_zone),
+    );
+    Ok(Json(
+        get_attendance_status_use_case(state.read_pool(), user.id, date).await?,
+    ))
 }
 
 pub async fn get_breaks_by_attendance(
@@ -209,12 +181,9 @@ pub async fn get_breaks_by_attendance(
     Extension(user): Extension<User>,
     Path(attendance_id): Path<String>,
 ) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
-    let attendance_id = AttendanceId::from_str(&attendance_id)
-        .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
-    let attendance = fetch_attendance_by_id(state.read_pool(), attendance_id).await?;
-    ensure_authorized_access(&attendance, user.id)?;
-    let records = get_break_records(state.read_pool(), attendance.id).await?;
-    Ok(Json(records))
+    Ok(Json(
+        get_break_records_for_user(state.read_pool(), user.id, &attendance_id).await?,
+    ))
 }
 
 pub async fn get_my_summary(
@@ -264,6 +233,7 @@ pub async fn export_my_attendance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attendance::application::commands::recalculate_total_hours;
     use crate::services::holiday::{HolidayCalendarEntry, HolidayDecision, HolidayReason};
     use crate::types::{AttendanceId, UserId};
     use chrono::NaiveDate;

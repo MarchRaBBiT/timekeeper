@@ -4,7 +4,15 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
-    models::{attendance::Attendance, break_record::BreakRecord},
+    models::{
+        attendance::Attendance,
+        break_record::{BreakRecord, BreakRecordResponse},
+    },
+    repositories::{
+        attendance::{AttendanceRepository, AttendanceRepositoryTrait},
+        break_record::BreakRecordRepository,
+    },
+    types::{AttendanceId, UserId},
 };
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -105,6 +113,55 @@ pub fn build_attendance_status(
             clock_out_time: None,
         },
     }
+}
+
+pub fn resolve_status_date(raw: Option<&str>, default_date: NaiveDate) -> NaiveDate {
+    raw.and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+        .unwrap_or(default_date)
+}
+
+pub async fn get_attendance_status(
+    read_pool: &sqlx::PgPool,
+    user_id: UserId,
+    date: NaiveDate,
+) -> Result<AttendanceStatusResponse, AppError> {
+    let repo = AttendanceRepository::new();
+    let attendance = repo.find_by_user_and_date(read_pool, user_id, date).await?;
+
+    if let Some(attendance) = attendance {
+        let break_repo = BreakRecordRepository::new();
+        let active_break = break_repo
+            .find_active_break(read_pool, attendance.id)
+            .await?;
+        Ok(build_attendance_status(
+            Some(&attendance),
+            active_break.as_ref(),
+        ))
+    } else {
+        Ok(build_attendance_status(None, None))
+    }
+}
+
+pub async fn get_break_records_for_user(
+    read_pool: &sqlx::PgPool,
+    user_id: UserId,
+    attendance_id: &str,
+) -> Result<Vec<BreakRecordResponse>, AppError> {
+    let attendance_id = attendance_id
+        .parse::<AttendanceId>()
+        .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
+    let attendance_repo = AttendanceRepository::new();
+    let attendance = attendance_repo.find_by_id(read_pool, attendance_id).await?;
+
+    if attendance.user_id != user_id {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    let break_repo = BreakRecordRepository::new();
+    let records = break_repo
+        .find_by_attendance(read_pool, attendance.id)
+        .await?;
+    Ok(records.into_iter().map(BreakRecordResponse::from).collect())
 }
 
 fn resolve_month_bounds(year: i32, month: u32) -> Result<(NaiveDate, NaiveDate), AppError> {

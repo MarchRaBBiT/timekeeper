@@ -5,10 +5,8 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-#[cfg(test)]
-use crate::requests::application::user_subject_requests::validate_details as validate_details_value;
-
 use crate::{
+    admin::application::http_errors::map_app_error,
     models::{
         subject_request::{CreateDataSubjectRequest, DataSubjectRequestResponse},
         user::User,
@@ -20,6 +18,9 @@ use crate::{
     state::AppState,
     utils::time,
 };
+
+#[cfg(test)]
+use crate::requests::application::user_subject_requests::validate_details;
 
 pub async fn create_subject_request(
     State(state): State<AppState>,
@@ -65,47 +66,10 @@ pub async fn cancel_subject_request(
 
     Ok(Json(json!(result)))
 }
-
-#[cfg(test)]
-#[allow(dead_code)]
-fn validate_details(details: Option<String>) -> Result<Option<String>, (StatusCode, Json<Value>)> {
-    validate_details_value(details).map_err(map_app_error)
-}
-
-fn map_app_error(err: crate::error::AppError) -> (StatusCode, Json<Value>) {
-    match err {
-        crate::error::AppError::BadRequest(message) => {
-            (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
-        }
-        crate::error::AppError::Forbidden(message) => {
-            (StatusCode::FORBIDDEN, Json(json!({ "error": message })))
-        }
-        crate::error::AppError::Unauthorized(message) => {
-            (StatusCode::UNAUTHORIZED, Json(json!({ "error": message })))
-        }
-        crate::error::AppError::Conflict(message) => {
-            (StatusCode::CONFLICT, Json(json!({ "error": message })))
-        }
-        crate::error::AppError::NotFound(message) => {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": message })))
-        }
-        crate::error::AppError::Validation(errors) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Validation failed", "details": { "errors": errors } })),
-        ),
-        crate::error::AppError::InternalServerError(err) => {
-            tracing::error!(error = %err, "internal server error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            )
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::validate_details;
+    use crate::error::AppError;
     const MAX_DETAILS_LENGTH: usize = 2000;
 
     #[test]
@@ -148,8 +112,7 @@ mod tests {
         let long_details = "a".repeat(MAX_DETAILS_LENGTH + 1);
         let result = validate_details(Some(long_details));
         assert!(result.is_err());
-        let (status, _) = result.unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(matches!(result, Err(AppError::BadRequest(_))));
     }
 
     #[test]

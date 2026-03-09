@@ -1,7 +1,9 @@
 use crate::{
+    attendance::application::{
+        commands::recalculate_total_hours,
+        helpers::{get_break_records, get_break_records_map},
+    },
     error::AppError,
-    handlers::attendance::recalculate_total_hours,
-    handlers::attendance_utils::{get_break_records, get_break_records_map},
     models::{
         attendance::{Attendance, AttendanceResponse},
         break_record::{BreakRecord, BreakRecordResponse},

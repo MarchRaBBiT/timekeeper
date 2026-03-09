@@ -4,8 +4,8 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 use crate::{
+    attendance::application::helpers::get_break_records_map,
     error::AppError,
-    handlers::attendance_utils::get_break_records_map,
     models::{
         attendance::{Attendance, AttendanceResponse, AttendanceSummary},
         attendance_correction_request::{AttendanceCorrectionEffectiveValue, CorrectionBreakItem},
