@@ -32,6 +32,6 @@ mod host_tests {
             }
         });
         assert!(html.contains("Timekeeper にログイン"));
-        assert!(html.contains("Forgot your password?"));
+        assert!(html.contains("パスワードをお忘れですか？"));
     }
 }
