@@ -5,6 +5,7 @@ use super::{
     types::{
         ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest, CreateOvertimeRequest,
         LeaveRequestResponse, OvertimeRequestResponse, UpdateAttendanceCorrectionRequest,
+        UpdateLeaveRequest, UpdateOvertimeRequest,
     },
 };
 
@@ -85,7 +86,26 @@ impl ApiClient {
         self.map_json_response(response).await
     }
 
-    pub async fn update_request(&self, id: &str, payload: Value) -> Result<Value, ApiError> {
+    pub async fn update_leave_request(
+        &self,
+        id: &str,
+        payload: UpdateLeaveRequest,
+    ) -> Result<Value, ApiError> {
+        self.update_request_payload(id, payload).await
+    }
+
+    pub async fn update_overtime_request(
+        &self,
+        id: &str,
+        payload: UpdateOvertimeRequest,
+    ) -> Result<Value, ApiError> {
+        self.update_request_payload(id, payload).await
+    }
+
+    async fn update_request_payload<T>(&self, id: &str, payload: T) -> Result<Value, ApiError>
+    where
+        T: serde::Serialize,
+    {
         let base_url = self.resolved_base_url().await;
         let encoded_id = encode_path_segment(id);
         let response = self

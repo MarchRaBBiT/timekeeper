@@ -183,6 +183,14 @@ pub struct CreateLeaveRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateLeaveRequest {
+    pub leave_type: String,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaveRequestResponse {
     pub id: String,
     pub user_id: String,
@@ -202,6 +210,13 @@ pub struct LeaveRequestResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOvertimeRequest {
+    pub date: NaiveDate,
+    pub planned_hours: f64,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateOvertimeRequest {
     pub date: NaiveDate,
     pub planned_hours: f64,
     pub reason: Option<String>,
