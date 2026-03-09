@@ -51,15 +51,22 @@ bookmark_has_conflict() {
 report_conflict_resolution_hint() {
   local pr="$1"
   local bookmark_name="$2"
+  local head_ref="$3"
+  local remote_name="$4"
 
   cat >&2 <<EOF
 [rebase-prs][FAIL] Rebase for PR #$pr produced conflicts on bookmark '$bookmark_name'.
-[rebase-prs][FAIL] Resolve the conflict by comparing the PR intent against the updated base branch:
+[rebase-prs][FAIL] Continue with the agent resolution phase from the existing conflict state:
+[rebase-prs][FAIL]   jj new $bookmark_name
 [rebase-prs][FAIL]   gh pr view $pr
 [rebase-prs][FAIL]   gh pr diff $pr
 [rebase-prs][FAIL]   jj bookmark list $bookmark_name
 [rebase-prs][FAIL]   jj resolve --list
 [rebase-prs][FAIL]   jj diff -r $bookmark_name
+[rebase-prs][FAIL]   <edit and validate>
+[rebase-prs][FAIL]   jj squash
+[rebase-prs][FAIL]   jj bookmark set -B $head_ref -r $bookmark_name
+[rebase-prs][FAIL]   jj git push --remote $remote_name -b $head_ref
 EOF
   exit 1
 }
@@ -206,7 +213,7 @@ main() {
     fi
 
     if [[ "$DRY_RUN" -ne 1 ]] && bookmark_has_conflict "$bookmark_name"; then
-      report_conflict_resolution_hint "$pr" "$bookmark_name"
+      report_conflict_resolution_hint "$pr" "$bookmark_name" "$head_ref" "$remote_name"
     fi
 
     log "Rebased bookmark '$bookmark_name' for PR #$pr"

@@ -21,6 +21,13 @@ Then gather local conflict context:
 - `jj diff -r <base>@origin -- <file>`
 - `rg -n "<function|type|route name>" <repo paths>` to find whether the same responsibility moved to another module or layer on base
 
+If the helper already produced `pr-<number>` with conflicts, continue from that state instead of starting over:
+
+- `jj bookmark list pr-<number>`
+- `jj new pr-<number>` if you need a working commit above the conflicted rebased commit
+- edit/resolve in place
+- `jj squash` after validation to fold the resolution back into the rebased PR commit
+
 ## Heuristics
 
 ### Prefer PR intent
@@ -71,5 +78,7 @@ Escalate only when local evidence cannot disambiguate the intended result:
 - ensure conflict markers are fully removed
 - run focused tests for the touched seam
 - also run focused tests for the module that now owns the behavior if ownership changed during the merge
+- fold the resolution back with `jj squash` so `pr-<number>` becomes the resolved rebased result
+- if the caller requested push, move the head bookmark to `pr-<number>` and push that bookmark
 - check whether any snapshots or fixtures also need updates
 - summarize the chosen resolution in terms of intent, not only file mechanics

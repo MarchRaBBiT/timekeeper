@@ -49,7 +49,7 @@ Do not use this skill for:
 
 5. Rebase the PR branch bookmark onto the latest base branch.
 - Use `jj rebase -b pr-<number> -d <baseRefName>@origin`.
-- If conflicts occur, do not stop at reporting only. Resolve them by comparing the PR's original intent against the base branch's newer changes. Read [references/conflict-resolution.md](references/conflict-resolution.md) and continue until the working copy is resolved or a real semantic ambiguity remains.
+- If conflicts occur, do not stop at reporting only. Treat the helper's non-zero exit as the handoff into the agent resolution phase. Read [references/conflict-resolution.md](references/conflict-resolution.md), continue from the existing `pr-<number>` conflict state, and finish the resolution before deciding whether to push.
 
 6. Push only when the user asked for the PR to be updated remotely.
 - Move the fetched local head bookmark to the rebased alias with `jj bookmark set -B <headRefName> -r pr-<number>`.
@@ -67,32 +67,44 @@ Do not use this skill for:
 
 When `jj rebase` produces conflicts, the agent should resolve them proactively instead of bouncing the problem back immediately.
 
-1. Reconstruct intent before editing.
+The helper script's failure is not the end of the task. It is the boundary between deterministic setup and semantic merge work. After the helper stops on a conflict, the agent should continue automatically with the following flow instead of asking the user to take over.
+
+1. Enter the resolution branch state.
+- Treat `pr-<number>` as the source of truth for the conflicted rebase result.
+- Create a working commit on top of it with `jj new pr-<number>` if the working copy is not already there.
+- Do not restart the whole helper unless you intentionally want to throw away the current merge attempt.
+
+2. Reconstruct intent before editing.
 - Read the PR title, body, and labels with `gh pr view <number>`.
 - Read the PR patch with `gh pr diff <number>` for the original change intent.
 - Check whether there are review comments or linked issue clues that narrow the intended behavior.
 
-2. Inspect the conflicting seam from both sides.
+3. Inspect the conflicting seam from both sides.
 - Use `jj resolve --list` to enumerate conflicted files.
 - Use `jj diff -r pr-<number>` and `jj diff -r <baseRefName>@origin` around the conflicted files.
 - Read the actual conflicted file contents, not only the markers.
 - Search the current base branch for the owning abstraction before editing. If the responsibility moved layers or modules, find the new entry point with `rg` and resolve the intent there instead of mechanically restoring the old location.
 
-3. Apply intent-based merge rules.
+4. Apply intent-based merge rules.
 - Keep the PR side when the base branch only reformats, renames symbols, or moves code without changing behavior, and the PR still represents the requested feature or fix.
 - Keep the base side when the PR's old implementation is clearly superseded by a newer canonical abstraction and the original behavior can be re-expressed on top of it.
 - Merge both when the PR introduces behavior that is still needed, but the base branch changed surrounding APIs, types, or structure.
 - If the base branch relocated the business rule, port the PR behavior into that new owner and keep the conflict file aligned with the base branch's delegation structure.
 - Re-check invariants after editing: API shape, validation rules, authorization behavior, tests, and user-visible copy must still match the PR's purpose unless the repo changed the requirement.
 
-4. Validate the resolved intent.
+5. Validate the resolved intent.
 - Run the smallest focused tests for the conflicted seam first.
 - Prefer tests at the layer that now owns the behavior. If a handler now delegates to an application/service module, validate the new owner instead of only the old entry file.
 - If the conflict touched routing/composition, run a smoke test too.
 - Only escalate to the user when multiple plausible semantic resolutions remain and local context cannot disambiguate them safely.
 
-5. Then resume the batch.
-- Continue with snapshot/push flow only after the conflict is fully resolved and validated.
+6. Fold the resolution back into the rebased PR.
+- Run `jj squash` so the fix becomes part of the conflicted rebased commit instead of a stray follow-up commit.
+- Re-check `jj bookmark list pr-<number>` and ensure `(conflict)` is gone.
+
+7. Then resume the batch.
+- If `--push` was requested, move `<headRefName>` to `pr-<number>` and push it.
+- Otherwise leave `pr-<number>` in place and summarize what remains for the user.
 
 ## Batch Helper
 
