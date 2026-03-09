@@ -75,6 +75,7 @@ async fn test_user_update_own_profile() {
     let update_payload = UpdateProfile {
         full_name: Some(new_full_name.to_string()),
         email: Some(new_email.clone()),
+        current_password: None,
     };
     let updated_email_hash = update_payload
         .email

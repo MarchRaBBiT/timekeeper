@@ -17,6 +17,7 @@ use timekeeper_backend::{
     state::AppState,
     utils::{
         cookies::{ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME},
+        encryption::decrypt_pii,
         jwt::{decode_refresh_token, verify_access_token, Claims},
     },
 };
@@ -482,12 +483,59 @@ async fn me_returns_current_user() {
 }
 
 #[tokio::test]
-async fn update_profile_updates_full_name_and_email() {
+async fn update_profile_updates_full_name_without_current_password() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let new_full_name = "Updated User";
+
+    let response = me_router(pool.clone(), user.clone())
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/auth/me")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "full_name": new_full_name,
+                    })
+                    .to_string(),
+                ))
+                .expect("build update profile request"),
+        )
+        .await
+        .expect("update profile request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = support::response_json(response).await;
+    assert_eq!(payload["full_name"].as_str(), Some(new_full_name));
+    assert_eq!(payload["email"].as_str(), Some(user.email.as_str()));
+
+    let updated = auth_repo::find_user_by_id(&pool, user.id)
+        .await
+        .expect("fetch updated user")
+        .expect("updated user");
+    let config = support::test_config();
+    assert_eq!(
+        decrypt_pii(&updated.full_name, &config).expect("decrypt updated full_name"),
+        new_full_name
+    );
+    assert_eq!(
+        decrypt_pii(&updated.email, &config).expect("decrypt updated email"),
+        user.email
+    );
+}
+
+#[tokio::test]
+async fn update_profile_updates_email_with_current_password() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
     let new_full_name = "Updated User";
     let new_email = format!("updated-{}@example.com", Uuid::new_v4());
 
@@ -501,6 +549,7 @@ async fn update_profile_updates_full_name_and_email() {
                     json!({
                         "full_name": new_full_name,
                         "email": new_email,
+                        "current_password": password,
                     })
                     .to_string(),
                 ))
@@ -518,8 +567,76 @@ async fn update_profile_updates_full_name_and_email() {
         .await
         .expect("fetch updated user")
         .expect("updated user");
-    assert_eq!(updated.full_name, new_full_name);
-    assert_eq!(updated.email, new_email);
+    let config = support::test_config();
+    assert_eq!(
+        decrypt_pii(&updated.full_name, &config).expect("decrypt updated full_name"),
+        new_full_name
+    );
+    assert_eq!(
+        decrypt_pii(&updated.email, &config).expect("decrypt updated email"),
+        new_email
+    );
+}
+
+#[tokio::test]
+async fn update_profile_rejects_email_change_without_current_password() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let new_email = format!("updated-{}@example.com", Uuid::new_v4());
+
+    let response = me_router(pool.clone(), user.clone())
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/auth/me")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "email": new_email,
+                    })
+                    .to_string(),
+                ))
+                .expect("build update profile request"),
+        )
+        .await
+        .expect("update profile request");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn update_profile_rejects_email_change_with_wrong_current_password() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let new_email = format!("updated-{}@example.com", Uuid::new_v4());
+
+    let response = me_router(pool.clone(), user.clone())
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/auth/me")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "email": new_email,
+                        "current_password": "WrongPassword123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build update profile request"),
+        )
+        .await
+        .expect("update profile request");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -528,7 +645,8 @@ async fn update_profile_rejects_duplicate_email() {
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
 
-    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
     let other = support::seed_user(&pool, UserRole::Employee, false).await;
 
     let response = me_router(pool, user)
@@ -540,6 +658,7 @@ async fn update_profile_rejects_duplicate_email() {
                 .body(Body::from(
                     json!({
                         "email": other.email,
+                        "current_password": password,
                     })
                     .to_string(),
                 ))

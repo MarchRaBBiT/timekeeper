@@ -144,6 +144,10 @@ pub struct UpdateProfile {
     pub full_name: Option<String>,
     #[validate(email)]
     pub email: Option<String>,
+    /// Required when changing the email address.
+    #[serde(default)]
+    #[validate(length(min = 1))]
+    pub current_password: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
