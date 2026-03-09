@@ -1,3 +1,4 @@
+use crate::pages::requests::components::status_label::request_status_label;
 use crate::pages::requests::types::{RequestKind, RequestSummary};
 use leptos::*;
 
@@ -32,7 +33,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                     <div class="space-y-2 text-sm text-fg">
                                         <div>
                                             <span class="font-medium text-fg-muted">{"ステータス: "}</span>
-                                            <span class="capitalize">{summary.status.clone()}</span>
+                                            <span class="capitalize">{request_status_label(&summary.status)}</span>
                                         </div>
                                         <div>
                                             <span class="font-medium text-fg-muted">{"期間/日付: "}</span>
@@ -87,7 +88,7 @@ mod host_tests {
             view! { <RequestDetailModal selected=selected /> }
         });
         assert!(html.contains("休暇申請"));
-        assert!(html.contains("pending"));
+        assert!(html.contains("承認待ち"));
         assert!(html.contains("family"));
     }
 }
