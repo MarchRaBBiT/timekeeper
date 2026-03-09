@@ -6,7 +6,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::str::FromStr;
 use std::sync::Arc;
 use utoipa::IntoParams;
 
@@ -17,7 +16,6 @@ use crate::{
     models::user::{CreateUser, UpdateUser, User, UserResponse},
     services::audit_log::AuditLogServiceTrait,
     state::AppState,
-    types::UserId,
 };
 
 pub async fn get_users(
@@ -187,6 +185,8 @@ impl From<application::ArchivedUserResponse> for ArchivedUserResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::UserId;
+    use std::str::FromStr;
 
     #[test]
     fn test_delete_user_params_default() {

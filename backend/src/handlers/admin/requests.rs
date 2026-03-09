@@ -6,15 +6,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 
+use crate::requests::application::admin_requests::paginate_requests as paginate_request_values;
+
+#[cfg(test)]
+use crate::requests::application::admin_requests::parse_filter_datetime as parse_filter_datetime_value;
+
 use crate::{
     error::AppError,
     models::user::User,
     requests::application::admin_requests::{
         get_request_detail as get_request_detail_view, list_requests as list_requests_view,
-        paginate_requests as paginate_request_values,
-        parse_filter_datetime as parse_filter_datetime_value, process_request_decision,
-        validate_decision_comment as validate_decision_comment_value, DecisionKind,
-        RequestListParams,
+        process_request_decision, validate_decision_comment as validate_decision_comment_value,
+        DecisionKind, RequestListParams,
     },
     state::AppState,
     utils::time,
@@ -26,6 +29,10 @@ pub type AdminRequestListResponse =
     crate::requests::application::admin_requests::AdminRequestListResponse;
 pub type AdminRequestListPageInfo =
     crate::requests::application::admin_requests::AdminRequestListPageInfo;
+
+pub fn paginate_requests(query: &RequestListQuery) -> Result<(i64, i64, i64), AppError> {
+    paginate_request_values(query.page, query.per_page)
+}
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovePayload {

@@ -53,10 +53,7 @@ pub async fn get_my_requests_view(
     let corrections = correction_repo.list_by_user(read_pool, user_id).await?;
     let attendance_corrections = corrections
         .iter()
-        .map(|item| {
-            item.to_response()
-                .map_err(|error| AppError::InternalServerError(error.into()))
-        })
+        .map(|item| item.to_response().map_err(AppError::InternalServerError))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(MyRequestsView {

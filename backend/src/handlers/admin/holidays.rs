@@ -2,7 +2,6 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
@@ -124,7 +123,7 @@ impl From<application::AdminHolidayListResponse> for AdminHolidayListResponse {
 mod tests {
     use super::*;
     use crate::models::holiday::AdminHolidayKind;
-    use chrono::Utc;
+    use chrono::{NaiveDate, Utc};
 
     #[test]
     fn test_admin_holiday_list_query_default_values() {

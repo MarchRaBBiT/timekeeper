@@ -1,5 +1,6 @@
+use timekeeper_backend::handlers::admin::AdminRequestListPageInfo;
 use timekeeper_backend::handlers::admin::RequestListQuery;
-use timekeeper_backend::handlers::admin::{paginate_requests, AdminRequestListPageInfo};
+use timekeeper_backend::requests::application::admin_requests::paginate_requests;
 
 #[test]
 fn pagination_info_without_db() {
@@ -19,7 +20,8 @@ fn pagination_info_without_db() {
         page: Some(3),
         per_page: Some(15),
     };
-    let (page, per_page, offset) = paginate_requests(&query).expect("pagination ok");
+    let (page, per_page, offset) =
+        paginate_requests(query.page, query.per_page).expect("pagination ok");
     assert_eq!(page, 3);
     assert_eq!(per_page, 15);
     assert_eq!(offset, 30);

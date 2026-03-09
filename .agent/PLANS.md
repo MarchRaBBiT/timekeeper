@@ -1346,3 +1346,122 @@
 - 2026-03-09: 優先度高の `attendance_correction_requests` と `sessions` を先に application 化し、その後 `subject_requests` / `requests` に残っていた handler helper を整理。
 - 2026-03-09: 上記 9 本の検証コマンドが成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
 - 2026-03-09: `jj commit -m "refactor(admin): move remaining handler orchestration into application"` を実行し、`b536e506` に保存。
+
+# EP-20260309-remaining-handler-followups
+
+## Goal
+- top-level handler に残っている優先度高の orchestration を application/use-case パターンへ寄せる
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [ ] `auth` handler が login/refresh/logout/MFA/password 系で application helper 呼び出し中心の adapter 構成になる
+- [ ] user 側 `attendance_correction_requests`、`sessions`、`consents` の orchestration が application 層へ移る
+- [ ] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [ ] `identity/application/auth.rs` を追加し、auth orchestration を移す
+2. [ ] `attendance/application/correction_requests.rs` を追加し、user correction request の create/update/cancel を移す
+3. [ ] `identity/application/sessions.rs` と `identity/application/consents.rs` に残存 helper を移す
+4. [ ] handler を adapter 化し、関連テストを更新する
+
+## Validation Plan
+- [ ] `cargo fmt --all`
+- [ ] `cargo clippy --all-targets -- -D warnings`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::auth::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::sessions::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [ ] remaining handler refactor tests pass
+- [ ] `jj commit -m "refactor(handler): move remaining top-level orchestration into application"`
+
+## Progress Notes
+- 2026-03-09: `auth` を最優先に、続いて user 側 `attendance_correction_requests`、`sessions`、`consents` の application 化に着手。
+
+# EP-20260309-handler-remaining-followups
+
+## Goal
+- 残っている高優先度の user-side handler ロジックを application/use-case 層へ寄せ、HTTP 層を adapter に薄くする
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [ ] `auth` handler の login/refresh/logout/MFA/password 系 orchestration が identity application 層へ移る
+- [ ] user-side attendance correction request の create/update/cancel/snapshot validation が attendance application 層へ移る
+- [ ] user-side sessions / consents handler が application helper 呼び出し中心の adapter 構成になる
+- [ ] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [ ] `backend/src/identity/application/auth.rs` を追加し、auth orchestration と helper を移す
+2. [ ] `backend/src/attendance/application/correction_requests.rs` を追加し、attendance correction request orchestration を移す
+3. [ ] `backend/src/identity/application/sessions.rs` と新規 `consents.rs` へ user-side session/consent logic を整理する
+4. [ ] 対象 handler を adapter 構成へ差し替え、関連 unit test を通す
+
+## Validation Plan
+- [ ] `cargo fmt --all`
+- [ ] `cargo clippy --all-targets -- -D warnings`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::auth::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib identity::application::sessions::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib handlers::attendance_correction_requests::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib handlers::auth::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib handlers::sessions::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib handlers::consents::tests::`
+- [ ] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [ ] remaining handler follow-up tests pass
+- [ ] `jj commit -m "refactor(identity): move remaining user handler orchestration into application"`
+
+## Progress Notes
+- 2026-03-09: `auth`、user-side `attendance_correction_requests`、`sessions`、`consents` を優先順に application/use-case 化する計画を作成。
+
+# EP-20260309-remaining-handler-application
+
+## Goal
+- 残っている高優先度 handler ロジックを優先順に application/use-case パターンへ移し、HTTP 層を adapter に寄せる
+
+## Scope
+- In: `backend/src/identity/application/*`, `backend/src/attendance/application/*`, `backend/src/handlers/auth.rs`, `backend/src/handlers/attendance_correction_requests.rs`, `backend/src/handlers/sessions.rs`, `backend/src/handlers/consents.rs`, `.agent/PLANS.md`
+- Out: API path/method/payload の変更、DB schema 変更
+
+## Done Criteria (Observable)
+- [x] `auth` handler の主要 orchestration が identity application 層へ移る
+- [x] user 側 attendance correction request の create/update/cancel/list/detail ロジックが attendance application 層へ移る
+- [x] user sessions と consents handler が application helper 呼び出し中心の adapter 構成になる
+- [x] 既存 API path / method / JSON shape が変わらない
+
+## Task Breakdown
+1. [x] `identity/application/auth.rs` を追加し、login/refresh/logout/profile/MFA/password reset の orchestration を移す
+2. [x] `attendance/application/correction_requests.rs` を追加し、user 側 attendance correction request ロジックを移す
+3. [x] `identity/application/sessions.rs` と `identity/application/consents.rs` に user sessions / consents の helper を揃える
+4. [x] 対応 handler を adapter 構成へ差し替え、既存テストを application 側中心に通す
+
+## Validation Plan
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-backend --test auth_api`
+- [x] `cargo test -p timekeeper-backend --test requests_api`
+- [x] `cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`
+- [x] `cargo test -p timekeeper-backend --lib identity::application::consents::tests::`
+- [x] `cargo test -p timekeeper-backend --lib handlers::auth::tests::`
+- [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
+
+## JJ Snapshot Log
+- [x] `jj status`
+- [x] remaining handler refactor tests pass
+- [ ] `jj commit -m "refactor(handler): extract remaining user application helpers"`
+
+## Progress Notes
+- 2026-03-09: `auth`、user attendance correction requests、user sessions、consents の順で残存 handler orchestration を application/use-case へ移す計画を作成。
+- 2026-03-09: `identity/application/auth.rs` と `identity/application/consents.rs`、`attendance/application/correction_requests.rs` を追加し、`auth` / `consents` / user attendance correction / user sessions の handler を adapter 化。`cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、`cargo test -p timekeeper-backend --test auth_api`、`cargo test -p timekeeper-backend --test requests_api`、`cargo test -p timekeeper-backend --lib attendance::application::correction_requests::tests::`、`cargo test -p timekeeper-backend --lib identity::application::consents::tests::`、`cargo test -p timekeeper-backend --lib handlers::auth::tests::`、`cargo test -p timekeeper-backend --lib test_app_router_builds` が成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。

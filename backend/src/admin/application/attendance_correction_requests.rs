@@ -42,10 +42,7 @@ pub async fn list_attendance_correction_requests(
         .await?;
 
     list.into_iter()
-        .map(|item| {
-            item.to_response()
-                .map_err(|e| AppError::InternalServerError(e.into()))
-        })
+        .map(|item| item.to_response().map_err(AppError::InternalServerError))
         .collect()
 }
 
@@ -58,9 +55,7 @@ pub async fn get_attendance_correction_request_detail(
 
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(read_pool, id).await?;
-    request
-        .to_response()
-        .map_err(|e| AppError::InternalServerError(e.into()))
+    request.to_response().map_err(AppError::InternalServerError)
 }
 
 pub async fn approve_attendance_correction_request(
@@ -78,10 +73,10 @@ pub async fn approve_attendance_correction_request(
 
     let original_snapshot = request
         .parse_original_snapshot()
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
     let proposed = request
         .parse_proposed_values()
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
 
     repo.approve_and_apply_effective_values(
         write_pool,

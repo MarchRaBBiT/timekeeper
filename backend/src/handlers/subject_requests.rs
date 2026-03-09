@@ -5,6 +5,9 @@ use axum::{
 };
 use serde_json::{json, Value};
 
+#[cfg(test)]
+use crate::requests::application::user_subject_requests::validate_details as validate_details_value;
+
 use crate::{
     models::{
         subject_request::{CreateDataSubjectRequest, DataSubjectRequestResponse},
@@ -13,7 +16,6 @@ use crate::{
     requests::application::user_subject_requests::{
         cancel_subject_request as cancel_subject_request_use_case,
         create_subject_request as create_subject_request_use_case, list_user_subject_requests,
-        validate_details as validate_details_value,
     },
     state::AppState,
     utils::time,
@@ -64,6 +66,8 @@ pub async fn cancel_subject_request(
     Ok(Json(json!(result)))
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn validate_details(details: Option<String>) -> Result<Option<String>, (StatusCode, Json<Value>)> {
     validate_details_value(details).map_err(map_app_error)
 }

@@ -2,18 +2,21 @@ use axum::{
     extract::{Extension, Query, State},
     Json,
 };
-use chrono::NaiveDate;
 use std::sync::Arc;
+
+#[cfg(test)]
+use crate::holiday::application::queries::{decode_ics_text, parse_google_calendar_ics};
+#[cfg(test)]
+use chrono::NaiveDate;
 
 use crate::{
     error::AppError,
     holiday::application::queries::{
-        check_holiday as check_holiday_use_case, decode_ics_text,
+        check_holiday as check_holiday_use_case,
         fetch_google_holidays as fetch_google_holidays_use_case,
         list_month_holidays as list_month_holidays_use_case,
-        list_public_holidays as list_public_holidays_use_case, parse_google_calendar_ics,
-        GoogleHolidayQuery, HolidayCheckQuery, HolidayCheckResponse, HolidayMonthEntry,
-        HolidayMonthQuery,
+        list_public_holidays as list_public_holidays_use_case, GoogleHolidayQuery,
+        HolidayCheckQuery, HolidayCheckResponse, HolidayMonthEntry, HolidayMonthQuery,
     },
     models::{
         holiday::{CreateHolidayPayload, HolidayResponse},

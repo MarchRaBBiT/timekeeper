@@ -9,10 +9,14 @@ use std::str::FromStr;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+#[cfg(test)]
+use crate::attendance::application::commands::{build_attendance_response, reject_if_holiday};
+#[cfg(test)]
+use crate::models::attendance::Attendance;
+
 use crate::attendance::application::commands::{
     break_end as break_end_use_case, break_start as break_start_use_case,
-    build_attendance_response, clock_in as clock_in_use_case, clock_out as clock_out_use_case,
-    reject_if_holiday,
+    clock_in as clock_in_use_case, clock_out as clock_out_use_case,
 };
 use crate::attendance::application::queries::{
     build_attendance_status, resolve_attendance_range, resolve_summary_month,
@@ -33,9 +37,7 @@ use crate::state::AppState;
 use crate::types::AttendanceId;
 use crate::{
     models::{
-        attendance::{
-            Attendance, AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest,
-        },
+        attendance::{AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest},
         break_record::BreakRecordResponse,
         user::User,
     },
