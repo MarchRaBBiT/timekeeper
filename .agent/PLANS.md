@@ -1338,10 +1338,11 @@
 - [x] `cargo test -p timekeeper-backend --lib test_app_router_builds`
 
 ## JJ Snapshot Log
-- [ ] `jj status`
+- [x] `jj status`
 - [x] admin follow-up refactor tests pass
-- [ ] `jj commit -m "refactor(admin): move remaining handler orchestration into application"`
+- [x] `jj commit -m "refactor(admin): move remaining handler orchestration into application"`
 
 ## Progress Notes
 - 2026-03-09: 優先度高の `attendance_correction_requests` と `sessions` を先に application 化し、その後 `subject_requests` / `requests` に残っていた handler helper を整理。
 - 2026-03-09: 上記 9 本の検証コマンドが成功。API 互換は維持したため `BREAKING_CHANGES.md` は更新なし。
+- 2026-03-09: `jj commit -m "refactor(admin): move remaining handler orchestration into application"` を実行し、`b536e506` に保存。
