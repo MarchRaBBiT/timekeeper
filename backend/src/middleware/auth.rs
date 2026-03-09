@@ -30,8 +30,7 @@ pub async fn auth(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
-    Span::current().record("user_id", user.id.to_string());
-    Span::current().record("username", &user.username);
+    record_authenticated_user_span(&user);
     request.extensions_mut().insert(claims.clone());
     request.extensions_mut().insert(user.clone());
 
@@ -60,8 +59,7 @@ pub async fn auth_admin(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
-    Span::current().record("user_id", user.id.to_string());
-    Span::current().record("username", &user.username);
+    record_authenticated_user_span(&user);
     if !(user.is_admin() || user.is_system_admin()) {
         let mut response = StatusCode::FORBIDDEN.into_response();
         response.extensions_mut().insert(user);
@@ -84,6 +82,7 @@ pub async fn auth_system_admin(
     let (auth_header, cookie_header) = extract_auth_headers(request.headers());
     let (claims, user) =
         authenticate_request(auth_header.as_deref(), cookie_header.as_deref(), &state).await?;
+    record_authenticated_user_span(&user);
     if !user.is_system_admin() {
         let mut response = StatusCode::FORBIDDEN.into_response();
         response.extensions_mut().insert(user);
@@ -95,6 +94,11 @@ pub async fn auth_system_admin(
     let mut response = next.run(request).await;
     response.extensions_mut().insert(user);
     Ok(response)
+}
+
+fn record_authenticated_user_span(user: &User) {
+    Span::current().record("user_id", user.id.to_string());
+    Span::current().record("username", &user.username);
 }
 
 async fn get_user_by_id(pool: &PgPool, user_id: &str) -> Result<Option<User>, sqlx::Error> {
@@ -227,6 +231,14 @@ fn extract_auth_headers(headers: &axum::http::HeaderMap) -> (Option<String>, Opt
 mod tests {
     use super::*;
     use axum::http::HeaderMap;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::registry::LookupSpan;
 
     #[test]
     fn test_parse_bearer_token_with_bearer_prefix() {
@@ -307,6 +319,36 @@ mod tests {
     }
 
     #[test]
+    fn test_record_authenticated_user_span_records_identity_fields() {
+        let store = SpanStore::default();
+        let subscriber = tracing_subscriber::registry().with(store.clone());
+        let user = test_user();
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!(
+                "auth_request",
+                user_id = tracing::field::Empty,
+                username = tracing::field::Empty
+            );
+            let _guard = span.enter();
+            record_authenticated_user_span(&user);
+        });
+
+        let data = store.data.lock().expect("lock span data");
+        let span_fields = data
+            .get("auth_request")
+            .expect("auth_request span recorded");
+        assert_eq!(
+            span_fields.get("user_id").map(String::as_str),
+            Some(user.id.to_string().as_str())
+        );
+        assert_eq!(
+            span_fields.get("username").map(String::as_str),
+            Some(user.username.as_str())
+        );
+    }
+
+    #[test]
     fn test_verify_token_with_valid_token() {
         use crate::models::user::UserRole;
         use crate::types::UserId;
@@ -356,5 +398,103 @@ mod tests {
         let secret = "test_secret";
         let result = verify_token("", secret);
         assert!(result.is_err());
+    }
+
+    #[derive(Default, Clone)]
+    struct SpanStore {
+        data: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    }
+
+    struct SpanName(String);
+
+    #[derive(Default)]
+    struct FieldCapture {
+        fields: HashMap<String, String>,
+    }
+
+    impl FieldCapture {
+        fn record_value(&mut self, field: &Field, value: String) {
+            self.fields.insert(field.name().to_string(), value);
+        }
+    }
+
+    impl Visit for FieldCapture {
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.record_value(field, value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.record_value(field, format!("{value:?}"));
+        }
+    }
+
+    impl<S> Layer<S> for SpanStore
+    where
+        S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+            let mut visitor = FieldCapture::default();
+            attrs.record(&mut visitor);
+            let name = attrs.metadata().name().to_string();
+
+            {
+                let mut data = self.data.lock().expect("lock span data");
+                data.insert(name.clone(), visitor.fields);
+            }
+
+            if let Some(span) = ctx.span(id) {
+                span.extensions_mut().insert(SpanName(name));
+            }
+        }
+
+        fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
+            let mut visitor = FieldCapture::default();
+            values.record(&mut visitor);
+            if visitor.fields.is_empty() {
+                return;
+            }
+
+            if let Some(span) = ctx.span(id) {
+                if let Some(name) = span.extensions().get::<SpanName>() {
+                    let mut data = self.data.lock().expect("lock span data");
+                    let entry = data.entry(name.0.clone()).or_default();
+                    entry.extend(visitor.fields);
+                }
+            }
+        }
+    }
+
+    fn test_user() -> User {
+        let now = Utc::now();
+        User {
+            id: UserId::new(),
+            username: "system-admin".to_string(),
+            password_hash: "hash".to_string(),
+            full_name: "System Admin".to_string(),
+            email: "system-admin@example.com".to_string(),
+            role: crate::models::user::UserRole::Admin,
+            is_system_admin: true,
+            mfa_secret: None,
+            mfa_enabled_at: None,
+            password_changed_at: now,
+            failed_login_attempts: 0,
+            locked_until: None,
+            lock_reason: None,
+            lockout_count: 0,
+            created_at: now,
+            updated_at: now,
+        }
     }
 }
