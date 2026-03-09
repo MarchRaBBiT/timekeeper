@@ -1,6 +1,8 @@
 use crate::{
     api::{ApiError, UserResponse},
-    components::{error::InlineErrorMessage, layout::SuccessMessage},
+    components::{
+        confirm_dialog::ConfirmDialog, error::InlineErrorMessage, layout::SuccessMessage,
+    },
     pages::admin_users::utils::MessageState,
 };
 use leptos::*;
@@ -92,18 +94,18 @@ pub fn UserDetailDrawer(
                             show_delete_confirm.set(true);
                         };
 
-                        // Use selected_user signal to get user_id at runtime to avoid FnOnce issue
-                        let confirm_delete = move |_| {
+                        let confirm_delete = Callback::new(move |_| {
                             if let Some(current) = selected_user.get_untracked() {
                                 messages.clear();
-                                delete_user_action.dispatch((current.id.clone(), hard_delete_mode.get()));
+                                delete_user_action
+                                    .dispatch((current.id.clone(), hard_delete_mode.get()));
                                 show_delete_confirm.set(false);
                             }
-                        };
+                        });
 
-                        let cancel_delete = move |_| {
+                        let cancel_delete = Callback::new(move |_| {
                             show_delete_confirm.set(false);
-                        };
+                        });
 
                         view! {
                             <div class="fixed inset-0 z-50 flex justify-end">
@@ -166,56 +168,39 @@ pub fn UserDetailDrawer(
 
                                         // Delete buttons (hidden for self)
                                         <Show when=move || !is_self>
-                                            <Show
-                                                when=move || !show_delete_confirm.get()
-                                                fallback=move || {
-                                                    view! {
-                                                        <div class="border border-status-error-border rounded p-4 bg-status-error-bg text-status-error-text">
-                                                            <p class="text-sm text-status-error-text mb-3">
-                                                                {move || delete_confirm_message(hard_delete_mode.get())}
-                                                            </p>
-                                                            <div class="flex gap-2">
-                                                                <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
-                                                                    disabled=move || delete_pending.get()
-                                                                    on:click=confirm_delete
-                                                                >
-                                                                    {move || if delete_pending.get() { "処理中..." } else { "削除する" }}
-                                                                </button>
-                                                                <button
-                                                                    class="flex-1 px-4 py-2 rounded bg-surface-muted text-fg"
-                                                                    on:click=cancel_delete
-                                                                >
-                                                                    {"キャンセル"}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }
-                                            >
-                                                <div class="border-t pt-4 mt-4 space-y-2">
-                                                    <p class="text-sm text-fg-muted">{"ユーザー削除"}</p>
-                                                    <button
-                                                        class="w-full px-4 py-2 rounded bg-status-warning-text text-text-inverse disabled:opacity-50"
-                                                        disabled=move || delete_pending.get()
-                                                        on:click=soft_delete_click.clone()
-                                                    >
-                                                        {"退職処理（アーカイブ）"}
-                                                    </button>
-                                                    <button
-                                                        class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
-                                                        disabled=move || delete_pending.get()
-                                                        on:click=hard_delete_click.clone()
-                                                    >
-                                                        {"完全削除"}
-                                                    </button>
-                                                </div>
-                                            </Show>
+                                            <div class="border-t pt-4 mt-4 space-y-2">
+                                                <p class="text-sm text-fg-muted">{"ユーザー削除"}</p>
+                                                <button
+                                                    class="w-full px-4 py-2 rounded bg-status-warning-text text-text-inverse disabled:opacity-50"
+                                                    disabled=move || delete_pending.get()
+                                                    on:click=soft_delete_click.clone()
+                                                >
+                                                    {"退職処理（アーカイブ）"}
+                                                </button>
+                                                <button
+                                                    class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
+                                                    disabled=move || delete_pending.get()
+                                                    on:click=hard_delete_click.clone()
+                                                >
+                                                    {"完全削除"}
+                                                </button>
+                                            </div>
                                         </Show>
                                         <Show when=move || is_self>
                                             <p class="text-sm text-fg-muted italic">{"自分自身は削除できません。"}</p>
                                         </Show>
                                     </div>
+                                    <ConfirmDialog
+                                        is_open=Signal::derive(move || show_delete_confirm.get())
+                                        title="ユーザー削除の確認"
+                                        message=Signal::derive(move || delete_confirm_message(hard_delete_mode.get()).to_string())
+                                        on_confirm=confirm_delete
+                                        on_cancel=cancel_delete
+                                        confirm_label=Signal::derive(move || if hard_delete_mode.get() { "完全削除する".to_string() } else { "退職処理する".to_string() })
+                                        cancel_label="いいえ"
+                                        confirm_disabled=Signal::derive(move || delete_pending.get())
+                                        destructive=true
+                                    />
                                 </div>
                             </div>
                         }
