@@ -212,10 +212,11 @@ main() {
     log "Rebased bookmark '$bookmark_name' for PR #$pr"
 
     if [[ "$DO_PUSH" -eq 1 ]]; then
+      run_cmd jj bookmark set -B "$head_ref" -r "$bookmark_name"
       if [[ "$DRY_RUN" -eq 1 ]]; then
-        run_cmd jj git push --dry-run --remote "$remote_name" --named "${head_ref}=${bookmark_name}"
+        run_cmd jj git push --dry-run --remote "$remote_name" -b "$head_ref"
       else
-        run_cmd jj git push --remote "$remote_name" --named "${head_ref}=${bookmark_name}"
+        run_cmd jj git push --remote "$remote_name" -b "$head_ref"
       fi
       log "Pushed rewritten branch '${head_ref}' to remote '${remote_name}'"
     fi

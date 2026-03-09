@@ -52,8 +52,9 @@ Do not use this skill for:
 - If conflicts occur, do not stop at reporting only. Resolve them by comparing the PR's original intent against the base branch's newer changes. Read [references/conflict-resolution.md](references/conflict-resolution.md) and continue until the working copy is resolved or a real semantic ambiguity remains.
 
 6. Push only when the user asked for the PR to be updated remotely.
-- Use `jj git push --remote <head-remote> --named <headRefName>=pr-<number>`.
-- This keeps the local alias stable while updating the real PR branch name on the remote.
+- Move the fetched local head bookmark to the rebased alias with `jj bookmark set -B <headRefName> -r pr-<number>`.
+- Then push it with `jj git push --remote <head-remote> -b <headRefName>`.
+- Keep `pr-<number>` as the stable local alias for follow-up inspection and retries.
 
 7. Summarize each PR.
 - PR number
