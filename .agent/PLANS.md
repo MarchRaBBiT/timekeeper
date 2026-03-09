@@ -1379,12 +1379,13 @@
 ## JJ Snapshot Log
 - [x] `jj status`
 - [x] remaining handler refactor tests pass
-- [ ] `jj commit -m "refactor(handler): move remaining top-level orchestration into application"`
+- [x] `jj commit -m "refactor(handler): move remaining top-level orchestration into application"`
 
 ## Progress Notes
 - 2026-03-09: `auth` を最優先に、続いて user 側 `attendance_correction_requests`、`sessions`、`consents` の application 化に着手。
 - 2026-03-09: `identity/application/auth.rs`、`identity/application/consents.rs`、`attendance/application/correction_requests.rs` を追加し、top-level handler の orchestration を application 層へ移行。互換 API は維持し、`BREAKING_CHANGES.md` は更新なし。
 - 2026-03-09: `cargo fmt --all`、`cargo clippy --all-targets -- -D warnings`、代表ユニットテスト 5 本が成功。
+- 2026-03-09: `jj commit -m "refactor(handler): move remaining top-level orchestration into application"` を実行し、`a5584e14` に保存。working copy はクリーン。
 
 # EP-20260309-handler-remaining-followups
 
