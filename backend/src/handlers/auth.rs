@@ -840,6 +840,16 @@ pub async fn reset_password(
     .map_err(|_| internal_error("Task join error"))?
     .map_err(|_| internal_error("Failed to hash password"))?;
 
+    let consumed_reset =
+        password_reset_repo::consume_valid_reset_by_token(&state.write_pool, &payload.token)
+            .await
+            .map_err(|_| internal_error("Database error"))?
+            .ok_or_else(|| bad_request("Invalid or already-used reset token"))?;
+
+    if consumed_reset.user_id != user.id {
+        return Err(internal_error("Password reset token user mismatch"));
+    }
+
     let user = auth_repo::update_user_password(
         &state.write_pool,
         user.id,
@@ -850,9 +860,13 @@ pub async fn reset_password(
     .await
     .map_err(|_| internal_error("Failed to update password"))?;
 
-    password_reset_repo::mark_token_as_used(&state.write_pool, &reset_record.id)
-        .await
-        .map_err(|_| internal_error("Failed to mark token as used"))?;
+    password_reset_repo::invalidate_unused_tokens_for_user(
+        &state.write_pool,
+        user.id,
+        Some(&consumed_reset.id),
+    )
+    .await
+    .map_err(|_| internal_error("Failed to invalidate other reset tokens"))?;
 
     auth_repo::delete_all_refresh_tokens_for_user(&state.write_pool, user.id)
         .await

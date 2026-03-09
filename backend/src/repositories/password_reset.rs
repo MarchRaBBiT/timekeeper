@@ -15,6 +15,15 @@ pub async fn create_password_reset(
     let reset_id = Uuid::new_v4().to_string();
     let token_hash = hash_token(token);
     let expires_at = Utc::now() + Duration::hours(1);
+    let mut tx = pool.begin().await?;
+    let now = Utc::now();
+
+    sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    invalidate_unused_tokens_for_user_tx(&mut *tx, user_id, now, None).await?;
 
     let record = sqlx::query_as::<_, PasswordReset>(
         r#"
@@ -27,8 +36,10 @@ pub async fn create_password_reset(
     .bind(user_id)
     .bind(&token_hash)
     .bind(expires_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     Ok(record)
 }
@@ -57,6 +68,7 @@ pub async fn find_valid_reset_by_token(
     Ok(record)
 }
 
+#[allow(dead_code)]
 pub async fn mark_token_as_used(pool: &PgPool, reset_id: &str) -> Result<(), AppError> {
     let now = Utc::now();
 
@@ -73,6 +85,40 @@ pub async fn mark_token_as_used(pool: &PgPool, reset_id: &str) -> Result<(), App
     .await?;
 
     Ok(())
+}
+
+pub async fn consume_valid_reset_by_token(
+    pool: &PgPool,
+    token: &str,
+) -> Result<Option<PasswordReset>, AppError> {
+    let token_hash = hash_token(token);
+    let now = Utc::now();
+
+    let record = sqlx::query_as::<_, PasswordReset>(
+        r#"
+        UPDATE password_resets
+        SET used_at = $2
+        WHERE token_hash = $1
+          AND expires_at > $2
+          AND used_at IS NULL
+        RETURNING id, user_id, token_hash, expires_at, created_at, used_at
+        "#,
+    )
+    .bind(&token_hash)
+    .bind(now)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(record)
+}
+
+pub async fn invalidate_unused_tokens_for_user(
+    pool: &PgPool,
+    user_id: UserId,
+    exclude_reset_id: Option<&str>,
+) -> Result<u64, AppError> {
+    let now = Utc::now();
+    invalidate_unused_tokens_for_user_tx(pool, user_id, now, exclude_reset_id).await
 }
 
 #[allow(dead_code)]
@@ -96,6 +142,33 @@ fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+async fn invalidate_unused_tokens_for_user_tx<'e, E>(
+    executor: E,
+    user_id: UserId,
+    now: chrono::DateTime<Utc>,
+    exclude_reset_id: Option<&str>,
+) -> Result<u64, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let result = sqlx::query(
+        r#"
+        UPDATE password_resets
+        SET used_at = $1
+        WHERE user_id = $2
+          AND used_at IS NULL
+          AND ($3::TEXT IS NULL OR id <> $3)
+        "#,
+    )
+    .bind(now)
+    .bind(user_id)
+    .bind(exclude_reset_id)
+    .execute(executor)
+    .await?;
+
+    Ok(result.rows_affected())
 }
 
 #[cfg(test)]

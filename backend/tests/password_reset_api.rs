@@ -245,6 +245,62 @@ async fn request_password_reset_creates_token_record() {
 }
 
 #[tokio::test]
+async fn create_password_reset_invalidates_previous_unused_tokens() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
+
+    let user = create_test_user(&pool, "reset-rotate@example.com", "Pass123!").await;
+    let first_token = generate_token(32);
+    let second_token = generate_token(32);
+
+    let first_record = password_reset_repo::create_password_reset(&pool, user.id, &first_token)
+        .await
+        .expect("create first reset token");
+    let second_record = password_reset_repo::create_password_reset(&pool, user.id, &second_token)
+        .await
+        .expect("create second reset token");
+
+    let first_used_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT used_at FROM password_resets WHERE id = $1")
+            .bind(&first_record.id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch first used_at");
+    let second_used_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT used_at FROM password_resets WHERE id = $1")
+            .bind(&second_record.id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch second used_at");
+    let unused_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM password_resets WHERE user_id = $1 AND used_at IS NULL",
+    )
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("count unused tokens");
+
+    assert!(first_used_at.is_some());
+    assert!(second_used_at.is_none());
+    assert_eq!(unused_count, 1);
+    assert!(
+        password_reset_repo::find_valid_reset_by_token(&pool, &first_token)
+            .await
+            .expect("query first token")
+            .is_none()
+    );
+    assert!(
+        password_reset_repo::find_valid_reset_by_token(&pool, &second_token)
+            .await
+            .expect("query second token")
+            .is_some()
+    );
+}
+
+#[tokio::test]
 async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
     let _guard = integration_guard().await;
     configure_email_skip();
@@ -314,4 +370,73 @@ async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
         .expect("call app");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn reset_password_endpoint_allows_only_one_concurrent_success() {
+    let _guard = integration_guard().await;
+    configure_email_skip();
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    reset_password_resets(&pool).await;
+
+    let user = create_test_user(&pool, "reset-race@example.com", "Pass123!").await;
+    let token = generate_token(32);
+    password_reset_repo::create_password_reset(&pool, user.id, &token)
+        .await
+        .expect("create reset record");
+
+    let state = AppState::new(pool.clone(), None, None, None, support::test_config());
+    let app = Router::new()
+        .route(
+            "/api/auth/reset-password",
+            post(handlers::auth::reset_password),
+        )
+        .with_state(state);
+
+    let request_1 = Request::builder()
+        .method("POST")
+        .uri("/api/auth/reset-password")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({ "token": token, "new_password": "NewPassword123!" }).to_string(),
+        ))
+        .expect("build request 1");
+    let request_2 = Request::builder()
+        .method("POST")
+        .uri("/api/auth/reset-password")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({ "token": token, "new_password": "OtherPassword123!" }).to_string(),
+        ))
+        .expect("build request 2");
+
+    let (response_1, response_2) =
+        tokio::join!(app.clone().oneshot(request_1), app.oneshot(request_2));
+    let statuses = [
+        response_1.expect("response 1").status(),
+        response_2.expect("response 2").status(),
+    ];
+    let success_count = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::OK)
+        .count();
+    let failure_count = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::BAD_REQUEST)
+        .count();
+
+    assert_eq!(success_count, 1);
+    assert_eq!(failure_count, 1);
+
+    let updated_user = auth_repo::find_user_by_id(&pool, user.id)
+        .await
+        .expect("fetch user")
+        .expect("user exists");
+    let matches_first = verify_password("NewPassword123!", &updated_user.password_hash)
+        .expect("verify first password");
+    let matches_second = verify_password("OtherPassword123!", &updated_user.password_hash)
+        .expect("verify second password");
+
+    assert_ne!(matches_first, matches_second);
 }
