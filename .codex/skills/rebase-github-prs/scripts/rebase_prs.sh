@@ -6,6 +6,7 @@ DO_PUSH=0
 KEEP_REMOTE=0
 ALLOW_DIRTY=0
 DRY_RUN=0
+AUTO_RESOLVE=0
 
 declare -a PRS=()
 
@@ -19,6 +20,7 @@ Options:
   --dry-run           Print the rebase/push commands without mutating history
   --keep-remote       Keep temporary remotes for fork PRs
   --allow-dirty       Skip the clean working copy check
+  --agent-resolve     Invoke Codex to continue semantic conflict resolution automatically
   --help              Show this help
 EOF
 }
@@ -71,9 +73,52 @@ EOF
   exit 1
 }
 
+run_codex_resolution_agent() {
+  local pr="$1"
+  local bookmark_name="$2"
+  local head_ref="$3"
+  local base_ref="$4"
+  local remote_name="$5"
+
+  local prompt
+  prompt="$(cat <<EOF
+Use \$rebase-github-prs to continue resolving the existing rebase conflict for GitHub PR #$pr in this repository.
+
+Continue from the current jj state without rerunning the helper script:
+- conflicted bookmark: $bookmark_name
+- head bookmark to update after resolution: $head_ref
+- base branch: $base_ref@$BASE_REMOTE
+- push remote: $remote_name
+
+Required workflow:
+1. Inspect PR intent with gh pr view $pr and gh pr diff $pr.
+2. Inspect the current conflict state around $bookmark_name.
+3. Resolve the conflict according to the PR's intent and current base abstractions.
+4. Run focused validation for the affected seam.
+5. Fold the resolution back with jj squash so $bookmark_name is the resolved rebased result.
+6. Do not push from inside Codex. Leave the bookmark resolved and ready for the wrapper script to continue.
+
+Only stop early if there is real semantic ambiguity that cannot be resolved from local context.
+EOF
+)"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '[dry-run] codex -a never -s danger-full-access exec -C %q - <<%q\n' "$PWD" "PROMPT"
+    printf '%s\n' "$prompt"
+    printf '%s\n' "PROMPT"
+    return 0
+  fi
+
+  log "Handing conflict on '$bookmark_name' to Codex for semantic resolution"
+  codex -a never -s danger-full-access exec -C "$PWD" - <<<"$prompt"
+}
+
 require_cmds() {
   have_cmd gh || fail "gh is required"
   have_cmd jj || fail "jj is required"
+  if [[ "$AUTO_RESOLVE" -eq 1 ]]; then
+    have_cmd codex || fail "codex is required for --agent-resolve"
+  fi
 }
 
 ensure_clean_working_copy() {
@@ -133,6 +178,10 @@ main() {
         ;;
       --allow-dirty)
         ALLOW_DIRTY=1
+        shift
+        ;;
+      --agent-resolve)
+        AUTO_RESOLVE=1
         shift
         ;;
       --help|-h)
@@ -212,8 +261,15 @@ main() {
       fail "Rebase failed for PR #$pr. Resolve conflicts around bookmark '$bookmark_name' and rerun."
     fi
 
-    if [[ "$DRY_RUN" -ne 1 ]] && bookmark_has_conflict "$bookmark_name"; then
-      report_conflict_resolution_hint "$pr" "$bookmark_name" "$head_ref" "$remote_name"
+    if bookmark_has_conflict "$bookmark_name"; then
+      if [[ "$AUTO_RESOLVE" -eq 1 ]]; then
+        run_codex_resolution_agent "$pr" "$bookmark_name" "$head_ref" "$base_ref" "$remote_name"
+        if [[ "$DRY_RUN" -ne 1 ]] && bookmark_has_conflict "$bookmark_name"; then
+          fail "Codex resolution finished but '$bookmark_name' is still conflicted"
+        fi
+      else
+        report_conflict_resolution_hint "$pr" "$bookmark_name" "$head_ref" "$remote_name"
+      fi
     fi
 
     log "Rebased bookmark '$bookmark_name' for PR #$pr"

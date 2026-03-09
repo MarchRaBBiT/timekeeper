@@ -120,6 +120,12 @@ Optional push:
 bash .codex/skills/rebase-github-prs/scripts/rebase_prs.sh --push 123 124 130
 ```
 
+Automatic conflict handoff into Codex:
+
+```bash
+bash .codex/skills/rebase-github-prs/scripts/rebase_prs.sh --push --agent-resolve 123 124 130
+```
+
 Dry-run planning:
 
 ```bash
@@ -130,9 +136,10 @@ bash .codex/skills/rebase-github-prs/scripts/rebase_prs.sh --dry-run 123 124 130
 
 - The helper script refuses to run on a dirty working copy unless `--allow-dirty` is given.
 - `--push` rewrites remote branch history. Treat it as an explicit user-facing action.
+- `--agent-resolve` invokes `codex exec` locally to continue semantic conflict resolution from the existing `pr-<number>` conflict state.
 - Temporary remotes are removed after successful processing unless `--keep-remote` is specified.
 - The helper script detects when `jj rebase` leaves `pr-<number>` in a conflicted state and exits non-zero with follow-up inspection commands.
-- The helper script does not auto-merge semantic conflicts. The skill expects the agent to inspect and resolve them intentionally.
+- The helper script does not resolve semantic conflicts by itself. Automatic semantic resolution requires `--agent-resolve`, which hands the task to Codex.
 
 ## Minimal Checklist
 
