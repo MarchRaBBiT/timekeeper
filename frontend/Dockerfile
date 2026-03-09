@@ -45,6 +45,7 @@ RUN npm install
 RUN npm run build:css
 
 FROM nginx:alpine
+ARG FRONTEND_CSP_CONNECT_SRC="'self'"
 WORKDIR /usr/share/nginx/html
 
 # Place WASM pkg under /pkg to match index.html import path
@@ -52,9 +53,12 @@ COPY --from=builder /app/frontend/pkg/ ./pkg/
 COPY --from=tailwind /app/frontend/assets/ ./assets/
 
 # Static entry
-COPY frontend/index.html ./index.html
+COPY frontend/index.html.template ./index.html.template
 COPY frontend/env.js ./env.js
 COPY frontend/config.json ./config.json
+RUN escaped=$(printf '%s\n' "$FRONTEND_CSP_CONNECT_SRC" | sed -e 's/[\/&]/\\&/g') \
+    && sed "s/__CSP_CONNECT_SRC__/$escaped/g" ./index.html.template > ./index.html \
+    && rm ./index.html.template
 
 # Nginx config with SPA fallback
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
