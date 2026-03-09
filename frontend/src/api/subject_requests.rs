@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::{
-    client::ApiClient,
+    client::{encode_path_segment, ApiClient},
     types::{
         ApiError, CreateDataSubjectRequest, DataSubjectRequestResponse, SubjectRequestListResponse,
     },
@@ -40,11 +40,12 @@ impl ApiClient {
 
     pub async fn cancel_subject_request(&self, id: &str) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
-                    .delete(format!("{}/subject-requests/{}", base_url, id)))
+                    .delete(format!("{}/subject-requests/{}", base_url, encoded_id)))
             })
             .await?;
         map_empty_response(response).await
@@ -127,13 +128,15 @@ impl ApiClient {
         comment: &str,
     ) -> Result<(), ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
+        let encoded_action = encode_path_segment(action);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
                     .put(format!(
                         "{}/admin/subject-requests/{}/{}",
-                        base_url, id, action
+                        base_url, encoded_id, encoded_action
                     ))
                     .json(&json!({ "comment": comment })))
             })

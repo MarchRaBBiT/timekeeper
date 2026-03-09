@@ -609,6 +609,33 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
 }
 
 #[tokio::test]
+async fn api_client_encodes_dynamic_path_segments_for_breaks_and_subject_requests() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(PUT).path("/api/admin/breaks/br%2F1/force-end");
+        then.status(200).json_body(break_record_json("br/1"));
+    });
+    server.mock(|when, then| {
+        when.method(DELETE).path("/api/subject-requests/sr%2F1");
+        then.status(200).json_body(json!({}));
+    });
+    server.mock(|when, then| {
+        when.method(PUT)
+            .path("/api/admin/subject-requests/sr%2F1/approve");
+        then.status(200).json_body(json!({}));
+    });
+
+    let client = api_client(&server);
+    client.admin_force_end_break("br/1").await.unwrap();
+    client.cancel_subject_request("sr/1").await.unwrap();
+    client
+        .admin_approve_subject_request("sr/1", "ok")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn api_client_auth_login_and_refresh_use_test_overrides() {
     let server = MockServer::start_async().await;
 
