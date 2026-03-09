@@ -4,6 +4,7 @@ use crate::components::{
 };
 use crate::pages::requests::components::status_label::request_status_label;
 use crate::pages::requests::types::{RequestKind, RequestSummary};
+use leptos::ev::KeyboardEvent;
 use leptos::*;
 
 #[component]
@@ -93,7 +94,20 @@ pub fn RequestsList(
                                     };
 
                                     view! {
-                                        <tr class="hover:bg-surface-muted transition-colors group cursor-pointer" on:click=move |_| on_select.call(summary.get_value())>
+                                        <tr
+                                            class="hover:bg-surface-muted transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-primary-focus focus-visible:ring-inset"
+                                            tabindex="0"
+                                            role="button"
+                                            on:click=move |_| on_select.call(summary.get_value())
+                                            on:keydown=move |ev: KeyboardEvent| match ev.key().as_str() {
+                                                "Enter" => on_select.call(summary.get_value()),
+                                                " " | "Spacebar" => {
+                                                    ev.prevent_default();
+                                                    on_select.call(summary.get_value());
+                                                }
+                                                _ => {}
+                                            }
+                                        >
                                             <td class="px-8 py-5 whitespace-nowrap">
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-status-neutral-bg text-status-neutral-text uppercase">
                                                     {match summary_value.kind {
@@ -223,5 +237,28 @@ mod host_tests {
         assert!(html.contains("申請一覧"));
         assert!(html.contains("承認待ち"));
         assert!(html.contains("休暇"));
+    }
+
+    #[test]
+    fn requests_rows_include_keyboard_accessibility_attributes() {
+        let html = render_to_string(move || {
+            let (summaries, _) = create_signal(vec![summary()]);
+            let (loading, _) = create_signal(false);
+            let (error, _) = create_signal(None::<ApiError>);
+            let message = create_rw_signal(MessageState::default());
+            view! {
+                <RequestsList
+                    summaries=summaries.into()
+                    loading=loading.into()
+                    error=error.into()
+                    on_select=Callback::new(|_| {})
+                    on_edit=Callback::new(|_| {})
+                    on_cancel=Callback::new(|_| {})
+                    message=message
+                />
+            }
+        });
+        assert!(html.contains("tabindex=\"0\""));
+        assert!(html.contains("role=\"button\""));
     }
 }
