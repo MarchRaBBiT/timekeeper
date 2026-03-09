@@ -537,6 +537,25 @@ pub async fn update_profile(
 ) -> HandlerResult<Json<UserResponse>> {
     payload.validate()?;
 
+    let email_change_requested = payload
+        .email
+        .as_ref()
+        .map(|email| email != &user.email)
+        .unwrap_or(false);
+
+    if email_change_requested {
+        let current_password = payload
+            .current_password
+            .as_deref()
+            .ok_or_else(|| bad_request("Current password is required to change email"))?;
+        ensure_password_matches(
+            current_password,
+            &user.password_hash,
+            "Current password is incorrect",
+        )
+        .await?;
+    }
+
     if let Some(ref email) = payload.email {
         let email_hash = hash_email(email, &state.config);
         let email_exists = user_repo::email_exists_for_other_user(
