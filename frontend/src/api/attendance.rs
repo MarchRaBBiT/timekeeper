@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde_json::{json, Value};
 
 use super::{
-    client::ApiClient,
+    client::{encode_path_segment, ApiClient},
     types::{
         AdminAttendanceUpsert, ApiError, AttendanceResponse, AttendanceStatusResponse,
         AttendanceSummary, BreakRecordResponse,
@@ -273,11 +273,13 @@ impl ApiClient {
         break_id: &str,
     ) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_break_id = encode_path_segment(break_id);
         let response = self
             .send_with_refresh(|| {
-                Ok(self
-                    .http_client()
-                    .put(format!("{}/admin/breaks/{}/force-end", base_url, break_id)))
+                Ok(self.http_client().put(format!(
+                    "{}/admin/breaks/{}/force-end",
+                    base_url, encoded_break_id
+                )))
             })
             .await?;
         let status = response.status();

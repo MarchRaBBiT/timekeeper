@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 
 use super::{
-    client::ApiClient,
+    client::{encode_path_segment, ApiClient},
     types::{
         ApiError, CreateAttendanceCorrectionRequest, CreateLeaveRequest, CreateOvertimeRequest,
         LeaveRequestResponse, OvertimeRequestResponse, UpdateAttendanceCorrectionRequest,
@@ -69,11 +69,16 @@ impl ApiClient {
         comment: &str,
     ) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
+        let encoded_action = encode_path_segment(action);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
-                    .put(format!("{}/admin/requests/{}/{}", base_url, id, action))
+                    .put(format!(
+                        "{}/admin/requests/{}/{}",
+                        base_url, encoded_id, encoded_action
+                    ))
                     .json(&json!({ "comment": comment })))
             })
             .await?;
@@ -82,11 +87,12 @@ impl ApiClient {
 
     pub async fn update_request(&self, id: &str, payload: Value) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
-                    .put(format!("{}/requests/{}", base_url, id))
+                    .put(format!("{}/requests/{}", base_url, encoded_id))
                     .json(&payload))
             })
             .await?;
@@ -95,11 +101,12 @@ impl ApiClient {
 
     pub async fn cancel_request(&self, id: &str) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
-                    .delete(format!("{}/requests/{}", base_url, id)))
+                    .delete(format!("{}/requests/{}", base_url, encoded_id)))
             })
             .await?;
         self.map_json_response(response).await
@@ -141,11 +148,15 @@ impl ApiClient {
         request: UpdateAttendanceCorrectionRequest,
     ) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
-                    .put(format!("{}/attendance-corrections/{}", base_url, id))
+                    .put(format!(
+                        "{}/attendance-corrections/{}",
+                        base_url, encoded_id
+                    ))
                     .json(&request))
             })
             .await?;
@@ -154,11 +165,13 @@ impl ApiClient {
 
     pub async fn cancel_attendance_correction_request(&self, id: &str) -> Result<Value, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
         let response = self
             .send_with_refresh(|| {
-                Ok(self
-                    .http_client()
-                    .delete(format!("{}/attendance-corrections/{}", base_url, id)))
+                Ok(self.http_client().delete(format!(
+                    "{}/attendance-corrections/{}",
+                    base_url, encoded_id
+                )))
             })
             .await?;
         self.map_json_response(response).await
@@ -238,5 +251,11 @@ mod tests {
         assert!(params.contains(&("user_id", "user-1".to_string())));
         assert!(params.contains(&("page", "2".to_string())));
         assert!(params.contains(&("per_page", "50".to_string())));
+    }
+
+    #[test]
+    fn encode_path_segment_escapes_path_delimiters() {
+        assert_eq!(encode_path_segment("abc/def"), "abc%2Fdef");
+        assert_eq!(encode_path_segment("approve?x=1"), "approve%3Fx=1");
     }
 }

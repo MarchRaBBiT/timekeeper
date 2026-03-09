@@ -5124,6 +5124,7 @@ dependencies = [
  "leptos_reactive",
  "leptos_router",
  "log",
+ "percent-encoding",
  "qrcode",
  "reqwest",
  "serde",
