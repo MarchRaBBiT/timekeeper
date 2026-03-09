@@ -1,6 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sqlx::PgPool;
 
+use crate::repositories::attendance::AttendanceRepositoryTrait;
 use crate::{
     error::AppError,
     handlers::attendance_utils::{
@@ -16,7 +17,6 @@ use crate::{
     services::holiday::HolidayServiceTrait,
     types::{AttendanceId, BreakRecordId, UserId},
 };
-use crate::repositories::attendance::AttendanceRepositoryTrait;
 
 pub async fn clock_in(
     write_pool: &PgPool,
