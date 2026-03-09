@@ -57,6 +57,9 @@ use crate::{
 
 pub type HandlerResult<T> = Result<T, AppError>;
 
+const DUMMY_LOGIN_PASSWORD_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$SHjkBewYpN0AqfNJtz4BCQ$Q6EKet0GGAKSbQ5hQFsXf+6WG+AX8Z91wi5hlimtYew";
+
 #[derive(Debug)]
 pub struct AuthSession {
     pub access_token: String,
@@ -73,10 +76,13 @@ pub async fn login(
 ) -> HandlerResult<impl axum::response::IntoResponse> {
     payload.validate()?;
 
-    let mut user = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
+    let Some(mut user) = auth_repo::find_user_by_username(&state.write_pool, &payload.username)
         .await
         .map_err(|_| internal_error("Database error"))?
-        .ok_or_else(|| unauthorized("Invalid username or password"))?;
+    else {
+        verify_missing_user_login(&payload.password).await?;
+        return Err(unauthorized("Invalid username or password"));
+    };
     user.full_name = decrypt_pii(&user.full_name, &state.config)
         .map_err(|_| internal_error("Failed to decrypt user profile"))?;
     user.email = decrypt_pii(&user.email, &state.config)
@@ -1286,6 +1292,15 @@ fn cookie_header_value(headers: &HeaderMap) -> Option<&str> {
     headers.get(header::COOKIE).and_then(|v| v.to_str().ok())
 }
 
+async fn verify_missing_user_login(candidate: &str) -> HandlerResult<()> {
+    ensure_password_matches(
+        candidate,
+        DUMMY_LOGIN_PASSWORD_HASH,
+        "Invalid username or password",
+    )
+    .await
+}
+
 fn bad_request(message: impl Into<String>) -> AppError {
     AppError::BadRequest(message.into())
 }
@@ -1587,6 +1602,16 @@ mod tests {
             .await
             .expect_err("should fail");
         assert!(matches!(err, AppError::Unauthorized(_)));
+    }
+
+    #[tokio::test]
+    async fn verify_missing_user_login_returns_unauthorized() {
+        let err = verify_missing_user_login("wrong-password")
+            .await
+            .expect_err("missing user verification should fail");
+        assert!(
+            matches!(err, AppError::Unauthorized(message) if message == "Invalid username or password")
+        );
     }
 
     #[test]
