@@ -2,14 +2,17 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::str::FromStr;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::attendance::application::queries::{
+    build_attendance_status, resolve_attendance_range, resolve_summary_month,
+};
 use crate::error::AppError;
 use crate::handlers::attendance_utils::{
     ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
@@ -38,13 +41,7 @@ use crate::{
     utils::{csv::append_csv_row, time},
 };
 
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct AttendanceQuery {
-    pub year: Option<i32>,
-    pub month: Option<u32>,
-    pub from: Option<NaiveDate>,
-    pub to: Option<NaiveDate>,
-}
+pub type AttendanceQuery = crate::attendance::application::queries::AttendanceQuery;
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct AttendanceExportQuery {
@@ -52,14 +49,8 @@ pub struct AttendanceExportQuery {
     pub to: Option<NaiveDate>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct AttendanceStatusResponse {
-    pub status: String,
-    pub attendance_id: Option<String>,
-    pub active_break_id: Option<String>,
-    pub clock_in_time: Option<NaiveDateTime>,
-    pub clock_out_time: Option<NaiveDateTime>,
-}
+pub type AttendanceStatusResponse =
+    crate::attendance::application::queries::AttendanceStatusResponse;
 
 pub async fn clock_in(
     State(state): State<AppState>,
@@ -221,33 +212,8 @@ pub async fn get_my_attendance(
     let user_id = user.id;
 
     let tz = &state.config.time_zone;
-    let (from, to) = if let (Some(f), Some(t)) = (params.from, params.to) {
-        if f > t {
-            return Err(AppError::BadRequest("from must be <= to".into()));
-        }
-        (f, t)
-    } else if params.from.is_some() || params.to.is_some() {
-        let f = params.from.unwrap_or_else(|| time::today_local(tz));
-        let t = params.to.unwrap_or_else(|| time::today_local(tz));
-        if f > t {
-            return Err(AppError::BadRequest("from must be <= to".into()));
-        }
-        (f, t)
-    } else {
-        let now_local = time::now_in_timezone(tz);
-        let year = params.year.unwrap_or_else(|| now_local.year());
-        let month = params.month.unwrap_or_else(|| now_local.month());
-        let Some(first_day) = NaiveDate::from_ymd_opt(year, month, 1) else {
-            return Err(AppError::BadRequest("Invalid year/month provided".into()));
-        };
-        let Some(last_day) = first_day
-            .checked_add_months(Months::new(1))
-            .and_then(|d| d.checked_sub_signed(Duration::days(1)))
-        else {
-            return Err(AppError::BadRequest("Invalid year/month provided".into()));
-        };
-        (first_day, last_day)
-    };
+    let (from, to) =
+        resolve_attendance_range(&params, time::today_local(tz), time::now_in_timezone(tz))?;
 
     let repo = AttendanceRepository::new();
     let attendances = repo
@@ -297,49 +263,12 @@ pub async fn get_attendance_status(
             .find_active_break(state.read_pool(), att.id)
             .await?;
 
-        let resp = if att.clock_in_time.is_none() {
-            AttendanceStatusResponse {
-                status: "not_started".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: None,
-                clock_out_time: None,
-            }
-        } else if att.is_clocked_out() {
-            AttendanceStatusResponse {
-                status: "clocked_out".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: att.clock_out_time,
-            }
-        } else if let Some(b) = active_break {
-            let bid: Option<String> = Some(b.id.to_string());
-            AttendanceStatusResponse {
-                status: "on_break".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: bid,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: None,
-            }
-        } else {
-            AttendanceStatusResponse {
-                status: "clocked_in".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: None,
-            }
-        };
-        Ok(Json(resp))
+        Ok(Json(build_attendance_status(
+            Some(&att),
+            active_break.as_ref(),
+        )))
     } else {
-        Ok(Json(AttendanceStatusResponse {
-            status: "not_started".into(),
-            attendance_id: None,
-            active_break_id: None,
-            clock_in_time: None,
-            clock_out_time: None,
-        }))
+        Ok(Json(build_attendance_status(None, None)))
     }
 }
 
@@ -363,19 +292,8 @@ pub async fn get_my_summary(
 ) -> Result<Json<AttendanceSummary>, AppError> {
     let user_id = user.id;
 
-    let now_local = time::now_in_timezone(&state.config.time_zone);
-    let year = params.year.unwrap_or_else(|| now_local.year());
-    let month = params.month.unwrap_or_else(|| now_local.month());
-
-    let Some(first_day) = NaiveDate::from_ymd_opt(year, month, 1) else {
-        return Err(AppError::BadRequest("Invalid year/month provided".into()));
-    };
-    let Some(last_day) = first_day
-        .checked_add_months(Months::new(1))
-        .and_then(|d| d.checked_sub_signed(Duration::days(1)))
-    else {
-        return Err(AppError::BadRequest("Invalid year/month provided".into()));
-    };
+    let (year, month, first_day, last_day) =
+        resolve_summary_month(&params, time::now_in_timezone(&state.config.time_zone))?;
 
     let repo = AttendanceRepository::new();
     let attendances = repo
