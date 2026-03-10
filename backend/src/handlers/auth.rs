@@ -1513,7 +1513,7 @@ async fn send_lockout_notification(
     let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
     email_service
         .send_account_lockout_notification(&user.email, &user.username, locked_until)
-        .map_err(|_| internal_error("Failed to send lockout notification"))?;
+        .map_err(|err| anyhow::anyhow!("Failed to send lockout notification: {err}"))?;
     Ok(())
 }
 

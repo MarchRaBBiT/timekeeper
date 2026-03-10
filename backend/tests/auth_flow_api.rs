@@ -149,7 +149,7 @@ impl Drop for EnvGuard {
     }
 }
 
-fn allocate_closed_port() -> u16 {
+fn allocate_and_release_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .expect("bind ephemeral port")
         .local_addr()
@@ -191,7 +191,15 @@ async fn wait_for_auth_audit_events(
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    fetch_auth_audit_trail(pool, user_id, since).await
+    let rows = fetch_auth_audit_trail(pool, user_id, since).await;
+    let got = rows
+        .iter()
+        .map(|row| row.event_type.as_str())
+        .collect::<Vec<_>>();
+    panic!(
+        "timed out waiting for audit events {:?}; got: {:?}",
+        expected_event_types, got
+    );
 }
 
 async fn count_refresh_tokens(pool: &PgPool, user_id: &str) -> i64 {
@@ -504,7 +512,7 @@ async fn lockout_notification_failure_records_failed_audit_result() {
     let env = EnvGuard::new();
     env.remove("SMTP_SKIP_SEND");
     env.set("SMTP_HOST", "127.0.0.1");
-    env.set("SMTP_PORT", allocate_closed_port().to_string());
+    env.set("SMTP_PORT", allocate_and_release_port().to_string());
 
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
