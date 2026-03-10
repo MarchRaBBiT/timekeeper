@@ -502,12 +502,12 @@ pub async fn record_login_failure(
 }
 
 pub async fn clear_login_failures(pool: &PgPool, user_id: UserId) -> Result<(), sqlx::Error> {
+    // Preserve lockout_count so repeated attacks continue to inherit stronger backoff.
     sqlx::query(
         "UPDATE users \
          SET failed_login_attempts = 0, \
              locked_until = NULL, \
              lock_reason = NULL, \
-             lockout_count = 0, \
              updated_at = NOW() \
          WHERE id = $1",
     )

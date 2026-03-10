@@ -337,7 +337,7 @@ async fn login_locks_account_after_reaching_failure_threshold() {
 }
 
 #[tokio::test]
-async fn login_success_clears_login_failure_state() {
+async fn login_success_preserves_lockout_history_while_clearing_active_failures() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
@@ -346,25 +346,19 @@ async fn login_success_clears_login_failure_state() {
     let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
     let app = auth_router(pool.clone());
 
-    let failed_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({
-                        "username": user.username.clone(),
-                        "password": "Wrong123!",
-                    })
-                    .to_string(),
-                ))
-                .expect("build login request"),
-        )
-        .await
-        .expect("login request");
-    assert_eq!(failed_response.status(), StatusCode::UNAUTHORIZED);
+    // Seed lockout history directly so this test stays focused on successful-login cleanup
+    // without depending on the failure-counting path.
+    sqlx::query(
+        "UPDATE users \
+         SET failed_login_attempts = 2, \
+             lockout_count = 1, \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed lockout history");
 
     let success_response = app
         .oneshot(
@@ -389,7 +383,7 @@ async fn login_success_clears_login_failure_state() {
         fetch_lock_state(&pool, &user.id.to_string()).await;
     assert_eq!(failed_attempts, 0);
     assert!(locked_until.is_none());
-    assert_eq!(lockout_count, 0);
+    assert_eq!(lockout_count, 1);
 }
 
 #[tokio::test]

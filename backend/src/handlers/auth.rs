@@ -103,7 +103,7 @@ pub async fn login(
         record_login_audit_event(
             Some(audit_log_service.clone()),
             audit_context.clone(),
-            "login_failure",
+            "account_lockout",
             user.id,
             Some(json!({ "reason": "account_locked" })),
         );
@@ -1444,10 +1444,10 @@ fn record_login_audit_event(
 }
 
 fn login_audit_result(event_type: &str) -> &'static str {
-    if event_type == "login_failure" {
-        "failure"
-    } else {
-        "success"
+    match event_type {
+        "login_failure" => "denied",
+        "account_lockout" => "blocked",
+        _ => "success",
     }
 }
 
@@ -1763,8 +1763,9 @@ mod tests {
     }
 
     #[test]
-    fn login_audit_result_is_failure_for_login_failure_event() {
-        assert_eq!(login_audit_result("login_failure"), "failure");
+    fn login_audit_result_maps_denied_and_blocked_events() {
+        assert_eq!(login_audit_result("login_failure"), "denied");
+        assert_eq!(login_audit_result("account_lockout"), "blocked");
         assert_eq!(login_audit_result("login_success"), "success");
     }
 
