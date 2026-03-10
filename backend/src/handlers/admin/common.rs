@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use sqlx::{Postgres, QueryBuilder};
 
 pub fn parse_date_value(value: &str) -> Option<NaiveDate> {
@@ -15,6 +15,54 @@ pub fn parse_optional_date(raw: Option<&str>) -> Result<Option<NaiveDate>, &'sta
     match raw {
         Some(value) => parse_date_value(value)
             .ok_or("`from`/`to` must be a valid date (YYYY-MM-DD or RFC3339)")
+            .map(Some),
+        None => Ok(None),
+    }
+}
+
+pub fn normalize_filter(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
+        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        let time = if end_of_day {
+            NaiveTime::from_hms_opt(23, 59, 59)
+        } else {
+            NaiveTime::from_hms_opt(0, 0, 0)
+        }?;
+        return Some(DateTime::<Utc>::from_naive_utc_and_offset(
+            NaiveDateTime::new(date, time),
+            Utc,
+        ));
+    }
+    None
+}
+
+pub fn parse_from_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
+    match raw {
+        Some(value) => parse_filter_datetime(value, false)
+            .ok_or("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
+            .map(Some),
+        None => Ok(None),
+    }
+}
+
+pub fn parse_to_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
+    match raw {
+        Some(value) => parse_filter_datetime(value, true)
+            .ok_or("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
             .map(Some),
         None => Ok(None),
     }
@@ -69,6 +117,31 @@ mod tests {
             .expect("valid optional date")
             .is_some());
         assert!(parse_optional_date(Some("invalid")).is_err());
+    }
+
+    #[test]
+    fn normalize_filter_trims_and_drops_empty_values() {
+        assert_eq!(
+            normalize_filter(Some("  user-1  ".to_string())),
+            Some("user-1".to_string())
+        );
+        assert_eq!(normalize_filter(Some("   ".to_string())), None);
+        assert_eq!(normalize_filter(None), None);
+    }
+
+    #[test]
+    fn parse_filter_datetime_supports_rfc3339_sql_iso_and_date_only() {
+        assert!(parse_filter_datetime("2026-02-04T10:11:12+09:00", false).is_some());
+        assert!(parse_filter_datetime("2026-02-04 10:11:12", false).is_some());
+        assert!(parse_filter_datetime("2026-02-04T10:11:12", false).is_some());
+
+        let from = parse_filter_datetime("2026-02-04", false).expect("from");
+        assert_eq!(from.time(), NaiveTime::from_hms_opt(0, 0, 0).expect("time"));
+        let to = parse_filter_datetime("2026-02-04", true).expect("to");
+        assert_eq!(
+            to.time(),
+            NaiveTime::from_hms_opt(23, 59, 59).expect("time")
+        );
     }
 
     #[test]

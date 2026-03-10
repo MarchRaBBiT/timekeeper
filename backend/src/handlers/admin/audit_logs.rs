@@ -9,12 +9,15 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
+    handlers::admin::common::{
+        normalize_filter, parse_filter_datetime, parse_from_datetime, parse_to_datetime,
+    },
     models::{audit_log::AuditLog, user::User},
     repositories::{
         audit_log::{self, AuditLogFilters},
@@ -262,10 +265,10 @@ fn validate_list_query(q: AuditLogListQuery) -> Result<(i64, i64, AuditLogFilter
 const MAX_EXPORT_DAYS: i64 = 31;
 
 fn validate_export_query(q: AuditLogExportQuery) -> Result<AuditLogFilters, AppError> {
-    let from = parse_datetime_value(&q.from, true).ok_or_else(|| {
+    let from = parse_filter_datetime(&q.from, false).ok_or_else(|| {
         AppError::BadRequest("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)".into())
     })?;
-    let to = parse_datetime_value(&q.to, false).ok_or_else(|| {
+    let to = parse_filter_datetime(&q.to, true).ok_or_else(|| {
         AppError::BadRequest("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)".into())
     })?;
 
@@ -361,52 +364,4 @@ fn build_filters(input: AuditLogFilterInput) -> Result<AuditLogFilters, AppError
         target_id: normalize_filter(input.target_id),
         result,
     })
-}
-
-fn normalize_filter(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn parse_from_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, true)
-            .ok_or("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_to_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, false)
-            .ok_or("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let time = if is_start {
-            NaiveTime::from_hms_opt(0, 0, 0)
-        } else {
-            NaiveTime::from_hms_opt(23, 59, 59)
-        }?;
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDateTime::new(date, time),
-            Utc,
-        ));
-    }
-    None
 }

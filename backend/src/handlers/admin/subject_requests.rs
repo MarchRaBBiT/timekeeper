@@ -1,13 +1,12 @@
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::StatusCode,
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 
+use super::common::{normalize_filter, parse_from_datetime, parse_to_datetime};
 use super::requests::validate_decision_comment;
 use crate::{
     error::AppError,
@@ -55,9 +54,9 @@ pub async fn list_subject_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Query(q): Query<SubjectRequestListQuery>,
-) -> Result<Json<SubjectRequestListResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<SubjectRequestListResponse>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
 
     let (page, per_page, filters) = validate_list_query(q)?;
@@ -65,13 +64,7 @@ pub async fn list_subject_requests(
     let (items, total) =
         subject_request::list_subject_requests(&state.write_pool, &filters, per_page, offset)
             .await
-            .map_err(|err| {
-                tracing::error!(error = %err, "failed to list subject requests");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Database error"})),
-                )
-            })?;
+            .map_err(|err| AppError::InternalServerError(err.into()))?;
 
     Ok(Json(SubjectRequestListResponse {
         page,
@@ -89,11 +82,11 @@ pub async fn approve_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
-    validate_decision_comment(&body.comment).map_err(map_app_error)?;
+    validate_decision_comment(&body.comment)?;
     ensure_pending_request(&state.write_pool, &request_id).await?;
     let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
@@ -106,18 +99,11 @@ pub async fn approve_subject_request(
         now,
     )
     .await
-    .map_err(|err| {
-        tracing::error!(error = %err, "failed to approve subject request");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(|err| AppError::InternalServerError(err.into()))?;
 
     if rows == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
+        return Err(AppError::NotFound(
+            "Request not found or already processed".into(),
         ));
     }
 
@@ -129,11 +115,11 @@ pub async fn reject_subject_request(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, AppError> {
     if !user.is_admin() {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"}))));
+        return Err(AppError::Forbidden("Forbidden".into()));
     }
-    validate_decision_comment(&body.comment).map_err(map_app_error)?;
+    validate_decision_comment(&body.comment)?;
     ensure_pending_request(&state.write_pool, &request_id).await?;
     let now = time::now_utc(&state.config.time_zone);
     let approver_id = user.id.to_string();
@@ -146,62 +132,48 @@ pub async fn reject_subject_request(
         now,
     )
     .await
-    .map_err(|err| {
-        tracing::error!(error = %err, "failed to reject subject request");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Database error"})),
-        )
-    })?;
+    .map_err(|err| AppError::InternalServerError(err.into()))?;
 
     if rows == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
+        return Err(AppError::NotFound(
+            "Request not found or already processed".into(),
         ));
     }
 
     Ok(Json(json!({"message": "Subject request rejected"})))
 }
 
-async fn ensure_pending_request(
-    pool: &sqlx::PgPool,
-    request_id: &str,
-) -> Result<(), (StatusCode, Json<Value>)> {
+async fn ensure_pending_request(pool: &sqlx::PgPool, request_id: &str) -> Result<(), AppError> {
     let existing = subject_request::fetch_subject_request(pool, request_id)
         .await
-        .map_err(|err| {
-            tracing::error!(error = %err, "failed to fetch subject request");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
-        })?;
+        .map_err(|err| AppError::InternalServerError(err.into()))?;
 
     match existing {
         Some(request) if matches!(request.status, RequestStatus::Pending) => Ok(()),
-        _ => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Request not found or already processed"})),
+        _ => Err(AppError::NotFound(
+            "Request not found or already processed".into(),
         )),
     }
 }
 
 fn validate_list_query(
     q: SubjectRequestListQuery,
-) -> Result<(i64, i64, SubjectRequestFilters), (StatusCode, Json<Value>)> {
+) -> Result<(i64, i64, SubjectRequestFilters), AppError> {
     let page = q.page.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
     let per_page = q
         .per_page
         .unwrap_or(DEFAULT_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
 
-    let from = parse_from_datetime(q.from.as_deref()).map_err(bad_request_helper)?;
-    let to = parse_to_datetime(q.to.as_deref()).map_err(bad_request_helper)?;
+    let from =
+        parse_from_datetime(q.from.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
+    let to = parse_to_datetime(q.to.as_deref()).map_err(|e| AppError::BadRequest(e.into()))?;
 
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(bad_request_helper("`from` must be before or equal to `to`"));
+            return Err(AppError::BadRequest(
+                "`from` must be before or equal to `to`".into(),
+            ));
         }
     }
 
@@ -223,118 +195,45 @@ fn validate_list_query(
     ))
 }
 
-fn normalize_filter(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn parse_request_status(value: &str) -> Result<RequestStatus, (StatusCode, Json<Value>)> {
+fn parse_request_status(value: &str) -> Result<RequestStatus, AppError> {
     match value.to_ascii_lowercase().as_str() {
         "pending" => Ok(RequestStatus::Pending),
         "approved" => Ok(RequestStatus::Approved),
         "rejected" => Ok(RequestStatus::Rejected),
         "cancelled" => Ok(RequestStatus::Cancelled),
-        _ => Err(bad_request_helper(
-            "`status` must be pending, approved, rejected, or cancelled",
+        _ => Err(AppError::BadRequest(
+            "`status` must be pending, approved, rejected, or cancelled".into(),
         )),
     }
 }
 
-fn parse_request_type(value: &str) -> Result<DataSubjectRequestType, (StatusCode, Json<Value>)> {
+fn parse_request_type(value: &str) -> Result<DataSubjectRequestType, AppError> {
     match value.to_ascii_lowercase().as_str() {
         "access" => Ok(DataSubjectRequestType::Access),
         "rectify" => Ok(DataSubjectRequestType::Rectify),
         "delete" => Ok(DataSubjectRequestType::Delete),
         "stop" => Ok(DataSubjectRequestType::Stop),
-        _ => Err(bad_request_helper(
-            "`type` must be access, rectify, delete, or stop",
+        _ => Err(AppError::BadRequest(
+            "`type` must be access, rectify, delete, or stop".into(),
         )),
     }
-}
-
-fn parse_from_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, true)
-            .ok_or("`from` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_to_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'static str> {
-    match raw {
-        Some(value) => parse_datetime_value(value, false)
-            .ok_or("`to` must be a valid datetime (RFC3339 or YYYY-MM-DD)")
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn parse_datetime_value(value: &str, is_start: bool) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let time = if is_start {
-            NaiveTime::from_hms_opt(0, 0, 0)
-        } else {
-            NaiveTime::from_hms_opt(23, 59, 59)
-        }?;
-        return Some(DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDateTime::new(date, time),
-            Utc,
-        ));
-    }
-    None
-}
-
-fn map_app_error(err: AppError) -> (StatusCode, Json<Value>) {
-    match err {
-        AppError::BadRequest(message) => bad_request_helper(&message),
-        AppError::Forbidden(message) => (StatusCode::FORBIDDEN, Json(json!({ "error": message }))),
-        AppError::Unauthorized(message) => {
-            (StatusCode::UNAUTHORIZED, Json(json!({ "error": message })))
-        }
-        AppError::Conflict(message) => (StatusCode::CONFLICT, Json(json!({ "error": message }))),
-        AppError::NotFound(message) => (StatusCode::NOT_FOUND, Json(json!({ "error": message }))),
-        AppError::Validation(errors) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Validation failed", "details": { "errors": errors } })),
-        ),
-        AppError::InternalServerError(err) => {
-            tracing::error!(error = %err, "internal server error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Internal server error" })),
-            )
-        }
-    }
-}
-
-fn bad_request_helper(message: &str) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::holiday::HolidayReason;
     use chrono::{TimeZone, Timelike};
 
-    fn err_message(err: &(StatusCode, Json<Value>)) -> String {
-        err.1
-             .0
-            .get("error")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string()
+    fn app_error_message(err: AppError) -> String {
+        match err {
+            AppError::BadRequest(message)
+            | AppError::Forbidden(message)
+            | AppError::Unauthorized(message)
+            | AppError::Conflict(message)
+            | AppError::NotFound(message) => message,
+            AppError::Validation(errors) => errors.join(", "),
+            AppError::InternalServerError(err) => err.to_string(),
+        }
     }
 
     #[test]
@@ -370,8 +269,8 @@ mod tests {
     #[test]
     fn parse_request_status_rejects_unknown_value() {
         let err = parse_request_status("unknown").expect_err("invalid status");
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err_message(&err).contains("`status`"));
+        assert!(matches!(err, AppError::BadRequest(_)));
+        assert!(app_error_message(err).contains("`status`"));
     }
 
     #[test]
@@ -397,30 +296,30 @@ mod tests {
     #[test]
     fn parse_request_type_rejects_unknown_value() {
         let err = parse_request_type("archive").expect_err("invalid type");
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err_message(&err).contains("`type`"));
+        assert!(matches!(err, AppError::BadRequest(_)));
+        assert!(app_error_message(err).contains("`type`"));
     }
 
     #[test]
     fn parse_datetime_value_supports_rfc3339_and_sql_formats() {
-        let rfc = parse_datetime_value("2026-02-04T10:11:12+09:00", true).expect("rfc3339");
+        let rfc = parse_filter_datetime("2026-02-04T10:11:12+09:00", false).expect("rfc3339");
         assert_eq!(rfc, Utc.with_ymd_and_hms(2026, 2, 4, 1, 11, 12).unwrap());
 
-        let iso = parse_datetime_value("2026-02-04T10:11:12", true).expect("iso local");
+        let iso = parse_filter_datetime("2026-02-04T10:11:12", false).expect("iso local");
         assert_eq!(iso, Utc.with_ymd_and_hms(2026, 2, 4, 10, 11, 12).unwrap());
 
-        let sql = parse_datetime_value("2026-02-04 10:11:12", true).expect("sql datetime");
+        let sql = parse_filter_datetime("2026-02-04 10:11:12", false).expect("sql datetime");
         assert_eq!(sql, Utc.with_ymd_and_hms(2026, 2, 4, 10, 11, 12).unwrap());
     }
 
     #[test]
     fn parse_datetime_value_supports_date_only_for_range_edges() {
-        let from = parse_datetime_value("2026-02-04", true).expect("from date");
+        let from = parse_filter_datetime("2026-02-04", false).expect("from date");
         assert_eq!(from.time().hour(), 0);
         assert_eq!(from.time().minute(), 0);
         assert_eq!(from.time().second(), 0);
 
-        let to = parse_datetime_value("2026-02-04", false).expect("to date");
+        let to = parse_filter_datetime("2026-02-04", true).expect("to date");
         assert_eq!(to.time().hour(), 23);
         assert_eq!(to.time().minute(), 59);
         assert_eq!(to.time().second(), 59);
@@ -428,8 +327,8 @@ mod tests {
 
     #[test]
     fn parse_datetime_value_returns_none_for_invalid_input() {
-        assert!(parse_datetime_value("invalid", true).is_none());
-        assert!(parse_datetime_value("2026-13-01", true).is_none());
+        assert!(parse_filter_datetime("invalid", false).is_none());
+        assert!(parse_filter_datetime("2026-13-01", false).is_none());
     }
 
     #[test]
@@ -511,7 +410,7 @@ mod tests {
             per_page: None,
         })
         .expect_err("invalid status");
-        assert_eq!(bad_status.0, StatusCode::BAD_REQUEST);
+        assert!(matches!(bad_status, AppError::BadRequest(_)));
 
         let bad_type = validate_list_query(SubjectRequestListQuery {
             status: None,
@@ -523,7 +422,7 @@ mod tests {
             per_page: None,
         })
         .expect_err("invalid type");
-        assert_eq!(bad_type.0, StatusCode::BAD_REQUEST);
+        assert!(matches!(bad_type, AppError::BadRequest(_)));
     }
 
     #[test]
@@ -539,49 +438,7 @@ mod tests {
         })
         .expect_err("invalid date range");
 
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err_message(&err).contains("`from`"));
-    }
-
-    #[test]
-    fn map_app_error_maps_each_variant() {
-        let bad = map_app_error(AppError::BadRequest("bad".to_string()));
-        assert_eq!(bad.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&bad), "bad");
-
-        let forbidden = map_app_error(AppError::Forbidden("forbidden".to_string()));
-        assert_eq!(forbidden.0, StatusCode::FORBIDDEN);
-        assert_eq!(err_message(&forbidden), "forbidden");
-
-        let unauthorized = map_app_error(AppError::Unauthorized("unauthorized".to_string()));
-        assert_eq!(unauthorized.0, StatusCode::UNAUTHORIZED);
-        assert_eq!(err_message(&unauthorized), "unauthorized");
-
-        let conflict = map_app_error(AppError::Conflict("conflict".to_string()));
-        assert_eq!(conflict.0, StatusCode::CONFLICT);
-        assert_eq!(err_message(&conflict), "conflict");
-
-        let not_found = map_app_error(AppError::NotFound("missing".to_string()));
-        assert_eq!(not_found.0, StatusCode::NOT_FOUND);
-        assert_eq!(err_message(&not_found), "missing");
-
-        let validation = map_app_error(AppError::Validation(vec!["field: code".to_string()]));
-        assert_eq!(validation.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&validation), "Validation failed");
-        assert_eq!(
-            validation.1 .0["details"]["errors"][0],
-            json!("field: code")
-        );
-
-        let internal = map_app_error(AppError::InternalServerError(anyhow::anyhow!("boom")));
-        assert_eq!(internal.0, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(err_message(&internal), "Internal server error");
-    }
-
-    #[test]
-    fn bad_request_helper_builds_error_payload() {
-        let err = bad_request_helper(HolidayReason::None.label());
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert_eq!(err_message(&err), "working day");
+        assert!(matches!(err, AppError::BadRequest(_)));
+        assert!(app_error_message(err).contains("`from`"));
     }
 }
