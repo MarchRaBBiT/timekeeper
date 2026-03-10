@@ -1,3 +1,5 @@
+#[cfg(all(test, not(target_arch = "wasm32")))]
+use super::view_model::DEFAULT_AUDIT_LOGS_PER_PAGE;
 use super::view_model::{use_audit_log_view_model, AuditLogFilters, AUDIT_EVENT_TYPES};
 use crate::api::{ApiError, AuditLog, AuditLogListResponse};
 use crate::components::common::{Button, ButtonVariant};
@@ -59,6 +61,20 @@ fn page_summary_label(total: i64, per_page: i64) -> String {
 fn apply_filter_change(filters: &mut AuditLogFilters, page: &mut i64, field: &str, value: String) {
     update_filter_value(filters, field, value);
     *page = 1;
+}
+
+fn parse_per_page_value(raw: &str) -> Option<i64> {
+    match raw.parse::<i64>().ok()? {
+        value @ (10 | 20 | 50) => Some(value),
+        _ => None,
+    }
+}
+
+fn apply_per_page_change(per_page: &mut i64, page: &mut i64, raw: &str) {
+    if let Some(value) = parse_per_page_value(raw) {
+        *per_page = value;
+        *page = 1;
+    }
 }
 
 fn clear_filters_and_reset_page(filters: &mut AuditLogFilters, page: &mut i64) {
@@ -302,6 +318,13 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
         });
         vm.page.set(page);
     };
+    let on_per_page_change = move |ev: web_sys::Event| {
+        let mut page = vm.page.get_untracked();
+        vm.per_page.update(|per_page| {
+            apply_per_page_change(per_page, &mut page, &event_target_value(&ev));
+        });
+        vm.page.set(page);
+    };
     let on_metadata_modal_keydown = move |ev: KeyboardEvent| match ev.key().as_str() {
         "Escape" => {
             ev.prevent_default();
@@ -370,7 +393,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                     </Show>
 
                     <div class="bg-surface-elevated p-4 rounded-lg shadow space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-fg-muted">"日時 (From)"</label>
                                 <input type="datetime-local" class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
@@ -413,6 +436,18 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                     <option value="">"すべて"</option>
                                     <option value="success">"成功"</option>
                                     <option value="failure">"失敗"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-fg-muted">"表示件数"</label>
+                                <select
+                                    class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
+                                    prop:value=move || vm.per_page.get().to_string()
+                                    on:change=on_per_page_change
+                                >
+                                    <option value="10">"10件"</option>
+                                    <option value="20">"20件"</option>
+                                    <option value="50">"50件"</option>
                                 </select>
                             </div>
                         </div>
@@ -645,6 +680,8 @@ mod host_tests {
         });
         assert!(html.contains("監査ログ"));
         assert!(html.contains("JSONエクスポート"));
+        assert!(html.contains("表示件数"));
+        assert!(html.contains("20件"));
     }
 
     #[test]
@@ -672,10 +709,25 @@ mod host_tests {
         assert!(!can_go_next(1, 10, 0));
         assert_eq!(page_summary_label(41, 20), " / 3");
         assert_eq!(page_summary_label(10, 0), " / 1");
+        assert_eq!(parse_per_page_value("10"), Some(10));
+        assert_eq!(parse_per_page_value("20"), Some(20));
+        assert_eq!(parse_per_page_value("50"), Some(50));
+        assert_eq!(parse_per_page_value("5"), None);
+        assert_eq!(parse_per_page_value("bad"), None);
 
         apply_filter_change(&mut filters, &mut page, "actor_id", "admin-2".into());
         assert_eq!(filters.actor_id, "admin-2");
         assert_eq!(page, 1);
+
+        let mut per_page = DEFAULT_AUDIT_LOGS_PER_PAGE;
+        page = 4;
+        apply_per_page_change(&mut per_page, &mut page, "50");
+        assert_eq!(per_page, 50);
+        assert_eq!(page, 1);
+        page = 3;
+        apply_per_page_change(&mut per_page, &mut page, "bad");
+        assert_eq!(per_page, 50);
+        assert_eq!(page, 3);
 
         clear_filters_and_reset_page(&mut filters, &mut page);
         assert_eq!(filters, AuditLogFilters::default());
