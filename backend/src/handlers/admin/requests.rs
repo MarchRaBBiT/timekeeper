@@ -2,7 +2,6 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -10,6 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
+    handlers::admin::common::parse_filter_datetime,
     models::{
         leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
     },
@@ -295,27 +295,6 @@ pub async fn get_request_detail(
     }
 
     Err(AppError::NotFound("Request not found".into()))
-}
-
-fn parse_filter_datetime(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
-        return Some(dt.with_timezone(&Utc));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        let dt = if end_of_day {
-            date.and_hms_opt(23, 59, 59)?
-        } else {
-            date.and_hms_opt(0, 0, 0)?
-        };
-        return Some(Utc.from_utc_datetime(&dt));
-    }
-    None
 }
 
 #[cfg(test)]
