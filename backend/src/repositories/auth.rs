@@ -402,18 +402,6 @@ pub async fn fetch_recent_password_hashes(
     .await
 }
 
-/// Deletes all refresh tokens for a specific user (alias).
-pub async fn delete_all_refresh_tokens_for_user(
-    pool: &PgPool,
-    user_id: UserId,
-) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(user_id.to_string())
-        .execute(pool)
-        .await
-        .map(|_| ())
-}
-
 fn lockout_duration_minutes(lockout_count: i32, policy: LockoutPolicy) -> i64 {
     let base = policy.duration_minutes.max(1);
     if !policy.backoff_enabled {

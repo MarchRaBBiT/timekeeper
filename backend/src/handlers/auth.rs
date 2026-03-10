@@ -534,7 +534,7 @@ pub async fn update_profile(
     Ok(Json(UserResponse::from(updated_user)))
 }
 
-pub async fn mfa_register(
+async fn begin_mfa_setup(
     State(state): State<AppState>,
     headers: HeaderMap,
     Extension(user): Extension<User>,
@@ -544,14 +544,20 @@ pub async fn mfa_register(
     Ok(Json(response))
 }
 
-pub async fn mfa_setup(
-    State(state): State<AppState>,
+pub async fn mfa_register(
+    state: State<AppState>,
     headers: HeaderMap,
-    Extension(user): Extension<User>,
+    user: Extension<User>,
 ) -> HandlerResult<Json<MfaSetupResponse>> {
-    crate::utils::security::verify_request_origin(&headers, &state.config)?;
-    let response = begin_mfa_enrollment(&state.write_pool, &state.config, &user).await?;
-    Ok(Json(response))
+    begin_mfa_setup(state, headers, user).await
+}
+
+pub async fn mfa_setup(
+    state: State<AppState>,
+    headers: HeaderMap,
+    user: Extension<User>,
+) -> HandlerResult<Json<MfaSetupResponse>> {
+    begin_mfa_setup(state, headers, user).await
 }
 
 pub async fn mfa_activate(
@@ -806,7 +812,7 @@ pub async fn reset_password(
     .await
     .map_err(|_| internal_error("Failed to invalidate other reset tokens"))?;
 
-    auth_repo::delete_all_refresh_tokens_for_user(&state.write_pool, user.id)
+    auth_repo::delete_refresh_tokens_for_user(&state.write_pool, user.id)
         .await
         .map_err(|_| internal_error("Failed to revoke refresh tokens"))?;
 
