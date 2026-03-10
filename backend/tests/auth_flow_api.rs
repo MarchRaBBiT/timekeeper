@@ -449,6 +449,68 @@ async fn login_enforces_session_limit() {
 }
 
 #[tokio::test]
+async fn login_enforces_session_limit_revokes_oldest_session() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Password123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+
+    let oldest_refresh_id = Uuid::new_v4().to_string();
+    let newer_refresh_id = Uuid::new_v4().to_string();
+    support::seed_active_session(&pool, user.id, &oldest_refresh_id, None).await;
+    support::seed_active_session(&pool, user.id, &newer_refresh_id, None).await;
+
+    let now = chrono::Utc::now();
+    sqlx::query("UPDATE active_sessions SET last_seen_at = $2 WHERE refresh_token_id = $1")
+        .bind(&oldest_refresh_id)
+        .bind(now - chrono::Duration::hours(6))
+        .execute(&pool)
+        .await
+        .expect("age oldest session");
+    sqlx::query("UPDATE active_sessions SET last_seen_at = $2 WHERE refresh_token_id = $1")
+        .bind(&newer_refresh_id)
+        .bind(now - chrono::Duration::hours(1))
+        .execute(&pool)
+        .await
+        .expect("age newer session");
+
+    let mut config = support::test_config();
+    config.max_concurrent_sessions = 2;
+
+    let response = auth_router_with_config(pool.clone(), config)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let refresh_token =
+        extract_set_cookie_value(response.headers(), REFRESH_COOKIE_NAME).expect("refresh cookie");
+    let (new_refresh_id, _) =
+        decode_refresh_token(&refresh_token).expect("decode new refresh token");
+
+    assert_eq!(count_active_sessions(&pool, &user.id.to_string()).await, 2);
+    assert_eq!(count_refresh_tokens(&pool, &user.id.to_string()).await, 2);
+    assert!(!refresh_token_exists(&pool, &oldest_refresh_id).await);
+    assert!(refresh_token_exists(&pool, &newer_refresh_id).await);
+    assert!(refresh_token_exists(&pool, &new_refresh_id).await);
+}
+
+#[tokio::test]
 async fn me_returns_current_user() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
