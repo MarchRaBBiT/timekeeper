@@ -108,6 +108,7 @@ Timekeeper 勤怠管理システム
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn send_account_lockout_notification(
         &self,
         to_email: &str,

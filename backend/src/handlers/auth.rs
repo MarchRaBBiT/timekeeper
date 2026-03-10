@@ -30,8 +30,11 @@ use crate::{
         auth::{self as auth_repo, ActiveAccessToken, LockoutPolicy},
         password_reset as password_reset_repo, user as user_repo,
     },
-    services::audit_log::{AuditLogEntry, AuditLogServiceTrait},
     services::token_cache::TokenCacheServiceTrait,
+    services::{
+        audit_log::{AuditLogEntry, AuditLogServiceTrait},
+        lockout_notification_queue::{enqueue_lockout_notification_job, LockoutNotificationJob},
+    },
     state::AppState,
     types::UserId,
     utils::{
@@ -217,13 +220,13 @@ pub async fn login(
                     );
                     if let Some(locked_until) = failure_state.locked_until {
                         enqueue_lockout_notification(
-                            state.write_pool.clone(),
-                            state.config.clone(),
+                            &state,
                             Some(audit_log_service.clone()),
                             audit_context.clone(),
                             audit_actor_id,
                             locked_until,
-                        );
+                        )
+                        .await;
                     }
                 }
             }
@@ -1495,80 +1498,64 @@ fn login_audit_result(event_type: &str) -> &'static str {
     }
 }
 
-async fn send_lockout_notification(
-    pool: &sqlx::PgPool,
-    config: &Config,
-    user_id: UserId,
-    locked_until: DateTime<Utc>,
-) -> HandlerResult<()> {
-    let Some(mut user) = auth_repo::find_user_by_id(pool, user_id)
-        .await
-        .map_err(|_| internal_error("Failed to load user for lockout notification"))?
-    else {
-        return Ok(());
-    };
-    user.email = decrypt_pii(&user.email, config)
-        .map_err(|_| internal_error("Failed to decrypt lockout email"))?;
-
-    let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
-    email_service
-        .send_account_lockout_notification(&user.email, &user.username, locked_until)
-        .map_err(|err| anyhow::anyhow!("Failed to send lockout notification: {err}"))?;
-    Ok(())
-}
-
-fn enqueue_lockout_notification(
-    pool: sqlx::PgPool,
-    config: Config,
+async fn enqueue_lockout_notification(
+    state: &AppState,
     audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
     audit_context: AuditContext,
     user_id: UserId,
     locked_until: DateTime<Utc>,
 ) {
-    record_login_audit_event_with_result(
-        audit_log_service.clone(),
-        audit_context.clone(),
-        "lockout_notification_queued",
-        user_id,
-        "queued",
-        None,
-        Some(json!({
-            "locked_until": locked_until,
-        })),
-    );
-    tokio::spawn(async move {
-        match send_lockout_notification(&pool, &config, user_id, locked_until).await {
-            Ok(()) => record_login_audit_event_with_result(
+    let Some(redis_pool) = state.redis() else {
+        record_login_audit_event_with_result(
+            audit_log_service,
+            audit_context,
+            "lockout_notification_failed",
+            user_id,
+            "failed",
+            Some("lockout_notification_queue_unavailable"),
+            Some(json!({
+                "locked_until": locked_until,
+            })),
+        );
+        return;
+    };
+
+    match enqueue_lockout_notification_job(
+        redis_pool,
+        &LockoutNotificationJob::new(user_id, locked_until),
+    )
+    .await
+    {
+        Ok(()) => record_login_audit_event_with_result(
+            audit_log_service,
+            audit_context,
+            "lockout_notification_queued",
+            user_id,
+            "queued",
+            None,
+            Some(json!({
+                "locked_until": locked_until,
+            })),
+        ),
+        Err(err) => {
+            tracing::warn!(
+                error = ?err,
+                user_id = %user_id,
+                "Failed to enqueue lockout notification job"
+            );
+            record_login_audit_event_with_result(
                 audit_log_service,
                 audit_context,
-                "lockout_notification_sent",
+                "lockout_notification_failed",
                 user_id,
-                "success",
-                None,
+                "failed",
+                Some("lockout_notification_queue_failed"),
                 Some(json!({
                     "locked_until": locked_until,
                 })),
-            ),
-            Err(err) => {
-                tracing::warn!(
-                    error = ?err,
-                    user_id = %user_id,
-                    "Failed to send lockout notification"
-                );
-                record_login_audit_event_with_result(
-                    audit_log_service,
-                    audit_context,
-                    "lockout_notification_failed",
-                    user_id,
-                    "failed",
-                    Some("lockout_notification_send_failed"),
-                    Some(json!({
-                        "locked_until": locked_until,
-                    })),
-                );
-            }
+            );
         }
-    });
+    }
 }
 
 async fn record_login_failure_state(

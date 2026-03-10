@@ -7,8 +7,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sqlx::PgPool;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::{env, net::TcpListener, time::Duration};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use timekeeper_backend::{
     config::Config,
     handlers::auth,
@@ -95,66 +95,47 @@ fn extract_set_cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
         })
 }
 
+fn percentile_millis(samples: &[u128], numerator: usize, denominator: usize) -> u128 {
+    assert!(!samples.is_empty(), "samples must not be empty");
+    assert!(numerator > 0 && numerator <= denominator);
+
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let rank = (sorted.len() * numerator)
+        .div_ceil(denominator)
+        .saturating_sub(1);
+    sorted[rank]
+}
+
+async fn measure_login_failure_duration(app: &Router, username: &str, password: &str) -> Duration {
+    let started = Instant::now();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": username,
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    started.elapsed()
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct AuditTrailRow {
     event_type: String,
     result: String,
     error_code: Option<String>,
-}
-
-fn env_mutex() -> &'static Mutex<()> {
-    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    ENV_MUTEX.get_or_init(|| Mutex::new(()))
-}
-
-struct EnvGuard {
-    _lock: MutexGuard<'static, ()>,
-    original: Vec<(&'static str, Option<String>)>,
-}
-
-impl EnvGuard {
-    fn new() -> Self {
-        const KEYS: [&str; 5] = [
-            "SMTP_SKIP_SEND",
-            "SMTP_HOST",
-            "SMTP_PORT",
-            "SMTP_USERNAME",
-            "SMTP_PASSWORD",
-        ];
-        let lock = env_mutex().lock().expect("lock env");
-        let original = KEYS.iter().map(|&key| (key, env::var(key).ok())).collect();
-        Self {
-            _lock: lock,
-            original,
-        }
-    }
-
-    fn set(&self, key: &'static str, value: impl AsRef<str>) {
-        env::set_var(key, value.as_ref());
-    }
-
-    fn remove(&self, key: &'static str) {
-        env::remove_var(key);
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (key, value) in &self.original {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
-            }
-        }
-    }
-}
-
-fn allocate_and_release_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind ephemeral port")
-        .local_addr()
-        .expect("read socket addr")
-        .port()
 }
 
 async fn fetch_auth_audit_trail(
@@ -245,6 +226,14 @@ async fn fetch_lock_state(
     .fetch_one(pool)
     .await
     .expect("fetch lock state")
+}
+
+async fn fetch_lockout_count(pool: &PgPool, user_id: &str) -> i32 {
+    sqlx::query_scalar::<_, i32>("SELECT lockout_count FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("fetch lockout count")
 }
 
 #[tokio::test]
@@ -383,6 +372,72 @@ async fn login_rejects_unknown_username() {
 }
 
 #[tokio::test]
+async fn login_failure_timing_distribution_overlaps_for_missing_and_existing_users() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 128;
+    let app = auth_router_with_config(pool, config);
+
+    let _ = measure_login_failure_duration(&app, &user.username, "Wrong123!").await;
+    let _ = measure_login_failure_duration(&app, "missing-user", "Wrong123!").await;
+
+    const SAMPLES: usize = 12;
+    let mut existing_ms = Vec::with_capacity(SAMPLES);
+    let mut missing_ms = Vec::with_capacity(SAMPLES);
+
+    for attempt in 0..SAMPLES {
+        if attempt % 2 == 0 {
+            existing_ms.push(
+                measure_login_failure_duration(&app, &user.username, "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+            missing_ms.push(
+                measure_login_failure_duration(&app, "missing-user", "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+        } else {
+            missing_ms.push(
+                measure_login_failure_duration(&app, "missing-user", "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+            existing_ms.push(
+                measure_login_failure_duration(&app, &user.username, "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+        }
+    }
+
+    let existing_median = percentile_millis(&existing_ms, 1, 2);
+    let missing_median = percentile_millis(&missing_ms, 1, 2);
+    let existing_p90 = percentile_millis(&existing_ms, 9, 10);
+    let missing_p90 = percentile_millis(&missing_ms, 9, 10);
+    let median_delta = existing_median.abs_diff(missing_median);
+    let p90_delta = existing_p90.abs_diff(missing_p90);
+
+    eprintln!(
+        "existing_ms={existing_ms:?} missing_ms={missing_ms:?} median_delta_ms={median_delta} p90_delta_ms={p90_delta}"
+    );
+
+    assert!(
+        median_delta <= 20,
+        "median login failure latency diverged too much: existing={existing_median}ms missing={missing_median}ms"
+    );
+    assert!(
+        p90_delta <= 25,
+        "p90 login failure latency diverged too much: existing={existing_p90}ms missing={missing_p90}ms"
+    );
+}
+
+#[tokio::test]
 async fn login_locks_account_after_reaching_failure_threshold() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
@@ -446,13 +501,8 @@ async fn login_locks_account_after_reaching_failure_threshold() {
 }
 
 #[tokio::test]
-async fn lockout_records_denied_blocked_and_notification_success_audit_results() {
+async fn lockout_records_denied_blocked_and_notification_failed_without_queue() {
     let _guard = integration_guard().await;
-    let env = EnvGuard::new();
-    env.set("SMTP_SKIP_SEND", "true");
-    env.remove("SMTP_HOST");
-    env.remove("SMTP_PORT");
-
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
 
@@ -490,8 +540,7 @@ async fn lockout_records_denied_blocked_and_notification_success_audit_results()
         &[
             "login_failure",
             "account_lockout",
-            "lockout_notification_queued",
-            "lockout_notification_sent",
+            "lockout_notification_failed",
         ],
     )
     .await;
@@ -502,56 +551,6 @@ async fn lockout_records_denied_blocked_and_notification_success_audit_results()
         .collect::<Vec<_>>();
     assert!(results.contains(&("login_failure", "denied")));
     assert!(results.contains(&("account_lockout", "blocked")));
-    assert!(results.contains(&("lockout_notification_queued", "queued")));
-    assert!(results.contains(&("lockout_notification_sent", "success")));
-}
-
-#[tokio::test]
-async fn lockout_notification_failure_records_failed_audit_result() {
-    let _guard = integration_guard().await;
-    let env = EnvGuard::new();
-    env.remove("SMTP_SKIP_SEND");
-    env.set("SMTP_HOST", "127.0.0.1");
-    env.set("SMTP_PORT", allocate_and_release_port().to_string());
-
-    let pool = support::test_pool().await;
-    migrate_db(&pool).await;
-
-    let password = "Correct123!";
-    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
-    let mut config = support::test_config();
-    config.account_lockout_threshold = 1;
-    config.account_lockout_duration_minutes = 15;
-    let app = auth_router_with_config(pool.clone(), config);
-    let started_at = Utc::now();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({
-                        "username": user.username.clone(),
-                        "password": "Wrong123!",
-                    })
-                    .to_string(),
-                ))
-                .expect("build login request"),
-        )
-        .await
-        .expect("login request");
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-    let trail = wait_for_auth_audit_events(
-        &pool,
-        &user.id.to_string(),
-        started_at,
-        &["lockout_notification_queued", "lockout_notification_failed"],
-    )
-    .await;
-
     let failed_row = trail
         .iter()
         .find(|row| row.event_type == "lockout_notification_failed")
@@ -559,7 +558,7 @@ async fn lockout_notification_failure_records_failed_audit_result() {
     assert_eq!(failed_row.result, "failed");
     assert_eq!(
         failed_row.error_code.as_deref(),
-        Some("lockout_notification_send_failed")
+        Some("lockout_notification_queue_unavailable")
     );
 }
 
@@ -611,6 +610,57 @@ async fn login_success_preserves_lockout_history_while_clearing_active_failures(
     assert_eq!(failed_attempts, 0);
     assert!(locked_until.is_none());
     assert_eq!(lockout_count, 1);
+}
+
+#[tokio::test]
+async fn lockout_count_decays_after_extended_quiet_period() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    sqlx::query(
+        "UPDATE users \
+         SET lockout_count = 3, \
+             failed_login_attempts = 0, \
+             locked_until = NULL, \
+             last_login_failure_at = NOW() - INTERVAL '49 hours', \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed decayed lockout history");
+
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 1;
+    config.account_lockout_duration_minutes = 15;
+    config.account_lockout_backoff_enabled = true;
+    config.account_lockout_max_duration_hours = 24;
+    let app = auth_router_with_config(pool.clone(), config);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    assert_eq!(fetch_lockout_count(&pool, &user.id.to_string()).await, 2);
 }
 
 #[tokio::test]
