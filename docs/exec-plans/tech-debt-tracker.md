@@ -249,7 +249,7 @@
 - [backend/src/bin/lockout_notification_worker.rs](/home/mrabbit/Documents/timekeeper/backend/src/bin/lockout_notification_worker.rs)
 - [backend/src/services/lockout_notification_queue.rs](/home/mrabbit/Documents/timekeeper/backend/src/services/lockout_notification_queue.rs)
 - [backend/src/services/lockout_notification_worker.rs](/home/mrabbit/Documents/timekeeper/backend/src/services/lockout_notification_worker.rs)
-- [docs/RUNBOOK.md](/home/mrabbit/Documents/timekeeper/docs/RUNBOOK.md)
+- [docs/manual/RUNBOOK.md](/home/mrabbit/Documents/timekeeper/docs/manual/RUNBOOK.md)
 
 **Impact**
 
