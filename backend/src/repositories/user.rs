@@ -128,12 +128,11 @@ pub async fn reset_mfa_and_revoke_refresh_tokens(
     user_id: crate::types::UserId,
 ) -> Result<bool, AppError> {
     let mut tx = transaction::begin_transaction(pool).await?;
-    let user_id = user_id.to_string();
 
     let result = sqlx::query(
         "UPDATE users SET mfa_secret_enc = NULL, mfa_enabled_at = NULL, updated_at = NOW() WHERE id = $1",
     )
-    .bind(&user_id)
+    .bind(user_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
@@ -143,7 +142,7 @@ pub async fn reset_mfa_and_revoke_refresh_tokens(
     }
 
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
-        .bind(&user_id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;

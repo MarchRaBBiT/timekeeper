@@ -9,7 +9,6 @@ use std::future::Future;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::{
     config::Config,
@@ -288,98 +287,43 @@ pub async fn refresh(
         .as_ref()
         .and_then(|session| session.access_jti.clone());
     let audit_context = AuditContext::new(Some(user.id), "user", &headers, Some(&request_id));
-    let mut tx = state
-        .write_pool
-        .begin()
-        .await
-        .map_err(|_| internal_error("Failed to start refresh token rotation transaction"))?;
     let now = Utc::now();
-
-    sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(&rt_data.id)
-    .bind(rt_data.user_id.to_string())
-    .bind(&rt_data.token_hash)
-    .bind(rt_data.expires_at)
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| internal_error("Failed to store new refresh token"))?;
-
-    sqlx::query(
-        "INSERT INTO active_access_tokens (jti, user_id, expires_at, context) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(&claims.jti)
-    .bind(claims.sub.clone())
-    .bind(access_expires_at)
-    .bind(Some(format!("refresh_{}", stored.id)))
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| internal_error("Failed to store active access token"))?;
-
-    let refreshed_session_id = if let Some(session_id) = sqlx::query_scalar::<_, String>(
-        r#"
-        UPDATE active_sessions
-        SET refresh_token_id = $1,
-            access_jti = $2,
-            last_seen_at = $3,
-            expires_at = $4
-        WHERE refresh_token_id = $5
-        RETURNING id
-        "#,
-    )
-    .bind(&rt_data.id)
-    .bind(&claims.jti)
-    .bind(now)
-    .bind(rt_data.expires_at)
-    .bind(&stored.id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|_| internal_error("Failed to update active session"))?
-    {
-        session_id
-    } else {
-        let session_id = Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO active_sessions \
-             (id, user_id, refresh_token_id, access_jti, device_label, last_seen_at, expires_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(&session_id)
-        .bind(user.id)
-        .bind(&rt_data.id)
-        .bind(&claims.jti)
-        .bind(previous_device_label.as_deref())
-        .bind(now)
-        .bind(rt_data.expires_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| internal_error("Failed to create active session"))?;
-        session_id
+    let refresh_access_context = format!("refresh_{}", stored.id);
+    let access_token = ActiveAccessToken {
+        jti: &claims.jti,
+        user_id: user.id,
+        expires_at: access_expires_at,
+        context: Some(refresh_access_context.as_str()),
     };
 
-    let revoked_old = sqlx::query_scalar::<_, String>(
-        "DELETE FROM refresh_tokens WHERE id = $1 AND token_hash = $2 RETURNING id",
+    let refreshed_session_id = auth_repo::rotate_refresh_token(
+        &state.write_pool,
+        auth_repo::RefreshRotationParams {
+            stored_refresh_token_id: &stored.id,
+            stored_refresh_token_hash: &stored.token_hash,
+            new_refresh_token: &rt_data,
+            new_access_token: &access_token,
+            previous_device_label: previous_device_label.as_deref(),
+            refreshed_at: now,
+        },
     )
-    .bind(&stored.id)
-    .bind(&stored.token_hash)
-    .fetch_optional(&mut *tx)
     .await
-    .map_err(|_| internal_error("Failed to revoke old refresh token"))?;
+    .map_err(|err| match err {
+        AppError::InternalServerError(_) => {
+            internal_error("Failed to rotate refresh token transaction")
+        }
+        other => other,
+    })?;
 
-    if revoked_old.is_none() {
+    let Some(refreshed_session) = refreshed_session_id else {
         return Err(unauthorized("Invalid or already-rotated refresh token"));
-    }
-
-    tx.commit()
-        .await
-        .map_err(|_| internal_error("Failed to commit refresh token rotation"))?;
+    };
 
     record_session_audit_event(
         Some(audit_log_service.clone()),
         audit_context.clone(),
         "session_create",
-        Some(refreshed_session_id),
+        Some(refreshed_session.active_session_id),
         Some(json!({
             "source": "refresh",
             "device_label": previous_device_label
