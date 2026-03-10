@@ -1,147 +1,122 @@
 # リポジトリ ガイドライン
 
-**Generated:** 2026-01-16
-**Commit:** (not tracked)
+**Generated:** 2026-03-10  
 **Project:** Timekeeper - 勤怠管理システム
 
-## OVERVIEW
-Rust/Axum バックエンド + Leptos/WASM フロントエンド + Playwright E2E の勤怠管理システム。小〜中規模チーム向けの認証・勤怠打刻・申請承認ワークフローを提供。
+## Purpose
 
-## STRUCTURE
-```
-timekeeper/
-├── backend/          # Axum API + SQLx + PostgreSQL (118 Rust files)
-│   ├── src/
-│   │   ├── handlers/       # API ハンドラー（認証・勤怠・申請）
-│   │   ├── repositories/   # リポジトリ層（Trait-based）
-│   │   ├── models/         # データモデル
-│   │   ├── middleware/     # JWT/認証/ロギング
-│   │   ├── services/       # ビジネスロジック（祝日）
-│   │   └── bin/           # ユーティリティ（token_cleanup）
-│   ├── migrations/     # SQLx マイグレーション
-│   └── tests/          # 統合テスト（testcontainers）
-├── frontend/         # Leptos WASM + TailwindCSS (77 Rust files)
-│   ├── src/
-│   │   ├── pages/         # ルーティング画面（MVVM pattern）
-│   │   ├── components/    # 再利用コンポーネント
-│   │   ├── api/           # API クライアント（reqwest-wasm）
-│   │   └── state/         # グローバル状態管理
-├── e2e/             # Playwright スモークテスト
-├── scripts/          # PowerShell 自動化（起動/ビルド/テスト）
-└── docs/            # コンポーネント/API ドキュメント
-```
+この `AGENTS.md` は repo のハーネス入口です。  
+長い実装方針や運用手順を 1 ファイルに詰め込まず、以下の 3 つだけを先に決めます。
 
-## WHERE TO LOOK
-| Task | Location | Notes |
-|------|----------|-------|
-| バックエンド API 追加 | `backend/src/handlers/` | 参考: `backend/AGENTS.md` |
-| リポジトリ実装 | `backend/src/repositories/` | Trait-based pattern |
-| マイグレーション | `backend/migrations/` | SQLx, auto-run on start |
-| フロントエンド画面追加 | `frontend/src/pages/` | MVVM: panel/view_model/repository |
-| API 呼び出し | `frontend/src/api/client.rs` | Centralized client |
-| 統合テスト | `backend/tests/` | testcontainers + ctor |
-| E2E スモーク | `e2e/*.mjs`, `scripts/test_backend.ps1` | Playwright + PowerShell |
+1. どこを source of truth にするか
+2. どの順で検証を積み上げるか
+3. 完了を何で判定するか
 
-## CONVENTIONS
-### 共通
-- エンコーディング: UTF-8
-- 改行コード: LF
-- 言語: 英語で思考、日本語でコミュニケーション
-- コミット: Conventional Commits (`feat:`, `fix:`, `chore:`)
-- バージョン管理: `git` コマンドは使わず `jj` (jujutsu) を使用
+詳細な運用は次を参照します。
 
-### Jujutsu スナップショット運用
-- 変更後に対象テストが成功するたび、`jj` でスナップショットを作成する
-- 基本手順:
-  1. `jj status` で差分確認
-  2. 対象テストを実行（例: `cargo test --test auth_flow_api`）
-  3. テスト成功を確認
-  4. `jj commit -m "<message>"` でスナップショット作成
+- ハーネス利用手順: [docs/manual/HARNESS.md](/home/mrabbit/Documents/timekeeper/docs/manual/HARNESS.md)
+- ハーネス設計意図: [docs/design-docs/harness-engineering.md](/home/mrabbit/Documents/timekeeper/docs/design-docs/harness-engineering.md)
+- 複雑タスク計画: [.agent/PLANS.md](/home/mrabbit/Documents/timekeeper/.agent/PLANS.md)
 
-- コミットメッセージ規則:
-  - テスト追加・更新のみ: `chore(test): add coverage for <module_or_endpoint>`
-  - テスト成功ごとのスナップショット: `chore(test): snapshot after <test_target> pass`
-  - 機能修正＋テスト成功: `fix(<scope>): <summary>`
+## Source Of Truth
 
-### Rust 全般
-- インデント: 4 スペース
-- 命名: モジュールは `snake_case`、型は `PascalCase`
-- 事前確認: `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`
+- 実装制約と作業順序: この `AGENTS.md`
+- 長時間・複数レイヤー作業の進捗: `ExecPlan`
+- 実行可能な検証入口: `scripts/harness.sh`
+- 各レイヤーの詳細規約:
+  - [backend/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/AGENTS.md)
+  - [frontend/AGENTS.md](/home/mrabbit/Documents/timekeeper/frontend/AGENTS.md)
+  - [backend/tests/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/tests/AGENTS.md)
 
-### テスト実装ルール（必須）
-- リファクタリング前後で、変更対象の挙動を検証するテストを必ず実行する
-- 変更対象にテストが存在しない場合は、先にテストを実装してから変更し、テスト成功を確認する
-- 新機能を実装する場合は、あるべき挙動を示すテストを先に実装してから本体実装を行う（テスト先行）
-- いずれの変更でも、最終的に関連テストが成功した状態で完了とする
+## Harness Loop
 
-### バックエンド (Axum)
-- 認証: `Extension<User>` エクストラクター
-- 検証: `validator` crate, `payload.validate()?`
-- エラー: 統一 `AppError` enum (`IntoResponse` 実装)
-- テスト: 統合テストは `testcontainers` で実 DB 使用
+作業は必ず次の順で進めます。
 
-### フロントエンド (Leptos)
-- 状態: `*_signal` または `use_*` ヘルパー
-- コンポーネント: `PascalCase`
-- アーキテクチャ: MVVM pattern (`panel.rs` + `view_model.rs` + `repository.rs`)
+1. `AGENTS.md` と該当サブディレクトリの `AGENTS.md` を確認する
+2. 複雑タスクなら `ExecPlan` を作る
+3. 最小の再現/検証を先に作る
+4. 実装する
+5. 変更 seam に近い harness stage から順に通す
+6. green になった節目で `jj commit`
+7. issue / PR / plan を実測値で更新する
 
-## ANTI-PATTERNS (THIS PROJECT)
-- 型エラー抑制を禁止（`as any`, `@ts-ignore`, `@ts-expect-error`）
-- 空の catch ブロックを禁止
-- 既存ロジックを空関数で置き換えを禁止（必ず実装まで完了）
-- ユーザーの明示的許可なしに挙動/仕様を簡略化または削除を禁止
-- ハンドラーの肥大化を回避（重い DB ロジックは repository/service に委譲）
-- フロントエンドの大幅なリファクタリングは UI/UX 変更を含む場合 `frontend-ui-ux-engineer` に委譲
-- SQLxマイグレーションの変更禁止（必ず新しいファイル追加でDB操作）
+## Validation Ladder
 
-## EXEC PLAN 運用 (Codex)
-- 複雑タスク（複数レイヤー横断・長時間実装・仕様判断が多い変更）では `ExecPlan` を必須とする
-- 小さな修正（単一ファイルの軽微修正、文言修正、明確なバグ1点修正）は従来フローのままでよい
-- 計画書は `.agent/PLANS.md` を使い、完了条件を「観測できる挙動」で定義する
-- `ExecPlan` では検証コマンドと結果を残し、テスト成功の節目ごとに `jj` スナップショットを作成する
-- 実装中は計画のチェックボックスを更新し、未完了項目を明示する
+重い検証を最初から回さず、下から順に積み上げます。
 
-## COMMANDS
+1. `doctor`
+   - 必須コマンド、依存ツール、live URL 前提を確認
+2. `backend-unit`
+   - `cargo test -p timekeeper-backend --lib`
+3. `backend-integration`
+   - `cargo test -p timekeeper-backend --tests`
+4. `api-smoke`
+   - live backend に対する API スモーク
+5. `frontend-login`
+   - live frontend に対する Playwright login smoke
+6. `full`
+   - 上記を束ねた統合実行
+
+共通入口:
+
 ```bash
-# バックエンド起動
-cd backend; cargo run
-# バックエンド（Podman経由）
-pwsh -File .\scripts\backend.ps1 start
-
-# フロントエンドビルド＆起動
-pwsh -File .\scripts\frontend.ps1 start
-
-# バックエンドテスト
-./scripts/test_backend_integrated.sh
-# API スモークテスト
-pwsh -File .\scripts\test_backend.ps1
-
-# フロントエンドテスト（WASM）
-cd frontend; wasm-pack test --headless --firefox
-
-# E2E スモーク
-cd e2e; node run.mjs
+bash scripts/harness.sh --list
+bash scripts/harness.sh doctor
+bash scripts/harness.sh backend-unit
+bash scripts/harness.sh smoke
+bash scripts/harness.sh full
 ```
 
-## NOTES
-- 環境変数: `.env` に設定（`env.example` をコピー）
-- データベース: `DATABASE_URL` で PostgreSQL or SQLite を指定
-- PID ファイル: `.backend.pid`, `.frontend.pid` でプロセス管理（`.gitignore` に追加済み）
-- マイグレーション: バックエンド起動時に自動実行
-- 詳細ガイド: `CODING_STANDARD.md`（関数設計・リファクタリング）
+## Completion Rule
 
-## SUBDIRECTORIES
-- `backend/AGENTS.md` - バックエンド詳細（ハンドラー・リポジトリ・テスト）
-- `backend/src/middleware/AGENTS.md` - ミドルウェア層のアーキテクチャ（監査ログ・認証・ロギング）
-- `backend/src/handlers/AGENTS.md` - ハンドラー層のパターンと規約
-- `backend/src/handlers/admin/AGENTS.md` - 管理者機能の実装ガイド
-- `backend/tests/AGENTS.md` - 統合テストの構造と規約
-- `frontend/AGENTS.md` - フロントエンド詳細（MVVM・API・状態管理）
-- `frontend/src/api/AGENTS.md` - API クライアントのアーキテクチャ（トークン管理・自動リフレッシュ）
-- `frontend/src/pages/admin/components/AGENTS.md` - 管理者コンポーネントのアーキテクチャ（祝日管理・UI ロジック）
+完了とみなす条件は次です。
 
-## RUST SKILLS (GENERAL)
-The following skills are available for general Rust development tasks:
-- `rust_router`: Question routing for Rust concepts.
-- `coding_guidelines`: Project-wide settings and style enforcement.
-- `unsafe_checker`: Safety validation for `unsafe` blocks.
+- 変更対象の期待挙動を示す test がある
+- 変更 seam に対応する harness stage が green
+- `cargo fmt --all` が通る
+- 関連 issue / PR / ExecPlan に実測結果が残っている
+- `jj` snapshot が作成されている
+
+`cargo clippy --all-targets -- -D warnings` は repo 標準だが、既存違反で失敗する場合は「今回差分による失敗ではない」と切り分けて明記すること。
+
+## Task Routing
+
+### Backend
+
+- API / handler: `backend/src/handlers/`
+- repository / SQL: `backend/src/repositories/`
+- integration test: `backend/tests/`
+
+### Frontend
+
+- page / MVVM: `frontend/src/pages/`
+- API client: `frontend/src/api/`
+- shared component: `frontend/src/components/`
+
+## Non-Negotiables
+
+- `git` ではなく `jj` を使う
+- 変更前後で relevant test を必ず回す
+- 新規挙動は test 先行で固定する
+- SQLx migration は既存ファイル編集でなく新規追加
+- 重い DB ロジックを handler に溜めない
+- ユーザー許可なく仕様を簡略化しない
+
+## Command Quick Reference
+
+```bash
+# ハーネス入口
+bash scripts/harness.sh --list
+
+# backend
+cd backend && cargo run
+
+# frontend
+pwsh -File .\\scripts\\frontend.ps1 start
+
+# focused backend integration
+./scripts/test_backend_integrated.sh
+
+# live API smoke
+./scripts/test_backend.sh
+```
