@@ -20,6 +20,22 @@ mod support;
 
 use support::{create_test_token, seed_active_session, seed_user, test_config, test_pool};
 
+async fn count_active_sessions(pool: &PgPool, user_id: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_sessions WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("count active sessions")
+}
+
+async fn refresh_token_exists(pool: &PgPool, token_id: &str) -> bool {
+    sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM refresh_tokens WHERE id = $1)")
+        .bind(token_id)
+        .fetch_one(pool)
+        .await
+        .expect("refresh token exists")
+}
+
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
     GUARD
@@ -115,6 +131,47 @@ async fn test_list_sessions_returns_user_sessions() {
 }
 
 #[tokio::test]
+async fn test_list_sessions_marks_current_session() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let refresh_token_id = uuid::Uuid::new_v4().to_string();
+    let access_jti = uuid::Uuid::new_v4().to_string();
+    let _session_id =
+        seed_active_session(&pool, employee.id, &refresh_token_id, Some(&access_jti)).await;
+
+    let claims = create_test_claims(employee.id, &access_jti);
+    let app = test_router_user_sessions(pool.clone(), employee.clone(), claims);
+
+    let request = Request::builder()
+        .uri("/api/sessions")
+        .header(
+            "Authorization",
+            format!(
+                "Bearer {}",
+                create_test_token(employee.id, employee.role.clone())
+            ),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json.as_array().unwrap().len(), 1);
+    assert_eq!(json[0]["is_current"].as_bool(), Some(true));
+}
+
+#[tokio::test]
 async fn test_revoke_other_session_succeeds() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
@@ -148,6 +205,11 @@ async fn test_revoke_other_session_succeeds() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        count_active_sessions(&pool, &employee.id.to_string()).await,
+        0
+    );
+    assert!(!refresh_token_exists(&pool, &refresh_token_id).await);
 }
 
 #[tokio::test]
