@@ -4,9 +4,11 @@ use axum::{
     routing::{get, post, put},
     Extension, Router,
 };
+use chrono::{DateTime, Utc};
 use serde_json::json;
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::{env, net::TcpListener, time::Duration};
 use timekeeper_backend::{
     config::Config,
     handlers::auth,
@@ -91,6 +93,105 @@ fn extract_set_cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
                 Some(token.to_string())
             }
         })
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AuditTrailRow {
+    event_type: String,
+    result: String,
+    error_code: Option<String>,
+}
+
+fn env_mutex() -> &'static Mutex<()> {
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_MUTEX.get_or_init(|| Mutex::new(()))
+}
+
+struct EnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    original: Vec<(&'static str, Option<String>)>,
+}
+
+impl EnvGuard {
+    fn new() -> Self {
+        const KEYS: [&str; 5] = [
+            "SMTP_SKIP_SEND",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+        ];
+        let lock = env_mutex().lock().expect("lock env");
+        let original = KEYS.iter().map(|&key| (key, env::var(key).ok())).collect();
+        Self {
+            _lock: lock,
+            original,
+        }
+    }
+
+    fn set(&self, key: &'static str, value: impl AsRef<str>) {
+        env::set_var(key, value.as_ref());
+    }
+
+    fn remove(&self, key: &'static str) {
+        env::remove_var(key);
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in &self.original {
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
+        }
+    }
+}
+
+fn allocate_closed_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .expect("bind ephemeral port")
+        .local_addr()
+        .expect("read socket addr")
+        .port()
+}
+
+async fn fetch_auth_audit_trail(
+    pool: &PgPool,
+    user_id: &str,
+    since: DateTime<Utc>,
+) -> Vec<AuditTrailRow> {
+    sqlx::query_as::<_, AuditTrailRow>(
+        "SELECT event_type, result, error_code \
+         FROM audit_logs \
+         WHERE target_id = $1 AND occurred_at >= $2 \
+         ORDER BY occurred_at ASC",
+    )
+    .bind(user_id)
+    .bind(since)
+    .fetch_all(pool)
+    .await
+    .expect("fetch auth audit trail")
+}
+
+async fn wait_for_auth_audit_events(
+    pool: &PgPool,
+    user_id: &str,
+    since: DateTime<Utc>,
+    expected_event_types: &[&str],
+) -> Vec<AuditTrailRow> {
+    for _ in 0..40 {
+        let rows = fetch_auth_audit_trail(pool, user_id, since).await;
+        if expected_event_types
+            .iter()
+            .all(|event_type| rows.iter().any(|row| row.event_type == *event_type))
+        {
+            return rows;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    fetch_auth_audit_trail(pool, user_id, since).await
 }
 
 async fn count_refresh_tokens(pool: &PgPool, user_id: &str) -> i64 {
@@ -334,6 +435,124 @@ async fn login_locks_account_after_reaching_failure_threshold() {
         .await
         .expect("login request");
     assert_eq!(locked_response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn lockout_records_denied_blocked_and_notification_success_audit_results() {
+    let _guard = integration_guard().await;
+    let env = EnvGuard::new();
+    env.set("SMTP_SKIP_SEND", "true");
+    env.remove("SMTP_HOST");
+    env.remove("SMTP_PORT");
+
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Correct123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 1;
+    config.account_lockout_duration_minutes = 15;
+    let app = auth_router_with_config(pool.clone(), config);
+    let started_at = Utc::now();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let trail = wait_for_auth_audit_events(
+        &pool,
+        &user.id.to_string(),
+        started_at,
+        &[
+            "login_failure",
+            "account_lockout",
+            "lockout_notification_queued",
+            "lockout_notification_sent",
+        ],
+    )
+    .await;
+
+    let results = trail
+        .iter()
+        .map(|row| (row.event_type.as_str(), row.result.as_str()))
+        .collect::<Vec<_>>();
+    assert!(results.contains(&("login_failure", "denied")));
+    assert!(results.contains(&("account_lockout", "blocked")));
+    assert!(results.contains(&("lockout_notification_queued", "queued")));
+    assert!(results.contains(&("lockout_notification_sent", "success")));
+}
+
+#[tokio::test]
+async fn lockout_notification_failure_records_failed_audit_result() {
+    let _guard = integration_guard().await;
+    let env = EnvGuard::new();
+    env.remove("SMTP_SKIP_SEND");
+    env.set("SMTP_HOST", "127.0.0.1");
+    env.set("SMTP_PORT", allocate_closed_port().to_string());
+
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let password = "Correct123!";
+    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 1;
+    config.account_lockout_duration_minutes = 15;
+    let app = auth_router_with_config(pool.clone(), config);
+    let started_at = Utc::now();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let trail = wait_for_auth_audit_events(
+        &pool,
+        &user.id.to_string(),
+        started_at,
+        &["lockout_notification_queued", "lockout_notification_failed"],
+    )
+    .await;
+
+    let failed_row = trail
+        .iter()
+        .find(|row| row.event_type == "lockout_notification_failed")
+        .expect("failed notification audit row");
+    assert_eq!(failed_row.result, "failed");
+    assert_eq!(
+        failed_row.error_code.as_deref(),
+        Some("lockout_notification_send_failed")
+    );
 }
 
 #[tokio::test]
