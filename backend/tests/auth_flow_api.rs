@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use timekeeper_backend::{
     config::Config,
     handlers::auth,
@@ -93,6 +93,42 @@ fn extract_set_cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
                 Some(token.to_string())
             }
         })
+}
+
+fn percentile_millis(samples: &[u128], numerator: usize, denominator: usize) -> u128 {
+    assert!(!samples.is_empty(), "samples must not be empty");
+    assert!(numerator > 0 && numerator <= denominator);
+
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let rank = (sorted.len() * numerator)
+        .div_ceil(denominator)
+        .saturating_sub(1);
+    sorted[rank]
+}
+
+async fn measure_login_failure_duration(app: &Router, username: &str, password: &str) -> Duration {
+    let started = Instant::now();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": username,
+                        "password": password,
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    started.elapsed()
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -333,6 +369,72 @@ async fn login_rejects_unknown_username() {
     assert_eq!(refresh_token_count, refresh_token_count_before);
     assert_eq!(access_token_count, access_token_count_before);
     assert_eq!(active_session_count, active_session_count_before);
+}
+
+#[tokio::test]
+async fn login_failure_timing_distribution_overlaps_for_missing_and_existing_users() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 128;
+    let app = auth_router_with_config(pool, config);
+
+    let _ = measure_login_failure_duration(&app, &user.username, "Wrong123!").await;
+    let _ = measure_login_failure_duration(&app, "missing-user", "Wrong123!").await;
+
+    const SAMPLES: usize = 12;
+    let mut existing_ms = Vec::with_capacity(SAMPLES);
+    let mut missing_ms = Vec::with_capacity(SAMPLES);
+
+    for attempt in 0..SAMPLES {
+        if attempt % 2 == 0 {
+            existing_ms.push(
+                measure_login_failure_duration(&app, &user.username, "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+            missing_ms.push(
+                measure_login_failure_duration(&app, "missing-user", "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+        } else {
+            missing_ms.push(
+                measure_login_failure_duration(&app, "missing-user", "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+            existing_ms.push(
+                measure_login_failure_duration(&app, &user.username, "Wrong123!")
+                    .await
+                    .as_millis(),
+            );
+        }
+    }
+
+    let existing_median = percentile_millis(&existing_ms, 1, 2);
+    let missing_median = percentile_millis(&missing_ms, 1, 2);
+    let existing_p90 = percentile_millis(&existing_ms, 9, 10);
+    let missing_p90 = percentile_millis(&missing_ms, 9, 10);
+    let median_delta = existing_median.abs_diff(missing_median);
+    let p90_delta = existing_p90.abs_diff(missing_p90);
+
+    eprintln!(
+        "existing_ms={existing_ms:?} missing_ms={missing_ms:?} median_delta_ms={median_delta} p90_delta_ms={p90_delta}"
+    );
+
+    assert!(
+        median_delta <= 20,
+        "median login failure latency diverged too much: existing={existing_median}ms missing={missing_median}ms"
+    );
+    assert!(
+        p90_delta <= 25,
+        "p90 login failure latency diverged too much: existing={existing_p90}ms missing={missing_p90}ms"
+    );
 }
 
 #[tokio::test]
