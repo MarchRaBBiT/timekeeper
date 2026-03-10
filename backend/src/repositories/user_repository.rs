@@ -19,25 +19,26 @@ use crate::types::UserId;
 #[allow(dead_code)]
 pub trait UserRepository: Send + Sync {
     /// Find all users
-    async fn find_all(&self, db: PgPool) -> Result<Vec<User>, AppError>;
+    async fn find_all(&self, db: &PgPool) -> Result<Vec<User>, AppError>;
 
     /// Find a user by ID
-    async fn find_by_id(&self, db: PgPool, id: UserId) -> Result<User, AppError>;
+    async fn find_by_id(&self, db: &PgPool, id: UserId) -> Result<User, AppError>;
 
     /// Create a new user
-    async fn create(&self, db: PgPool, user: &User) -> Result<User, AppError>;
+    async fn create(&self, db: &PgPool, user: &User) -> Result<User, AppError>;
 
     /// Update an existing user
-    async fn update(&self, db: PgPool, user: &User) -> Result<User, AppError>;
+    async fn update(&self, db: &PgPool, user: &User) -> Result<User, AppError>;
 
     /// Delete a user by ID
-    async fn delete(&self, db: PgPool, id: UserId) -> Result<(), AppError>;
+    async fn delete(&self, db: &PgPool, id: UserId) -> Result<(), AppError>;
 
     /// Find user by username
-    async fn find_by_username(&self, db: PgPool, username: &str) -> Result<Option<User>, AppError>;
+    async fn find_by_username(&self, db: &PgPool, username: &str)
+        -> Result<Option<User>, AppError>;
 
     /// Find user by email
-    async fn find_by_email(&self, db: PgPool, email: &str) -> Result<Option<User>, AppError>;
+    async fn find_by_email(&self, db: &PgPool, email: &str) -> Result<Option<User>, AppError>;
 }
 
 #[cfg(test)]
