@@ -4,11 +4,13 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use crate::{
     config::Config,
@@ -58,6 +60,8 @@ pub type HandlerResult<T> = Result<T, AppError>;
 
 const DUMMY_LOGIN_PASSWORD_HASH: &str =
     "$argon2id$v=19$m=19456,t=2,p=1$SHjkBewYpN0AqfNJtz4BCQ$Q6EKet0GGAKSbQ5hQFsXf+6WG+AX8Z91wi5hlimtYew";
+const LOGIN_FAILURE_JITTER_MIN_MS: u64 = 15;
+const LOGIN_FAILURE_JITTER_MAX_MS: u64 = 35;
 const PASSWORD_EXPIRY_WARNING_WINDOW_DAYS: i64 = 7;
 
 #[derive(Debug)]
@@ -81,6 +85,7 @@ pub async fn login(
         .map_err(|_| internal_error("Database error"))?
     else {
         verify_missing_user_login(&payload.password).await?;
+        apply_login_failure_jitter().await;
         return Err(unauthorized("Invalid username or password"));
     };
     user.full_name = decrypt_pii(&user.full_name, &state.config)
@@ -201,13 +206,12 @@ pub async fn login(
                         })),
                     );
                     if let Some(locked_until) = failure_state.locked_until {
-                        let _ = send_lockout_notification(
-                            &state.write_pool,
-                            &state.config,
+                        enqueue_lockout_notification(
+                            state.write_pool.clone(),
+                            state.config.clone(),
                             audit_actor_id,
                             locked_until,
-                        )
-                        .await;
+                        );
                     }
                 }
             }
@@ -1282,6 +1286,14 @@ async fn verify_missing_user_login(candidate: &str) -> HandlerResult<()> {
     .await
 }
 
+async fn apply_login_failure_jitter() {
+    tokio::time::sleep(StdDuration::from_millis(login_failure_jitter_millis())).await;
+}
+
+fn login_failure_jitter_millis() -> u64 {
+    rand::thread_rng().gen_range(LOGIN_FAILURE_JITTER_MIN_MS..=LOGIN_FAILURE_JITTER_MAX_MS)
+}
+
 fn bad_request(message: impl Into<String>) -> AppError {
     AppError::BadRequest(message.into())
 }
@@ -1473,6 +1485,23 @@ async fn send_lockout_notification(
         tracing::warn!(error = ?err, user_id = %user.id, "Failed to send lockout notification");
     }
     Ok(())
+}
+
+fn enqueue_lockout_notification(
+    pool: sqlx::PgPool,
+    config: Config,
+    user_id: UserId,
+    locked_until: DateTime<Utc>,
+) {
+    tokio::spawn(async move {
+        if let Err(err) = send_lockout_notification(&pool, &config, user_id, locked_until).await {
+            tracing::warn!(
+                error = ?err,
+                user_id = %user_id,
+                "Failed to send lockout notification"
+            );
+        }
+    });
 }
 
 async fn ensure_password_not_reused(
@@ -1760,6 +1789,14 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(header::COOKIE, "foo=bar; baz=qux".parse().unwrap());
         assert_eq!(cookie_header_value(&headers), Some("foo=bar; baz=qux"));
+    }
+
+    #[test]
+    fn login_failure_jitter_stays_in_configured_range() {
+        for _ in 0..32 {
+            let jitter = login_failure_jitter_millis();
+            assert!((LOGIN_FAILURE_JITTER_MIN_MS..=LOGIN_FAILURE_JITTER_MAX_MS).contains(&jitter));
+        }
     }
 
     #[test]
