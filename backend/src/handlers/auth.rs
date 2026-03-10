@@ -307,13 +307,7 @@ pub async fn refresh(
             refreshed_at: now,
         },
     )
-    .await
-    .map_err(|err| match err {
-        AppError::InternalServerError(_) => {
-            internal_error("Failed to rotate refresh token transaction")
-        }
-        other => other,
-    })?;
+    .await?;
 
     let Some(refreshed_session) = refreshed_session_id else {
         return Err(unauthorized("Invalid or already-rotated refresh token"));

@@ -224,7 +224,11 @@ pub async fn rotate_refresh_token(
             .new_refresh_token
             .user_id
             .parse::<UserId>()
-            .map_err(|_| AppError::BadRequest("Invalid refresh token user ID".into()))?;
+            .map_err(|_| {
+                AppError::InternalServerError(anyhow::anyhow!(
+                    "Refresh token contained an invalid internal user ID"
+                ))
+            })?;
         let session_id = Uuid::new_v4().to_string();
         active_session::create_active_session_with_id(
             &mut *tx,
@@ -252,6 +256,7 @@ pub async fn rotate_refresh_token(
     .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     if revoked.is_none() {
+        transaction::rollback_transaction(tx).await?;
         return Ok(None);
     }
 
