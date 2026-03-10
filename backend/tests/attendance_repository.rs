@@ -29,7 +29,7 @@ async fn attendance_repository_roundtrip() {
         .run(&pool)
         .await
         .expect("run migrations");
-    sqlx::query("TRUNCATE break_records, attendance")
+    sqlx::query("TRUNCATE attendance, break_records CASCADE")
         .execute(&pool)
         .await
         .expect("truncate attendance tables");
@@ -65,6 +65,39 @@ async fn attendance_repository_roundtrip() {
 }
 
 #[tokio::test]
+async fn attendance_repository_find_all_is_capped() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    sqlx::query("TRUNCATE attendance, break_records CASCADE")
+        .execute(&pool)
+        .await
+        .expect("truncate attendance tables");
+
+    let user = support::seed_user(&pool, UserRole::Employee, false).await;
+    let repo = AttendanceRepository::new();
+    let now = Utc::now();
+    let base_date = NaiveDate::from_ymd_opt(2024, 1, 1).expect("date");
+
+    for day_offset in 0..1_005_i64 {
+        let date = base_date
+            .checked_add_signed(chrono::Duration::days(day_offset))
+            .expect("date offset");
+        let attendance = Attendance::new(user.id, date, now);
+        repo.create(&pool, &attendance)
+            .await
+            .expect("create attendance");
+    }
+
+    let rows = repo.find_all(&pool).await.expect("find all");
+    assert_eq!(rows.len(), 1_000);
+    assert_eq!(rows[0].date, base_date + chrono::Duration::days(1_004));
+}
+
+#[tokio::test]
 async fn break_record_repository_roundtrip() {
     let _guard = integration_guard().await;
     let pool = support::test_pool().await;
@@ -72,7 +105,7 @@ async fn break_record_repository_roundtrip() {
         .run(&pool)
         .await
         .expect("run migrations");
-    sqlx::query("TRUNCATE break_records, attendance")
+    sqlx::query("TRUNCATE attendance, break_records CASCADE")
         .execute(&pool)
         .await
         .expect("truncate attendance tables");

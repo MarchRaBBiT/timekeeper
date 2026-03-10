@@ -100,14 +100,16 @@ impl AttendanceRepository {
     }
 }
 
+const MAX_FIND_ALL_ROWS: i64 = 1_000;
+
 #[async_trait]
 impl AttendanceRepositoryTrait for AttendanceRepository {
     async fn find_all(&self, db: &PgPool) -> Result<Vec<Attendance>, AppError> {
         const SELECT_COLUMNS: &str =
             "id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at";
         let query = format!(
-            "SELECT {} FROM attendance ORDER BY date DESC",
-            SELECT_COLUMNS
+            "SELECT {} FROM attendance ORDER BY date DESC LIMIT {}",
+            SELECT_COLUMNS, MAX_FIND_ALL_ROWS
         );
         let rows = sqlx::query_as::<_, Attendance>(&query)
             .fetch_all(db)
