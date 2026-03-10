@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres};
 use uuid::Uuid;
 
 use crate::models::active_session::ActiveSession;
@@ -119,16 +119,18 @@ pub async fn touch_active_session_by_access_jti(
     Ok(result.rows_affected() > 0)
 }
 
-#[allow(dead_code)]
-pub async fn update_active_session_tokens(
-    pool: &PgPool,
+pub async fn rotate_active_session_tokens<'e, E>(
+    executor: E,
     current_refresh_token_id: &str,
     new_refresh_token_id: &str,
     new_access_jti: &str,
     last_seen_at: DateTime<Utc>,
     expires_at: DateTime<Utc>,
-) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
+) -> Result<Option<String>, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
+    sqlx::query_scalar::<_, String>(
         r#"
         UPDATE active_sessions
         SET refresh_token_id = $1,
@@ -136,6 +138,7 @@ pub async fn update_active_session_tokens(
             last_seen_at = $3,
             expires_at = $4
         WHERE refresh_token_id = $5
+        RETURNING id
         "#,
     )
     .bind(new_refresh_token_id)
@@ -143,9 +146,51 @@ pub async fn update_active_session_tokens(
     .bind(last_seen_at)
     .bind(expires_at)
     .bind(current_refresh_token_id)
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected() > 0)
+    .fetch_optional(executor)
+    .await
+}
+
+pub struct SessionInsertParams<'a> {
+    pub session_id: &'a str,
+    pub user_id: UserId,
+    pub refresh_token_id: &'a str,
+    pub access_jti: &'a str,
+    pub device_label: Option<&'a str>,
+    pub last_seen_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub async fn create_active_session_with_id<'e, E>(
+    executor: E,
+    params: SessionInsertParams<'_>,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
+    let SessionInsertParams {
+        session_id,
+        user_id,
+        refresh_token_id,
+        access_jti,
+        device_label,
+        last_seen_at,
+        expires_at,
+    } = params;
+    sqlx::query(
+        "INSERT INTO active_sessions \
+         (id, user_id, refresh_token_id, access_jti, device_label, last_seen_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(session_id)
+    .bind(user_id)
+    .bind(refresh_token_id)
+    .bind(access_jti)
+    .bind(device_label)
+    .bind(last_seen_at)
+    .bind(expires_at)
+    .execute(executor)
+    .await
+    .map(|_| ())
 }
 
 pub async fn delete_active_session_by_id(
@@ -201,7 +246,8 @@ mod tests {
         let _find_active_session_by_refresh_token_id = find_active_session_by_refresh_token_id;
         let _find_active_session_by_access_jti = find_active_session_by_access_jti;
         let _touch_active_session_by_access_jti = touch_active_session_by_access_jti;
-        let _update_active_session_tokens = update_active_session_tokens;
+        let _rotate_active_session_tokens = rotate_active_session_tokens::<&sqlx::PgPool>;
+        let _create_active_session_with_id = create_active_session_with_id::<&sqlx::PgPool>;
         let _delete_active_session_by_id = delete_active_session_by_id;
         let _delete_active_session_by_access_jti = delete_active_session_by_access_jti;
         let _delete_active_sessions_for_user = delete_active_sessions_for_user;

@@ -1,7 +1,12 @@
 use chrono::{DateTime, Utc};
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgPool, Postgres};
+use uuid::Uuid;
 
 use crate::types::UserId;
+use crate::{
+    error::AppError,
+    repositories::{active_session, transaction},
+};
 use crate::{models::user::User, utils::jwt::RefreshToken};
 
 #[allow(dead_code)]
@@ -70,6 +75,16 @@ pub async fn find_user_by_id(pool: &PgPool, user_id: UserId) -> Result<Option<Us
 
 /// Inserts a new refresh token into the database.
 pub async fn insert_refresh_token(pool: &PgPool, token: &RefreshToken) -> Result<(), sqlx::Error> {
+    insert_refresh_token_with_executor(pool, token).await
+}
+
+pub async fn insert_refresh_token_with_executor<'e, E>(
+    executor: E,
+    token: &RefreshToken,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
     sqlx::query(
         "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
     )
@@ -77,7 +92,7 @@ pub async fn insert_refresh_token(pool: &PgPool, token: &RefreshToken) -> Result
     .bind(token.user_id.to_string())
     .bind(&token.token_hash)
     .bind(token.expires_at)
-    .execute(pool)
+    .execute(executor)
     .await
     .map(|_| ())
 }
@@ -124,6 +139,16 @@ pub async fn insert_active_access_token(
     pool: &PgPool,
     token: &ActiveAccessToken<'_>,
 ) -> Result<(), sqlx::Error> {
+    insert_active_access_token_with_executor(pool, token).await
+}
+
+pub async fn insert_active_access_token_with_executor<'e, E>(
+    executor: E,
+    token: &ActiveAccessToken<'_>,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
     sqlx::query(
         "INSERT INTO active_access_tokens (jti, user_id, expires_at, context) \
          VALUES ($1, $2, $3, $4)",
@@ -132,9 +157,112 @@ pub async fn insert_active_access_token(
     .bind(token.user_id.to_string())
     .bind(token.expires_at)
     .bind(token.context)
-    .execute(pool)
+    .execute(executor)
     .await
     .map(|_| ())
+}
+
+pub async fn revoke_refresh_token_if_matches<'e, E>(
+    executor: E,
+    token_id: &str,
+    token_hash: &str,
+) -> Result<Option<String>, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
+    sqlx::query_scalar::<_, String>(
+        "DELETE FROM refresh_tokens WHERE id = $1 AND token_hash = $2 RETURNING id",
+    )
+    .bind(token_id)
+    .bind(token_hash)
+    .fetch_optional(executor)
+    .await
+}
+
+#[derive(Debug, Clone)]
+pub struct RefreshRotationParams<'a> {
+    pub stored_refresh_token_id: &'a str,
+    pub stored_refresh_token_hash: &'a str,
+    pub new_refresh_token: &'a RefreshToken,
+    pub new_access_token: &'a ActiveAccessToken<'a>,
+    pub previous_device_label: Option<&'a str>,
+    pub refreshed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RefreshRotationResult {
+    pub active_session_id: String,
+}
+
+pub async fn rotate_refresh_token(
+    pool: &PgPool,
+    params: RefreshRotationParams<'_>,
+) -> Result<Option<RefreshRotationResult>, AppError> {
+    let mut tx = transaction::begin_transaction(pool).await?;
+
+    insert_refresh_token_with_executor(&mut *tx, params.new_refresh_token)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+    insert_active_access_token_with_executor(&mut *tx, params.new_access_token)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    let active_session_id = if let Some(session_id) = active_session::rotate_active_session_tokens(
+        &mut *tx,
+        params.stored_refresh_token_id,
+        &params.new_refresh_token.id,
+        params.new_access_token.jti,
+        params.refreshed_at,
+        params.new_refresh_token.expires_at,
+    )
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?
+    {
+        session_id
+    } else {
+        let refresh_user_id = params
+            .new_refresh_token
+            .user_id
+            .parse::<UserId>()
+            .map_err(|_| {
+                AppError::InternalServerError(anyhow::anyhow!(
+                    "Refresh token contained an invalid internal user ID"
+                ))
+            })?;
+        let session_id = Uuid::new_v4().to_string();
+        active_session::create_active_session_with_id(
+            &mut *tx,
+            active_session::SessionInsertParams {
+                session_id: &session_id,
+                user_id: refresh_user_id,
+                refresh_token_id: &params.new_refresh_token.id,
+                access_jti: params.new_access_token.jti,
+                device_label: params.previous_device_label,
+                last_seen_at: params.refreshed_at,
+                expires_at: params.new_refresh_token.expires_at,
+            },
+        )
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        session_id
+    };
+
+    let revoked = revoke_refresh_token_if_matches(
+        &mut *tx,
+        params.stored_refresh_token_id,
+        params.stored_refresh_token_hash,
+    )
+    .await
+    .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    if revoked.is_none() {
+        transaction::rollback_transaction(tx).await?;
+        return Ok(None);
+    }
+
+    transaction::commit_transaction(tx).await?;
+
+    Ok(Some(RefreshRotationResult { active_session_id }))
 }
 
 /// Checks if an access token exists (is active/valid) by its JTI.
