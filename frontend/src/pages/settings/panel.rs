@@ -15,6 +15,13 @@ use crate::{
 use chrono::{DateTime, Utc};
 use leptos::{ev::SubmitEvent, Callback, *};
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum SettingsTab {
+    Password,
+    Mfa,
+    SubjectRequest,
+}
+
 fn map_change_password_error(error: &ApiError) -> ApiError {
     match error.error.as_str() {
         "Current password is incorrect" => {
@@ -443,6 +450,7 @@ fn render_subject_request_row(
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let vm = use_settings_view_model();
+    let active_tab = create_rw_signal(SettingsTab::Password);
 
     // --- Password Change State ---
     let (current_password, set_current_password) = create_signal(String::new());
@@ -557,10 +565,52 @@ pub fn SettingsPage() -> impl IntoView {
     view! {
         <Layout>
             <div class="mx-auto max-w-3xl space-y-8">
+                <div class="flex p-1.5 gap-1.5 rounded-2xl bg-surface-muted border border-border shadow-inner">
+                    <button
+                        class=move || {
+                            let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
+                            if active_tab.get() == SettingsTab::Password {
+                                format!("{base} bg-surface-elevated text-fg shadow-sm transition-all duration-300")
+                            } else {
+                                format!("{base} text-fg-muted hover:text-fg")
+                            }
+                        }
+                        on:click=move |_| active_tab.set(SettingsTab::Password)
+                    >
+                        {"パスワード変更"}
+                    </button>
+                    <button
+                        class=move || {
+                            let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
+                            if active_tab.get() == SettingsTab::Mfa {
+                                format!("{base} bg-surface-elevated text-fg shadow-sm transition-all duration-300")
+                            } else {
+                                format!("{base} text-fg-muted hover:text-fg")
+                            }
+                        }
+                        on:click=move |_| active_tab.set(SettingsTab::Mfa)
+                    >
+                        {"MFA 設定"}
+                    </button>
+                    <button
+                        class=move || {
+                            let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
+                            if active_tab.get() == SettingsTab::SubjectRequest {
+                                format!("{base} bg-surface-elevated text-fg shadow-sm transition-all duration-300")
+                            } else {
+                                format!("{base} text-fg-muted hover:text-fg")
+                            }
+                        }
+                        on:click=move |_| active_tab.set(SettingsTab::SubjectRequest)
+                    >
+                        {"本人対応申請"}
+                    </button>
+                </div>
 
                 // --- Password Change Section ---
-                <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
-                    <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"パスワード変更"</h2>
+                <Show when=move || active_tab.get() == SettingsTab::Password>
+                    <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
+                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"パスワード変更"</h2>
 
                     <Show when=move || password_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={password_success_msg.get().unwrap_or_default()} />
@@ -609,35 +659,39 @@ pub fn SettingsPage() -> impl IntoView {
                             </button>
                         </div>
                     </form>
-                </div>
+                    </div>
+                </Show>
 
                 // --- MFA Section ---
                 // Reusing components from mfa page, but wrapped in our layout
-                <div class="space-y-6">
-                    <SetupSection
-                        status=mfa_vm.status.read_only()
-                        status_loading=mfa_vm.status_loading.read_only()
-                        register_loading=register_loading.into()
-                        on_register=start_registration
-                        on_refresh=move || mfa_vm.fetch_status_action.dispatch(())
-                    />
-                    <Show when=move || mfa_vm.messages.success.get().is_some() fallback=|| ()>
-                        <SuccessMessage message={mfa_vm.messages.success.get().unwrap_or_default()} />
-                    </Show>
-                    <Show when=move || mfa_vm.messages.error.get().is_some() fallback=|| ()>
-                        <InlineErrorMessage error={mfa_vm.messages.error.into()} />
-                    </Show>
-                    <VerificationSection
-                        setup_info=mfa_vm.setup_info.read_only()
-                        activate_loading=activate_loading.into()
-                        on_submit=handle_activate_cb
-                        on_input=mfa_vm.totp_code.write_only()
-                    />
-                </div>
+                <Show when=move || active_tab.get() == SettingsTab::Mfa>
+                    <div class="space-y-6">
+                        <SetupSection
+                            status=mfa_vm.status.read_only()
+                            status_loading=mfa_vm.status_loading.read_only()
+                            register_loading=register_loading.into()
+                            on_register=start_registration
+                            on_refresh=move || mfa_vm.fetch_status_action.dispatch(())
+                        />
+                        <Show when=move || mfa_vm.messages.success.get().is_some() fallback=|| ()>
+                            <SuccessMessage message={mfa_vm.messages.success.get().unwrap_or_default()} />
+                        </Show>
+                        <Show when=move || mfa_vm.messages.error.get().is_some() fallback=|| ()>
+                            <InlineErrorMessage error={mfa_vm.messages.error.into()} />
+                        </Show>
+                        <VerificationSection
+                            setup_info=mfa_vm.setup_info.read_only()
+                            activate_loading=activate_loading.into()
+                            on_submit=handle_activate_cb
+                            on_input=mfa_vm.totp_code.write_only()
+                        />
+                    </div>
+                </Show>
 
                 // --- Subject Request Section ---
-                <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
-                    <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"本人対応申請"</h2>
+                <Show when=move || active_tab.get() == SettingsTab::SubjectRequest>
+                    <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
+                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"本人対応申請"</h2>
                     <Show when=move || subject_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={subject_success_msg.get().unwrap_or_default()} />
                     </Show>
@@ -719,7 +773,8 @@ pub fn SettingsPage() -> impl IntoView {
                             </table>
                         </div>
                     </div>
-                </div>
+                    </div>
+                </Show>
             </div>
         </Layout>
     }
@@ -819,6 +874,7 @@ mod host_tests {
     use crate::api::test_support::mock::*;
     use crate::api::ApiClient;
     use crate::test_support::ssr::{with_local_runtime_async, with_runtime};
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
     use serde_json::json;
 
     fn mock_server() -> MockServer {
@@ -868,9 +924,12 @@ mod host_tests {
             let runtime = leptos::create_runtime();
             let server = mock_server();
             provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/settings".to_string(),
+            }));
 
             leptos_reactive::suppress_resource_load(true);
-            let html = view! { <SettingsPage /> }
+            let html = view! { <Router><SettingsPage /></Router> }
                 .into_view()
                 .render_to_string()
                 .to_string();
@@ -879,6 +938,8 @@ mod host_tests {
             assert!(html.contains("パスワード変更"));
             assert!(html.contains("本人対応申請"));
             assert!(html.contains("MFA 設定"));
+            assert!(html.contains("現在のパスワード"));
+            assert!(!html.contains("申請履歴"));
 
             runtime.dispose();
         });
