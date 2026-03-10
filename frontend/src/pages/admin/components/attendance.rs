@@ -1,6 +1,10 @@
 use crate::{
-    api::{AdminAttendanceUpsert, AdminBreakItem, ApiError},
-    components::{error::InlineErrorMessage, forms::DatePicker, layout::SuccessMessage},
+    api::{ActiveBreakResponse, AdminAttendanceUpsert, AdminBreakItem, ApiError},
+    components::{
+        error::InlineErrorMessage,
+        forms::DatePicker,
+        layout::{LoadingSpinner, SuccessMessage},
+    },
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         repository::AdminRepository,
@@ -8,6 +12,8 @@ use crate::{
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use leptos::{ev, *};
+
+type ActiveBreaksResource = Resource<u64, Result<Vec<ActiveBreakResponse>, ApiError>>;
 
 fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
     if input.len() == 16 {
@@ -75,13 +81,26 @@ fn build_attendance_payload(
     })
 }
 
-fn validate_force_break_id(break_id_raw: &str) -> Result<String, ApiError> {
+fn validate_force_break_selection(break_id_raw: &str) -> Result<String, ApiError> {
     let id = break_id_raw.trim();
     if id.is_empty() {
-        Err(ApiError::validation("Break ID を入力してください。"))
+        Err(ApiError::validation("強制終了する休憩を選択してください。"))
     } else {
         Ok(id.to_string())
     }
+}
+
+fn active_break_option_label(item: &ActiveBreakResponse) -> String {
+    let owner = match item.full_name.as_deref() {
+        Some(name) if !name.trim().is_empty() => format!("{} ({})", name, item.username),
+        _ => item.username.clone(),
+    };
+    format!(
+        "{} / 開始 {} / Break ID: {}",
+        owner,
+        item.break_start_time.format("%Y-%m-%d %H:%M"),
+        item.break_id
+    )
 }
 
 fn attendance_upsert_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
@@ -139,12 +158,12 @@ fn prepare_attendance_submission(
 
 fn prepare_force_break_submission(
     system_admin_allowed: bool,
-    break_id_raw: &str,
+    selected_break_id: &str,
 ) -> Result<Option<String>, ApiError> {
     if !system_admin_allowed {
         Ok(None)
     } else {
-        validate_force_break_id(break_id_raw).map(Some)
+        validate_force_break_selection(selected_break_id).map(Some)
     }
 }
 
@@ -279,6 +298,8 @@ pub fn AdminAttendanceToolsSection(
     let att_out = create_rw_signal(String::new());
     let breaks = create_rw_signal(Vec::<(String, String)>::new());
     let break_force_id = create_rw_signal(String::new());
+    let active_breaks_key = create_rw_signal(0_u64);
+    let active_break_fetch_error = create_rw_signal(None::<ApiError>);
     let message = create_rw_signal(None::<String>);
     let error = create_rw_signal(None::<ApiError>);
 
@@ -300,6 +321,16 @@ pub fn AdminAttendanceToolsSection(
     });
     let force_pending = force_break_action.pending();
 
+    let repo_for_active_breaks = repository.clone();
+    let active_breaks: ActiveBreaksResource = create_resource(
+        move || active_breaks_key.get(),
+        move |_| {
+            let repo = repo_for_active_breaks.clone();
+            async move { repo.list_active_breaks().await }
+        },
+    );
+    let active_breaks_loading = active_breaks.loading();
+
     {
         create_effect(move |_| {
             if let Some(result) = attendance_action.value().get() {
@@ -310,7 +341,22 @@ pub fn AdminAttendanceToolsSection(
     {
         create_effect(move |_| {
             if let Some(result) = force_break_action.value().get() {
+                let is_ok = result.is_ok();
                 apply_force_break_action_result(result, message, error);
+                if is_ok {
+                    break_force_id.set(String::new());
+                    active_breaks.refetch();
+                }
+            }
+        });
+    }
+    {
+        create_effect(move |_| {
+            if let Some(result) = active_breaks.get() {
+                match result {
+                    Ok(_) => active_break_fetch_error.set(None),
+                    Err(err) => active_break_fetch_error.set(Some(err)),
+                }
             }
         });
     }
@@ -345,6 +391,13 @@ pub fn AdminAttendanceToolsSection(
                 return;
             };
             force_break_action.dispatch(id);
+        }
+    };
+
+    let on_retry_active_breaks = {
+        move |_| {
+            active_break_fetch_error.set(None);
+            active_breaks_key.update(|key| *key += 1);
         }
     };
 
@@ -413,20 +466,74 @@ pub fn AdminAttendanceToolsSection(
                 </form>
                 <div class="mt-4">
                     <h4 class="text-sm font-medium text-fg mb-2">{"休憩の強制終了"}</h4>
-                    <div class="flex space-x-2">
-                        <input
-                            placeholder="Break ID"
-                            class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full"
-                            on:input=move |ev| set_input_signal(break_force_id, event_target_value(&ev))
-                        />
+                    <p class="text-sm text-fg-muted mb-2">
+                        {"進行中の休憩を選択して強制終了できます。"}
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <select
+                            class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full disabled:opacity-50"
+                            on:change=move |ev| set_input_signal(break_force_id, event_target_value(&ev))
+                            prop:value=break_force_id
+                            disabled=move || force_pending.get() || active_breaks_loading.get()
+                        >
+                            <option value="">
+                                {move || {
+                                    if active_breaks_loading.get() {
+                                        "進行中の休憩を読み込み中..."
+                                    } else if active_break_fetch_error.get().is_some() {
+                                        "進行中の休憩の取得に失敗しました"
+                                    } else {
+                                        "強制終了する休憩を選択してください"
+                                    }
+                                }}
+                            </option>
+                            {move || {
+                                match active_breaks.get() {
+                                    Some(Ok(list)) => {
+                                        if list.is_empty() {
+                                            view! { <option value="" disabled>{"進行中の休憩はありません"}</option> }.into_view()
+                                        } else {
+                                            view! {
+                                                <For
+                                                    each=move || list.clone()
+                                                    key=|item| item.break_id.clone()
+                                                    children=move |item| {
+                                                        let label = active_break_option_label(&item);
+                                                        view! { <option value=item.break_id.clone()>{label}</option> }
+                                                    }
+                                                />
+                                            }.into_view()
+                                        }
+                                    }
+                                    _ => view! {}.into_view(),
+                                }
+                            }}
+                        </select>
                         <button
+                            type="button"
+                            class="px-3 py-1 border border-form-control-border text-fg rounded disabled:opacity-50"
+                            disabled=move || active_breaks_loading.get() || force_pending.get()
+                            on:click=on_retry_active_breaks
+                        >
+                            <span class="whitespace-nowrap">{"再読込"}</span>
+                        </button>
+                        <button
+                            type="button"
                             class="px-3 py-1 bg-action-danger-bg text-action-danger-text rounded disabled:opacity-50"
-                            disabled={move || force_pending.get()}
+                            disabled={move || force_pending.get() || break_force_id.get().is_empty()}
                             on:click=on_force_end
                         >
                             {move || force_break_button_label(force_pending.get())}
                         </button>
                     </div>
+                    <Show when=move || active_break_fetch_error.get().is_some()>
+                        <div class="mt-2 flex items-center gap-2">
+                            <InlineErrorMessage error={active_break_fetch_error.into()} />
+                            <Show when=move || active_breaks_loading.get()>
+                                <LoadingSpinner />
+                            </Show>
+                        </div>
+                    </Show>
                 </div>
                 <Show when=move || error.get().is_some()>
                     <InlineErrorMessage error={error.into()} />
@@ -517,13 +624,33 @@ mod host_tests {
     }
 
     #[test]
-    fn helper_force_break_id_validation() {
-        assert!(validate_force_break_id("").is_err());
-        assert!(validate_force_break_id("   ").is_err());
+    fn helper_force_break_selection_validation() {
+        assert!(validate_force_break_selection("").is_err());
+        assert!(validate_force_break_selection("   ").is_err());
         assert_eq!(
-            validate_force_break_id("  break-1 ").expect("id"),
+            validate_force_break_selection("  break-1 ").expect("id"),
             "break-1"
         );
+    }
+
+    #[test]
+    fn helper_active_break_option_label_prefers_full_name_when_present() {
+        let item = ActiveBreakResponse {
+            break_id: "br-1".into(),
+            attendance_id: "att-1".into(),
+            user_id: "u1".into(),
+            username: "alice".into(),
+            full_name: Some("Alice Example".into()),
+            break_start_time: NaiveDateTime::parse_from_str(
+                "2025-01-02T12:00:00",
+                "%Y-%m-%dT%H:%M:%S",
+            )
+            .expect("datetime"),
+        };
+        let label = active_break_option_label(&item);
+        assert!(label.contains("Alice Example (alice)"));
+        assert!(label.contains("2025-01-02 12:00"));
+        assert!(label.contains("br-1"));
     }
 
     #[test]
