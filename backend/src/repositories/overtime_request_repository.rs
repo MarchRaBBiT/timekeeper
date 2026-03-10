@@ -306,12 +306,7 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
             "overtime_requests"
         );
         let result = sqlx::query(&query)
-            .bind(match RequestStatus::Cancelled {
-                RequestStatus::Pending => "pending",
-                RequestStatus::Approved => "approved",
-                RequestStatus::Rejected => "rejected",
-                RequestStatus::Cancelled => "cancelled",
-            })
+            .bind(RequestStatus::Cancelled.db_value())
             .bind(timestamp)
             .bind(timestamp)
             .bind(id)
@@ -337,12 +332,7 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
             "overtime_requests"
         );
         let result = sqlx::query(&query)
-            .bind(match RequestStatus::Approved {
-                RequestStatus::Pending => "pending",
-                RequestStatus::Approved => "approved",
-                RequestStatus::Rejected => "rejected",
-                RequestStatus::Cancelled => "cancelled",
-            })
+            .bind(RequestStatus::Approved.db_value())
             .bind(approver_id)
             .bind(timestamp)
             .bind(comment)
@@ -369,12 +359,7 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
             "overtime_requests"
         );
         let result = sqlx::query(&query)
-            .bind(match RequestStatus::Rejected {
-                RequestStatus::Pending => "pending",
-                RequestStatus::Approved => "approved",
-                RequestStatus::Rejected => "rejected",
-                RequestStatus::Cancelled => "cancelled",
-            })
+            .bind(RequestStatus::Rejected.db_value())
             .bind(approver_id)
             .bind(timestamp)
             .bind(comment)
