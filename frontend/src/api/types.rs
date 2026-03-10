@@ -54,6 +54,27 @@ pub struct MfaStatusResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionResponse {
+    pub id: String,
+    pub device_label: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub expires_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminSessionResponse {
+    pub id: String,
+    pub user_id: String,
+    pub device_label: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub expires_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttendanceResponse {
     pub id: String,
     pub user_id: String,

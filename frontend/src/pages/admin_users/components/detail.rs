@@ -1,5 +1,5 @@
 use crate::{
-    api::{ApiError, UserResponse},
+    api::{AdminSessionResponse, ApiError, UserResponse},
     components::{
         confirm_dialog::ConfirmDialog, error::InlineErrorMessage, layout::SuccessMessage,
     },
@@ -21,18 +21,38 @@ fn delete_confirm_message(hard_delete_mode: bool) -> &'static str {
     }
 }
 
+fn session_device_label(label: Option<&str>) -> &str {
+    label.unwrap_or("不明なデバイス")
+}
+
+fn format_session_datetime(value: chrono::DateTime<chrono::Utc>) -> String {
+    value.format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn format_optional_session_datetime(value: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    value
+        .map(format_session_datetime)
+        .unwrap_or_else(|| "未記録".to_string())
+}
+
 #[component]
 pub fn UserDetailDrawer(
     selected_user: RwSignal<Option<UserResponse>>,
+    user_sessions_resource: Resource<
+        (bool, Option<String>),
+        Result<Vec<AdminSessionResponse>, ApiError>,
+    >,
     messages: MessageState,
     reset_mfa_action: Action<String, Result<(), ApiError>>,
     unlock_user_action: Action<String, Result<(), ApiError>>,
+    revoke_session_action: Action<String, Result<(), ApiError>>,
     delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Current user's ID to prevent self-deletion
     current_user_id: Signal<Option<String>>,
 ) -> impl IntoView {
     let pending = reset_mfa_action.pending();
     let unlock_pending = unlock_user_action.pending();
+    let revoke_pending = revoke_session_action.pending();
     let delete_pending = delete_user_action.pending();
 
     // State for delete confirmation
@@ -165,6 +185,67 @@ pub fn UserDetailDrawer(
                                                 {move || if unlock_pending.get() { "ロック解除中..." } else { "ロックを解除" }}
                                             </button>
                                         </Show>
+                                        <div class="border-t pt-4 mt-4 space-y-3">
+                                            <div>
+                                                <p class="text-sm text-fg-muted">{"アクティブセッション"}</p>
+                                                <p class="text-xs text-fg-muted">{"対象ユーザーのログイン中デバイスを確認し、必要に応じて強制ログアウトできます。"}</p>
+                                            </div>
+                                            {move || {
+                                                match user_sessions_resource.get() {
+                                                    Some(Ok(sessions)) if sessions.is_empty() => view! {
+                                                        <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-fg-muted">
+                                                            {"アクティブなセッションはありません。"}
+                                                        </div>
+                                                    }.into_view(),
+                                                    Some(Ok(sessions)) => view! {
+                                                        <div class="space-y-2">
+                                                            {sessions.into_iter().map(|session| {
+                                                                let session_id = session.id.clone();
+                                                                let is_current = session.is_current;
+                                                                let device_label = session_device_label(session.device_label.as_deref()).to_string();
+                                                                let created_at = format_session_datetime(session.created_at);
+                                                                let last_seen_at = format_optional_session_datetime(session.last_seen_at);
+                                                                let expires_at = format_session_datetime(session.expires_at);
+                                                                view! {
+                                                                    <div class="rounded-lg border border-border bg-surface-muted px-3 py-3 space-y-2">
+                                                                        <div class="flex items-center justify-between gap-3">
+                                                                            <div>
+                                                                                <div class="text-sm font-medium text-fg">{device_label}</div>
+                                                                                <div class="text-xs text-fg-muted">
+                                                                                    {if is_current { "現在のセッション" } else { "他のデバイス" }}
+                                                                                </div>
+                                                                            </div>
+                                                                            <button
+                                                                                class="px-3 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                                                                disabled=move || is_current || revoke_pending.get()
+                                                                                on:click=move |_| revoke_session_action.dispatch(session_id.clone())
+                                                                            >
+                                                                                {if is_current { "このセッションです" } else { "強制ログアウト" }}
+                                                                            </button>
+                                                                        </div>
+                                                                        <dl class="grid grid-cols-1 gap-1 text-xs text-fg-muted">
+                                                                            <div><dt class="inline font-medium">{"開始: "}</dt><dd class="inline text-fg">{created_at}</dd></div>
+                                                                            <div><dt class="inline font-medium">{"最終利用: "}</dt><dd class="inline text-fg">{last_seen_at}</dd></div>
+                                                                            <div><dt class="inline font-medium">{"有効期限: "}</dt><dd class="inline text-fg">{expires_at}</dd></div>
+                                                                        </dl>
+                                                                    </div>
+                                                                }
+                                                            }).collect_view()}
+                                                        </div>
+                                                    }.into_view(),
+                                                    Some(Err(error)) => view! {
+                                                        <div class="rounded-lg border border-status-error-border bg-status-error-bg px-3 py-3 text-sm text-status-error-text">
+                                                            {error.to_string()}
+                                                        </div>
+                                                    }.into_view(),
+                                                    None => view! {
+                                                        <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-fg-muted">
+                                                            {"セッションを読み込んでいます..."}
+                                                        </div>
+                                                    }.into_view(),
+                                                }
+                                            }}
+                                        </div>
 
                                         // Delete buttons (hidden for self)
                                         <Show when=move || !is_self>
@@ -173,14 +254,14 @@ pub fn UserDetailDrawer(
                                                 <button
                                                     class="w-full px-4 py-2 rounded bg-status-warning-text text-text-inverse disabled:opacity-50"
                                                     disabled=move || delete_pending.get()
-                                                    on:click=soft_delete_click.clone()
+                                                    on:click=soft_delete_click
                                                 >
                                                     {"退職処理（アーカイブ）"}
                                                 </button>
                                                 <button
                                                     class="w-full px-4 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
                                                     disabled=move || delete_pending.get()
-                                                    on:click=hard_delete_click.clone()
+                                                    on:click=hard_delete_click
                                                 >
                                                     {"完全削除"}
                                                 </button>
@@ -234,17 +315,24 @@ mod host_tests {
     fn user_detail_drawer_renders() {
         let html = render_to_string(move || {
             let selected = create_rw_signal(Some(user()));
+            let user_sessions = create_resource(
+                move || (true, Some("u1".to_string())),
+                move |_| async move { Ok::<_, ApiError>(Vec::<AdminSessionResponse>::new()) },
+            );
             let messages = MessageState::default();
             let reset_action = create_action(|_: &String| async move { Ok(()) });
             let unlock_action = create_action(|_: &String| async move { Ok(()) });
+            let revoke_session_action = create_action(|_: &String| async move { Ok(()) });
             let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
             let current_user_id = Signal::derive(|| None::<String>);
             view! {
                 <UserDetailDrawer
                     selected_user=selected
+                    user_sessions_resource=user_sessions
                     messages=messages
                     reset_mfa_action=reset_action
                     unlock_user_action=unlock_action
+                    revoke_session_action=revoke_session_action
                     delete_user_action=delete_action
                     current_user_id=current_user_id
                 />
@@ -252,6 +340,7 @@ mod host_tests {
         });
         assert!(html.contains("Alice Example"));
         assert!(html.contains("MFA"));
+        assert!(html.contains("アクティブセッション"));
     }
 
     #[test]
@@ -268,23 +357,37 @@ mod host_tests {
             delete_confirm_message(false),
             "このユーザーを退職処理（アーカイブ）しますか？"
         );
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-03-10T10:00:00Z")
+            .expect("valid datetime")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(session_device_label(Some("Chrome")), "Chrome");
+        assert_eq!(session_device_label(None), "不明なデバイス");
+        assert_eq!(format_session_datetime(dt), "2026-03-10 10:00");
+        assert_eq!(format_optional_session_datetime(None), "未記録");
     }
 
     #[test]
     fn user_detail_drawer_hides_delete_actions_for_self_user() {
         let html = render_to_string(move || {
             let selected = create_rw_signal(Some(user()));
+            let user_sessions = create_resource(
+                move || (true, Some("u1".to_string())),
+                move |_| async move { Ok::<_, ApiError>(Vec::<AdminSessionResponse>::new()) },
+            );
             let messages = MessageState::default();
             let reset_action = create_action(|_: &String| async move { Ok(()) });
             let unlock_action = create_action(|_: &String| async move { Ok(()) });
+            let revoke_session_action = create_action(|_: &String| async move { Ok(()) });
             let delete_action = create_action(|_: &(String, bool)| async move { Ok(()) });
             let current_user_id = Signal::derive(|| Some("u1".to_string()));
             view! {
                 <UserDetailDrawer
                     selected_user=selected
+                    user_sessions_resource=user_sessions
                     messages=messages
                     reset_mfa_action=reset_action
                     unlock_user_action=unlock_action
+                    revoke_session_action=revoke_session_action
                     delete_user_action=delete_action
                     current_user_id=current_user_id
                 />

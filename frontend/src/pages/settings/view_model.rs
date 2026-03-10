@@ -1,5 +1,7 @@
 use super::repository;
-use crate::api::{ApiClient, ApiError, CreateDataSubjectRequest, DataSubjectRequestResponse};
+use crate::api::{
+    ApiClient, ApiError, CreateDataSubjectRequest, DataSubjectRequestResponse, SessionResponse,
+};
 use crate::pages::mfa::view_model::MfaViewModel;
 use leptos::*;
 
@@ -8,6 +10,7 @@ pub struct SettingsViewModel {
     pub change_password_action: Action<(String, String), Result<(), ApiError>>,
     pub mfa_view_model: MfaViewModel, // Reuse existing MFA logic
     pub subject_request_view_model: SubjectRequestViewModel,
+    pub session_management_view_model: SessionManagementViewModel,
 }
 
 #[derive(Clone)]
@@ -17,6 +20,13 @@ pub struct SubjectRequestViewModel {
     pub create_action:
         Action<CreateDataSubjectRequest, Result<DataSubjectRequestResponse, ApiError>>,
     pub cancel_action: Action<String, Result<(), ApiError>>,
+}
+
+#[derive(Clone)]
+pub struct SessionManagementViewModel {
+    pub sessions_resource: Resource<u32, Result<Vec<SessionResponse>, ApiError>>,
+    pub reload: RwSignal<u32>,
+    pub revoke_action: Action<String, Result<(), ApiError>>,
 }
 
 pub fn use_settings_view_model() -> SettingsViewModel {
@@ -60,12 +70,36 @@ pub fn use_settings_view_model() -> SettingsViewModel {
         cancel_action: cancel_subject_action,
     };
 
+    let session_reload = create_rw_signal(0u32);
+    let session_list_api = api.clone();
+    let sessions_resource = create_resource(
+        move || session_reload.get(),
+        move |_| {
+            let api = session_list_api.clone();
+            async move { repository::list_sessions(api).await }
+        },
+    );
+
+    let session_revoke_api = api.clone();
+    let revoke_session_action = create_action(move |session_id: &String| {
+        let api = session_revoke_api.clone();
+        let session_id = session_id.clone();
+        async move { repository::revoke_session(api, session_id).await }
+    });
+
+    let session_management_view_model = SessionManagementViewModel {
+        sessions_resource,
+        reload: session_reload,
+        revoke_action: revoke_session_action,
+    };
+
     let mfa_view_model = crate::pages::mfa::view_model::use_mfa_view_model();
 
     SettingsViewModel {
         change_password_action,
         mfa_view_model,
         subject_request_view_model,
+        session_management_view_model,
     }
 }
 
@@ -114,11 +148,26 @@ mod host_tests {
                 .json_body(json!([subject_request_json("sr-1")]));
         });
         server.mock(|when, then| {
+            when.method(GET).path("/api/auth/sessions");
+            then.status(200).json_body(json!([{
+                "id": "session-1",
+                "device_label": "Chrome on macOS",
+                "created_at": "2026-03-10T10:00:00Z",
+                "last_seen_at": "2026-03-10T10:30:00Z",
+                "expires_at": "2026-03-17T10:00:00Z",
+                "is_current": true
+            }]));
+        });
+        server.mock(|when, then| {
             when.method(POST).path("/api/subject-requests");
             then.status(200).json_body(subject_request_json("sr-2"));
         });
         server.mock(|when, then| {
             when.method(DELETE).path("/api/subject-requests/sr-1");
+            then.status(200).json_body(json!({}));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/auth/sessions/session-1");
             then.status(200).json_body(json!({}));
         });
         server
@@ -180,6 +229,23 @@ mod host_tests {
             }
             let _ = vm.subject_request_view_model.cancel_action.value().get();
 
+            vm.session_management_view_model
+                .revoke_action
+                .dispatch("session-1".into());
+            for _ in 0..10 {
+                if vm
+                    .session_management_view_model
+                    .revoke_action
+                    .value()
+                    .get()
+                    .is_some()
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let _ = vm.session_management_view_model.revoke_action.value().get();
+
             for _ in 0..10 {
                 if vm
                     .subject_request_view_model
@@ -192,6 +258,20 @@ mod host_tests {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
             let _ = vm.subject_request_view_model.requests_resource.get();
+
+            for _ in 0..10 {
+                if vm
+                    .session_management_view_model
+                    .sessions_resource
+                    .get()
+                    .is_some()
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let sessions = vm.session_management_view_model.sessions_resource.get();
+            assert!(matches!(sessions, Some(Ok(list)) if list.len() == 1));
 
             runtime.dispose();
         });

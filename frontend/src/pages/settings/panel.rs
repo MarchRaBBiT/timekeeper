@@ -1,5 +1,8 @@
 use crate::{
-    api::{ApiError, CreateDataSubjectRequest, DataSubjectRequestResponse, DataSubjectRequestType},
+    api::{
+        ApiError, CreateDataSubjectRequest, DataSubjectRequestResponse, DataSubjectRequestType,
+        SessionResponse,
+    },
     components::{
         error::InlineErrorMessage,
         layout::{ErrorMessage, Layout, SuccessMessage},
@@ -19,6 +22,7 @@ use leptos::{ev::SubmitEvent, Callback, *};
 enum SettingsTab {
     Password,
     Mfa,
+    Sessions,
     SubjectRequest,
 }
 
@@ -562,6 +566,25 @@ pub fn SettingsPage() -> impl IntoView {
         );
     };
 
+    // --- Session Management State ---
+    let session_vm = vm.session_management_view_model;
+    let session_loading = session_vm.revoke_action.pending();
+    let sessions_resource = session_vm.sessions_resource;
+    let sessions_error =
+        Signal::derive(move || sessions_error_from_resource(sessions_resource.get()));
+    let sessions = Signal::derive(move || sessions_from_resource(sessions_resource.get()));
+    let (session_success_msg, set_session_success_msg) = create_signal(Option::<String>::None);
+    let (session_error_msg, set_session_error_msg) = create_signal(Option::<String>::None);
+
+    create_effect(move |_| {
+        apply_optional_session_revoke_effect_result(
+            session_vm.revoke_action.value().get(),
+            set_session_success_msg,
+            set_session_error_msg,
+            session_vm.reload,
+        );
+    });
+
     view! {
         <Layout>
             <div class="mx-auto max-w-3xl space-y-8">
@@ -591,6 +614,19 @@ pub fn SettingsPage() -> impl IntoView {
                         on:click=move |_| active_tab.set(SettingsTab::Mfa)
                     >
                         {"MFA 設定"}
+                    </button>
+                    <button
+                        class=move || {
+                            let base = "flex-1 px-4 py-2.5 rounded-xl text-sm font-display font-bold transition-all duration-200";
+                            if active_tab.get() == SettingsTab::Sessions {
+                                format!("{base} bg-surface-elevated text-fg shadow-sm transition-all duration-300")
+                            } else {
+                                format!("{base} text-fg-muted hover:text-fg")
+                            }
+                        }
+                        on:click=move |_| active_tab.set(SettingsTab::Sessions)
+                    >
+                        {"アクティブセッション"}
                     </button>
                     <button
                         class=move || {
@@ -685,6 +721,86 @@ pub fn SettingsPage() -> impl IntoView {
                             on_submit=handle_activate_cb
                             on_input=mfa_vm.totp_code.write_only()
                         />
+                    </div>
+                </Show>
+
+                // --- Session Management Section ---
+                <Show when=move || active_tab.get() == SettingsTab::Sessions>
+                    <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
+                        <div class="space-y-1">
+                            <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"アクティブセッション"</h2>
+                            <p class="text-sm text-fg-muted">
+                                {"現在ログイン中のデバイスを確認し、他のデバイスをログアウトできます。"}
+                            </p>
+                        </div>
+                        <Show when=move || session_success_msg.get().is_some() fallback=|| ()>
+                            <SuccessMessage message={session_success_msg.get().unwrap_or_default()} />
+                        </Show>
+                        <Show when=move || session_error_msg.get().is_some() fallback=|| ()>
+                            <ErrorMessage message={session_error_msg.get().unwrap_or_default()} />
+                        </Show>
+                        <Show when=move || sessions_error.get().is_some()>
+                            <ErrorMessage message={sessions_error.get().unwrap_or_default()} />
+                        </Show>
+                        <div class="space-y-3">
+                            {move || {
+                                let items = sessions.get();
+                                if items.is_empty() {
+                                    view! {
+                                        <div class="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-fg-muted">
+                                            {"アクティブなセッションはありません。"}
+                                        </div>
+                                    }
+                                        .into_view()
+                                } else {
+                                    view! {
+                                        <div class="space-y-3">
+                                            {items.into_iter().map(|session| {
+                                                let session_id = session.id.clone();
+                                                let is_current = session.is_current;
+                                                let device_label = session_device_label(session.device_label.as_deref()).to_string();
+                                                let created_at = format_session_datetime(session.created_at);
+                                                let last_seen_at = format_optional_session_datetime(session.last_seen_at);
+                                                let expires_at = format_session_datetime(session.expires_at);
+                                                let status_label = session_status_label(is_current);
+                                                view! {
+                                                    <div class="rounded-xl border border-border bg-surface-muted px-4 py-4 space-y-3">
+                                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div>
+                                                                <div class="text-sm font-semibold text-fg">{device_label}</div>
+                                                                <div class="text-xs text-fg-muted">{status_label}</div>
+                                                            </div>
+                                                            <button
+                                                                class="px-3 py-2 rounded bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                                                disabled=move || is_session_revoke_disabled(is_current, session_loading.get())
+                                                                on:click=move |_| session_vm.revoke_action.dispatch(session_id.clone())
+                                                            >
+                                                                {if is_current { "このセッションです" } else { "ログアウト" }}
+                                                            </button>
+                                                        </div>
+                                                        <dl class="grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-3">
+                                                            <div>
+                                                                <dt class="font-medium">{"開始"}</dt>
+                                                                <dd class="text-fg">{created_at}</dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt class="font-medium">{"最終利用"}</dt>
+                                                                <dd class="text-fg">{last_seen_at}</dd>
+                                                            </div>
+                                                            <div>
+                                                                <dt class="font-medium">{"有効期限"}</dt>
+                                                                <dd class="text-fg">{expires_at}</dd>
+                                                            </div>
+                                                        </dl>
+                                                    </div>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    }
+                                        .into_view()
+                                }
+                            }}
+                        </div>
                     </div>
                 </Show>
 
@@ -801,6 +917,71 @@ fn subject_request_status_label(value: &str) -> String {
 
 fn format_subject_datetime(value: DateTime<Utc>) -> String {
     value.format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn session_device_label(label: Option<&str>) -> &str {
+    label.unwrap_or("不明なデバイス")
+}
+
+fn format_session_datetime(value: DateTime<Utc>) -> String {
+    value.format("%Y-%m-%d %H:%M").to_string()
+}
+
+fn format_optional_session_datetime(value: Option<DateTime<Utc>>) -> String {
+    value
+        .map(format_session_datetime)
+        .unwrap_or_else(|| "未記録".to_string())
+}
+
+fn session_status_label(is_current: bool) -> &'static str {
+    if is_current {
+        "現在のセッション"
+    } else {
+        "他のデバイス"
+    }
+}
+
+fn session_revoke_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<String>, bool) {
+    match result {
+        Ok(_) => (
+            Some("他のデバイスのセッションをログアウトしました。".into()),
+            None,
+            true,
+        ),
+        Err(err) => (None, Some(err.to_string()), false),
+    }
+}
+
+fn apply_optional_session_revoke_effect_result(
+    result: Option<Result<(), ApiError>>,
+    set_success: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    reload: RwSignal<u32>,
+) {
+    if let Some(result) = result {
+        let (success, error, should_reload) = session_revoke_feedback(result);
+        set_success.set(success);
+        set_error.set(error);
+        if should_reload {
+            reload.update(|value| *value = value.wrapping_add(1));
+        }
+    }
+}
+
+fn sessions_from_resource(
+    value: Option<Result<Vec<SessionResponse>, ApiError>>,
+) -> Vec<SessionResponse> {
+    value.and_then(Result::ok).unwrap_or_default()
+}
+
+fn sessions_error_from_resource(
+    value: Option<Result<Vec<SessionResponse>, ApiError>>,
+) -> Option<String> {
+    value.and_then(Result::err).map(|err| err.to_string())
+}
+
+fn is_session_revoke_disabled(is_current: bool, pending: bool) -> bool {
+    is_current || pending
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -938,6 +1119,7 @@ mod host_tests {
             assert!(html.contains("パスワード変更"));
             assert!(html.contains("本人対応申請"));
             assert!(html.contains("MFA 設定"));
+            assert!(html.contains("アクティブセッション"));
             assert!(html.contains("現在のパスワード"));
             assert!(!html.contains("申請履歴"));
 
@@ -993,6 +1175,19 @@ mod host_tests {
             .expect("valid datetime")
             .with_timezone(&Utc);
         assert_eq!(format_subject_datetime(dt), "2026-01-16 12:34");
+        assert_eq!(session_device_label(Some("Chrome")), "Chrome");
+        assert_eq!(session_device_label(None), "不明なデバイス");
+        assert_eq!(format_session_datetime(dt), "2026-01-16 12:34");
+        assert_eq!(
+            format_optional_session_datetime(Some(dt)),
+            "2026-01-16 12:34"
+        );
+        assert_eq!(format_optional_session_datetime(None), "未記録");
+        assert_eq!(session_status_label(true), "現在のセッション");
+        assert_eq!(session_status_label(false), "他のデバイス");
+        assert!(is_session_revoke_disabled(true, false));
+        assert!(is_session_revoke_disabled(false, true));
+        assert!(!is_session_revoke_disabled(false, false));
     }
 
     #[test]
@@ -1118,6 +1313,14 @@ mod host_tests {
             Some("本人対応申請を取消しました。")
         );
         assert!(cancel_ok_err.is_none());
+
+        let (session_ok_msg, session_ok_err, session_reload) = session_revoke_feedback(Ok(()));
+        assert_eq!(
+            session_ok_msg.as_deref(),
+            Some("他のデバイスのセッションをログアウトしました。")
+        );
+        assert!(session_ok_err.is_none());
+        assert!(session_reload);
 
         let (cancel_fail_msg, cancel_fail_err) =
             subject_cancel_feedback(Err(ApiError::unknown("cancel failed")));
