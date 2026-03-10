@@ -44,7 +44,7 @@ cargo test -p timekeeper-backend --tests
 BACKEND_BASE_URL=http://localhost:3000 bash scripts/harness.sh api-smoke
 ```
 
-内部では [scripts/test_backend.sh](/home/mrabbit/Documents/timekeeper/scripts/test_backend.sh) を使います。
+内部では [scripts/test_backend.sh](../../scripts/test_backend.sh) を使います。
 
 ### `frontend-login`
 
@@ -52,7 +52,7 @@ BACKEND_BASE_URL=http://localhost:3000 bash scripts/harness.sh api-smoke
 FRONTEND_BASE_URL=http://localhost:8080 bash scripts/harness.sh frontend-login
 ```
 
-内部では [scripts/test_frontend_login.mjs](/home/mrabbit/Documents/timekeeper/scripts/test_frontend_login.mjs) を使います。
+内部では [scripts/test_frontend_login.mjs](../../scripts/test_frontend_login.mjs) を使います。
 
 ## Profiles
 

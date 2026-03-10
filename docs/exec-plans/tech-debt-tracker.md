@@ -37,13 +37,13 @@
 
 **Evidence**
 
-- [docs/manual/HARNESS.md](/home/mrabbit/Documents/timekeeper/docs/manual/HARNESS.md)
-- [backend/src/repositories/attendance_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/attendance_repository.rs)
-- [backend/src/repositories/leave_request_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/leave_request_repository.rs)
-- [backend/src/repositories/overtime_request_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/overtime_request_repository.rs)
-- [backend/src/repositories/repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/repository.rs)
-- [backend/src/repositories/auth.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/auth.rs)
-- [backend/src/services/lockout_notification_queue.rs](/home/mrabbit/Documents/timekeeper/backend/src/services/lockout_notification_queue.rs)
+- [docs/manual/HARNESS.md](../manual/HARNESS.md)
+- [backend/src/repositories/attendance_repository.rs](../../backend/src/repositories/attendance_repository.rs)
+- [backend/src/repositories/leave_request_repository.rs](../../backend/src/repositories/leave_request_repository.rs)
+- [backend/src/repositories/overtime_request_repository.rs](../../backend/src/repositories/overtime_request_repository.rs)
+- [backend/src/repositories/repository.rs](../../backend/src/repositories/repository.rs)
+- [backend/src/repositories/auth.rs](../../backend/src/repositories/auth.rs)
+- [backend/src/services/lockout_notification_queue.rs](../../backend/src/services/lockout_notification_queue.rs)
 
 **Impact**
 
@@ -75,11 +75,11 @@
 
 **Evidence**
 
-- [backend/src/handlers/auth.rs](/home/mrabbit/Documents/timekeeper/backend/src/handlers/auth.rs) `1993` lines
-- [backend/src/main.rs](/home/mrabbit/Documents/timekeeper/backend/src/main.rs) `992` lines
-- [backend/src/middleware/audit_log.rs](/home/mrabbit/Documents/timekeeper/backend/src/middleware/audit_log.rs) `874` lines
-- [backend/src/handlers/attendance.rs](/home/mrabbit/Documents/timekeeper/backend/src/handlers/attendance.rs) `869` lines
-- [backend/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/AGENTS.md)
+- [backend/src/handlers/auth.rs](../../backend/src/handlers/auth.rs) `1993` lines
+- [backend/src/main.rs](../../backend/src/main.rs) `992` lines
+- [backend/src/middleware/audit_log.rs](../../backend/src/middleware/audit_log.rs) `874` lines
+- [backend/src/handlers/attendance.rs](../../backend/src/handlers/attendance.rs) `869` lines
+- [backend/AGENTS.md](../../backend/AGENTS.md)
 
 **Impact**
 
@@ -111,9 +111,9 @@
 
 **Evidence**
 
-- [frontend/src/api/client.rs](/home/mrabbit/Documents/timekeeper/frontend/src/api/client.rs) `942` lines
-- [frontend/src/pages/admin/components/holidays.rs](/home/mrabbit/Documents/timekeeper/frontend/src/pages/admin/components/holidays.rs) `1574` lines
-- [frontend/AGENTS.md](/home/mrabbit/Documents/timekeeper/frontend/AGENTS.md)
+- [frontend/src/api/client.rs](../../frontend/src/api/client.rs) `942` lines
+- [frontend/src/pages/admin/components/holidays.rs](../../frontend/src/pages/admin/components/holidays.rs) `1574` lines
+- [frontend/AGENTS.md](../../frontend/AGENTS.md)
 
 **Impact**
 
@@ -144,12 +144,12 @@
 
 **Evidence**
 
-- [backend/src/handlers/attendance_correction_requests.rs](/home/mrabbit/Documents/timekeeper/backend/src/handlers/attendance_correction_requests.rs)
-- [backend/src/repositories/attendance_correction_request.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/attendance_correction_request.rs)
-- [backend/src/repositories/attendance_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/attendance_repository.rs)
-- [backend/src/repositories/leave_request_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/leave_request_repository.rs)
-- [backend/src/repositories/overtime_request_repository.rs](/home/mrabbit/Documents/timekeeper/backend/src/repositories/overtime_request_repository.rs)
-- [backend/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/AGENTS.md)
+- [backend/src/handlers/attendance_correction_requests.rs](../../backend/src/handlers/attendance_correction_requests.rs)
+- [backend/src/repositories/attendance_correction_request.rs](../../backend/src/repositories/attendance_correction_request.rs)
+- [backend/src/repositories/attendance_repository.rs](../../backend/src/repositories/attendance_repository.rs)
+- [backend/src/repositories/leave_request_repository.rs](../../backend/src/repositories/leave_request_repository.rs)
+- [backend/src/repositories/overtime_request_repository.rs](../../backend/src/repositories/overtime_request_repository.rs)
+- [backend/AGENTS.md](../../backend/AGENTS.md)
 
 **Impact**
 
@@ -180,11 +180,11 @@
 
 **Evidence**
 
-- [backend/tests/support/mod.rs](/home/mrabbit/Documents/timekeeper/backend/tests/support/mod.rs)
-- [backend/tests/auth_flow_api.rs](/home/mrabbit/Documents/timekeeper/backend/tests/auth_flow_api.rs)
-- [backend/tests/auth_lockout_redis_integration.rs](/home/mrabbit/Documents/timekeeper/backend/tests/auth_lockout_redis_integration.rs)
-- [scripts/harness.sh](/home/mrabbit/Documents/timekeeper/scripts/harness.sh)
-- [docs/manual/HARNESS.md](/home/mrabbit/Documents/timekeeper/docs/manual/HARNESS.md)
+- [backend/tests/support/mod.rs](../../backend/tests/support/mod.rs)
+- [backend/tests/auth_flow_api.rs](../../backend/tests/auth_flow_api.rs)
+- [backend/tests/auth_lockout_redis_integration.rs](../../backend/tests/auth_lockout_redis_integration.rs)
+- [scripts/harness.sh](../../scripts/harness.sh)
+- [docs/manual/HARNESS.md](../manual/HARNESS.md)
 
 **Impact**
 
@@ -215,13 +215,13 @@
 
 **Evidence**
 
-- [frontend/AGENTS.md](/home/mrabbit/Documents/timekeeper/frontend/AGENTS.md)
+- [frontend/AGENTS.md](../../frontend/AGENTS.md)
   - `api/client.rs` を `692 lines` と書いているが現状は `942 lines`
-- [backend/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/AGENTS.md)
+- [backend/AGENTS.md](../../backend/AGENTS.md)
   - `handlers/auth.rs` を `642 lines` と書いているが現状は `1993 lines`
-- [AGENTS.md](/home/mrabbit/Documents/timekeeper/AGENTS.md)
-- [docs/generated/exec-plans/active](/home/mrabbit/Documents/timekeeper/docs/generated/exec-plans/active)
-- [docs/exec-plans/tech-debt-tracker.md](/home/mrabbit/Documents/timekeeper/docs/exec-plans/tech-debt-tracker.md)
+- [AGENTS.md](../../AGENTS.md)
+- [docs/generated/exec-plans/active](../generated/exec-plans/active)
+- [docs/exec-plans/tech-debt-tracker.md](./tech-debt-tracker.md)
 
 **Impact**
 
@@ -246,10 +246,10 @@
 
 **Evidence**
 
-- [backend/src/bin/lockout_notification_worker.rs](/home/mrabbit/Documents/timekeeper/backend/src/bin/lockout_notification_worker.rs)
-- [backend/src/services/lockout_notification_queue.rs](/home/mrabbit/Documents/timekeeper/backend/src/services/lockout_notification_queue.rs)
-- [backend/src/services/lockout_notification_worker.rs](/home/mrabbit/Documents/timekeeper/backend/src/services/lockout_notification_worker.rs)
-- [docs/manual/RUNBOOK.md](/home/mrabbit/Documents/timekeeper/docs/manual/RUNBOOK.md)
+- [backend/src/bin/lockout_notification_worker.rs](../../backend/src/bin/lockout_notification_worker.rs)
+- [backend/src/services/lockout_notification_queue.rs](../../backend/src/services/lockout_notification_queue.rs)
+- [backend/src/services/lockout_notification_worker.rs](../../backend/src/services/lockout_notification_worker.rs)
+- [docs/manual/RUNBOOK.md](../manual/RUNBOOK.md)
 
 **Impact**
 

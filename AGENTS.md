@@ -14,9 +14,9 @@
 
 詳細な運用は次を参照します。
 
-- ハーネス利用手順: [docs/manual/HARNESS.md](/home/mrabbit/Documents/timekeeper/docs/manual/HARNESS.md)
-- ハーネス設計意図: [docs/design-docs/harness-engineering.md](/home/mrabbit/Documents/timekeeper/docs/design-docs/harness-engineering.md)
-- 複雑タスク計画: [.agent/PLANS.md](/home/mrabbit/Documents/timekeeper/.agent/PLANS.md)
+- ハーネス利用手順: [docs/manual/HARNESS.md](./docs/manual/HARNESS.md)
+- ハーネス設計意図: [docs/design-docs/harness-engineering.md](./docs/design-docs/harness-engineering.md)
+- 複雑タスク計画: [.agent/PLANS.md](./.agent/PLANS.md)
 
 ## Source Of Truth
 
@@ -24,9 +24,9 @@
 - 長時間・複数レイヤー作業の進捗: `ExecPlan`
 - 実行可能な検証入口: `scripts/harness.sh`
 - 各レイヤーの詳細規約:
-  - [backend/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/AGENTS.md)
-  - [frontend/AGENTS.md](/home/mrabbit/Documents/timekeeper/frontend/AGENTS.md)
-  - [backend/tests/AGENTS.md](/home/mrabbit/Documents/timekeeper/backend/tests/AGENTS.md)
+  - [backend/AGENTS.md](./backend/AGENTS.md)
+  - [frontend/AGENTS.md](./frontend/AGENTS.md)
+  - [backend/tests/AGENTS.md](./backend/tests/AGENTS.md)
 
 ## Harness Loop
 

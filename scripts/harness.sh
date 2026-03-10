@@ -71,13 +71,13 @@ run_backend_integration() {
 
 run_api_smoke() {
   log "stage=api-smoke"
-  check_url "$BACKEND_BASE_URL/health" || check_url "$BACKEND_BASE_URL"
+  check_url "$BACKEND_BASE_URL/health" || check_url "$BACKEND_BASE_URL" || die "backend not reachable at $BACKEND_BASE_URL"
   (cd "$ROOT_DIR" && bash scripts/test_backend.sh --base-url "$BACKEND_BASE_URL")
 }
 
 run_frontend_login() {
   log "stage=frontend-login"
-  check_url "$FRONTEND_BASE_URL/login" || check_url "$FRONTEND_BASE_URL"
+  check_url "$FRONTEND_BASE_URL/login" || check_url "$FRONTEND_BASE_URL" || die "frontend not reachable at $FRONTEND_BASE_URL"
   (cd "$ROOT_DIR" && FRONTEND_BASE_URL="$FRONTEND_BASE_URL" node scripts/test_frontend_login.mjs)
 }
 

@@ -5,34 +5,34 @@
 
 ## Manual
 
-- [Harness Manual](/home/mrabbit/Documents/timekeeper/docs/manual/HARNESS.md)
-- [Operational Runbook](/home/mrabbit/Documents/timekeeper/docs/manual/RUNBOOK.md)
-- [Environment Setup](/home/mrabbit/Documents/timekeeper/docs/manual/environment-setup.md)
-- [Environment Setup (JA)](/home/mrabbit/Documents/timekeeper/docs/manual/environment-setup_ja.md)
-- [User Guide](/home/mrabbit/Documents/timekeeper/docs/manual/user-guide.md)
-- [User Guide (JA)](/home/mrabbit/Documents/timekeeper/docs/manual/user-guide_ja.md)
+- [Harness Manual](./manual/HARNESS.md)
+- [Operational Runbook](./manual/RUNBOOK.md)
+- [Environment Setup](./manual/environment-setup.md)
+- [Environment Setup (JA)](./manual/environment-setup_ja.md)
+- [User Guide](./manual/user-guide.md)
+- [User Guide (JA)](./manual/user-guide_ja.md)
 
 ## Design Docs
 
-- [Harness Engineering](/home/mrabbit/Documents/timekeeper/docs/design-docs/harness-engineering.md)
-- [Frontend Structure](/home/mrabbit/Documents/timekeeper/docs/design-docs/frontend-structure.md)
-- [Scaling Guide](/home/mrabbit/Documents/timekeeper/docs/design-docs/scaling.md)
-- [Theme Implementation](/home/mrabbit/Documents/timekeeper/docs/design-docs/theme-implementation.md)
+- [Harness Engineering](./design-docs/harness-engineering.md)
+- [Frontend Structure](./design-docs/frontend-structure.md)
+- [Scaling Guide](./design-docs/scaling.md)
+- [Theme Implementation](./design-docs/theme-implementation.md)
 
 ## Migration
 
-- [Audit Log Migration Guide](/home/mrabbit/Documents/timekeeper/docs/migration/audit-log-migration-guide.md)
-- [Audit Log Migration Guide (JA)](/home/mrabbit/Documents/timekeeper/docs/migration/audit-log-migration-guide_ja.md)
+- [Audit Log Migration Guide](./migration/audit-log-migration-guide.md)
+- [Audit Log Migration Guide (JA)](./migration/audit-log-migration-guide_ja.md)
 
 ## Issue Breakdowns
 
-- [Issue Documents](/home/mrabbit/Documents/timekeeper/docs/issues)
+- [Issue Documents](./issues)
 
 ## Plans
 
-- [Long-Term Plans](/home/mrabbit/Documents/timekeeper/docs/plans)
-- [Exec Plans / Trackers](/home/mrabbit/Documents/timekeeper/docs/exec-plans)
+- [Long-Term Plans](./plans)
+- [Exec Plans / Trackers](./exec-plans)
 
 ## Components
 
-- [DatePicker](/home/mrabbit/Documents/timekeeper/docs/components/datepicker.md)
+- [DatePicker](./components/datepicker.md)
