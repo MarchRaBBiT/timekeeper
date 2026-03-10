@@ -30,7 +30,7 @@ pub fn RequestsList(
     let dismiss_cancel_dialog = Callback::new(move |_| pending_cancel_request.set(None));
 
     view! {
-        <div class="bg-surface-elevated shadow-premium rounded-3xl overflow-hidden border border-border">
+        <div class="bg-surface-elevated rounded-2xl shadow-sm overflow-hidden border border-border">
             <div class="px-8 py-6 border-b border-border">
                 <h3 class="text-xl font-display font-bold text-fg">{"申請一覧"}</h3>
                 <Show when=move || message.get().error.is_some()>
