@@ -3,6 +3,7 @@ use axum::{
     http::{header, header::USER_AGENT, HeaderMap},
     Json,
 };
+use bb8_redis::redis;
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde_json::{json, Value};
@@ -62,7 +63,23 @@ const DUMMY_LOGIN_PASSWORD_HASH: &str =
     "$argon2id$v=19$m=19456,t=2,p=1$SHjkBewYpN0AqfNJtz4BCQ$Q6EKet0GGAKSbQ5hQFsXf+6WG+AX8Z91wi5hlimtYew";
 const LOGIN_FAILURE_JITTER_MIN_MS: u64 = 15;
 const LOGIN_FAILURE_JITTER_MAX_MS: u64 = 35;
+const LOGIN_FAILURE_REDIS_KEY_PREFIX: &str = "auth:login-failures:";
 const PASSWORD_EXPIRY_WARNING_WINDOW_DAYS: i64 = 7;
+const LOGIN_FAILURE_REDIS_SCRIPT: &str = r#"
+local key = KEYS[1]
+local threshold = tonumber(ARGV[1])
+local ttl_ms = tonumber(ARGV[2])
+local count = redis.call('INCR', key)
+-- TTL is set only on the first failure, so the pre-threshold window is fixed.
+if count == 1 then
+  redis.call('PEXPIRE', key, ttl_ms)
+end
+if count >= threshold then
+  redis.call('DEL', key)
+  return {1, count}
+end
+return {0, count}
+"#;
 
 #[derive(Debug)]
 pub struct AuthSession {
@@ -171,28 +188,21 @@ pub async fn login(
             auth_repo::clear_login_failures(&state.write_pool, session.user.id)
                 .await
                 .map_err(|_| internal_error("Failed to clear login failure count"))?;
+            clear_login_failure_cache(&state, session.user.id).await;
             session
         }
         Err(err) => {
             if should_track_login_failure(&err) {
-                let failure_state = auth_repo::record_login_failure(
-                    &state.write_pool,
-                    audit_actor_id,
-                    now,
-                    lockout_policy(&state.config),
-                )
-                .await
-                .map_err(|_| internal_error("Failed to update login failure state"))?;
+                let failure_state = record_login_failure_state(&state, audit_actor_id, now)
+                    .await
+                    .map_err(|_| internal_error("Failed to update login failure state"))?;
 
                 record_login_audit_event(
                     Some(audit_log_service.clone()),
                     audit_context.clone(),
                     "login_failure",
                     audit_actor_id,
-                    Some(json!({
-                        "failed_login_attempts": failure_state.failed_login_attempts,
-                        "lockout_count": failure_state.lockout_count,
-                    })),
+                    Some(login_failure_audit_metadata(&failure_state)),
                 );
 
                 if failure_state.became_locked {
@@ -1504,6 +1514,118 @@ fn enqueue_lockout_notification(
     });
 }
 
+async fn record_login_failure_state(
+    state: &AppState,
+    user_id: UserId,
+    now: DateTime<Utc>,
+) -> Result<auth_repo::LoginFailureState, anyhow::Error> {
+    let policy = lockout_policy(&state.config);
+    match try_record_login_failure_with_redis(state, user_id, now, policy).await {
+        Ok(Some(failure_state)) => Ok(failure_state),
+        Ok(None) => auth_repo::record_login_failure(&state.write_pool, user_id, now, policy)
+            .await
+            .map_err(Into::into),
+        Err(err) => {
+            tracing::warn!(
+                error = ?err,
+                user_id = %user_id,
+                "Failed to record login failure in Redis, falling back to database"
+            );
+            auth_repo::record_login_failure(&state.write_pool, user_id, now, policy)
+                .await
+                .map_err(Into::into)
+        }
+    }
+}
+
+async fn try_record_login_failure_with_redis(
+    state: &AppState,
+    user_id: UserId,
+    now: DateTime<Utc>,
+    policy: LockoutPolicy,
+) -> Result<Option<auth_repo::LoginFailureState>, anyhow::Error> {
+    let Some(pool) = state.redis() else {
+        return Ok(None);
+    };
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|err| anyhow::anyhow!("acquire redis connection: {err}"))?;
+    let key = login_failure_cache_key(user_id);
+    let ttl_ms = login_failure_cache_ttl_millis(policy);
+    let (threshold_reached, cached_count): (i32, i32) = redis::cmd("EVAL")
+        .arg(LOGIN_FAILURE_REDIS_SCRIPT)
+        .arg(1)
+        .arg(&key)
+        .arg(policy.threshold.max(1))
+        .arg(ttl_ms)
+        .query_async(&mut *conn)
+        .await
+        .map_err(|err| anyhow::anyhow!("increment login failure cache: {err}"))?;
+    drop(conn);
+
+    if threshold_reached != 0 {
+        let failure_state =
+            auth_repo::persist_lockout_state(&state.write_pool, user_id, now, policy).await?;
+        Ok(Some(failure_state))
+    } else {
+        Ok(Some(auth_repo::LoginFailureState {
+            failed_login_attempts: cached_count.max(0),
+            locked_until: None,
+            lockout_count: 0,
+            became_locked: false,
+        }))
+    }
+}
+
+async fn clear_login_failure_cache(state: &AppState, user_id: UserId) {
+    let Some(pool) = state.redis() else {
+        return;
+    };
+
+    let mut conn = match pool.get().await {
+        Ok(conn) => conn,
+        Err(err) => {
+            tracing::warn!(
+                error = ?err,
+                user_id = %user_id,
+                "Failed to acquire Redis connection to clear login failure cache"
+            );
+            return;
+        }
+    };
+
+    let delete_result: Result<i32, _> = redis::cmd("DEL")
+        .arg(login_failure_cache_key(user_id))
+        .query_async(&mut *conn)
+        .await;
+    if let Err(err) = delete_result {
+        tracing::warn!(
+            error = ?err,
+            user_id = %user_id,
+            "Failed to clear login failure cache from Redis"
+        );
+    }
+}
+
+fn login_failure_cache_key(user_id: UserId) -> String {
+    format!("{LOGIN_FAILURE_REDIS_KEY_PREFIX}{user_id}")
+}
+
+fn login_failure_cache_ttl_millis(policy: LockoutPolicy) -> i64 {
+    (policy.max_duration_hours.max(1) * 60 * 60 * 1000).max(60_000)
+}
+
+fn login_failure_audit_metadata(failure_state: &auth_repo::LoginFailureState) -> Value {
+    let mut metadata = json!({
+        "failed_login_attempts": failure_state.failed_login_attempts,
+    });
+    if failure_state.became_locked {
+        metadata["lockout_count"] = json!(failure_state.lockout_count);
+    }
+    metadata
+}
 async fn ensure_password_not_reused(
     pool: &sqlx::PgPool,
     user_id: UserId,
@@ -1704,6 +1826,21 @@ mod tests {
         assert_eq!(password_expiry_warning_days(&user, &config).unwrap(), None);
     }
 
+    #[test]
+    fn login_failure_jitter_stays_in_configured_range() {
+        for _ in 0..32 {
+            let jitter = login_failure_jitter_millis();
+            assert!((LOGIN_FAILURE_JITTER_MIN_MS..=LOGIN_FAILURE_JITTER_MAX_MS).contains(&jitter));
+        }
+    }
+
+    #[test]
+    fn login_audit_result_maps_denied_and_blocked_events() {
+        assert_eq!(login_audit_result("login_failure"), "denied");
+        assert_eq!(login_audit_result("account_lockout"), "blocked");
+        assert_eq!(login_audit_result("login_success"), "success");
+    }
+
     #[tokio::test]
     async fn ensure_password_not_reused_allows_history_zero() {
         let pool = PgPoolOptions::new()
@@ -1792,17 +1929,7 @@ mod tests {
     }
 
     #[test]
-    fn login_failure_jitter_stays_in_configured_range() {
-        for _ in 0..32 {
-            let jitter = login_failure_jitter_millis();
-            assert!((LOGIN_FAILURE_JITTER_MIN_MS..=LOGIN_FAILURE_JITTER_MAX_MS).contains(&jitter));
-        }
-    }
-
-    #[test]
-    fn login_audit_result_maps_denied_and_blocked_events() {
-        assert_eq!(login_audit_result("login_failure"), "denied");
-        assert_eq!(login_audit_result("account_lockout"), "blocked");
+    fn login_audit_result_remains_success_for_non_failure_events() {
         assert_eq!(login_audit_result("login_success"), "success");
     }
 
