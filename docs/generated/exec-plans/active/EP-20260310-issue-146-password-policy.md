@@ -34,7 +34,7 @@
 ## JJ Snapshot Log
 - [x] `jj status`
 - [x] backend / frontend 対象テスト pass
-- [ ] `jj commit -m "feat(security): complete password policy gaps"`
+- [x] `jj commit -m "feat(security): complete password policy gaps"`
 
 ## Progress Notes
 - 2026-03-10: 計画作成。既存 backend に複雑性・履歴・期限 enforcement が入っていることを確認し、未実装差分の追加に絞る方針を決定。
