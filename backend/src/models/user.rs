@@ -219,6 +219,8 @@ pub struct UserResponse {
     pub is_locked: bool,
     pub locked_until: Option<DateTime<Utc>>,
     pub failed_login_attempts: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password_expiry_warning_days: Option<i64>,
 }
 
 impl From<User> for UserResponse {
@@ -240,6 +242,7 @@ impl From<User> for UserResponse {
             is_locked,
             locked_until: user.locked_until,
             failed_login_attempts: user.failed_login_attempts,
+            password_expiry_warning_days: None,
         }
     }
 }

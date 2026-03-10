@@ -58,6 +58,7 @@ pub type HandlerResult<T> = Result<T, AppError>;
 
 const DUMMY_LOGIN_PASSWORD_HASH: &str =
     "$argon2id$v=19$m=19456,t=2,p=1$SHjkBewYpN0AqfNJtz4BCQ$Q6EKet0GGAKSbQ5hQFsXf+6WG+AX8Z91wi5hlimtYew";
+const PASSWORD_EXPIRY_WARNING_WINDOW_DAYS: i64 = 7;
 
 #[derive(Debug)]
 pub struct AuthSession {
@@ -455,8 +456,11 @@ pub async fn logout(
     Ok((response_headers, Json(json!({"message":"Logged out"}))))
 }
 
-pub async fn me(Extension(user): Extension<User>) -> HandlerResult<Json<UserResponse>> {
-    Ok(Json(UserResponse::from(user)))
+pub async fn me(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+) -> HandlerResult<Json<UserResponse>> {
+    Ok(Json(build_user_response(user, &state.config)?))
 }
 
 pub async fn mfa_status(
@@ -531,7 +535,7 @@ pub async fn update_profile(
         .map_err(|_| internal_error("Failed to decrypt user profile"))?;
     updated_user.email = decrypt_pii(&updated_user.email, &state.config)
         .map_err(|_| internal_error("Failed to decrypt user profile"))?;
-    Ok(Json(UserResponse::from(updated_user)))
+    Ok(Json(build_user_response(updated_user, &state.config)?))
 }
 
 pub async fn mfa_register(
@@ -848,7 +852,7 @@ async fn create_auth_session(user: &User, config: &Config) -> HandlerResult<Auth
     Ok(AuthSession {
         access_token,
         refresh_token,
-        user: UserResponse::from(user.clone()),
+        user: build_user_response(user.clone(), config)?,
     })
 }
 
@@ -931,7 +935,7 @@ where
     let response = AuthSession {
         access_token,
         refresh_token,
-        user: UserResponse::from(user),
+        user: build_user_response(user, config)?,
     };
 
     Ok(response)
@@ -1348,6 +1352,33 @@ fn enforce_password_expiration(user: &User, config: &Config) -> HandlerResult<()
     }
 }
 
+fn password_expiry_warning_days(user: &User, config: &Config) -> HandlerResult<Option<i64>> {
+    if config.password_expiration_days == 0 {
+        return Ok(None);
+    }
+
+    let expiry = user
+        .password_changed_at
+        .checked_add_signed(chrono::Duration::days(
+            config.password_expiration_days as i64,
+        ))
+        .ok_or_else(|| internal_error("Password expiration overflow"))?;
+    let remaining_days = expiry.signed_duration_since(Utc::now()).num_days();
+
+    if (0..=PASSWORD_EXPIRY_WARNING_WINDOW_DAYS).contains(&remaining_days) {
+        Ok(Some(remaining_days))
+    } else {
+        Ok(None)
+    }
+}
+
+fn build_user_response(user: User, config: &Config) -> HandlerResult<UserResponse> {
+    let warning_days = password_expiry_warning_days(&user, config)?;
+    let mut response = UserResponse::from(user);
+    response.password_expiry_warning_days = warning_days;
+    Ok(response)
+}
+
 fn lockout_policy(config: &Config) -> LockoutPolicy {
     LockoutPolicy {
         threshold: config.account_lockout_threshold as i32,
@@ -1617,6 +1648,25 @@ mod tests {
         assert!(enforce_password_expiration(&user, &config).is_ok());
         config.password_expiration_days = 0;
         assert!(enforce_password_expiration(&user, &config).is_ok());
+    }
+
+    #[test]
+    fn password_expiry_warning_days_only_returns_warning_in_window() {
+        let mut user = build_user();
+        let mut config = config_stub();
+        config.password_expiration_days = 90;
+
+        user.password_changed_at = Utc::now() - Duration::days(81);
+        assert_eq!(password_expiry_warning_days(&user, &config).unwrap(), None);
+
+        user.password_changed_at = Utc::now() - Duration::days(84);
+        let warning = password_expiry_warning_days(&user, &config)
+            .unwrap()
+            .expect("warning should exist");
+        assert!((5..=7).contains(&warning));
+
+        user.password_changed_at = Utc::now() - Duration::days(95);
+        assert_eq!(password_expiry_warning_days(&user, &config).unwrap(), None);
     }
 
     #[tokio::test]

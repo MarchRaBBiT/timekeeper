@@ -3,6 +3,25 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
 use crate::config::Config;
 
+const COMMON_WEAK_PASSWORDS: &[&str] = &[
+    "123456",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "admin",
+    "admin123",
+    "changeme",
+    "iloveyou",
+    "letmein",
+    "passw0rd",
+    "password",
+    "password1",
+    "password123",
+    "qwerty",
+    "qwerty123",
+    "welcome",
+];
+
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -65,7 +84,23 @@ pub fn validate_password_complexity(password: &str, config: &Config) -> anyhow::
         return Err(anyhow::anyhow!("Password must contain at least one symbol"));
     }
 
+    if is_common_weak_password(password) {
+        return Err(anyhow::anyhow!(
+            "Password is too common; choose a less predictable password"
+        ));
+    }
+
     Ok(())
+}
+
+fn is_common_weak_password(password: &str) -> bool {
+    let normalized = password
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    COMMON_WEAK_PASSWORDS.contains(&normalized.as_str())
 }
 
 #[cfg(test)]
@@ -161,10 +196,23 @@ mod tests {
     }
 
     #[test]
+    fn validate_password_complexity_rejects_common_passwords() {
+        let config = test_config();
+        let err = validate_password_complexity("Password123!", &config).unwrap_err();
+        assert!(err.to_string().contains("too common"));
+    }
+
+    #[test]
     fn hash_and_verify_roundtrip() {
         let pw = "S3cr3t!";
         let hash = hash_password(pw).expect("hash should succeed");
         assert!(verify_password(pw, &hash).unwrap());
         assert!(!verify_password("wrong", &hash).unwrap());
+    }
+
+    #[test]
+    fn weak_password_list_uses_case_insensitive_lookup() {
+        assert!(is_common_weak_password("  PASSword123  "));
+        assert!(!is_common_weak_password("StrongerPass123!"));
     }
 }

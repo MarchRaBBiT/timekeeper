@@ -11,9 +11,30 @@ use crate::{
         },
         settings::view_model::use_settings_view_model,
     },
+    state::auth::use_auth,
 };
 use chrono::{DateTime, Utc};
 use leptos::{ev::SubmitEvent, Callback, *};
+
+const PASSWORD_POLICY_MIN_LENGTH: usize = 12;
+const COMMON_WEAK_PASSWORDS: &[&str] = &[
+    "123456",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "admin",
+    "admin123",
+    "changeme",
+    "iloveyou",
+    "letmein",
+    "passw0rd",
+    "password",
+    "password1",
+    "password123",
+    "qwerty",
+    "qwerty123",
+    "welcome",
+];
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum SettingsTab {
@@ -22,29 +43,146 @@ enum SettingsTab {
     SubjectRequest,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PasswordStrengthState {
+    label: &'static str,
+    badge_class: &'static str,
+    hint: String,
+}
+
 fn map_change_password_error(error: &ApiError) -> ApiError {
-    match error.error.as_str() {
-        "Current password is incorrect" => {
-            ApiError::validation("現在のパスワードが正しくありません。")
-        }
-        "New password must be at least 8 characters" => {
-            ApiError::validation("新しいパスワードは8文字以上である必要があります。")
-        }
-        "New password must differ from current password" => {
-            ApiError::validation("新しいパスワードは現在のパスワードと異なる必要があります。")
-        }
-        _ => ApiError::unknown("パスワード変更に失敗しました。時間をおいて再度お試しください。"),
+    let message = error.error.as_str();
+    if message == "Current password is incorrect" {
+        ApiError::validation("現在のパスワードが正しくありません。")
+    } else if message.contains("at least") && message.contains("characters") {
+        ApiError::validation("新しいパスワードは12文字以上である必要があります。")
+    } else if message.contains("uppercase") {
+        ApiError::validation("新しいパスワードには大文字を1文字以上含めてください。")
+    } else if message.contains("lowercase") {
+        ApiError::validation("新しいパスワードには小文字を1文字以上含めてください。")
+    } else if message.contains("number") {
+        ApiError::validation("新しいパスワードには数字を1文字以上含めてください。")
+    } else if message.contains("symbol") {
+        ApiError::validation("新しいパスワードには記号を1文字以上含めてください。")
+    } else if message.contains("too common") {
+        ApiError::validation("推測されやすいパスワードは使用できません。")
+    } else if message == "New password must differ from current password" {
+        ApiError::validation("新しいパスワードは現在のパスワードと異なる必要があります。")
+    } else {
+        ApiError::unknown("パスワード変更に失敗しました。時間をおいて再度お試しください。")
     }
+}
+
+fn collect_password_policy_gaps(password: &str) -> Vec<&'static str> {
+    let mut gaps = Vec::new();
+    if password.len() < PASSWORD_POLICY_MIN_LENGTH {
+        gaps.push("12文字以上");
+    }
+    if !password.chars().any(|c| c.is_uppercase()) {
+        gaps.push("大文字を1文字以上");
+    }
+    if !password.chars().any(|c| c.is_lowercase()) {
+        gaps.push("小文字を1文字以上");
+    }
+    if !password.chars().any(|c| c.is_ascii_digit()) {
+        gaps.push("数字を1文字以上");
+    }
+    if !password.chars().any(|c| !c.is_alphanumeric()) {
+        gaps.push("記号を1文字以上");
+    }
+    if is_common_weak_password(password) {
+        gaps.push("推測されやすい単純な文字列を避ける");
+    }
+    gaps
+}
+
+fn first_password_policy_error(password: &str) -> Option<ApiError> {
+    if password.len() < PASSWORD_POLICY_MIN_LENGTH {
+        Some(ApiError::validation(
+            "新しいパスワードは12文字以上である必要があります。",
+        ))
+    } else if !password.chars().any(|c| c.is_uppercase()) {
+        Some(ApiError::validation(
+            "新しいパスワードには大文字を1文字以上含めてください。",
+        ))
+    } else if !password.chars().any(|c| c.is_lowercase()) {
+        Some(ApiError::validation(
+            "新しいパスワードには小文字を1文字以上含めてください。",
+        ))
+    } else if !password.chars().any(|c| c.is_ascii_digit()) {
+        Some(ApiError::validation(
+            "新しいパスワードには数字を1文字以上含めてください。",
+        ))
+    } else if !password.chars().any(|c| !c.is_alphanumeric()) {
+        Some(ApiError::validation(
+            "新しいパスワードには記号を1文字以上含めてください。",
+        ))
+    } else if is_common_weak_password(password) {
+        Some(ApiError::validation(
+            "推測されやすいパスワードは使用できません。",
+        ))
+    } else {
+        None
+    }
+}
+
+fn is_common_weak_password(password: &str) -> bool {
+    let normalized = password
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    COMMON_WEAK_PASSWORDS.contains(&normalized.as_str())
+}
+
+fn password_strength_state(password: &str) -> Option<PasswordStrengthState> {
+    if password.is_empty() {
+        return None;
+    }
+
+    let gaps = collect_password_policy_gaps(password);
+    let passed = 6usize.saturating_sub(gaps.len());
+    let (label, badge_class) = match passed {
+        0..=2 => ("弱い", "bg-action-danger-bg/10 text-action-danger-bg"),
+        3..=4 => ("普通", "bg-warning/15 text-warning"),
+        5 => ("良い", "bg-info/15 text-info"),
+        _ => ("強い", "bg-success/15 text-success"),
+    };
+    let hint = if gaps.is_empty() {
+        "要件をすべて満たしています。".to_string()
+    } else {
+        format!("未達: {}", gaps.join(" / "))
+    };
+
+    Some(PasswordStrengthState {
+        label,
+        badge_class,
+        hint,
+    })
+}
+
+fn format_password_expiry_warning(days: i64) -> String {
+    if days <= 0 {
+        "パスワードの有効期限が本日までです。すぐに変更してください。".to_string()
+    } else {
+        format!(
+            "パスワードの有効期限まであと{}日です。期限切れ前に変更してください。",
+            days
+        )
+    }
+}
+
+fn password_policy_helper_text() -> &'static str {
+    "12文字以上、大文字・小文字・数字・記号を各1文字以上含めてください。"
 }
 
 fn validate_password_submission(
     new_password: &str,
     confirm_password: &str,
 ) -> Result<(), ApiError> {
-    if new_password.len() < 8 {
-        return Err(ApiError::validation(
-            "新しいパスワードは8文字以上である必要があります。",
-        ));
+    if let Some(error) = first_password_policy_error(new_password) {
+        return Err(error);
     }
     if new_password != confirm_password {
         return Err(ApiError::validation("新しいパスワードが一致しません。"));
@@ -450,12 +588,20 @@ fn render_subject_request_row(
 #[component]
 pub fn SettingsPage() -> impl IntoView {
     let vm = use_settings_view_model();
+    let (auth_state, _set_auth_state) = use_auth();
     let active_tab = create_rw_signal(SettingsTab::Password);
 
     // --- Password Change State ---
     let (current_password, set_current_password) = create_signal(String::new());
     let (new_password, set_new_password) = create_signal(String::new());
     let (confirm_password, set_confirm_password) = create_signal(String::new());
+    let password_strength = Signal::derive(move || password_strength_state(&new_password.get()));
+    let password_expiry_warning_days = Signal::derive(move || {
+        auth_state
+            .get()
+            .user
+            .and_then(|user| user.password_expiry_warning_days)
+    });
 
     let password_loading = vm.change_password_action.pending();
     let (password_success_msg, set_password_success_msg) = create_signal(Option::<String>::None);
@@ -612,6 +758,16 @@ pub fn SettingsPage() -> impl IntoView {
                     <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
                         <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"パスワード変更"</h2>
 
+                    <Show when=move || password_expiry_warning_days.get().is_some() fallback=|| ()>
+                        <div class="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+                            {move || {
+                                format_password_expiry_warning(
+                                    password_expiry_warning_days.get().unwrap_or_default(),
+                                )
+                            }}
+                        </div>
+                    </Show>
+
                     <Show when=move || password_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={password_success_msg.get().unwrap_or_default()} />
                     </Show>
@@ -639,6 +795,40 @@ pub fn SettingsPage() -> impl IntoView {
                                 }
                                 prop:value=new_password
                             />
+                            <p class="mt-2 text-xs text-fg-muted">{password_policy_helper_text()}</p>
+                            <Show when=move || password_strength.get().is_some() fallback=|| ()>
+                                <div class="mt-2 rounded-xl border border-border bg-surface-muted px-3 py-3 text-sm text-fg-muted">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <span class="text-xs uppercase tracking-wide text-fg-muted">"強度"</span>
+                                        <span
+                                            class=move || {
+                                                password_strength
+                                                    .get()
+                                                    .map(|state| {
+                                                        format!(
+                                                            "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {}",
+                                                            state.badge_class
+                                                        )
+                                                    })
+                                                    .unwrap_or_default()
+                                            }
+                                        >
+                                            {move || {
+                                                password_strength
+                                                    .get()
+                                                    .map(|state| state.label)
+                                                    .unwrap_or_default()
+                                            }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-2">{move || {
+                                        password_strength
+                                            .get()
+                                            .map(|state| state.hint)
+                                            .unwrap_or_default()
+                                    }}</p>
+                                </div>
+                            </Show>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-fg-muted">"新しいパスワード（確認）"</label>
@@ -806,8 +996,8 @@ fn format_subject_datetime(value: DateTime<Utc>) -> String {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::{
-        map_change_password_error, normalize_subject_details, parse_subject_request_type,
-        validate_password_submission,
+        format_password_expiry_warning, map_change_password_error, normalize_subject_details,
+        parse_subject_request_type, password_strength_state, validate_password_submission,
     };
     use crate::api::ApiError;
     use wasm_bindgen_test::*;
@@ -820,10 +1010,10 @@ mod tests {
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown(
-                "New password must be at least 8 characters"
+                "Password must be at least 12 characters long"
             ))
             .error,
-            "新しいパスワードは8文字以上である必要があります。"
+            "新しいパスワードは12文字以上である必要があります。"
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown(
@@ -845,8 +1035,8 @@ mod tests {
     #[wasm_bindgen_test]
     fn validate_password_submission_checks_constraints() {
         assert!(validate_password_submission("short", "short").is_err());
-        assert!(validate_password_submission("12345678", "different").is_err());
-        assert!(validate_password_submission("12345678", "12345678").is_ok());
+        assert!(validate_password_submission("ValidPass123!", "different").is_err());
+        assert!(validate_password_submission("ValidPass123!", "ValidPass123!").is_ok());
     }
 
     #[wasm_bindgen_test]
@@ -866,6 +1056,22 @@ mod tests {
         );
         assert_eq!(normalize_subject_details("   "), None);
     }
+
+    #[wasm_bindgen_test]
+    fn password_strength_state_reports_gaps_and_success() {
+        let weak = password_strength_state("password").expect("strength state");
+        assert_eq!(weak.label, "弱い");
+        assert!(weak.hint.contains("12文字以上"));
+
+        let strong = password_strength_state("ValidPass123!").expect("strength state");
+        assert_eq!(strong.label, "強い");
+        assert_eq!(strong.hint, "要件をすべて満たしています。");
+
+        assert_eq!(
+            format_password_expiry_warning(3),
+            "パスワードの有効期限まであと3日です。期限切れ前に変更してください。"
+        );
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -873,6 +1079,7 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::api::ApiClient;
+    use crate::test_support::helpers::{provide_auth, regular_user};
     use crate::test_support::ssr::{with_local_runtime_async, with_runtime};
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
     use serde_json::json;
@@ -924,6 +1131,9 @@ mod host_tests {
             let runtime = leptos::create_runtime();
             let server = mock_server();
             provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            let mut user = regular_user();
+            user.password_expiry_warning_days = Some(3);
+            provide_auth(Some(user));
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/settings".to_string(),
             }));
@@ -939,6 +1149,7 @@ mod host_tests {
             assert!(html.contains("本人対応申請"));
             assert!(html.contains("MFA 設定"));
             assert!(html.contains("現在のパスワード"));
+            assert!(html.contains("有効期限まであと3日"));
             assert!(!html.contains("申請履歴"));
 
             runtime.dispose();
@@ -948,8 +1159,8 @@ mod host_tests {
     #[test]
     fn helper_functions_cover_subject_and_password_validation() {
         assert!(validate_password_submission("short", "short").is_err());
-        assert!(validate_password_submission("long-enough", "mismatch").is_err());
-        assert!(validate_password_submission("long-enough", "long-enough").is_ok());
+        assert!(validate_password_submission("ValidPass123!", "mismatch").is_err());
+        assert!(validate_password_submission("ValidPass123!", "ValidPass123!").is_ok());
 
         assert!(matches!(
             parse_subject_request_type("rectify"),
@@ -1003,10 +1214,10 @@ mod host_tests {
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown(
-                "New password must be at least 8 characters"
+                "Password must be at least 12 characters long"
             ))
             .error,
-            "新しいパスワードは8文字以上である必要があります。"
+            "新しいパスワードは12文字以上である必要があります。"
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown(
@@ -1022,12 +1233,36 @@ mod host_tests {
     }
 
     #[test]
+    fn helper_password_strength_and_expiry_warning_cover_branches() {
+        let weak = password_strength_state("password").expect("state");
+        assert_eq!(weak.label, "弱い");
+        assert!(weak.hint.contains("推測されやすい"));
+
+        let medium = password_strength_state("Validpass123").expect("state");
+        assert_eq!(medium.label, "良い");
+        assert!(medium.hint.contains("記号を1文字以上"));
+
+        let strong = password_strength_state("ValidPass123!").expect("state");
+        assert_eq!(strong.label, "強い");
+        assert_eq!(strong.hint, "要件をすべて満たしています。");
+
+        assert_eq!(
+            format_password_expiry_warning(0),
+            "パスワードの有効期限が本日までです。すぐに変更してください。"
+        );
+        assert_eq!(
+            format_password_expiry_warning(5),
+            "パスワードの有効期限まであと5日です。期限切れ前に変更してください。"
+        );
+    }
+
+    #[test]
     fn helper_password_submit_preparation_handles_pending_and_validation() {
         assert!(prepare_password_change_submission(
             true,
             "current".to_string(),
-            "new-password".to_string(),
-            "new-password".to_string(),
+            "ValidPass123!".to_string(),
+            "ValidPass123!".to_string(),
         )
         .expect("pending should be accepted")
         .is_none());
@@ -1043,13 +1278,13 @@ mod host_tests {
         let payload = prepare_password_change_submission(
             false,
             "current".to_string(),
-            "new-password".to_string(),
-            "new-password".to_string(),
+            "ValidPass123!".to_string(),
+            "ValidPass123!".to_string(),
         )
         .expect("valid password payload")
         .expect("dispatch payload");
         assert_eq!(payload.0, "current");
-        assert_eq!(payload.1, "new-password");
+        assert_eq!(payload.1, "ValidPass123!");
     }
 
     #[test]
@@ -1212,8 +1447,8 @@ mod host_tests {
             dispatch_password_change_submission(
                 false,
                 "current".to_string(),
-                "new-password".to_string(),
-                "new-password".to_string(),
+                "ValidPass123!".to_string(),
+                "ValidPass123!".to_string(),
                 set_password_success_msg,
                 set_password_error_msg,
                 |payload| dispatched_password = Some(payload),
@@ -1226,7 +1461,7 @@ mod host_tests {
             );
             assert_eq!(
                 dispatched_password.as_ref().map(|(_, new)| new.as_str()),
-                Some("new-password")
+                Some("ValidPass123!")
             );
             assert!(password_success_msg.get().is_none());
             assert!(password_error_msg.get().is_none());
@@ -1236,8 +1471,8 @@ mod host_tests {
             dispatch_password_change_submission(
                 true,
                 "current".to_string(),
-                "new-password".to_string(),
-                "new-password".to_string(),
+                "ValidPass123!".to_string(),
+                "ValidPass123!".to_string(),
                 set_password_success_msg,
                 set_password_error_msg,
                 |_| panic!("pending path must not dispatch"),
@@ -1260,7 +1495,7 @@ mod host_tests {
             assert!(password_success_msg.get().is_none());
             assert_eq!(
                 password_error_msg.get().map(|err| err.error),
-                Some("新しいパスワードは8文字以上である必要があります。".to_string())
+                Some("新しいパスワードは12文字以上である必要があります。".to_string())
             );
 
             let mfa_messages = utils::MessageState::default();
