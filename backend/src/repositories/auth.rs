@@ -415,6 +415,34 @@ fn lockout_duration_minutes(lockout_count: i32, policy: LockoutPolicy) -> i64 {
     minutes.min(max_minutes)
 }
 
+fn lockout_decay_window_minutes(policy: LockoutPolicy) -> i64 {
+    policy.max_duration_hours.max(1).saturating_mul(60)
+}
+
+fn decayed_lockout_count(
+    current_lockout_count: i32,
+    last_login_failure_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    policy: LockoutPolicy,
+) -> i32 {
+    let Some(last_login_failure_at) = last_login_failure_at else {
+        return current_lockout_count.max(0);
+    };
+    if current_lockout_count <= 0 || now <= last_login_failure_at {
+        return current_lockout_count.max(0);
+    }
+
+    let elapsed_minutes = now
+        .signed_duration_since(last_login_failure_at)
+        .num_minutes()
+        .max(0);
+    let decay_window_minutes = lockout_decay_window_minutes(policy).max(1);
+    let decay_steps = elapsed_minutes / decay_window_minutes;
+    current_lockout_count
+        .saturating_sub(decay_steps as i32)
+        .max(0)
+}
+
 pub async fn record_login_failure(
     pool: &PgPool,
     user_id: UserId,
@@ -422,15 +450,15 @@ pub async fn record_login_failure(
     policy: LockoutPolicy,
 ) -> Result<LoginFailureState, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query_as::<_, (i32, Option<DateTime<Utc>>, i32)>(
-        "SELECT failed_login_attempts, locked_until, lockout_count \
+    let row = sqlx::query_as::<_, (i32, Option<DateTime<Utc>>, i32, Option<DateTime<Utc>>)>(
+        "SELECT failed_login_attempts, locked_until, lockout_count, last_login_failure_at \
          FROM users WHERE id = $1 FOR UPDATE",
     )
     .bind(user_id.to_string())
     .fetch_optional(&mut *tx)
     .await?;
 
-    let Some((failed_attempts, locked_until, lockout_count)) = row else {
+    let Some((failed_attempts, locked_until, lockout_count, last_login_failure_at)) = row else {
         tx.rollback().await?;
         return Ok(LoginFailureState {
             failed_login_attempts: 0,
@@ -450,22 +478,34 @@ pub async fn record_login_failure(
             became_locked: false,
         });
     }
+    let effective_lockout_count =
+        decayed_lockout_count(lockout_count, last_login_failure_at, now, policy);
 
     let threshold = policy.threshold.max(1);
     let next_failed_attempts = failed_attempts + 1;
     if next_failed_attempts >= threshold {
-        let failure_state =
-            persist_lockout_state_with_executor(&mut *tx, user_id, now, policy, lockout_count)
-                .await?;
+        let failure_state = persist_lockout_state_with_executor(
+            &mut *tx,
+            user_id,
+            now,
+            policy,
+            effective_lockout_count,
+        )
+        .await?;
         tx.commit().await?;
         Ok(failure_state)
     } else {
         sqlx::query(
             "UPDATE users \
-             SET failed_login_attempts = $1, updated_at = NOW() \
-             WHERE id = $2",
+             SET failed_login_attempts = $1, \
+                 lockout_count = $2, \
+                 last_login_failure_at = $3, \
+                 updated_at = NOW() \
+             WHERE id = $4",
         )
         .bind(next_failed_attempts)
+        .bind(effective_lockout_count)
+        .bind(now)
         .bind(user_id.to_string())
         .execute(&mut *tx)
         .await?;
@@ -474,7 +514,7 @@ pub async fn record_login_failure(
         Ok(LoginFailureState {
             failed_login_attempts: next_failed_attempts,
             locked_until: None,
-            lockout_count,
+            lockout_count: effective_lockout_count,
             became_locked: false,
         })
     }
@@ -487,15 +527,15 @@ pub async fn persist_lockout_state(
     policy: LockoutPolicy,
 ) -> Result<LoginFailureState, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, i32)>(
-        "SELECT locked_until, lockout_count \
+    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, i32, Option<DateTime<Utc>>)>(
+        "SELECT locked_until, lockout_count, last_login_failure_at \
          FROM users WHERE id = $1 FOR UPDATE",
     )
     .bind(user_id.to_string())
     .fetch_optional(&mut *tx)
     .await?;
 
-    let Some((locked_until, lockout_count)) = row else {
+    let Some((locked_until, lockout_count, last_login_failure_at)) = row else {
         tx.rollback().await?;
         return Ok(LoginFailureState {
             failed_login_attempts: 0,
@@ -515,9 +555,17 @@ pub async fn persist_lockout_state(
             became_locked: false,
         });
     }
+    let effective_lockout_count =
+        decayed_lockout_count(lockout_count, last_login_failure_at, now, policy);
 
-    let failure_state =
-        persist_lockout_state_with_executor(&mut *tx, user_id, now, policy, lockout_count).await?;
+    let failure_state = persist_lockout_state_with_executor(
+        &mut *tx,
+        user_id,
+        now,
+        policy,
+        effective_lockout_count,
+    )
+    .await?;
     tx.commit().await?;
     Ok(failure_state)
 }
@@ -541,12 +589,14 @@ where
              locked_until = $1, \
              lock_reason = $2, \
              lockout_count = $3, \
+             last_login_failure_at = $4, \
              updated_at = NOW() \
-         WHERE id = $4",
+         WHERE id = $5",
     )
     .bind(next_locked_until)
     .bind("too_many_failed_attempts")
     .bind(next_lockout_count)
+    .bind(now)
     .bind(user_id.to_string())
     .execute(executor)
     .await?;
@@ -582,6 +632,7 @@ pub async fn unlock_user_account(pool: &PgPool, user_id: UserId) -> Result<bool,
              locked_until = NULL, \
              lock_reason = NULL, \
              lockout_count = 0, \
+             last_login_failure_at = NULL, \
              updated_at = NOW() \
          WHERE id = $1",
     )
@@ -676,5 +727,26 @@ mod tests {
         };
         assert_eq!(lockout_duration_minutes(1, policy), 15);
         assert_eq!(lockout_duration_minutes(5, policy), 15);
+    }
+
+    #[test]
+    fn decayed_lockout_count_reduces_history_after_quiet_windows() {
+        let policy = LockoutPolicy {
+            threshold: 5,
+            duration_minutes: 15,
+            backoff_enabled: true,
+            max_duration_hours: 24,
+        };
+        let now = Utc::now();
+
+        assert_eq!(
+            decayed_lockout_count(3, Some(now - chrono::Duration::hours(49)), now, policy),
+            1
+        );
+        assert_eq!(
+            decayed_lockout_count(3, Some(now - chrono::Duration::hours(23)), now, policy),
+            3
+        );
+        assert_eq!(decayed_lockout_count(3, None, now, policy), 3);
     }
 }

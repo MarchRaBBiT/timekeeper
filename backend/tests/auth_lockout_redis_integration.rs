@@ -137,6 +137,14 @@ async fn fetch_lock_state(
     .expect("fetch lock state")
 }
 
+async fn fetch_lockout_count(pool: &PgPool, user_id: &str) -> i32 {
+    sqlx::query_scalar::<_, i32>("SELECT lockout_count FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("fetch lockout count")
+}
+
 async fn redis_key_exists(redis_url: &str, user_id: &str) -> bool {
     let client = redis::Client::open(redis_url).expect("open redis client");
     let mut conn = client
@@ -361,4 +369,62 @@ async fn login_falls_back_to_database_when_redis_becomes_unavailable() {
     assert_eq!(failed_attempts, 0);
     assert!(locked_until.is_some());
     assert_eq!(lockout_count, 1);
+}
+
+#[tokio::test]
+async fn redis_lockout_uses_decayed_history_after_quiet_period() {
+    let _guard = integration_guard().await;
+    ensure_docker_cli();
+    let docker = Cli::default();
+    let host_port = allocate_ephemeral_port();
+    let image = GenericImage::new("redis", "7-alpine")
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
+    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
+    let _container = docker.run(image);
+
+    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    flush_redis(&redis_url).await;
+
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    sqlx::query(
+        "UPDATE users \
+         SET lockout_count = 3, \
+             failed_login_attempts = 0, \
+             locked_until = NULL, \
+             last_login_failure_at = NOW() - INTERVAL '49 hours', \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed decayed lockout history");
+    let mut config = test_config(redis_url.clone());
+    config.account_lockout_threshold = 1;
+    let app = auth_router_with_redis(pool.clone(), config).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    assert_eq!(fetch_lockout_count(&pool, &user.id.to_string()).await, 2);
+    assert!(!redis_key_exists(&redis_url, &user.id.to_string()).await);
 }

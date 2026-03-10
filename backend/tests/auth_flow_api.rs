@@ -247,6 +247,14 @@ async fn fetch_lock_state(
     .expect("fetch lock state")
 }
 
+async fn fetch_lockout_count(pool: &PgPool, user_id: &str) -> i32 {
+    sqlx::query_scalar::<_, i32>("SELECT lockout_count FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("fetch lockout count")
+}
+
 #[tokio::test]
 async fn login_sets_cookies_and_persists_tokens() {
     let _guard = integration_guard().await;
@@ -611,6 +619,57 @@ async fn login_success_preserves_lockout_history_while_clearing_active_failures(
     assert_eq!(failed_attempts, 0);
     assert!(locked_until.is_none());
     assert_eq!(lockout_count, 1);
+}
+
+#[tokio::test]
+async fn lockout_count_decays_after_extended_quiet_period() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    sqlx::query(
+        "UPDATE users \
+         SET lockout_count = 3, \
+             failed_login_attempts = 0, \
+             locked_until = NULL, \
+             last_login_failure_at = NOW() - INTERVAL '49 hours', \
+             updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(user.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed decayed lockout history");
+
+    let mut config = support::test_config();
+    config.account_lockout_threshold = 1;
+    config.account_lockout_duration_minutes = 15;
+    config.account_lockout_backoff_enabled = true;
+    config.account_lockout_max_duration_hours = 24;
+    let app = auth_router_with_config(pool.clone(), config);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    assert_eq!(fetch_lockout_count(&pool, &user.id.to_string()).await, 2);
 }
 
 #[tokio::test]
