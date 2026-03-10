@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use crate::models::audit_log::AuditLog;
+use crate::repositories::common::push_clause;
 use crate::types::{AuditLogId, UserId};
 
 #[derive(Debug, Clone, Default)]
@@ -168,15 +169,6 @@ fn apply_audit_log_filters(
     if let Some(result) = filters.result.as_ref() {
         push_clause(builder, has_clause);
         builder.push("result = ").push_bind(result.to_string());
-    }
-}
-
-fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {
-    if *has_clause {
-        builder.push(" AND ");
-    } else {
-        builder.push(" WHERE ");
-        *has_clause = true;
     }
 }
 

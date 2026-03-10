@@ -5,6 +5,7 @@ use crate::models::{
     request::RequestStatus,
     subject_request::{DataSubjectRequest, DataSubjectRequestType},
 };
+use crate::repositories::common::push_clause;
 
 #[derive(Debug, Clone, Default)]
 pub struct SubjectRequestFilters {
@@ -209,15 +210,6 @@ fn apply_subject_request_filters<'a>(
     if let Some(to) = filters.to.as_ref() {
         push_clause(builder, has_clause);
         builder.push("created_at <= ").push_bind(to.to_owned());
-    }
-}
-
-fn push_clause<'a>(builder: &mut QueryBuilder<'a, Postgres>, has_clause: &mut bool) {
-    if *has_clause {
-        builder.push(" AND ");
-    } else {
-        builder.push(" WHERE ");
-        *has_clause = true;
     }
 }
 

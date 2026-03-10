@@ -78,12 +78,14 @@ pub async fn insert_attendance_record(
 }
 
 pub async fn update_clock_in(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
-    let repo = AttendanceRepository::new();
-    repo.update(pool, attendance).await?;
-    Ok(())
+    update_attendance_record(pool, attendance).await
 }
 
 pub async fn update_clock_out(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
+    update_attendance_record(pool, attendance).await
+}
+
+async fn update_attendance_record(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
     let repo = AttendanceRepository::new();
     repo.update(pool, attendance).await?;
     Ok(())
