@@ -101,4 +101,4 @@
 3. **マイグレーション不整合** - `cargo run` または `cargo sqlx migrate run` で最新スキーマを適用してください。
 4. **フロントが表示されない** - `wasm-pack build --dev` を再実行し、Python サーバを再起動。Playwright 実行時は `FRONTEND_BASE_URL` を適切に設定してください。
 
-API の詳細は `API_DOCS.md`、環境構築の詳細は `documents/environment-setup.md` を参照してください。
+API の詳細は `API_DOCS.md`、環境構築の詳細は `docs/manual/environment-setup.md` を参照してください。

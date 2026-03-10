@@ -100,4 +100,4 @@ System administrators have **User Management** added to navigation and can use t
 3. **Migration Inconsistency** - Apply latest schema with `cargo run` or `cargo sqlx migrate run`.
 4. **Frontend Not Displaying** - Re-run `wasm-pack build --dev` and restart Python server. Set `FRONTEND_BASE_URL` appropriately when running Playwright.
 
-For API details, see `API_DOCS.md`. For environment setup details, see `documents/environment-setup.md`.
+For API details, see `API_DOCS.md`. For environment setup details, see `docs/manual/environment-setup.md`.
