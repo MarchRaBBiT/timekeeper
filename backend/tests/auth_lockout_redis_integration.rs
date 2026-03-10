@@ -20,7 +20,10 @@ use timekeeper_backend::{
     handlers::auth,
     middleware::request_id::RequestId,
     models::user::UserRole,
-    services::audit_log::{AuditLogService, AuditLogServiceTrait},
+    services::{
+        audit_log::{AuditLogService, AuditLogServiceTrait},
+        lockout_notification_queue::{LockoutNotificationJob, LOCKOUT_NOTIFICATION_QUEUE_KEY},
+    },
     state::AppState,
 };
 use tower::ServiceExt;
@@ -169,6 +172,25 @@ async fn flush_redis(redis_url: &str) {
         .query_async(&mut conn)
         .await
         .expect("flush redis");
+}
+
+async fn queued_lockout_notifications(redis_url: &str) -> Vec<LockoutNotificationJob> {
+    let client = redis::Client::open(redis_url).expect("open redis client");
+    let mut conn = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("connect redis");
+    let entries: Vec<String> = redis::cmd("LRANGE")
+        .arg(LOCKOUT_NOTIFICATION_QUEUE_KEY)
+        .arg(0)
+        .arg(-1)
+        .query_async(&mut conn)
+        .await
+        .expect("read lockout notification queue");
+    entries
+        .into_iter()
+        .map(|entry| serde_json::from_str(&entry).expect("deserialize lockout notification job"))
+        .collect()
 }
 
 #[tokio::test]
@@ -427,4 +449,51 @@ async fn redis_lockout_uses_decayed_history_after_quiet_period() {
 
     assert_eq!(fetch_lockout_count(&pool, &user.id.to_string()).await, 2);
     assert!(!redis_key_exists(&redis_url, &user.id.to_string()).await);
+}
+
+#[tokio::test]
+async fn lockout_notification_is_enqueued_in_redis() {
+    let _guard = integration_guard().await;
+    ensure_docker_cli();
+    let docker = Cli::default();
+    let host_port = allocate_ephemeral_port();
+    let image = GenericImage::new("redis", "7-alpine")
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
+    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
+    let _container = docker.run(image);
+
+    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    flush_redis(&redis_url).await;
+
+    let pool = support::test_pool().await;
+    migrate_db(&pool).await;
+    let user =
+        support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
+    let mut config = test_config(redis_url.clone());
+    config.account_lockout_threshold = 1;
+    let app = auth_router_with_redis(pool.clone(), config).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "username": user.username.clone(),
+                        "password": "Wrong123!",
+                    })
+                    .to_string(),
+                ))
+                .expect("build login request"),
+        )
+        .await
+        .expect("login request");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let jobs = queued_lockout_notifications(&redis_url).await;
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].user_id, user.id);
+    assert!(jobs[0].locked_until > jobs[0].enqueued_at);
 }

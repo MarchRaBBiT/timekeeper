@@ -7,8 +7,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sqlx::PgPool;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::{env, net::TcpListener, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 use timekeeper_backend::{
     config::Config,
     handlers::auth,
@@ -100,61 +100,6 @@ struct AuditTrailRow {
     event_type: String,
     result: String,
     error_code: Option<String>,
-}
-
-fn env_mutex() -> &'static Mutex<()> {
-    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    ENV_MUTEX.get_or_init(|| Mutex::new(()))
-}
-
-struct EnvGuard {
-    _lock: MutexGuard<'static, ()>,
-    original: Vec<(&'static str, Option<String>)>,
-}
-
-impl EnvGuard {
-    fn new() -> Self {
-        const KEYS: [&str; 5] = [
-            "SMTP_SKIP_SEND",
-            "SMTP_HOST",
-            "SMTP_PORT",
-            "SMTP_USERNAME",
-            "SMTP_PASSWORD",
-        ];
-        let lock = env_mutex().lock().expect("lock env");
-        let original = KEYS.iter().map(|&key| (key, env::var(key).ok())).collect();
-        Self {
-            _lock: lock,
-            original,
-        }
-    }
-
-    fn set(&self, key: &'static str, value: impl AsRef<str>) {
-        env::set_var(key, value.as_ref());
-    }
-
-    fn remove(&self, key: &'static str) {
-        env::remove_var(key);
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (key, value) in &self.original {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
-            }
-        }
-    }
-}
-
-fn allocate_and_release_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind ephemeral port")
-        .local_addr()
-        .expect("read socket addr")
-        .port()
 }
 
 async fn fetch_auth_audit_trail(
@@ -454,13 +399,8 @@ async fn login_locks_account_after_reaching_failure_threshold() {
 }
 
 #[tokio::test]
-async fn lockout_records_denied_blocked_and_notification_success_audit_results() {
+async fn lockout_records_denied_blocked_and_notification_failed_without_queue() {
     let _guard = integration_guard().await;
-    let env = EnvGuard::new();
-    env.set("SMTP_SKIP_SEND", "true");
-    env.remove("SMTP_HOST");
-    env.remove("SMTP_PORT");
-
     let pool = support::test_pool().await;
     migrate_db(&pool).await;
 
@@ -498,8 +438,7 @@ async fn lockout_records_denied_blocked_and_notification_success_audit_results()
         &[
             "login_failure",
             "account_lockout",
-            "lockout_notification_queued",
-            "lockout_notification_sent",
+            "lockout_notification_failed",
         ],
     )
     .await;
@@ -510,56 +449,6 @@ async fn lockout_records_denied_blocked_and_notification_success_audit_results()
         .collect::<Vec<_>>();
     assert!(results.contains(&("login_failure", "denied")));
     assert!(results.contains(&("account_lockout", "blocked")));
-    assert!(results.contains(&("lockout_notification_queued", "queued")));
-    assert!(results.contains(&("lockout_notification_sent", "success")));
-}
-
-#[tokio::test]
-async fn lockout_notification_failure_records_failed_audit_result() {
-    let _guard = integration_guard().await;
-    let env = EnvGuard::new();
-    env.remove("SMTP_SKIP_SEND");
-    env.set("SMTP_HOST", "127.0.0.1");
-    env.set("SMTP_PORT", allocate_and_release_port().to_string());
-
-    let pool = support::test_pool().await;
-    migrate_db(&pool).await;
-
-    let password = "Correct123!";
-    let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
-    let mut config = support::test_config();
-    config.account_lockout_threshold = 1;
-    config.account_lockout_duration_minutes = 15;
-    let app = auth_router_with_config(pool.clone(), config);
-    let started_at = Utc::now();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({
-                        "username": user.username.clone(),
-                        "password": "Wrong123!",
-                    })
-                    .to_string(),
-                ))
-                .expect("build login request"),
-        )
-        .await
-        .expect("login request");
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-    let trail = wait_for_auth_audit_events(
-        &pool,
-        &user.id.to_string(),
-        started_at,
-        &["lockout_notification_queued", "lockout_notification_failed"],
-    )
-    .await;
-
     let failed_row = trail
         .iter()
         .find(|row| row.event_type == "lockout_notification_failed")
@@ -567,7 +456,7 @@ async fn lockout_notification_failure_records_failed_audit_result() {
     assert_eq!(failed_row.result, "failed");
     assert_eq!(
         failed_row.error_code.as_deref(),
-        Some("lockout_notification_send_failed")
+        Some("lockout_notification_queue_unavailable")
     );
 }
 
