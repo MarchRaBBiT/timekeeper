@@ -4,7 +4,7 @@
 - システム管理者向けに監査ログの一覧/詳細/エクスポート UI を提供する。
 
 ## 依存
-- `documents/issues/004-audit-log-read-export.md`
+- `docs/issues/004-audit-log-read-export.md`
 
 ## 作業タスク
 - [ ] `frontend/src/api/types.rs` に監査ログの型を追加する

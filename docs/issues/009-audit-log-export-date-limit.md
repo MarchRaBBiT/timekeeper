@@ -4,7 +4,7 @@
 - 監査ログエクスポートの日時範囲を最大31日に制限し、大量データ取得によるメモリ/パフォーマンス問題を防ぐ。
 
 ## 依存
-- `documents/issues/004-audit-log-read-export.md`
+- `docs/issues/004-audit-log-read-export.md`
 
 ## 作業タスク
 - [ ] `GET /api/admin/audit-logs/export` に `from` / `to` パラメータを必須化する
