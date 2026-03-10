@@ -222,7 +222,8 @@ fn parse_request_type(value: &str) -> Result<DataSubjectRequestType, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Timelike};
+    use crate::handlers::admin::common::parse_filter_datetime;
+    use chrono::{NaiveDate, TimeZone, Timelike, Utc};
 
     fn app_error_message(err: AppError) -> String {
         match err {
