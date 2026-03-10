@@ -9,8 +9,8 @@ Issue #288 の未完了受け入れ基準 2 点を、再現可能な integration
 - [x] 存在ユーザーと非存在ユーザーのログイン失敗レイテンシ差を測る acceptance test が追加される
 - [x] lockout 通知失敗が認証 API レイテンシに影響しないことを測る acceptance test が追加される
 - [x] focused acceptance test が成功する
-- [ ] issue #288 の受け入れ基準が更新される
-- [ ] 検証成功後に `jj` snapshot を作成する
+- [x] issue #288 の受け入れ基準が更新される
+- [x] 検証成功後に `jj` snapshot を作成する
 
 ## Validation
 
@@ -23,8 +23,8 @@ Issue #288 の未完了受け入れ基準 2 点を、再現可能な integration
 - [x] Issue / PR / current tests を確認
 - [x] acceptance 測定用 test を実装
 - [x] focused validation 実行
-- [ ] issue checklist 更新
-- [ ] snapshot 作成
+- [x] issue checklist 更新
+- [x] snapshot 作成
 
 ## Notes
 
