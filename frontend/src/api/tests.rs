@@ -60,6 +60,21 @@ fn attendance_status_json(status: &str) -> serde_json::Value {
     })
 }
 
+fn session_json(id: &str, user_id: Option<&str>, is_current: bool) -> serde_json::Value {
+    let mut value = json!({
+        "id": id,
+        "device_label": "Chrome on macOS",
+        "created_at": "2026-03-10T10:00:00Z",
+        "last_seen_at": "2026-03-10T10:30:00Z",
+        "expires_at": "2026-03-17T10:00:00Z",
+        "is_current": is_current
+    });
+    if let Some(user_id) = user_id {
+        value["user_id"] = json!(user_id);
+    }
+    value
+}
+
 fn attendance_summary_json() -> serde_json::Value {
     json!({
         "month": 1,
@@ -186,11 +201,29 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
         then.status(200).json_body(json!({}));
     });
     server.mock(|when, then| {
+        when.method(GET).path("/api/auth/sessions");
+        then.status(200)
+            .json_body(json!([session_json("session-1", None, true)]));
+    });
+    server.mock(|when, then| {
+        when.method(DELETE).path("/api/auth/sessions/session-1");
+        then.status(200).json_body(json!({}));
+    });
+    server.mock(|when, then| {
         when.method(DELETE).path("/api/admin/users/u1");
         then.status(200).json_body(json!({}));
     });
     server.mock(|when, then| {
         when.method(POST).path("/api/admin/users/u1/unlock");
+        then.status(200).json_body(json!({}));
+    });
+    server.mock(|when, then| {
+        when.method(GET).path("/api/admin/users/u1/sessions");
+        then.status(200)
+            .json_body(json!([session_json("session-1", Some("u1"), false)]));
+    });
+    server.mock(|when, then| {
+        when.method(DELETE).path("/api/admin/sessions/session-1");
         then.status(200).json_body(json!({}));
     });
     server.mock(|when, then| {
@@ -290,8 +323,15 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
         "u2"
     );
     client.admin_reset_mfa("u1").await.unwrap();
+    assert_eq!(client.list_sessions().await.unwrap().len(), 1);
+    client.revoke_session("session-1").await.unwrap();
     client.admin_delete_user("u1", false).await.unwrap();
     client.admin_unlock_user("u1").await.unwrap();
+    assert_eq!(
+        client.admin_list_user_sessions("u1").await.unwrap().len(),
+        1
+    );
+    client.admin_revoke_session("session-1").await.unwrap();
     assert_eq!(client.admin_get_archived_users().await.unwrap().len(), 1);
     client.admin_restore_archived_user("a1").await.unwrap();
     client.admin_delete_archived_user("a1").await.unwrap();

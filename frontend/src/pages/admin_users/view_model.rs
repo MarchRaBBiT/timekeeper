@@ -3,7 +3,8 @@ use super::{
     utils::{InviteFormState, MessageState},
 };
 use crate::api::{
-    ApiClient, ApiError, ArchivedUserResponse, CreateUser, PiiProtectedResponse, UserResponse,
+    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
+    PiiProtectedResponse, UserResponse,
 };
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -24,6 +25,8 @@ pub struct AdminUsersViewModel {
     pub drawer_messages: MessageState,
     pub selected_user: RwSignal<Option<UserResponse>>,
     pub selected_archived_user: RwSignal<Option<ArchivedUserResponse>>,
+    pub user_sessions_resource:
+        Resource<(bool, Option<String>), Result<Vec<AdminSessionResponse>, ApiError>>,
     pub pii_masked: RwSignal<bool>,
     pub active_tab: RwSignal<UserTab>,
     pub users_resource:
@@ -32,6 +35,7 @@ pub struct AdminUsersViewModel {
     pub invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     pub reset_mfa_action: Action<String, Result<(), ApiError>>,
     pub unlock_user_action: Action<String, Result<(), ApiError>>,
+    pub revoke_user_session_action: Action<String, Result<(), ApiError>>,
     /// Delete a user: (user_id, hard_delete)
     pub delete_user_action: Action<(String, bool), Result<(), ApiError>>,
     /// Restore an archived user
@@ -61,6 +65,28 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     let selected_archived_user = create_rw_signal(None::<ArchivedUserResponse>);
     let pii_masked = create_rw_signal(false);
     let active_tab = create_rw_signal(UserTab::Active);
+
+    let repo_sessions = repo.clone();
+    let user_sessions_resource = create_resource(
+        move || {
+            (
+                is_system_admin.get(),
+                selected_user.get().map(|user| user.id.clone()),
+            )
+        },
+        move |(allowed, maybe_user_id)| {
+            let repo = repo_sessions.clone();
+            async move {
+                if !allowed {
+                    Err(ApiError::validation("システム管理者のみ利用できます。"))
+                } else if let Some(user_id) = maybe_user_id {
+                    repo.fetch_user_sessions(user_id).await
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        },
+    );
 
     // Active users resource
     let repo_resource = repo.clone();
@@ -123,6 +149,13 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         let repo = repo_unlock.clone();
         let user_id = user_id.clone();
         async move { repo.unlock_user(user_id).await }
+    });
+
+    let repo_revoke_session = repo.clone();
+    let revoke_user_session_action = create_action(move |session_id: &String| {
+        let repo = repo_revoke_session.clone();
+        let session_id = session_id.clone();
+        async move { repo.revoke_user_session(session_id).await }
     });
 
     let repo_restore = repo.clone();
@@ -200,6 +233,20 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
     });
 
     create_effect(move |_| {
+        if let Some(result) = revoke_user_session_action.value().get() {
+            match result {
+                Ok(_) => {
+                    drawer_messages.set_success("セッションをログアウトしました。");
+                    user_sessions_resource.refetch();
+                }
+                Err(err) => {
+                    drawer_messages.set_error(err);
+                }
+            }
+        }
+    });
+
+    create_effect(move |_| {
         if let Some(result) = restore_archived_action.value().get() {
             match result {
                 Ok(_) => {
@@ -236,6 +283,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         drawer_messages,
         selected_user,
         selected_archived_user,
+        user_sessions_resource,
         pii_masked,
         active_tab,
         users_resource,
@@ -243,6 +291,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         invite_action,
         reset_mfa_action,
         unlock_user_action,
+        revoke_user_session_action,
         delete_user_action,
         restore_archived_action,
         delete_archived_action,
@@ -274,6 +323,18 @@ mod host_tests {
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/archived-users");
             then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users/u1/sessions");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "session-1",
+                "user_id": "u1",
+                "device_label": "Chrome on macOS",
+                "created_at": "2026-03-10T10:00:00Z",
+                "last_seen_at": "2026-03-10T10:30:00Z",
+                "expires_at": "2026-03-17T10:00:00Z",
+                "is_current": false
+            }]));
         });
 
         let server = server.clone();
@@ -332,6 +393,22 @@ mod host_tests {
             then.status(200).json_body(serde_json::json!({}));
         });
         server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users/u1/sessions");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "session-1",
+                "user_id": "u1",
+                "device_label": "Chrome on macOS",
+                "created_at": "2026-03-10T10:00:00Z",
+                "last_seen_at": "2026-03-10T10:30:00Z",
+                "expires_at": "2026-03-17T10:00:00Z",
+                "is_current": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/admin/sessions/session-1");
+            then.status(200).json_body(serde_json::json!({}));
+        });
+        server.mock(|when, then| {
             when.method(POST)
                 .path("/api/admin/archived-users/a1/restore");
             then.status(200).json_body(serde_json::json!({}));
@@ -381,6 +458,38 @@ mod host_tests {
             }
             let reset_result = vm.reset_mfa_action.value().get();
             assert!(matches!(reset_result, Some(Ok(()))));
+
+            vm.selected_user.set(Some(UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice Example".into(),
+                role: "member".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+            }));
+            vm.user_sessions_resource.refetch();
+            for _ in 0..10 {
+                if matches!(vm.user_sessions_resource.get(), Some(Ok(ref list)) if list.len() == 1)
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let sessions = vm.user_sessions_resource.get();
+            assert!(matches!(sessions, Some(Ok(list)) if list.len() == 1));
+
+            vm.revoke_user_session_action.dispatch("session-1".into());
+            for _ in 0..10 {
+                if vm.revoke_user_session_action.value().get().is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let revoke_session_result = vm.revoke_user_session_action.value().get();
+            assert!(matches!(revoke_session_result, Some(Ok(()))));
 
             vm.delete_user_action.dispatch(("u1".into(), false));
             for _ in 0..10 {

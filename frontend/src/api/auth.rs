@@ -1,8 +1,11 @@
 use serde_json::json;
 
 use super::{
-    client::{ensure_device_label, ApiClient},
-    types::{ApiError, LoginRequest, LoginResponse, MfaSetupResponse, MfaStatusResponse},
+    client::{encode_path_segment, ensure_device_label, ApiClient},
+    types::{
+        AdminSessionResponse, ApiError, LoginRequest, LoginResponse, MfaSetupResponse,
+        MfaStatusResponse, SessionResponse,
+    },
 };
 
 impl ApiClient {
@@ -185,6 +188,112 @@ impl ApiClient {
                     .http_client()
                     .put(format!("{}/auth/change-password", base_url))
                     .json(&payload))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn list_sessions(&self) -> Result<Vec<SessionResponse>, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .get(format!("{}/auth/sessions", base_url)))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn revoke_session(&self, session_id: &str) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_session_id = encode_path_segment(session_id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .http_client()
+                    .delete(format!("{}/auth/sessions/{}", base_url, encoded_session_id)))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_list_user_sessions(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<AdminSessionResponse>, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_user_id = encode_path_segment(user_id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self.http_client().get(format!(
+                    "{}/admin/users/{}/sessions",
+                    base_url, encoded_user_id
+                )))
+            })
+            .await?;
+
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_revoke_session(&self, session_id: &str) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_session_id = encode_path_segment(session_id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self.http_client().delete(format!(
+                    "{}/admin/sessions/{}",
+                    base_url, encoded_session_id
+                )))
             })
             .await?;
 

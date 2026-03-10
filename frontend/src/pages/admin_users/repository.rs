@@ -1,5 +1,6 @@
 use crate::api::{
-    ApiClient, ApiError, ArchivedUserResponse, CreateUser, PiiProtectedResponse, UserResponse,
+    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
+    PiiProtectedResponse, UserResponse,
 };
 use std::rc::Rc;
 
@@ -44,6 +45,17 @@ impl AdminUsersRepository {
 
     pub async fn unlock_user(&self, user_id: String) -> Result<(), ApiError> {
         self.client.admin_unlock_user(&user_id).await
+    }
+
+    pub async fn fetch_user_sessions(
+        &self,
+        user_id: String,
+    ) -> Result<Vec<AdminSessionResponse>, ApiError> {
+        self.client.admin_list_user_sessions(&user_id).await
+    }
+
+    pub async fn revoke_user_session(&self, session_id: String) -> Result<(), ApiError> {
+        self.client.admin_revoke_session(&session_id).await
     }
 
     // ========================================================================
@@ -125,6 +137,23 @@ mod host_tests {
                 .json_body(serde_json::json!({ "status": "unlocked" }));
         });
         server.mock(|when, then| {
+            when.method(GET).path("/api/admin/users/u1/sessions");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "session-1",
+                "user_id": "u1",
+                "device_label": "Chrome on macOS",
+                "created_at": "2026-03-10T10:00:00Z",
+                "last_seen_at": "2026-03-10T10:30:00Z",
+                "expires_at": "2026-03-17T10:00:00Z",
+                "is_current": false
+            }]));
+        });
+        server.mock(|when, then| {
+            when.method(DELETE).path("/api/admin/sessions/session-1");
+            then.status(200)
+                .json_body(serde_json::json!({ "status": "revoked" }));
+        });
+        server.mock(|when, then| {
             when.method(GET).path("/api/admin/archived-users");
             then.status(200)
                 .json_body(serde_json::json!([archived_user_json("a1")]));
@@ -163,6 +192,9 @@ mod host_tests {
         repo.reset_user_mfa("u1".into()).await.unwrap();
         repo.delete_user("u1".into(), false).await.unwrap();
         repo.unlock_user("u1".into()).await.unwrap();
+        let sessions = repo.fetch_user_sessions("u1".into()).await.unwrap();
+        assert_eq!(sessions.len(), 1);
+        repo.revoke_user_session("session-1".into()).await.unwrap();
         let archived = repo.fetch_archived_users().await.unwrap();
         assert_eq!(archived.len(), 1);
         repo.restore_archived_user("a1".into()).await.unwrap();

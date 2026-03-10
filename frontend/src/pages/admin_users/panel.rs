@@ -119,9 +119,11 @@ pub fn AdminUsersPage() -> impl IntoView {
                 // Active user detail drawer
                 <UserDetailDrawer
                     selected_user=vm.selected_user
+                    user_sessions_resource=vm.user_sessions_resource
                     messages=vm.drawer_messages
                     reset_mfa_action=vm.reset_mfa_action
                     unlock_user_action=vm.unlock_user_action
+                    revoke_session_action=vm.revoke_user_session_action
                     delete_user_action=vm.delete_user_action
                     current_user_id=current_user_id
                 />
@@ -143,12 +145,16 @@ mod host_tests {
     use super::*;
     use crate::test_support::helpers::{admin_user, provide_auth};
     use crate::test_support::ssr::render_to_string;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     #[test]
     fn admin_users_page_renders_for_system_admin() {
         let html = render_to_string(move || {
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/admin/users".to_string(),
+            }));
             provide_auth(Some(admin_user(true)));
-            view! { <AdminUsersPage /> }
+            view! { <Router><AdminUsersPage /></Router> }
         });
         assert!(html.contains("ユーザー管理"));
         assert!(html.contains("アクティブユーザー"));
