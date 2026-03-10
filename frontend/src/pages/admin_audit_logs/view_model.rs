@@ -2,6 +2,8 @@ use crate::api::{ApiClient, ApiError, AuditLogListResponse};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
+pub const DEFAULT_AUDIT_LOGS_PER_PAGE: i64 = 20;
+
 pub const AUDIT_EVENT_TYPES: &[(&str, &str)] = &[
     // 認証・アカウント
     ("auth_login", "ログイン"),
@@ -97,8 +99,10 @@ impl AuditLogFilters {
 
 #[derive(Clone)]
 pub struct AuditLogViewModel {
-    pub logs_resource: Resource<(i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
+    pub logs_resource:
+        Resource<(i64, i64, AuditLogFilters), Result<AuditLogListResponse, ApiError>>,
     pub page: RwSignal<i64>,
+    pub per_page: RwSignal<i64>,
     pub filters: RwSignal<AuditLogFilters>,
     pub pii_masked: RwSignal<bool>,
     pub export_action: Action<(), Result<(), ApiError>>,
@@ -107,19 +111,22 @@ pub struct AuditLogViewModel {
 pub fn use_audit_log_view_model() -> AuditLogViewModel {
     let api_client = use_context::<ApiClient>().unwrap_or_else(ApiClient::new);
     let page = create_rw_signal(1);
+    let per_page = create_rw_signal(DEFAULT_AUDIT_LOGS_PER_PAGE);
     let filters = create_rw_signal(AuditLogFilters::default());
     let pii_masked = create_rw_signal(false);
 
     let api = api_client.clone();
     let logs_resource = create_resource(
-        move || (page.get(), filters.get()),
-        move |(p, f)| {
+        move || (page.get(), per_page.get(), filters.get()),
+        move |(p, per_page, f)| {
             let api = api.clone();
             let pii_masked = pii_masked;
             async move {
                 let (from, to, actor_id, event_type, result) = f.into_query_params();
                 let response = api
-                    .list_audit_logs_with_policy(p, 20, from, to, actor_id, event_type, result)
+                    .list_audit_logs_with_policy(
+                        p, per_page, from, to, actor_id, event_type, result,
+                    )
                     .await?;
                 pii_masked.set(response.pii_masked);
                 Ok(response.data)
@@ -170,6 +177,7 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
     AuditLogViewModel {
         logs_resource,
         page,
+        per_page,
         filters,
         pii_masked,
         export_action,
@@ -254,6 +262,11 @@ mod tests {
     #[test]
     fn optional_param_keeps_whitespace_input_as_some() {
         assert_eq!(optional_param(" ".to_string()), Some(" ".to_string()));
+    }
+
+    #[test]
+    fn default_per_page_matches_current_ui_default() {
+        assert_eq!(DEFAULT_AUDIT_LOGS_PER_PAGE, 20);
     }
 
     #[test]
