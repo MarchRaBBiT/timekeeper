@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::anyhow;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use sqlx::PgPool;
@@ -16,13 +14,21 @@ use crate::{
     utils::{email::EmailService, encryption::decrypt_pii},
 };
 
+#[allow(dead_code)]
 const LOCKOUT_NOTIFICATION_PROCESSING_KEY_PREFIX: &str = "auth:lockout-notifications:processing:";
+#[allow(dead_code)]
 const LOCKOUT_NOTIFICATION_SENT_KEY_PREFIX: &str = "auth:lockout-notifications:sent:";
+#[allow(dead_code)]
 const LOCKOUT_NOTIFICATION_PROCESSING_TTL_SECONDS: u64 = 300;
+#[allow(dead_code)]
 const LOCKOUT_NOTIFICATION_SENT_TTL_SECONDS: u64 = 7 * 24 * 60 * 60;
-pub const LOCKOUT_NOTIFICATION_MAX_RETRIES: u32 = 3;
+// Five attempts gives 2 + 4 + 8 + 16 seconds of backoff before DLQ.
+#[allow(dead_code)]
+pub const LOCKOUT_NOTIFICATION_MAX_RETRIES: u32 = 5;
+#[allow(dead_code)]
 const LOCKOUT_NOTIFICATION_REQUEUE_LIMIT: usize = 32;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerOutcome {
     Sent,
@@ -32,10 +38,12 @@ pub enum WorkerOutcome {
     SkippedMissingUser,
 }
 
+#[allow(dead_code)]
 pub async fn requeue_due_jobs(pool: &RedisPool, now: DateTime<Utc>) -> anyhow::Result<usize> {
     requeue_due_lockout_notification_jobs(pool, now, LOCKOUT_NOTIFICATION_REQUEUE_LIMIT).await
 }
 
+#[allow(dead_code)]
 pub async fn work_once(
     pool: &PgPool,
     redis_pool: &RedisPool,
@@ -50,6 +58,7 @@ pub async fn work_once(
         .map(Some)
 }
 
+#[allow(dead_code)]
 pub async fn process_lockout_notification_job(
     pool: &PgPool,
     redis_pool: &RedisPool,
@@ -118,6 +127,7 @@ pub async fn process_lockout_notification_job(
     }
 }
 
+#[allow(dead_code)]
 pub fn next_retry_delay_seconds(attempt: u32) -> i64 {
     let exponent = attempt.min(6);
     2_i64.saturating_pow(exponent).max(1)
@@ -128,10 +138,11 @@ fn lockout_notification_idempotency_key(job: &LockoutNotificationJob) -> String 
         "{}{}:{}",
         LOCKOUT_NOTIFICATION_SENT_KEY_PREFIX,
         job.user_id,
-        job.locked_until.timestamp()
+        job.locked_until.timestamp_millis()
     )
 }
 
+#[allow(dead_code)]
 fn lockout_notification_processing_key(idempotency_key: &str) -> String {
     let suffix = idempotency_key
         .strip_prefix(LOCKOUT_NOTIFICATION_SENT_KEY_PREFIX)
@@ -139,6 +150,7 @@ fn lockout_notification_processing_key(idempotency_key: &str) -> String {
     format!("{LOCKOUT_NOTIFICATION_PROCESSING_KEY_PREFIX}{suffix}")
 }
 
+#[allow(dead_code)]
 async fn sent_marker_exists(redis_pool: &RedisPool, idempotency_key: &str) -> anyhow::Result<bool> {
     let mut conn = redis_pool
         .get()
@@ -152,6 +164,7 @@ async fn sent_marker_exists(redis_pool: &RedisPool, idempotency_key: &str) -> an
     Ok(exists != 0)
 }
 
+#[allow(dead_code)]
 async fn set_sent_marker(
     redis_pool: &RedisPool,
     idempotency_key: &str,
@@ -175,6 +188,7 @@ async fn set_sent_marker(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn acquire_processing_marker(
     redis_pool: &RedisPool,
     idempotency_key: &str,
@@ -204,6 +218,7 @@ async fn acquire_processing_marker(
     }
 }
 
+#[allow(dead_code)]
 struct ProcessingMarkerGuard {
     redis_pool: RedisPool,
     key: String,

@@ -425,6 +425,8 @@ fn decayed_lockout_count(
     now: DateTime<Utc>,
     policy: LockoutPolicy,
 ) -> i32 {
+    // Records created before migration 037 have no failure timestamp, so keep their current
+    // lockout history until a new failed login establishes a decay baseline.
     let Some(last_login_failure_at) = last_login_failure_at else {
         return current_lockout_count.max(0);
     };

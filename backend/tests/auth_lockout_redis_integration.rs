@@ -647,7 +647,7 @@ async fn worker_moves_exhausted_notification_to_dlq() {
         user_id: user.id,
         locked_until: Utc::now() + chrono::Duration::minutes(15),
         enqueued_at: Utc::now(),
-        attempt: 2,
+        attempt: 4,
     };
 
     let outcome = process_lockout_notification_job(&pool, &redis_pool, &config, job)

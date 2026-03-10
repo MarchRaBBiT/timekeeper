@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::anyhow;
 use bb8_redis::redis;
 use chrono::{DateTime, Utc};
@@ -9,8 +7,18 @@ use uuid::Uuid;
 use crate::{db::redis::RedisPool, types::UserId};
 
 pub const LOCKOUT_NOTIFICATION_QUEUE_KEY: &str = "auth:lockout-notifications";
+#[allow(dead_code)]
 pub const LOCKOUT_NOTIFICATION_RETRY_KEY: &str = "auth:lockout-notifications:retry";
+#[allow(dead_code)]
 pub const LOCKOUT_NOTIFICATION_DLQ_KEY: &str = "auth:lockout-notifications:dlq";
+const REQUEUE_DUE_LOCKOUT_NOTIFICATION_JOBS_SCRIPT: &str = r#"
+local jobs = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, ARGV[2])
+for _, job in ipairs(jobs) do
+  redis.call('ZREM', KEYS[1], job)
+  redis.call('RPUSH', KEYS[2], job)
+end
+return #jobs
+"#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockoutNotificationJob {
@@ -32,6 +40,7 @@ impl LockoutNotificationJob {
         }
     }
 
+    #[allow(dead_code)]
     pub fn retrying(&self) -> Self {
         let mut next = self.clone();
         next.attempt = next.attempt.saturating_add(1);
@@ -39,6 +48,7 @@ impl LockoutNotificationJob {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockoutNotificationDeadLetter {
     pub job: LockoutNotificationJob,
@@ -65,6 +75,7 @@ pub async fn enqueue_lockout_notification_job(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn dequeue_lockout_notification_job(
     pool: &RedisPool,
     timeout_seconds: usize,
@@ -86,6 +97,7 @@ pub async fn dequeue_lockout_notification_job(
         .transpose()
 }
 
+#[allow(dead_code)]
 pub async fn schedule_lockout_notification_retry(
     pool: &RedisPool,
     job: &LockoutNotificationJob,
@@ -107,6 +119,7 @@ pub async fn schedule_lockout_notification_retry(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn requeue_due_lockout_notification_jobs(
     pool: &RedisPool,
     now: DateTime<Utc>,
@@ -116,40 +129,20 @@ pub async fn requeue_due_lockout_notification_jobs(
         .get()
         .await
         .map_err(|err| anyhow!("acquire redis connection: {err}"))?;
-    let payloads: Vec<String> = redis::cmd("ZRANGEBYSCORE")
+    let moved: i32 = redis::cmd("EVAL")
+        .arg(REQUEUE_DUE_LOCKOUT_NOTIFICATION_JOBS_SCRIPT)
+        .arg(2)
         .arg(LOCKOUT_NOTIFICATION_RETRY_KEY)
-        .arg("-inf")
+        .arg(LOCKOUT_NOTIFICATION_QUEUE_KEY)
         .arg(now.timestamp_millis())
-        .arg("LIMIT")
-        .arg(0)
         .arg(limit)
         .query_async(&mut *conn)
         .await
-        .map_err(|err| anyhow!("load due retry jobs: {err}"))?;
-
-    let mut moved = 0usize;
-    for payload in payloads {
-        let removed: i32 = redis::cmd("ZREM")
-            .arg(LOCKOUT_NOTIFICATION_RETRY_KEY)
-            .arg(&payload)
-            .query_async(&mut *conn)
-            .await
-            .map_err(|err| anyhow!("remove due retry job: {err}"))?;
-        if removed == 0 {
-            continue;
-        }
-        let _: i32 = redis::cmd("RPUSH")
-            .arg(LOCKOUT_NOTIFICATION_QUEUE_KEY)
-            .arg(&payload)
-            .query_async(&mut *conn)
-            .await
-            .map_err(|err| anyhow!("requeue due retry job: {err}"))?;
-        moved += 1;
-    }
-
-    Ok(moved)
+        .map_err(|err| anyhow!("requeue due retry jobs: {err}"))?;
+    Ok(moved.max(0) as usize)
 }
 
+#[allow(dead_code)]
 pub async fn push_lockout_notification_dead_letter(
     pool: &RedisPool,
     entry: &LockoutNotificationDeadLetter,
