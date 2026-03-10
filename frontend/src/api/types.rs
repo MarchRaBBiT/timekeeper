@@ -39,6 +39,8 @@ pub struct UserResponse {
     pub locked_until: Option<DateTime<Utc>>,
     #[serde(default)]
     pub failed_login_attempts: i32,
+    #[serde(default)]
+    pub password_expiry_warning_days: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -308,6 +308,7 @@ mod host_tests {
             is_locked: false,
             locked_until: None,
             failed_login_attempts: 0,
+            password_expiry_warning_days: None,
         }
     }
 

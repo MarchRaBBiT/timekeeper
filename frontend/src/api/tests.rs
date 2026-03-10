@@ -776,6 +776,7 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
                 is_locked: false,
                 locked_until: None,
                 failed_login_attempts: 0,
+                password_expiry_warning_days: None,
             },
         }),
     );
@@ -815,6 +816,7 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
                 is_locked: false,
                 locked_until: None,
                 failed_login_attempts: 0,
+                password_expiry_warning_days: None,
             },
         }),
     );

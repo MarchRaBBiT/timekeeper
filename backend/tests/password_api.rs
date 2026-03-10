@@ -311,6 +311,40 @@ async fn test_change_password_without_special_char_fails() {
 }
 
 #[tokio::test]
+async fn test_change_password_with_common_password_fails() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let password = "CurrentPass123!";
+    let mut employee = seed_user(&pool, UserRole::Employee, false).await;
+    let password_hash = hash_password(password).expect("hash password");
+    employee.password_hash = password_hash;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let payload = json!({
+        "current_password": password,
+        "new_password": "Password123!"
+    });
+    let request = Request::builder()
+        .method("PUT")
+        .uri("/api/auth/password")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Origin", TEST_ORIGIN)
+        .header("Content-Type", "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn test_change_password_empty_current_password_fails() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
