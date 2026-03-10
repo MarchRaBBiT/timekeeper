@@ -454,32 +454,11 @@ pub async fn record_login_failure(
     let threshold = policy.threshold.max(1);
     let next_failed_attempts = failed_attempts + 1;
     if next_failed_attempts >= threshold {
-        let next_lockout_count = lockout_count + 1;
-        let duration = lockout_duration_minutes(next_lockout_count, policy);
-        let next_locked_until = now + chrono::Duration::minutes(duration);
-        sqlx::query(
-            "UPDATE users \
-             SET failed_login_attempts = 0, \
-                 locked_until = $1, \
-                 lock_reason = $2, \
-                 lockout_count = $3, \
-                 updated_at = NOW() \
-             WHERE id = $4",
-        )
-        .bind(next_locked_until)
-        .bind("too_many_failed_attempts")
-        .bind(next_lockout_count)
-        .bind(user_id.to_string())
-        .execute(&mut *tx)
-        .await?;
-
+        let failure_state =
+            persist_lockout_state_with_executor(&mut *tx, user_id, now, policy, lockout_count)
+                .await?;
         tx.commit().await?;
-        Ok(LoginFailureState {
-            failed_login_attempts: 0,
-            locked_until: Some(next_locked_until),
-            lockout_count: next_lockout_count,
-            became_locked: true,
-        })
+        Ok(failure_state)
     } else {
         sqlx::query(
             "UPDATE users \
@@ -499,6 +478,85 @@ pub async fn record_login_failure(
             became_locked: false,
         })
     }
+}
+
+pub async fn persist_lockout_state(
+    pool: &PgPool,
+    user_id: UserId,
+    now: DateTime<Utc>,
+    policy: LockoutPolicy,
+) -> Result<LoginFailureState, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query_as::<_, (Option<DateTime<Utc>>, i32)>(
+        "SELECT locked_until, lockout_count \
+         FROM users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(user_id.to_string())
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((locked_until, lockout_count)) = row else {
+        tx.rollback().await?;
+        return Ok(LoginFailureState {
+            failed_login_attempts: 0,
+            locked_until: None,
+            lockout_count: 0,
+            became_locked: false,
+        });
+    };
+
+    let is_still_locked = locked_until.map(|until| until > now).unwrap_or(false);
+    if is_still_locked {
+        tx.commit().await?;
+        return Ok(LoginFailureState {
+            failed_login_attempts: 0,
+            locked_until,
+            lockout_count,
+            became_locked: false,
+        });
+    }
+
+    let failure_state =
+        persist_lockout_state_with_executor(&mut *tx, user_id, now, policy, lockout_count).await?;
+    tx.commit().await?;
+    Ok(failure_state)
+}
+
+async fn persist_lockout_state_with_executor<'e, E>(
+    executor: E,
+    user_id: UserId,
+    now: DateTime<Utc>,
+    policy: LockoutPolicy,
+    current_lockout_count: i32,
+) -> Result<LoginFailureState, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
+    let next_lockout_count = current_lockout_count + 1;
+    let duration = lockout_duration_minutes(next_lockout_count, policy);
+    let next_locked_until = now + chrono::Duration::minutes(duration);
+    sqlx::query(
+        "UPDATE users \
+         SET failed_login_attempts = 0, \
+             locked_until = $1, \
+             lock_reason = $2, \
+             lockout_count = $3, \
+             updated_at = NOW() \
+         WHERE id = $4",
+    )
+    .bind(next_locked_until)
+    .bind("too_many_failed_attempts")
+    .bind(next_lockout_count)
+    .bind(user_id.to_string())
+    .execute(executor)
+    .await?;
+
+    Ok(LoginFailureState {
+        failed_login_attempts: 0,
+        locked_until: Some(next_locked_until),
+        lockout_count: next_lockout_count,
+        became_locked: true,
+    })
 }
 
 pub async fn clear_login_failures(pool: &PgPool, user_id: UserId) -> Result<(), sqlx::Error> {
