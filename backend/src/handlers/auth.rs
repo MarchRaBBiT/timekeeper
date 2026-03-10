@@ -219,6 +219,8 @@ pub async fn login(
                         enqueue_lockout_notification(
                             state.write_pool.clone(),
                             state.config.clone(),
+                            Some(audit_log_service.clone()),
+                            audit_context.clone(),
                             audit_actor_id,
                             locked_until,
                         );
@@ -1437,6 +1439,26 @@ fn record_login_audit_event(
     user_id: UserId,
     metadata: Option<Value>,
 ) {
+    record_login_audit_event_with_result(
+        audit_log_service,
+        context,
+        event_type,
+        user_id,
+        login_audit_result(event_type),
+        None,
+        metadata,
+    );
+}
+
+fn record_login_audit_event_with_result(
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    context: AuditContext,
+    event_type: &'static str,
+    user_id: UserId,
+    result: &'static str,
+    error_code: Option<&'static str>,
+    metadata: Option<Value>,
+) {
     let Some(audit_log_service) = audit_log_service else {
         return;
     };
@@ -1447,8 +1469,8 @@ fn record_login_audit_event(
         event_type: event_type.to_string(),
         target_type: Some("user".to_string()),
         target_id: Some(user_id.to_string()),
-        result: login_audit_result(event_type).to_string(),
-        error_code: None,
+        result: result.to_string(),
+        error_code: error_code.map(str::to_string),
         metadata,
         ip: context.ip,
         user_agent: context.user_agent,
@@ -1489,27 +1511,62 @@ async fn send_lockout_notification(
         .map_err(|_| internal_error("Failed to decrypt lockout email"))?;
 
     let email_service = EmailService::new().map_err(|_| internal_error("Email service error"))?;
-    if let Err(err) =
-        email_service.send_account_lockout_notification(&user.email, &user.username, locked_until)
-    {
-        tracing::warn!(error = ?err, user_id = %user.id, "Failed to send lockout notification");
-    }
+    email_service
+        .send_account_lockout_notification(&user.email, &user.username, locked_until)
+        .map_err(|err| anyhow::anyhow!("Failed to send lockout notification: {err}"))?;
     Ok(())
 }
 
 fn enqueue_lockout_notification(
     pool: sqlx::PgPool,
     config: Config,
+    audit_log_service: Option<Arc<dyn AuditLogServiceTrait>>,
+    audit_context: AuditContext,
     user_id: UserId,
     locked_until: DateTime<Utc>,
 ) {
+    record_login_audit_event_with_result(
+        audit_log_service.clone(),
+        audit_context.clone(),
+        "lockout_notification_queued",
+        user_id,
+        "queued",
+        None,
+        Some(json!({
+            "locked_until": locked_until,
+        })),
+    );
     tokio::spawn(async move {
-        if let Err(err) = send_lockout_notification(&pool, &config, user_id, locked_until).await {
-            tracing::warn!(
-                error = ?err,
-                user_id = %user_id,
-                "Failed to send lockout notification"
-            );
+        match send_lockout_notification(&pool, &config, user_id, locked_until).await {
+            Ok(()) => record_login_audit_event_with_result(
+                audit_log_service,
+                audit_context,
+                "lockout_notification_sent",
+                user_id,
+                "success",
+                None,
+                Some(json!({
+                    "locked_until": locked_until,
+                })),
+            ),
+            Err(err) => {
+                tracing::warn!(
+                    error = ?err,
+                    user_id = %user_id,
+                    "Failed to send lockout notification"
+                );
+                record_login_audit_event_with_result(
+                    audit_log_service,
+                    audit_context,
+                    "lockout_notification_failed",
+                    user_id,
+                    "failed",
+                    Some("lockout_notification_send_failed"),
+                    Some(json!({
+                        "locked_until": locked_until,
+                    })),
+                );
+            }
         }
     });
 }
