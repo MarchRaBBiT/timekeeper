@@ -2,6 +2,36 @@ use crate::components::forms::DatePicker;
 use crate::components::{error::InlineErrorMessage, layout::SuccessMessage};
 use leptos::{ev::MouseEvent, Callback, *};
 
+#[derive(Clone)]
+enum AttendanceFeedback {
+    Error(crate::api::ApiError),
+    Success(String),
+}
+
+fn resolve_attendance_feedback(
+    export_error: Option<crate::api::ApiError>,
+    export_success: Option<String>,
+    range_error: Option<String>,
+    history_error: Option<crate::api::ApiError>,
+    last_refresh_error: Option<crate::api::ApiError>,
+) -> Option<AttendanceFeedback> {
+    if let Some(message) = range_error {
+        return Some(AttendanceFeedback::Error(crate::api::ApiError::validation(
+            message,
+        )));
+    }
+    if let Some(error) = export_error {
+        return Some(AttendanceFeedback::Error(error));
+    }
+    if let Some(error) = history_error {
+        return Some(AttendanceFeedback::Error(error));
+    }
+    if let Some(error) = last_refresh_error {
+        return Some(AttendanceFeedback::Error(error));
+    }
+    export_success.map(AttendanceFeedback::Success)
+}
+
 #[component]
 pub fn RangeFormSection(
     from_input: RwSignal<String>,
@@ -17,6 +47,16 @@ pub fn RangeFormSection(
     on_load_range: Callback<MouseEvent>,
     on_export_csv: Callback<MouseEvent>,
 ) -> impl IntoView {
+    let feedback = Signal::derive(move || {
+        resolve_attendance_feedback(
+            export_error.get(),
+            export_success.get(),
+            range_error.get(),
+            history_error.get(),
+            last_refresh_error.get(),
+        )
+    });
+
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
             <div class="w-full lg:w-48">
@@ -52,23 +92,16 @@ pub fn RangeFormSection(
                 {move || if exporting.get() { "CSV生成中..." } else { "CSVダウンロード" }}
             </button>
         </div>
-        <Show when=move || export_error.get().is_some()>
-            <InlineErrorMessage error={export_error.into()} />
-        </Show>
-        <Show when=move || export_success.get().is_some()>
-            <SuccessMessage message={export_success.get().unwrap_or_default()} />
-        </Show>
-        <Show when=move || range_error.get().is_some()>
-            <div class="bg-status-error-bg border border-status-error-border text-status-error-text px-4 py-3 rounded">
-                {range_error.get().unwrap_or_default()}
-            </div>
-        </Show>
-        <Show when=move || history_error.get().is_some()>
-            <InlineErrorMessage error={history_error} />
-        </Show>
-        <Show when=move || last_refresh_error.get().is_some()>
-            <InlineErrorMessage error={last_refresh_error} />
-        </Show>
+        {move || match feedback.get() {
+            Some(AttendanceFeedback::Error(err)) => {
+                let signal = create_rw_signal(Some(err));
+                view! { <InlineErrorMessage error={signal.into()} /> }.into_view()
+            }
+            Some(AttendanceFeedback::Success(message)) => {
+                view! { <SuccessMessage message=message /> }.into_view()
+            }
+            None => ().into_view(),
+        }}
     }
 }
 
@@ -108,9 +141,27 @@ mod host_tests {
             }
         });
         assert!(html.contains("CSVダウンロード"));
-        assert!(html.contains("export failed"));
         assert!(html.contains("range invalid"));
-        assert!(html.contains("history failed"));
-        assert!(html.contains("refresh failed"));
+        assert!(!html.contains("export failed"));
+        assert!(!html.contains("history failed"));
+        assert!(!html.contains("refresh failed"));
+    }
+
+    #[test]
+    fn feedback_resolution_prefers_errors_and_falls_back_to_success() {
+        let err = resolve_attendance_feedback(
+            Some(ApiError::unknown("export failed")),
+            Some("ok".to_string()),
+            None,
+            None,
+            None,
+        );
+        assert!(matches!(err, Some(AttendanceFeedback::Error(_))));
+
+        let success = resolve_attendance_feedback(None, Some("ok".to_string()), None, None, None);
+        assert!(matches!(
+            success,
+            Some(AttendanceFeedback::Success(message)) if message == "ok"
+        ));
     }
 }
