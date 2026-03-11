@@ -18,11 +18,11 @@ pub fn UnauthorizedMessage() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::{render_to_string, render_with_router_to_string};
 
     #[test]
     fn dashboard_frame_wraps_children() {
-        let html = render_to_string(move || {
+        let html = render_with_router_to_string("http://localhost/", move || {
             view! { <DashboardFrame><div>{"child"}</div></DashboardFrame> }
         });
         assert!(html.contains("child"));

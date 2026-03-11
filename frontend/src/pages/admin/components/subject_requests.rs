@@ -182,7 +182,6 @@ fn render_subject_request_rows(
                     let id = item.id.clone();
                     let open = {
                         let item = item.clone();
-                        let open_modal = open_modal.clone();
                         move |_| open_modal.call(item.clone())
                     };
                     view! {
@@ -350,7 +349,7 @@ pub fn AdminSubjectRequestsSection(
                     </thead>
                     <tbody class="bg-surface-elevated divide-y divide-border">
                         <Show when=move || data.get().is_some()>
-                            {move || render_subject_request_rows(data.get(), open_modal.clone())}
+                                {move || render_subject_request_rows(data.get(), open_modal)}
                         </Show>
                     </tbody>
                 </table>

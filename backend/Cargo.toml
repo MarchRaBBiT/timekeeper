@@ -93,7 +93,7 @@ base32 = "0.4"
 base64 = "0.22"
 aes-gcm = "0.10"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
 
 # Async traits
 async-trait = "0.1"

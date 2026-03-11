@@ -19,8 +19,12 @@ usage() {
 Usage:
   bash scripts/harness.sh --list
   bash scripts/harness.sh doctor
+  bash scripts/harness.sh fmt-check
   bash scripts/harness.sh backend-unit
   bash scripts/harness.sh backend-integration
+  bash scripts/harness.sh clippy-backend
+  bash scripts/harness.sh clippy-frontend
+  bash scripts/harness.sh lint
   bash scripts/harness.sh api-smoke
   bash scripts/harness.sh frontend-login
   bash scripts/harness.sh smoke
@@ -59,6 +63,11 @@ run_doctor() {
   log "FRONTEND_BASE_URL=$FRONTEND_BASE_URL"
 }
 
+run_fmt_check() {
+  log "stage=fmt-check"
+  (cd "$ROOT_DIR" && cargo fmt --all --check)
+}
+
 run_backend_unit() {
   log "stage=backend-unit"
   (cd "$ROOT_DIR" && cargo test -p timekeeper-backend --lib)
@@ -67,6 +76,27 @@ run_backend_unit() {
 run_backend_integration() {
   log "stage=backend-integration"
   (cd "$ROOT_DIR" && cargo test -p timekeeper-backend --tests)
+}
+
+run_clippy_backend() {
+  log "stage=clippy-backend"
+  (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
+  (cd "$ROOT_DIR" && cargo clippy -p timekeeper-backend --all-targets -- -D warnings)
+}
+
+run_clippy_frontend() {
+  log "stage=clippy-frontend"
+  (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
+  (cd "$ROOT_DIR" && cargo clippy -p timekeeper-frontend --all-targets -- -D warnings)
+}
+
+run_lint() {
+  run_fmt_check
+  run_clippy_backend
+  run_clippy_frontend
+  log "stage=clippy-workspace"
+  (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
+  (cd "$ROOT_DIR" && cargo clippy --all-targets -- -D warnings)
 }
 
 run_api_smoke() {
@@ -90,6 +120,7 @@ run_smoke() {
 
 run_full() {
   run_doctor
+  run_lint
   run_backend_unit
   run_backend_integration
   run_api_smoke
@@ -105,8 +136,12 @@ case "$1" in
   --list)
     cat <<'EOF'
 doctor
+fmt-check
 backend-unit
 backend-integration
+clippy-backend
+clippy-frontend
+lint
 api-smoke
 frontend-login
 smoke
@@ -119,11 +154,23 @@ EOF
   doctor)
     run_doctor
     ;;
+  fmt-check)
+    run_fmt_check
+    ;;
   backend-unit)
     run_backend_unit
     ;;
   backend-integration)
     run_backend_integration
+    ;;
+  clippy-backend)
+    run_clippy_backend
+    ;;
+  clippy-frontend)
+    run_clippy_frontend
+    ;;
+  lint)
+    run_lint
     ;;
   api-smoke)
     run_api_smoke

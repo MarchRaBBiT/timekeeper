@@ -83,11 +83,11 @@ pub fn AdminPanel() -> impl IntoView {
 mod host_tests {
     use super::*;
     use crate::test_support::helpers::{admin_user, provide_auth};
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn admin_panel_renders_sections_for_admin() {
-        let html = render_to_string(move || {
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
             view! { <AdminPanel /> }
         });

@@ -205,33 +205,42 @@ fn apply_force_break_action_result(
     error.set(next_error);
 }
 
-fn resolve_attendance_dispatch_payload(
-    system_admin_allowed: bool,
-    user_id: &str,
-    date: &str,
-    clock_in: &str,
-    clock_out: &str,
-    breaks: Vec<(String, String)>,
+#[derive(Clone, Copy)]
+struct ActionFeedbackSignals {
     message: RwSignal<Option<String>>,
     error: RwSignal<Option<ApiError>>,
+}
+
+struct AttendanceDispatchPayloadInput<'a> {
+    system_admin_allowed: bool,
+    user_id: &'a str,
+    date: &'a str,
+    clock_in: &'a str,
+    clock_out: &'a str,
+    breaks: Vec<(String, String)>,
+}
+
+fn resolve_attendance_dispatch_payload(
+    input: AttendanceDispatchPayloadInput<'_>,
+    feedback: ActionFeedbackSignals,
 ) -> Option<AdminAttendanceUpsert> {
     match prepare_attendance_submission(
-        system_admin_allowed,
-        user_id,
-        date,
-        clock_in,
-        clock_out,
-        breaks,
+        input.system_admin_allowed,
+        input.user_id,
+        input.date,
+        input.clock_in,
+        input.clock_out,
+        input.breaks,
     ) {
         Ok(Some(payload)) => {
-            message.set(None);
-            error.set(None);
+            feedback.message.set(None);
+            feedback.error.set(None);
             Some(payload)
         }
         Ok(None) => None,
         Err(err) => {
-            error.set(Some(err));
-            message.set(None);
+            feedback.error.set(Some(err));
+            feedback.message.set(None);
             None
         }
     }
@@ -365,14 +374,15 @@ pub fn AdminAttendanceToolsSection(
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             let Some(payload) = resolve_attendance_dispatch_payload(
-                system_admin_allowed.get_untracked(),
-                &att_user.get(),
-                &att_date.get(),
-                &att_in.get(),
-                &att_out.get(),
-                breaks.get(),
-                message,
-                error,
+                AttendanceDispatchPayloadInput {
+                    system_admin_allowed: system_admin_allowed.get_untracked(),
+                    user_id: &att_user.get(),
+                    date: &att_date.get(),
+                    clock_in: &att_in.get(),
+                    clock_out: &att_out.get(),
+                    breaks: breaks.get(),
+                },
+                ActionFeedbackSignals { message, error },
             ) else {
                 return;
             };
@@ -797,28 +807,30 @@ mod host_tests {
             let error = create_rw_signal(None::<ApiError>);
 
             let blocked = resolve_attendance_dispatch_payload(
-                false,
-                "u1",
-                "2025-01-01",
-                "2025-01-01T09:00",
-                "",
-                vec![],
-                message,
-                error,
+                AttendanceDispatchPayloadInput {
+                    system_admin_allowed: false,
+                    user_id: "u1",
+                    date: "2025-01-01",
+                    clock_in: "2025-01-01T09:00",
+                    clock_out: "",
+                    breaks: vec![],
+                },
+                ActionFeedbackSignals { message, error },
             );
             assert!(blocked.is_none());
             assert_eq!(message.get().as_deref(), Some("old"));
             assert!(error.get().is_none());
 
             let invalid = resolve_attendance_dispatch_payload(
-                true,
-                "",
-                "2025-01-01",
-                "2025-01-01T09:00",
-                "",
-                vec![],
-                message,
-                error,
+                AttendanceDispatchPayloadInput {
+                    system_admin_allowed: true,
+                    user_id: "",
+                    date: "2025-01-01",
+                    clock_in: "2025-01-01T09:00",
+                    clock_out: "",
+                    breaks: vec![],
+                },
+                ActionFeedbackSignals { message, error },
             );
             assert!(invalid.is_none());
             assert_eq!(message.get(), None);
@@ -830,14 +842,15 @@ mod host_tests {
             message.set(Some("to-clear".to_string()));
             error.set(Some(ApiError::unknown("to-clear")));
             let valid = resolve_attendance_dispatch_payload(
-                true,
-                "u1",
-                "2025-01-01",
-                "2025-01-01T09:00",
-                "",
-                vec![],
-                message,
-                error,
+                AttendanceDispatchPayloadInput {
+                    system_admin_allowed: true,
+                    user_id: "u1",
+                    date: "2025-01-01",
+                    clock_in: "2025-01-01T09:00",
+                    clock_out: "",
+                    breaks: vec![],
+                },
+                ActionFeedbackSignals { message, error },
             )
             .expect("payload");
             assert_eq!(valid.user_id, "u1");

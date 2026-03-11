@@ -23,10 +23,9 @@ pub fn use_reset_password_view_model() -> ResetPasswordViewModel {
     let success = create_rw_signal(None);
 
     let repo_for_submit = repository.clone();
-    let token_for_submit = token.clone();
     let submit_action = create_action(move |value: &String| {
         let repo = repo_for_submit.clone();
-        let token = token_for_submit.get();
+        let token = token.get();
         let value = value.clone();
         async move {
             let (token, new_password) = validate_reset_input(&token, &value)?;

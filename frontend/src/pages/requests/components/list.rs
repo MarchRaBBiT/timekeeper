@@ -35,7 +35,7 @@ pub fn RequestsList(
                 <h3 class="text-xl font-display font-bold text-fg">{"申請一覧"}</h3>
                 <Show when=move || message.get().error.is_some()>
                     <div class="mt-4">
-                        <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
+                        <InlineErrorMessage error={Signal::derive(move || message.get().error)} />
                     </div>
                 </Show>
                 <Show when=move || message.get().success.is_some()>
@@ -48,7 +48,7 @@ pub fn RequestsList(
 
             <Show when=move || error.get().is_some()>
                 <div class="p-8">
-                    <InlineErrorMessage error={error.into()} />
+                    <InlineErrorMessage error={error} />
                 </div>
             </Show>
 

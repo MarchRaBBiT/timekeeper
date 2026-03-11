@@ -7,6 +7,17 @@ use super::{
     },
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct AdminSubjectRequestQuery {
+    pub status: Option<String>,
+    pub request_type: Option<String>,
+    pub user_id: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 impl ApiClient {
     pub async fn create_subject_request(
         &self,
@@ -53,40 +64,34 @@ impl ApiClient {
 
     pub async fn admin_list_subject_requests(
         &self,
-        status: Option<String>,
-        request_type: Option<String>,
-        user_id: Option<String>,
-        from: Option<String>,
-        to: Option<String>,
-        page: i64,
-        per_page: i64,
+        query: AdminSubjectRequestQuery,
     ) -> Result<SubjectRequestListResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
         let mut params = vec![
-            ("page".to_string(), page.to_string()),
-            ("per_page".to_string(), per_page.to_string()),
+            ("page".to_string(), query.page.to_string()),
+            ("per_page".to_string(), query.per_page.to_string()),
         ];
-        if let Some(value) = status {
+        if let Some(value) = query.status {
             if !value.is_empty() {
                 params.push(("status".to_string(), value));
             }
         }
-        if let Some(value) = request_type {
+        if let Some(value) = query.request_type {
             if !value.is_empty() {
                 params.push(("type".to_string(), value));
             }
         }
-        if let Some(value) = user_id {
+        if let Some(value) = query.user_id {
             if !value.is_empty() {
                 params.push(("user_id".to_string(), value));
             }
         }
-        if let Some(value) = from {
+        if let Some(value) = query.from {
             if !value.is_empty() {
                 params.push(("from".to_string(), value));
             }
         }
-        if let Some(value) = to {
+        if let Some(value) = query.to {
             if !value.is_empty() {
                 params.push(("to".to_string(), value));
             }

@@ -1,7 +1,8 @@
 use crate::api::{
-    ActiveBreakResponse, AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem, ApiClient,
-    ApiError, CreateHolidayRequest, CreateWeeklyHolidayRequest, HolidayResponse,
-    SubjectRequestListResponse, UserResponse, WeeklyHolidayResponse,
+    ActiveBreakResponse, AdminAttendanceUpsert, AdminHolidayKind, AdminHolidayListItem,
+    AdminSubjectRequestQuery, ApiClient, ApiError, CreateHolidayRequest,
+    CreateWeeklyHolidayRequest, HolidayResponse, SubjectRequestListResponse, UserResponse,
+    WeeklyHolidayResponse,
 };
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -123,7 +124,15 @@ impl AdminRepository {
         per_page: i64,
     ) -> Result<SubjectRequestListResponse, ApiError> {
         self.client
-            .admin_list_subject_requests(status, request_type, user_id, None, None, page, per_page)
+            .admin_list_subject_requests(AdminSubjectRequestQuery {
+                status,
+                request_type,
+                user_id,
+                from: None,
+                to: None,
+                page,
+                per_page,
+            })
             .await
     }
 

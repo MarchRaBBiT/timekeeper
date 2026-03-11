@@ -98,8 +98,6 @@ impl LeaveRequestRepository {
     }
 }
 
-const MAX_FIND_ALL_ROWS: i64 = 1_000;
-
 #[async_trait]
 impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     async fn find_all(&self, db: &PgPool) -> Result<Vec<LeaveRequest>, AppError> {
@@ -108,7 +106,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
             "id, user_id, leave_type, start_date, end_date, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests",
-            MAX_FIND_ALL_ROWS
+            1_000
         );
         let rows = sqlx::query_as::<_, LeaveRequest>(&query)
             .fetch_all(db)

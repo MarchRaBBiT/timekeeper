@@ -22,7 +22,6 @@ pub fn OvertimeRequestForm(
     let updating = update_action.pending();
 
     let on_submit = {
-        let state = state.clone();
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             match state.to_payload() {
@@ -70,7 +69,7 @@ pub fn OvertimeRequestForm(
                 </Show>
             </div>
             <Show when=move || message.get().error.is_some()>
-                <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
+                <InlineErrorMessage error={Signal::derive(move || message.get().error)} />
             </Show>
             <Show when=move || message.get().success.is_some()>
                 <SuccessMessage message={message.get().success.clone().unwrap_or_default()} />

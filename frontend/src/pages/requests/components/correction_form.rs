@@ -28,7 +28,6 @@ pub fn AttendanceCorrectionRequestForm(
     };
 
     let on_submit = {
-        let state = state;
         move |ev: ev::SubmitEvent| {
             ev.prevent_default();
             message.update(|msg| msg.clear());
@@ -72,7 +71,7 @@ pub fn AttendanceCorrectionRequestForm(
                 </Show>
             </div>
             <Show when=move || message.get().error.is_some()>
-                <InlineErrorMessage error={Signal::derive(move || message.get().error).into()} />
+                <InlineErrorMessage error={Signal::derive(move || message.get().error)} />
             </Show>
             <Show when=move || message.get().success.is_some()>
                 <SuccessMessage message={message.get().success.clone().unwrap_or_default()} />

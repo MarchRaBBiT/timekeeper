@@ -26,6 +26,12 @@
 
 また、live smoke を回す場合に使う URL も表示します。
 
+### `fmt-check`
+
+```bash
+cargo fmt --all --check
+```
+
 ### `backend-unit`
 
 ```bash
@@ -37,6 +43,22 @@ cargo test -p timekeeper-backend --lib
 ```bash
 cargo test -p timekeeper-backend --tests
 ```
+
+### `clippy-backend`
+
+```bash
+cargo clippy -p timekeeper-backend --all-targets -- -D warnings
+```
+
+実行前に `cargo clean -p utoipa-swagger-ui` を挟み、repo 移動後の stale build artifact で workspace lint が壊れないようにします。
+
+### `clippy-frontend`
+
+```bash
+cargo clippy -p timekeeper-frontend --all-targets -- -D warnings
+```
+
+こちらも同じく `utoipa-swagger-ui` の stale artifact を先に掃除します。
 
 ### `api-smoke`
 
@@ -56,6 +78,15 @@ FRONTEND_BASE_URL=http://localhost:8080 bash scripts/harness.sh frontend-login
 
 ## Profiles
 
+### `lint`
+
+repo-wide の formatting / lint gate です。
+
+1. `fmt-check`
+2. `clippy-backend`
+3. `clippy-frontend`
+4. `cargo clippy --all-targets -- -D warnings`
+
 ### `smoke`
 
 最小限の end-to-end 確認です。
@@ -70,10 +101,11 @@ FRONTEND_BASE_URL=http://localhost:8080 bash scripts/harness.sh frontend-login
 repo の主要入口を一通り確認します。
 
 1. `doctor`
-2. `backend-unit`
-3. `backend-integration`
-4. `api-smoke`
-5. `frontend-login`
+2. `lint`
+3. `backend-unit`
+4. `backend-integration`
+5. `api-smoke`
+6. `frontend-login`
 
 ## Typical Flows
 
@@ -81,6 +113,7 @@ repo の主要入口を一通り確認します。
 
 ```bash
 bash scripts/harness.sh doctor
+bash scripts/harness.sh fmt-check
 bash scripts/harness.sh backend-unit
 ```
 
@@ -94,6 +127,7 @@ bash scripts/harness.sh backend-integration
 
 ```bash
 bash scripts/harness.sh doctor
+bash scripts/harness.sh lint
 bash scripts/harness.sh backend-unit
 bash scripts/harness.sh api-smoke
 bash scripts/harness.sh frontend-login
@@ -117,7 +151,10 @@ PR / issue / final response では、次の 3 点だけを残します。
 
 ```text
 - `doctor`: pass
+- `fmt-check`: pass
 - `backend-unit`: pass
 - `backend-integration`: not run
-- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`: failed on pre-existing attendance_correction_requests warnings
+- `clippy-backend`: pass
+- `clippy-frontend`: pass
+- `lint`: pass
 ```

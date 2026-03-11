@@ -22,6 +22,14 @@ use uuid::Uuid;
 #[path = "support/mod.rs"]
 mod support;
 
+async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    GUARD
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
+}
+
 async fn ok_handler() -> impl IntoResponse {
     StatusCode::OK
 }
@@ -68,6 +76,7 @@ async fn wait_for_audit_log_by_request_id(pool: &PgPool, request_id: &str) -> Op
 
 #[tokio::test]
 async fn audit_log_middleware_records_event() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -130,6 +139,7 @@ async fn audit_log_middleware_records_event() {
 
 #[tokio::test]
 async fn audit_log_middleware_skips_when_retention_is_zero() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -179,6 +189,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_failure_with_error_code() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -236,6 +247,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_auth_failure() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -290,6 +302,7 @@ async fn audit_log_middleware_records_auth_failure() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_request_metadata() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -355,6 +368,7 @@ async fn audit_log_middleware_records_request_metadata() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_consent_metadata() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -412,6 +426,7 @@ async fn audit_log_middleware_records_consent_metadata() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_request_metadata_on_failure_with_large_body() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -472,6 +487,7 @@ async fn audit_log_middleware_records_request_metadata_on_failure_with_large_bod
 
 #[tokio::test]
 async fn audit_log_middleware_records_approval_metadata() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -529,6 +545,7 @@ async fn audit_log_middleware_records_approval_metadata() {
 
 #[tokio::test]
 async fn audit_log_middleware_records_password_change_metadata() {
+    let _guard = integration_guard().await;
     let pool = support::test_pool().await;
     sqlx::migrate!("./migrations")
         .run(&pool)

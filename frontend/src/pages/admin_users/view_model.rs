@@ -10,6 +10,9 @@ use crate::state::auth::use_auth;
 use leptos::*;
 use std::rc::Rc;
 
+type UsersResource =
+    Resource<(bool, u32), Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>>;
+
 /// Tab selection for user management page
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum UserTab {
@@ -29,8 +32,7 @@ pub struct AdminUsersViewModel {
         Resource<(bool, Option<String>), Result<Vec<AdminSessionResponse>, ApiError>>,
     pub pii_masked: RwSignal<bool>,
     pub active_tab: RwSignal<UserTab>,
-    pub users_resource:
-        Resource<(bool, u32), Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>>,
+    pub users_resource: UsersResource,
     pub archived_users_resource: Resource<(bool, u32), Result<Vec<ArchivedUserResponse>, ApiError>>,
     pub invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     pub reset_mfa_action: Action<String, Result<(), ApiError>>,
@@ -469,6 +471,7 @@ mod host_tests {
                 is_locked: false,
                 locked_until: None,
                 failed_login_attempts: 0,
+                password_expiry_warning_days: None,
             }));
             vm.user_sessions_resource.refetch();
             for _ in 0..10 {

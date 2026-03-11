@@ -34,8 +34,9 @@
 3. [ ] <実装タスク3>
 
 ## Validation Plan
-- [ ] `cargo fmt --all`
+- [ ] `cargo fmt --all --check`
 - [ ] `cargo clippy --all-targets -- -D warnings`
+- [ ] `bash scripts/harness.sh lint`
 - [ ] `./scripts/test_backend_integrated.sh` または `cargo test --test <target>`
 - [ ] `pwsh -File .\scripts\test_backend.ps1`（必要時）
 - [ ] `cd frontend; wasm-pack test --headless --firefox`（必要時）

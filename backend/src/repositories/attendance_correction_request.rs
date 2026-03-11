@@ -11,6 +11,27 @@ use sqlx::PgPool;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AttendanceCorrectionRequestRepository;
 
+#[derive(Debug, Clone, Copy)]
+pub struct CreateAttendanceCorrectionRequestParams<'a> {
+    pub id: &'a str,
+    pub user_id: UserId,
+    pub attendance_id: AttendanceId,
+    pub date: chrono::NaiveDate,
+    pub reason: &'a str,
+    pub original_snapshot: &'a AttendanceCorrectionSnapshot,
+    pub proposed_values: &'a AttendanceCorrectionSnapshot,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ApproveAttendanceCorrectionRequestParams<'a> {
+    pub id: &'a str,
+    pub attendance_id: AttendanceId,
+    pub approver_id: UserId,
+    pub comment: &'a str,
+    pub original_snapshot: &'a AttendanceCorrectionSnapshot,
+    pub proposed_values: &'a AttendanceCorrectionSnapshot,
+}
+
 impl AttendanceCorrectionRequestRepository {
     pub fn new() -> Self {
         Self
@@ -19,13 +40,7 @@ impl AttendanceCorrectionRequestRepository {
     pub async fn create(
         &self,
         db: &PgPool,
-        id: &str,
-        user_id: UserId,
-        attendance_id: AttendanceId,
-        date: chrono::NaiveDate,
-        reason: &str,
-        original_snapshot: &AttendanceCorrectionSnapshot,
-        proposed_values: &AttendanceCorrectionSnapshot,
+        params: CreateAttendanceCorrectionRequestParams<'_>,
     ) -> Result<AttendanceCorrectionRequest, AppError> {
         let now = Utc::now();
         let query = "INSERT INTO attendance_correction_requests (
@@ -38,18 +53,18 @@ impl AttendanceCorrectionRequestRepository {
                 created_at, updated_at";
 
         let row = sqlx::query_as::<_, AttendanceCorrectionRequest>(query)
-            .bind(id)
-            .bind(user_id)
-            .bind(attendance_id)
-            .bind(date)
-            .bind(reason)
+            .bind(params.id)
+            .bind(params.user_id)
+            .bind(params.attendance_id)
+            .bind(params.date)
+            .bind(params.reason)
             .bind(
-                serde_json::to_value(original_snapshot)
-                    .map_err(|e| AppError::InternalServerError(e.into()))?,
+                serde_json::to_value(params.original_snapshot)
+                    .map_err(|error| AppError::InternalServerError(error.into()))?,
             )
             .bind(
-                serde_json::to_value(proposed_values)
-                    .map_err(|e| AppError::InternalServerError(e.into()))?,
+                serde_json::to_value(params.proposed_values)
+                    .map_err(|error| AppError::InternalServerError(error.into()))?,
             )
             .bind(now)
             .bind(now)
@@ -168,7 +183,7 @@ impl AttendanceCorrectionRequestRepository {
             .bind(reason)
             .bind(
                 serde_json::to_value(proposed_values)
-                    .map_err(|e| AppError::InternalServerError(e.into()))?,
+                    .map_err(|error| AppError::InternalServerError(error.into()))?,
             )
             .bind(now)
             .bind(id)
@@ -238,16 +253,11 @@ impl AttendanceCorrectionRequestRepository {
     pub async fn approve_and_apply_effective_values(
         &self,
         db: &PgPool,
-        id: &str,
-        attendance_id: AttendanceId,
-        approver_id: UserId,
-        comment: &str,
-        original_snapshot: &AttendanceCorrectionSnapshot,
-        proposed_values: &AttendanceCorrectionSnapshot,
+        params: ApproveAttendanceCorrectionRequestParams<'_>,
     ) -> Result<(), AppError> {
         let now = Utc::now();
-        let breaks_json: Value = serde_json::to_value(&proposed_values.breaks)
-            .map_err(|e| AppError::InternalServerError(e.into()))?;
+        let breaks_json: Value = serde_json::to_value(&params.proposed_values.breaks)
+            .map_err(|error| AppError::InternalServerError(error.into()))?;
 
         let mut tx = db.begin().await?;
         let latest_attendance =
@@ -257,7 +267,7 @@ impl AttendanceCorrectionRequestRepository {
              WHERE id = $1
              FOR UPDATE",
             )
-            .bind(attendance_id)
+            .bind(params.attendance_id)
             .fetch_optional(tx.as_mut())
             .await?;
 
@@ -273,7 +283,7 @@ impl AttendanceCorrectionRequestRepository {
              ORDER BY break_start_time ASC
              FOR UPDATE",
             )
-            .bind(attendance_id)
+            .bind(params.attendance_id)
             .fetch_all(tx.as_mut())
             .await?;
 
@@ -289,7 +299,7 @@ impl AttendanceCorrectionRequestRepository {
                 .collect(),
         };
 
-        if &latest_snapshot != original_snapshot {
+        if &latest_snapshot != params.original_snapshot {
             return Err(AppError::Conflict(
                 "Attendance record changed after request submission. Please resubmit.".into(),
             ));
@@ -300,10 +310,10 @@ impl AttendanceCorrectionRequestRepository {
                 decision_comment = $3, updated_at = $2
             WHERE id = $4 AND status = 'pending'";
         let affected = sqlx::query(approve_query)
-            .bind(approver_id)
+            .bind(params.approver_id)
             .bind(now)
-            .bind(comment)
-            .bind(id)
+            .bind(params.comment)
+            .bind(params.id)
             .execute(tx.as_mut())
             .await?
             .rows_affected();
@@ -328,12 +338,12 @@ impl AttendanceCorrectionRequestRepository {
                 applied_at = EXCLUDED.applied_at,
                 updated_at = EXCLUDED.updated_at";
         sqlx::query(upsert_query)
-            .bind(attendance_id)
-            .bind(id)
-            .bind(proposed_values.clock_in_time)
-            .bind(proposed_values.clock_out_time)
+            .bind(params.attendance_id)
+            .bind(params.id)
+            .bind(params.proposed_values.clock_in_time)
+            .bind(params.proposed_values.clock_out_time)
             .bind(breaks_json)
-            .bind(approver_id)
+            .bind(params.approver_id)
             .bind(now)
             .execute(tx.as_mut())
             .await?;

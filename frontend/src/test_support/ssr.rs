@@ -1,4 +1,5 @@
 use leptos::*;
+use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
 pub fn with_runtime<T>(f: impl FnOnce() -> T) -> T {
     let runtime = leptos::create_runtime();
@@ -38,4 +39,20 @@ where
     let html = with_runtime(|| view().into_view().render_to_string().to_string());
     leptos_reactive::suppress_resource_load(false);
     html
+}
+
+pub fn render_with_router_to_string<F, N>(path: &str, view: F) -> String
+where
+    F: FnOnce() -> N + 'static,
+    N: IntoView + 'static,
+{
+    let path = path.to_string();
+    render_to_string(move || {
+        provide_context(RouterIntegrationContext::new(ServerIntegration { path }));
+        view! {
+            <Router>
+                {view()}
+            </Router>
+        }
+    })
 }

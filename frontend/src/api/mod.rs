@@ -6,7 +6,9 @@ mod requests;
 mod subject_requests;
 pub mod types;
 
+pub use audit_log::AuditLogQuery;
 pub use client::*;
+pub use subject_requests::AdminSubjectRequestQuery;
 pub use types::*;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

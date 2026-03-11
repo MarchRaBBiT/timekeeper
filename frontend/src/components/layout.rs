@@ -3,7 +3,7 @@ use crate::{
     state::auth::{self, use_auth},
 };
 use leptos::*;
-use leptos_router::{Router, RouterIntegrationContext, ServerIntegration, A};
+use leptos_router::A;
 
 #[component]
 pub fn Header() -> impl IntoView {
@@ -355,7 +355,7 @@ pub fn SuccessMessage(message: String) -> impl IntoView {
 mod host_tests {
     use super::*;
     use crate::test_support::helpers::{admin_user, provide_auth, set_time_zone_ok};
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::{render_to_string, render_with_router_to_string};
 
     fn set_time_zone_warning() {
         crate::config::overwrite_time_zone_status_for_test(TimeZoneStatus {
@@ -368,12 +368,9 @@ mod host_tests {
 
     #[test]
     fn header_renders_admin_links() {
-        let html = render_to_string(move || {
-            provide_context(RouterIntegrationContext::new(ServerIntegration {
-                path: "http://localhost/dashboard".to_string(),
-            }));
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
-            view! { <Router><Header /></Router> }
+            view! { <Header /> }
         });
         assert!(html.contains("管理"));
         assert!(html.contains("ユーザー追加"));
@@ -382,12 +379,9 @@ mod host_tests {
     #[test]
     fn layout_renders_children() {
         set_time_zone_warning();
-        let html = render_to_string(move || {
-            provide_context(RouterIntegrationContext::new(ServerIntegration {
-                path: "http://localhost/dashboard".to_string(),
-            }));
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
-            view! { <Router><Layout><div>"child"</div></Layout></Router> }
+            view! { <Layout><div>"child"</div></Layout> }
         });
         assert!(html.contains("child"));
     }

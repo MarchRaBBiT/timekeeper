@@ -204,11 +204,11 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn admin_export_page_denied_for_non_admin() {
-        let html = render_to_string(move || {
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(regular_user()));
             view! { <AdminExportPage /> }
         });
@@ -224,7 +224,7 @@ mod host_tests {
         });
 
         let server = server.clone();
-        let html = render_to_string(move || {
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
             provide_context(crate::api::ApiClient::new_with_base_url(
                 &server.url("/api"),

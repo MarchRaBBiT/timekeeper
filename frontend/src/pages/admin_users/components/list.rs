@@ -4,12 +4,12 @@ use crate::{
 };
 use leptos::*;
 
+type UsersResource =
+    Resource<(bool, u32), Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>>;
+
 #[component]
 pub fn UserList(
-    users_resource: Resource<
-        (bool, u32),
-        Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError>,
-    >,
+    users_resource: UsersResource,
     loading: Signal<bool>,
     on_select: Callback<UserResponse>,
 ) -> impl IntoView {
@@ -31,7 +31,7 @@ pub fn UserList(
             </div>
 
             <Show when=move || fetch_error.get().is_some()>
-                <InlineErrorMessage error={fetch_error.into()} />
+                <InlineErrorMessage error={fetch_error} />
             </Show>
             <Show when=move || loading.get()>
                 <LoadingSpinner />
