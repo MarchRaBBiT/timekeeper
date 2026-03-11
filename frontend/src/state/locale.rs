@@ -27,6 +27,7 @@ fn create_locale_context() -> LocaleContext {
         load_persisted_locale().as_deref(),
         browser_locale().as_deref(),
     );
+    rust_i18n::set_locale(&initial);
     create_signal(LocaleState { current: initial })
 }
 
@@ -113,6 +114,7 @@ fn browser_locale() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use leptos::create_runtime;
 
     fn with_runtime<T>(test: impl FnOnce() -> T) -> T {
@@ -141,6 +143,16 @@ mod tests {
     fn resolve_initial_locale_uses_browser_locale_when_not_persisted() {
         assert_eq!(resolve_initial_locale(None, Some("ja-JP")), "ja");
         assert_eq!(resolve_initial_locale(None, Some("fr-FR")), "en");
+    }
+
+    #[test]
+    fn create_locale_context_eagerly_syncs_global_locale() {
+        let _locale = set_test_locale("ja");
+        with_runtime(|| {
+            let (read, _write) = create_locale_context();
+            assert_eq!(read.get().current, "en");
+            assert_eq!(rust_i18n::locale().to_string(), "en");
+        });
     }
 
     #[test]

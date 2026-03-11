@@ -17,7 +17,7 @@ common:
     logout: "ログアウト"
     close: "閉じる"
   labels:
-    code: "Code"
+    code: "コード"
   states: {}
   status: {}
   feedback: {}
