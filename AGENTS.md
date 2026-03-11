@@ -46,15 +46,23 @@
 
 1. `doctor`
    - 必須コマンド、依存ツール、live URL 前提を確認
-2. `backend-unit`
+2. `fmt-check`
+   - `cargo fmt --all --check`
+3. `backend-unit`
    - `cargo test -p timekeeper-backend --lib`
-3. `backend-integration`
+4. `backend-integration`
    - `cargo test -p timekeeper-backend --tests`
-4. `api-smoke`
+5. `clippy-backend`
+   - `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`
+6. `clippy-frontend`
+   - `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
+7. `lint`
+   - `fmt-check + clippy-backend + clippy-frontend`
+8. `api-smoke`
    - live backend に対する API スモーク
-5. `frontend-login`
+9. `frontend-login`
    - live frontend に対する Playwright login smoke
-6. `full`
+10. `full`
    - 上記を束ねた統合実行
 
 共通入口:
@@ -62,7 +70,9 @@
 ```bash
 bash scripts/harness.sh --list
 bash scripts/harness.sh doctor
+bash scripts/harness.sh fmt-check
 bash scripts/harness.sh backend-unit
+bash scripts/harness.sh lint
 bash scripts/harness.sh smoke
 bash scripts/harness.sh full
 ```
@@ -73,11 +83,10 @@ bash scripts/harness.sh full
 
 - 変更対象の期待挙動を示す test がある
 - 変更 seam に対応する harness stage が green
-- `cargo fmt --all` が通る
+- `cargo fmt --all --check` が通る
+- `cargo clippy --all-targets -- -D warnings` が通る
 - 関連 issue / PR / ExecPlan に実測結果が残っている
 - `jj` snapshot が作成されている
-
-`cargo clippy --all-targets -- -D warnings` は repo 標準だが、既存違反で失敗する場合は「今回差分による失敗ではない」と切り分けて明記すること。
 
 ## Task Routing
 
@@ -107,6 +116,7 @@ bash scripts/harness.sh full
 ```bash
 # ハーネス入口
 bash scripts/harness.sh --list
+bash scripts/harness.sh lint
 
 # backend
 cd backend && cargo run

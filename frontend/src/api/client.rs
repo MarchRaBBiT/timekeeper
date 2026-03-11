@@ -241,9 +241,7 @@ impl ApiClient {
 
     fn redirect_to_login_if_needed() {
         #[cfg(not(target_arch = "wasm32"))]
-        {
-            return;
-        }
+        {}
 
         #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
@@ -761,17 +759,6 @@ impl ApiClient {
                 .map_err(ApiClient::map_error_payload_parse_failure)?;
             Err(error)
         }
-    }
-
-    pub async fn export_data_filtered(
-        &self,
-        username: Option<&str>,
-        from: Option<&str>,
-        to: Option<&str>,
-    ) -> Result<serde_json::Value, ApiError> {
-        self.export_data_filtered_with_policy(username, from, to)
-            .await
-            .map(|response| response.data)
     }
 
     pub async fn export_data_filtered_with_policy(

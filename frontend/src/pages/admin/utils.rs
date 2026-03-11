@@ -39,7 +39,7 @@ impl WeeklyHolidayFormState {
         self.ends_on.set(String::new());
     }
 
-    pub fn to_payload(&self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, ApiError> {
+    pub fn to_payload(self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, ApiError> {
         let weekday_value: u8 =
             self.weekday.get().trim().parse::<u8>().map_err(|_| {
                 ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。")
@@ -57,7 +57,7 @@ impl WeeklyHolidayFormState {
             ApiError::validation("稼働開始日は YYYY-MM-DD 形式で入力してください。")
         })?;
         if start_date < min_start {
-            return Err(ApiError::validation(&format!(
+            return Err(ApiError::validation(format!(
                 "稼働開始日は {} 以降の日付を選択してください。",
                 min_start.format("%Y-%m-%d")
             )));

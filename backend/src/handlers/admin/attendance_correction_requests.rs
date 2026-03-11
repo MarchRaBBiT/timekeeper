@@ -7,7 +7,9 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::models::attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload};
 use crate::models::user::User;
-use crate::repositories::attendance_correction_request::AttendanceCorrectionRequestRepository;
+use crate::repositories::attendance_correction_request::{
+    ApproveAttendanceCorrectionRequestParams, AttendanceCorrectionRequestRepository,
+};
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,10 +52,7 @@ pub async fn list_attendance_correction_requests(
 
     let mut responses = Vec::with_capacity(list.len());
     for item in list {
-        responses.push(
-            item.to_response()
-                .map_err(|e| AppError::InternalServerError(e.into()))?,
-        );
+        responses.push(item.to_response().map_err(AppError::InternalServerError)?);
     }
 
     Ok(Json(responses))
@@ -74,7 +73,7 @@ pub async fn get_attendance_correction_request_detail(
     Ok(Json(
         request
             .to_response()
-            .map_err(|e| AppError::InternalServerError(e.into()))?,
+            .map_err(AppError::InternalServerError)?,
     ))
 }
 
@@ -95,20 +94,22 @@ pub async fn approve_attendance_correction_request(
 
     let original_snapshot = request
         .parse_original_snapshot()
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
 
     let proposed = request
         .parse_proposed_values()
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
 
     repo.approve_and_apply_effective_values(
         &state.write_pool,
-        &id,
-        request.attendance_id,
-        user.id,
-        &payload.comment,
-        &original_snapshot,
-        &proposed,
+        ApproveAttendanceCorrectionRequestParams {
+            id: &id,
+            attendance_id: request.attendance_id,
+            approver_id: user.id,
+            comment: &payload.comment,
+            original_snapshot: &original_snapshot,
+            proposed_values: &proposed,
+        },
     )
     .await?;
 

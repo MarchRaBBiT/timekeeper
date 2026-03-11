@@ -1,43 +1,46 @@
 use crate::api::client::ApiClient;
 use crate::api::types::{ApiError, AuditLog, AuditLogListResponse, PiiProtectedResponse};
 
-fn audit_log_params(
-    page: Option<i64>,
-    per_page: Option<i64>,
-    from: Option<String>,
-    to: Option<String>,
-    actor_id: Option<String>,
-    event_type: Option<String>,
-    result: Option<String>,
-) -> Vec<(String, String)> {
+#[derive(Debug, Clone, Default)]
+pub struct AuditLogQuery {
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub actor_id: Option<String>,
+    pub event_type: Option<String>,
+    pub result: Option<String>,
+}
+
+fn audit_log_params(query: AuditLogQuery) -> Vec<(String, String)> {
     let mut params = Vec::new();
-    if let Some(page) = page {
+    if let Some(page) = query.page {
         params.push(("page".to_string(), page.to_string()));
     }
-    if let Some(per_page) = per_page {
+    if let Some(per_page) = query.per_page {
         params.push(("per_page".to_string(), per_page.to_string()));
     }
-    if let Some(value) = from {
+    if let Some(value) = query.from {
         if !value.is_empty() {
             params.push(("from".into(), value));
         }
     }
-    if let Some(value) = to {
+    if let Some(value) = query.to {
         if !value.is_empty() {
             params.push(("to".into(), value));
         }
     }
-    if let Some(value) = actor_id {
+    if let Some(value) = query.actor_id {
         if !value.is_empty() {
             params.push(("actor_id".into(), value));
         }
     }
-    if let Some(value) = event_type {
+    if let Some(value) = query.event_type {
         if !value.is_empty() {
             params.push(("event_type".into(), value));
         }
     }
-    if let Some(value) = result {
+    if let Some(value) = query.result {
         if !value.is_empty() {
             params.push(("result".into(), value));
         }
@@ -46,41 +49,12 @@ fn audit_log_params(
 }
 
 impl ApiClient {
-    pub async fn list_audit_logs(
-        &self,
-        page: i64,
-        per_page: i64,
-        from: Option<String>,
-        to: Option<String>,
-        actor_id: Option<String>,
-        event_type: Option<String>,
-        result: Option<String>,
-    ) -> Result<AuditLogListResponse, ApiError> {
-        self.list_audit_logs_with_policy(page, per_page, from, to, actor_id, event_type, result)
-            .await
-            .map(|response| response.data)
-    }
-
     pub async fn list_audit_logs_with_policy(
         &self,
-        page: i64,
-        per_page: i64,
-        from: Option<String>,
-        to: Option<String>,
-        actor_id: Option<String>,
-        event_type: Option<String>,
-        result: Option<String>,
+        query: AuditLogQuery,
     ) -> Result<PiiProtectedResponse<AuditLogListResponse>, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let params = audit_log_params(
-            Some(page),
-            Some(per_page),
-            from,
-            to,
-            actor_id,
-            event_type,
-            result,
-        );
+        let params = audit_log_params(query);
 
         let response = self
             .send_with_refresh(|| {
@@ -109,29 +83,12 @@ impl ApiClient {
         }
     }
 
-    pub async fn export_audit_logs(
-        &self,
-        from: Option<String>,
-        to: Option<String>,
-        actor_id: Option<String>,
-        event_type: Option<String>,
-        result: Option<String>,
-    ) -> Result<Vec<AuditLog>, ApiError> {
-        self.export_audit_logs_with_policy(from, to, actor_id, event_type, result)
-            .await
-            .map(|response| response.data)
-    }
-
     pub async fn export_audit_logs_with_policy(
         &self,
-        from: Option<String>,
-        to: Option<String>,
-        actor_id: Option<String>,
-        event_type: Option<String>,
-        result: Option<String>,
+        query: AuditLogQuery,
     ) -> Result<PiiProtectedResponse<Vec<AuditLog>>, ApiError> {
         let base_url = self.resolved_base_url().await;
-        let params = audit_log_params(None, None, from, to, actor_id, event_type, result);
+        let params = audit_log_params(query);
 
         let response = self
             .send_with_refresh(|| {
@@ -167,22 +124,24 @@ mod tests {
 
     #[test]
     fn audit_log_params_include_page_defaults() {
-        let params = audit_log_params(Some(1), Some(20), None, None, None, None, None);
+        let params = audit_log_params(AuditLogQuery {
+            page: Some(1),
+            per_page: Some(20),
+            ..Default::default()
+        });
         assert!(params.contains(&("page".to_string(), "1".to_string())));
         assert!(params.contains(&("per_page".to_string(), "20".to_string())));
     }
 
     #[test]
     fn audit_log_params_skip_empty_strings() {
-        let params = audit_log_params(
-            None,
-            None,
-            Some("".into()),
-            Some("2025-01-01".into()),
-            Some("".into()),
-            None,
-            Some("success".into()),
-        );
+        let params = audit_log_params(AuditLogQuery {
+            to: Some("2025-01-01".into()),
+            from: Some("".into()),
+            actor_id: Some("".into()),
+            result: Some("success".into()),
+            ..Default::default()
+        });
         assert!(!params.iter().any(|(k, _)| k == "from"));
         assert!(params.iter().any(|(k, v)| k == "to" && v == "2025-01-01"));
         assert!(!params.iter().any(|(k, _)| k == "actor_id"));

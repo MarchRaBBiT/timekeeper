@@ -375,10 +375,10 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
     );
 
     let export = client
-        .export_data_filtered(Some("alice"), Some("2025-01-01"), Some("2025-01-31"))
+        .export_data_filtered_with_policy(Some("alice"), Some("2025-01-01"), Some("2025-01-31"))
         .await
         .unwrap();
-    assert_eq!(export["filename"], "export.csv");
+    assert_eq!(export.data["filename"], "export.csv");
     let msg = client
         .request_password_reset("alice@example.com".into())
         .await
@@ -657,7 +657,11 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
     client.list_my_subject_requests().await.unwrap();
     client.cancel_subject_request("sr-1").await.unwrap();
     client
-        .admin_list_subject_requests(None, None, None, None, None, 1, 50)
+        .admin_list_subject_requests(AdminSubjectRequestQuery {
+            page: 1,
+            per_page: 50,
+            ..Default::default()
+        })
         .await
         .unwrap();
     client
@@ -670,11 +674,15 @@ async fn api_client_subject_request_and_audit_log_endpoints_succeed() {
         .unwrap();
 
     client
-        .list_audit_logs(1, 50, None, None, None, None, None)
+        .list_audit_logs_with_policy(AuditLogQuery {
+            page: Some(1),
+            per_page: Some(50),
+            ..Default::default()
+        })
         .await
         .unwrap();
     client
-        .export_audit_logs(None, None, None, None, None)
+        .export_audit_logs_with_policy(AuditLogQuery::default())
         .await
         .unwrap();
 }

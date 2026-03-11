@@ -132,7 +132,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
 
     // Requests Section State
     let requests_filter = RequestFilterState::new();
-    let filter_state_for_snapshot = requests_filter.clone();
+    let filter_state_for_snapshot = requests_filter;
     let snapshot = Signal::derive(move || filter_state_for_snapshot.snapshot());
 
     let repo_for_requests = repo.clone();
@@ -175,7 +175,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
 
     // Subject Requests Section State
     let subject_request_filter = SubjectRequestFilterState::new();
-    let subject_filter_state = subject_request_filter.clone();
+    let subject_filter_state = subject_request_filter;
     let subject_snapshot = Signal::derive(move || subject_filter_state.snapshot());
 
     let repo_for_subject_requests = repo.clone();

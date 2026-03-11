@@ -179,11 +179,12 @@ pub fn RequestsPage() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn requests_page_renders_forms() {
-        let html = render_to_string(move || view! { <RequestsPage /> });
+        let html =
+            render_with_router_to_string("http://localhost/", move || view! { <RequestsPage /> });
         assert!(html.contains("休暇申請"));
         assert!(html.contains("残業申請"));
         assert!(html.contains("勤怠修正"));

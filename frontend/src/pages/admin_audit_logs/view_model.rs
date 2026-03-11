@@ -1,4 +1,4 @@
-use crate::api::{ApiClient, ApiError, AuditLogListResponse};
+use crate::api::{ApiClient, ApiError, AuditLogListResponse, AuditLogQuery};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
@@ -124,9 +124,15 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
             async move {
                 let (from, to, actor_id, event_type, result) = f.into_query_params();
                 let response = api
-                    .list_audit_logs_with_policy(
-                        p, per_page, from, to, actor_id, event_type, result,
-                    )
+                    .list_audit_logs_with_policy(AuditLogQuery {
+                        page: Some(p),
+                        per_page: Some(per_page),
+                        from,
+                        to,
+                        actor_id,
+                        event_type,
+                        result,
+                    })
                     .await?;
                 pii_masked.set(response.pii_masked);
                 Ok(response.data)
@@ -141,7 +147,15 @@ pub fn use_audit_log_view_model() -> AuditLogViewModel {
         async move {
             let (from, to, actor_id, event_type, result) = f.into_query_params();
             let result_data = api
-                .export_audit_logs_with_policy(from, to, actor_id, event_type, result)
+                .export_audit_logs_with_policy(AuditLogQuery {
+                    page: None,
+                    per_page: None,
+                    from,
+                    to,
+                    actor_id,
+                    event_type,
+                    result,
+                })
                 .await;
 
             match result_data {

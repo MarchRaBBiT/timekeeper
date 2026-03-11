@@ -6,13 +6,15 @@ use crate::state::attendance::{
 };
 use leptos::{ev::MouseEvent, *};
 
+type DashboardAlertsResource = Resource<
+    Option<Result<repository::DashboardSummary, ApiError>>,
+    Result<Vec<repository::DashboardAlert>, ApiError>,
+>;
+
 #[derive(Clone, Copy)]
 pub struct DashboardViewModel {
     pub summary_resource: Resource<(), Result<repository::DashboardSummary, ApiError>>,
-    pub alerts_resource: Resource<
-        Option<Result<repository::DashboardSummary, ApiError>>,
-        Result<Vec<repository::DashboardAlert>, ApiError>,
-    >,
+    pub alerts_resource: DashboardAlertsResource,
     pub activities_resource:
         Resource<ActivityStatusFilter, Result<Vec<repository::DashboardActivity>, ApiError>>,
     pub activity_filter: RwSignal<ActivityStatusFilter>,
@@ -253,7 +255,7 @@ pub fn use_dashboard_view_model() -> DashboardViewModel {
         Some(vm) => vm,
         None => {
             let vm = DashboardViewModel::new();
-            provide_context(vm.clone());
+            provide_context(vm);
             vm
         }
     }

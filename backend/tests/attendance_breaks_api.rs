@@ -29,7 +29,7 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn reset_attendance_tables(pool: &PgPool) {
-    sqlx::query("TRUNCATE break_records, attendance")
+    sqlx::query("TRUNCATE break_records, attendance CASCADE")
         .execute(pool)
         .await
         .expect("truncate attendance tables");

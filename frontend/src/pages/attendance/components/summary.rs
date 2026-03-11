@@ -56,27 +56,29 @@ mod host_tests {
     #[test]
     fn summary_section_renders_status_and_holiday() {
         let html = render_to_string(move || {
-            let mut state = AttendanceState::default();
-            state.today_holiday_reason = Some("public holiday".into());
-            state.today_status = Some(AttendanceStatusResponse {
-                status: "clocked_in".into(),
-                attendance_id: Some("att-1".into()),
-                active_break_id: None,
-                clock_in_time: Some(
-                    NaiveDate::from_ymd_opt(2025, 1, 1)
-                        .unwrap()
-                        .and_hms_opt(9, 0, 0)
-                        .unwrap(),
-                ),
-                clock_out_time: None,
-            });
+            let state = AttendanceState {
+                today_holiday_reason: Some("public holiday".into()),
+                today_status: Some(AttendanceStatusResponse {
+                    status: "clocked_in".into(),
+                    attendance_id: Some("att-1".into()),
+                    active_break_id: None,
+                    clock_in_time: Some(
+                        NaiveDate::from_ymd_opt(2025, 1, 1)
+                            .unwrap()
+                            .and_hms_opt(9, 0, 0)
+                            .unwrap(),
+                    ),
+                    clock_out_time: None,
+                }),
+                ..AttendanceState::default()
+            };
             let (signal, _) = create_signal(state);
             let (pending, _) = create_signal(false);
             let message = create_rw_signal(None::<ClockMessage>);
             view! {
                 <SummarySection
                     state=signal
-                    action_pending=pending.into()
+                    action_pending=pending
                     message=message.read_only()
                     on_clock_in=Callback::new(|_| {})
                     on_clock_out=Callback::new(|_| {})

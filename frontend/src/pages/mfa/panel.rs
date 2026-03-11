@@ -93,7 +93,7 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::test_support::helpers::{admin_user, provide_auth};
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn mfa_register_panel_renders_sections() {
@@ -107,7 +107,7 @@ mod host_tests {
         });
 
         let server = server.clone();
-        let html = render_to_string(move || {
+        let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
             provide_context(crate::api::ApiClient::new_with_base_url(
                 &server.url("/api"),

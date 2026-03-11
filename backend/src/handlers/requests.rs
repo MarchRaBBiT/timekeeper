@@ -102,10 +102,7 @@ pub async fn get_my_requests(
         .await?;
     let correction_responses: Vec<AttendanceCorrectionResponse> = corrections
         .iter()
-        .map(|item| {
-            item.to_response()
-                .map_err(|e| AppError::InternalServerError(e.into()))
-        })
+        .map(|item| item.to_response().map_err(AppError::InternalServerError))
         .collect::<Result<Vec<_>, _>>()?;
 
     let response = json!({

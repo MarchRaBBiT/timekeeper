@@ -250,7 +250,7 @@ mod host_tests {
         let html = render_to_string(move || {
             let (history, _) = create_signal(Vec::new());
             let history_signal = Signal::derive(move || history.get());
-            let holiday_signal = Signal::derive(|| Vec::new());
+            let holiday_signal = Signal::derive(Vec::new);
             let loading = Signal::derive(|| false);
             let error = Signal::derive(|| None::<crate::api::ApiError>);
             view! {
@@ -270,7 +270,7 @@ mod host_tests {
         let html = render_to_string(move || {
             let (history, _) = create_signal(vec![sample_attendance()]);
             let history_signal = Signal::derive(move || history.get());
-            let holiday_signal = Signal::derive(|| Vec::new());
+            let holiday_signal = Signal::derive(Vec::new);
             let loading = Signal::derive(|| false);
             let error = Signal::derive(|| None::<crate::api::ApiError>);
             view! {
@@ -291,7 +291,7 @@ mod host_tests {
         let html = render_to_string(move || {
             let (history, _) = create_signal(vec![sample_attendance()]);
             let history_signal = Signal::derive(move || history.get());
-            let holiday_signal = Signal::derive(|| Vec::new());
+            let holiday_signal = Signal::derive(Vec::new);
             let loading = Signal::derive(|| false);
             let error = Signal::derive(|| None::<crate::api::ApiError>);
             view! {

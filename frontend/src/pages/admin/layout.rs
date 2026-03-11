@@ -49,7 +49,7 @@ pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::ssr::{render_to_string, render_with_router_to_string};
 
     #[test]
     fn unauthorized_message_renders_copy() {
@@ -72,7 +72,7 @@ mod host_tests {
 
     #[test]
     fn admin_dashboard_scaffold_switches_content() {
-        let allowed_html = render_to_string(move || {
+        let allowed_html = render_with_router_to_string("http://localhost/", move || {
             let allowed = create_memo(|_| true);
             view! {
                 <AdminDashboardScaffold admin_allowed=allowed>
@@ -83,7 +83,7 @@ mod host_tests {
         assert!(allowed_html.contains("管理者ツール"));
         assert!(allowed_html.contains("allowed"));
 
-        let denied_html = render_to_string(move || {
+        let denied_html = render_with_router_to_string("http://localhost/", move || {
             let allowed = create_memo(|_| false);
             view! {
                 <AdminDashboardScaffold admin_allowed=allowed>

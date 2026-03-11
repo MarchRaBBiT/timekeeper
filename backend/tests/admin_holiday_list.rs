@@ -3,7 +3,9 @@ use axum::extract::{Extension, Query, State};
 use axum::Json;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use chrono_tz::UTC;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::postgres::PgPoolOptions;
+#[cfg(feature = "test-utils")]
+use sqlx::PgPool;
 use std::str::FromStr;
 #[cfg(feature = "test-utils")]
 use std::sync::{Mutex, OnceLock};
@@ -459,6 +461,7 @@ fn admin_holiday_list_clamps_page_and_per_page() {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "test-utils")]
 async fn prepare_holiday_tables(pool: &PgPool) {
     sqlx::query(
         r#"
@@ -520,6 +523,7 @@ async fn prepare_holiday_tables(pool: &PgPool) {
 }
 
 #[allow(dead_code)]
+#[cfg(feature = "test-utils")]
 async fn seed_integration_holidays(pool: &PgPool) {
     let created_base = Utc
         .timestamp_millis_opt(1_742_961_600_000)

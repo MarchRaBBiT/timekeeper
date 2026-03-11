@@ -26,10 +26,15 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn reset_attendance_tables(pool: &PgPool) {
-    sqlx::query("TRUNCATE break_records, attendance")
-        .execute(pool)
-        .await
-        .expect("truncate attendance tables");
+    sqlx::query(
+        "TRUNCATE attendance_correction_effective_values, \
+         attendance_correction_requests, \
+         break_records, \
+         attendance RESTART IDENTITY CASCADE",
+    )
+    .execute(pool)
+    .await
+    .expect("truncate attendance tables");
 }
 
 #[tokio::test]

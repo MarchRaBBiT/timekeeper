@@ -7,17 +7,16 @@
 
 ## Summary
 
-最優先は次の 3 点です。
+最優先は次の 3 点でした。2026-03-11 時点で P0 build health debt は返済済みです。
 
-1. ハーネスの gate になっているはずの `clippy` が repo 全体で壊れている
-2. backend / frontend の中核モジュールが肥大化し、PR の clean reapply と review コストを押し上げている
-3. repository / handler / test support / docs の source-of-truth が分散し、変更 1 件あたりの追従コストが高い
+1. backend / frontend の中核モジュールが肥大化し、PR の clean reapply と review コストを押し上げている
+2. repository / handler / test support / docs の source-of-truth が分散し、変更 1 件あたりの追従コストが高い
+3. harness / fixture の fragile point が残っている
 
 ## Priority Queue
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
-| P0 | Build health debt (`clippy` / dead code / allow attr drift) | backend, frontend | harness の gate が信用できない |
 | P1 | Backend god modules | `handlers/auth.rs`, `main.rs`, `middleware/audit_log.rs`, `handlers/attendance.rs` | review / rebase / regression isolation が重い |
 | P1 | Frontend god modules | `api/client.rs`, `pages/admin/components/holidays.rs` | UI 変更で unrelated diff が混ざりやすい |
 | P1 | Repository / handler duplication | attendance, correction requests, request repos | 挙動変更の適用点が複数に分散 |
@@ -28,6 +27,16 @@
 ## Detailed Items
 
 ### 1. P0: Build Health Debt
+
+**Status (2026-03-11)**
+
+- 返済済み
+- `cargo fmt --all --check` green
+- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` green
+- `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings` green
+- `cargo clippy --all-targets -- -D warnings` green
+- `scripts/harness.sh` に `fmt-check`, `clippy-backend`, `clippy-frontend`, `lint` を追加済み
+- [AGENTS.md](../../AGENTS.md) と [docs/manual/HARNESS.md](../manual/HARNESS.md) の受け入れ条件を更新済み
 
 **Symptoms**
 
@@ -58,10 +67,9 @@
 
 **Recommended Fix**
 
-1. `clippy-zero` の短期 sprint を切る
-2. `backend` と `frontend` を別々に green 化する
-3. `#[allow(dead_code)]` を file-level から item-level へ縮退し、最後に不要なものを削除する
-4. `scripts/harness.sh` に optional `clippy-backend` / `clippy-frontend` stage を追加し、green 後に gate 化する
+1. `lint` stage を継続的に PR / ExecPlan の標準 gate として使う
+2. 新しい warning 回避のための広域 `allow` 追加をレビューで拒否する
+3. 将来の環境差異が出た場合も「lint debt」と「build prerequisite debt」を分けて記録する
 
 ---
 
@@ -177,6 +185,7 @@
 - integration test が global env mutation と global mutex に依存している
 - SMTP / Redis / Postgres の可用性が test ごとに暗黙前提になっている
 - local timing acceptance は固定できたが、まだ「なぜ安定するか」が harness profile に組み込まれていない
+- file-local な `integration_guard()` では test file をまたぐ DB 競合を防げず、`cargo test` の並列実行で cross-file contention が再発しうる
 
 **Evidence**
 
@@ -201,7 +210,8 @@
 
 1. backend integration fixture を `db-only`, `db+redis`, `db+smtp-failure` の profile に分ける
 2. env mutation helper を共通 service に寄せ、 direct `set_var/remove_var` を減らす
-3. `scripts/harness.sh` に `backend-security-smoke` のような focused stage を追加する
+3. cross-file 競合が出る integration suite には DB 分離、または少なくとも suite-level serial 実行方針を定義する
+4. `scripts/harness.sh` に `backend-security-smoke` のような focused stage を追加する
 
 ---
 

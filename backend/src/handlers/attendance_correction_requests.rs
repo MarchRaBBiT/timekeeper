@@ -16,7 +16,9 @@ use crate::models::{
 };
 use crate::repositories::{
     attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    attendance_correction_request::AttendanceCorrectionRequestRepository,
+    attendance_correction_request::{
+        AttendanceCorrectionRequestRepository, CreateAttendanceCorrectionRequestParams,
+    },
     break_record::BreakRecordRepository,
 };
 use crate::state::AppState;
@@ -55,23 +57,26 @@ pub async fn create_attendance_correction_request(
     validate_snapshot(&proposed_snapshot)?;
 
     let repo = AttendanceCorrectionRequestRepository::new();
+    let request_id = Uuid::new_v4().to_string();
     let request = repo
         .create(
             &state.write_pool,
-            &Uuid::new_v4().to_string(),
-            user.id,
-            attendance.id,
-            payload.date,
-            &payload.reason,
-            &original_snapshot,
-            &proposed_snapshot,
+            CreateAttendanceCorrectionRequestParams {
+                id: &request_id,
+                user_id: user.id,
+                attendance_id: attendance.id,
+                date: payload.date,
+                reason: &payload.reason,
+                original_snapshot: &original_snapshot,
+                proposed_values: &proposed_snapshot,
+            },
         )
         .await?;
 
     Ok(Json(
         request
             .to_response()
-            .map_err(|e| AppError::InternalServerError(e.into()))?,
+            .map_err(AppError::InternalServerError)?,
     ))
 }
 
@@ -84,10 +89,7 @@ pub async fn list_my_attendance_correction_requests(
 
     let mut responses = Vec::with_capacity(list.len());
     for item in list {
-        responses.push(
-            item.to_response()
-                .map_err(|e| AppError::InternalServerError(e.into()))?,
-        );
+        responses.push(item.to_response().map_err(AppError::InternalServerError)?);
     }
 
     Ok(Json(responses))
@@ -106,7 +108,7 @@ pub async fn get_my_attendance_correction_request(
     Ok(Json(
         request
             .to_response()
-            .map_err(|e| AppError::InternalServerError(e.into()))?,
+            .map_err(AppError::InternalServerError)?,
     ))
 }
 
@@ -131,7 +133,7 @@ pub async fn update_my_attendance_correction_request(
 
     let original_snapshot = current
         .parse_original_snapshot()
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .map_err(|error| AppError::InternalServerError(error.into()))?;
     let proposed_snapshot = build_proposed_snapshot(
         &original_snapshot,
         payload.clock_in_time,
@@ -160,7 +162,7 @@ pub async fn update_my_attendance_correction_request(
     Ok(Json(
         updated
             .to_response()
-            .map_err(|e| AppError::InternalServerError(e.into()))?,
+            .map_err(AppError::InternalServerError)?,
     ))
 }
 

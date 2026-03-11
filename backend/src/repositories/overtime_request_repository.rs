@@ -110,8 +110,6 @@ impl OvertimeRequestRepository {
     }
 }
 
-const MAX_FIND_ALL_ROWS: i64 = 1_000;
-
 #[async_trait]
 impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
     async fn find_all(&self, db: &PgPool) -> Result<Vec<OvertimeRequest>, AppError> {
@@ -120,7 +118,7 @@ impl OvertimeRequestRepositoryTrait for OvertimeRequestRepository {
             "id, user_id, date, planned_hours, reason, status, approved_by, \
              approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "overtime_requests",
-            MAX_FIND_ALL_ROWS
+            1_000
         );
         let rows = sqlx::query_as::<_, OvertimeRequest>(&query)
             .fetch_all(db)

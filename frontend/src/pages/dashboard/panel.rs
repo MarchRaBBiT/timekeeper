@@ -45,6 +45,7 @@ mod host_tests {
     use crate::api::test_support::mock::*;
     use crate::api::ApiClient;
     use crate::test_support::ssr::with_local_runtime_async;
+    use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
     use serde_json::json;
 
     fn mock_server() -> MockServer {
@@ -96,9 +97,12 @@ mod host_tests {
             let runtime = leptos::create_runtime();
             let server = mock_server();
             provide_context(ApiClient::new_with_base_url(&server.url("/api")));
+            provide_context(RouterIntegrationContext::new(ServerIntegration {
+                path: "http://localhost/".to_string(),
+            }));
 
             leptos_reactive::suppress_resource_load(true);
-            let html = view! { <DashboardPage /> }
+            let html = view! { <Router><DashboardPage /></Router> }
                 .into_view()
                 .render_to_string()
                 .to_string();
