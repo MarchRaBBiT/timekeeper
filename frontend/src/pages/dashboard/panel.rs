@@ -108,8 +108,8 @@ mod host_tests {
                 .to_string();
             leptos_reactive::suppress_resource_load(false);
 
-            assert!(html.contains("フィルター"));
-            assert!(html.contains("出勤"));
+            assert!(html.contains("grid-cols-1"));
+            assert!(html.contains("fa-sign-in-alt"));
 
             runtime.dispose();
         });

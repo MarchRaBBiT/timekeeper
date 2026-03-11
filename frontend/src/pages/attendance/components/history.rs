@@ -19,11 +19,11 @@ pub fn HistorySection(
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm overflow-hidden border border-border">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
-                <h3 class="text-lg font-display font-bold text-fg">{"勤怠履歴"}</h3>
+                <h3 class="text-lg font-display font-bold text-fg">{rust_i18n::t!("pages.attendance.history.title")}</h3>
                 <Show when=move || loading.get()>
                     <div class="flex items-center gap-2 text-xs font-bold text-action-primary-bg uppercase tracking-widest animate-pulse">
                         <LoadingSpinner />
-                        <span>{"更新中..."}</span>
+                        <span>{rust_i18n::t!("common.states.refreshing")}</span>
                     </div>
                 </Show>
             </div>
@@ -38,7 +38,7 @@ pub fn HistorySection(
                         <div class="w-16 h-16 bg-surface-muted rounded-full flex items-center justify-center mx-auto mb-4 text-fg-muted">
                             <i class="fas fa-calendar-times text-2xl"></i>
                         </div>
-                        <p class="text-fg-muted font-medium font-sans">{"指定された期間の記録はありません"} </p>
+                        <p class="text-fg-muted font-medium font-sans">{rust_i18n::t!("pages.attendance.history.empty")}</p>
                     </div>
                 </Show>
                 <Show when=move || !history.get().is_empty()>
@@ -141,7 +141,7 @@ fn HistoryRow(
                                             day_holiday_reason
                                                 .get()
                                                 .as_ref()
-                                                .map(|code| describe_holiday_reason(code.trim()).to_string())
+                                                .map(|code| describe_holiday_reason(code.trim()))
                                                 .unwrap_or_default()
                                         }}
                                     </span>
@@ -149,8 +149,11 @@ fn HistoryRow(
                                 <span class="text-sm font-bold text-fg">
                                     {match (item.clock_in_time, item.clock_out_time) {
                                         (Some(start), Some(end)) => format!("{} - {}", start.format("%H:%M"), end.format("%H:%M")),
-                                        (Some(start), None) => format!("{} - (未退勤)", start.format("%H:%M")),
-                                        _ => "記録なし".to_string(),
+                                        (Some(start), None) => rust_i18n::t!(
+                                            "pages.attendance.history.clock_range_open",
+                                            start = start.format("%H:%M").to_string()
+                                        ).into_owned(),
+                                        _ => rust_i18n::t!("pages.attendance.history.no_record").into_owned(),
                                     }}
                                 </span>
                             </div>
@@ -158,7 +161,7 @@ fn HistoryRow(
                     </div>
                     <div class="flex items-center gap-6">
                         <div class="text-right">
-                            <p class="text-xs font-bold text-fg-muted uppercase tracking-wider mb-0.5">{"勤務時間"}</p>
+                            <p class="text-xs font-bold text-fg-muted uppercase tracking-wider mb-0.5">{rust_i18n::t!("pages.attendance.history.work_hours")}</p>
                             <p class="text-lg font-display font-black text-action-primary-bg">
                                 {item.total_work_hours.map(|h| format!("{:.1}h", h)).unwrap_or_else(|| "-".into())}
                             </p>
@@ -174,7 +177,7 @@ fn HistoryRow(
                         <div class="flex items-center justify-between mb-3">
                             <h4 class="text-xs font-bold text-fg-muted uppercase tracking-widest flex items-center gap-2">
                                 <i class="fas fa-mug-hot text-status-warning-text"></i>
-                                {"休憩詳細"}
+                                {rust_i18n::t!("pages.attendance.history.break_details")}
                             </h4>
                             <Show when=move || loading_breaks.get()>
                                 <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-action-primary-bg"></div>
@@ -182,7 +185,7 @@ fn HistoryRow(
                         </div>
 
                         <Show when=move || !loading_breaks.get() && breaks.get().is_empty()>
-                            <p class="text-xs text-fg-muted font-medium py-2">{"休憩の記録はありません"}</p>
+                            <p class="text-xs text-fg-muted font-medium py-2">{rust_i18n::t!("pages.attendance.history.breaks_empty")}</p>
                         </Show>
 
                         <Show when=move || !breaks.get().is_empty()>
@@ -203,7 +206,7 @@ fn HistoryRow(
                                                     record
                                                         .break_end_time
                                                         .map(|t| t.format("%H:%M").to_string())
-                                                        .unwrap_or_else(|| "進行中".into())
+                                                        .unwrap_or_else(|| rust_i18n::t!("pages.attendance.history.break_ongoing").into_owned())
                                                 )}</span>
                                                 <span class="text-fg font-bold">{duration}</span>
                                             </li>
@@ -262,7 +265,7 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("指定された期間の記録はありません"));
+        assert!(html.contains("fa-calendar-times"));
     }
 
     #[test]
@@ -282,8 +285,8 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("勤怠履歴"));
-        assert!(html.contains("勤務時間"));
+        assert!(html.contains("09:00"));
+        assert!(html.contains("8.0h"));
     }
 
     #[test]

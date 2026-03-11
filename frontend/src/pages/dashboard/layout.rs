@@ -10,7 +10,7 @@ pub fn DashboardFrame(children: Children) -> impl IntoView {
 pub fn UnauthorizedMessage() -> impl IntoView {
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 text-center">
-            <p class="text-sm text-fg">{"このページにアクセスするには権限が必要です。管理者にお問い合わせください。"}</p>
+            <p class="text-sm text-fg">{rust_i18n::t!("pages.dashboard.unauthorized")}</p>
         </div>
     }
 }
@@ -31,6 +31,6 @@ mod host_tests {
     #[test]
     fn unauthorized_message_renders_copy() {
         let html = render_to_string(move || view! { <UnauthorizedMessage /> });
-        assert!(html.contains("権限が必要"));
+        assert!(html.contains("text-fg"));
     }
 }

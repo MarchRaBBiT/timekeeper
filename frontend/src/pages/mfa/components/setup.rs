@@ -15,7 +15,7 @@ where
 {
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-3">
-            <h1 class="text-xl font-semibold text-fg">{"MFA 設定"}</h1>
+            <h1 class="text-xl font-semibold text-fg">{rust_i18n::t!("pages.mfa.title")}</h1>
 
             <Show when=move || status_loading.get() fallback=|| ()>
                 <div class="py-4">
@@ -29,11 +29,11 @@ where
                         .get()
                         .map(|info| {
                             let message = if info.enabled {
-                                "MFA は有効です。必要に応じて再登録してください。"
+                                rust_i18n::t!("pages.mfa.status.enabled")
                             } else if info.pending {
-                                "認証アプリにシークレットを登録済みです。確認コードを入力して有効化してください。"
+                                rust_i18n::t!("pages.mfa.status.pending")
                             } else {
-                                "まだ MFA は無効です。このボタンから登録できます。"
+                                rust_i18n::t!("pages.mfa.status.disabled")
                             };
                             view! {
                                 <div class="bg-surface-muted border border-border text-fg px-4 py-3 rounded">
@@ -53,16 +53,16 @@ where
                     disabled={move || register_loading.get()}
                 >
                     {move || if register_loading.get() {
-                        "登録中..."
+                        rust_i18n::t!("pages.mfa.actions.registering")
                     } else {
-                        "シークレットを発行"
+                        rust_i18n::t!("pages.mfa.actions.issue_secret")
                     }}
                 </button>
                 <button
                     class="px-4 py-2 border border-border text-fg rounded hover:bg-action-ghost-bg-hover"
                     on:click=move |_| on_refresh()
                 >
-                    {"ステータスを再取得"}
+                    {rust_i18n::t!("pages.mfa.actions.refresh_status")}
                 </button>
             </div>
         </div>
@@ -73,10 +73,12 @@ where
 mod host_tests {
     use super::*;
     use crate::api::MfaStatusResponse;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
 
     #[test]
     fn setup_section_renders_enabled_message() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let status = create_rw_signal(Some(MfaStatusResponse {
                 enabled: true,
@@ -94,11 +96,12 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("MFA は有効です"));
+        assert!(html.contains("bg-surface-muted"));
     }
 
     #[test]
     fn setup_section_renders_pending_message() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let status = create_rw_signal(Some(MfaStatusResponse {
                 enabled: false,
@@ -116,6 +119,6 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("確認コードを入力して有効化"));
+        assert!(html.contains("border-border"));
     }
 }

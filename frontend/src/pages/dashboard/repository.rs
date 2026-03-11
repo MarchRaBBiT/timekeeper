@@ -46,14 +46,14 @@ pub fn build_alerts(summary: &DashboardSummary) -> Vec<DashboardAlert> {
     if summary.total_work_days.unwrap_or_default() == 0 {
         alerts.push(DashboardAlert {
             level: DashboardAlertLevel::Warning,
-            message: "今月の勤怠が未登録です。出勤打刻を確認してください。".into(),
+            message: rust_i18n::t!("pages.dashboard.alerts.messages.no_workdays").into_owned(),
         });
     }
 
     if alerts.is_empty() {
         alerts.push(DashboardAlert {
             level: DashboardAlertLevel::Info,
-            message: "新しいアラートはありません。".into(),
+            message: rust_i18n::t!("pages.dashboard.alerts.messages.empty").into_owned(),
         });
     }
 
@@ -75,19 +75,19 @@ pub async fn fetch_recent_activities(
 
     let activities = vec![
         DashboardActivity {
-            title: "休暇申請（承認待ち）".into(),
+            title: rust_i18n::t!("pages.dashboard.activities.items.leave_pending").into_owned(),
             detail: Some(format!("{leave_pending} 件")),
         },
         DashboardActivity {
-            title: "残業申請（承認待ち）".into(),
+            title: rust_i18n::t!("pages.dashboard.activities.items.overtime_pending").into_owned(),
             detail: Some(format!("{overtime_pending} 件")),
         },
         DashboardActivity {
-            title: "休暇申請（承認済み）".into(),
+            title: rust_i18n::t!("pages.dashboard.activities.items.leave_approved").into_owned(),
             detail: Some(format!("{leave_approved} 件")),
         },
         DashboardActivity {
-            title: "残業申請（承認済み）".into(),
+            title: rust_i18n::t!("pages.dashboard.activities.items.overtime_approved").into_owned(),
             detail: Some(format!("{overtime_approved} 件")),
         },
     ];

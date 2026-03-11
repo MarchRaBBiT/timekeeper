@@ -1,5 +1,5 @@
-use crate::pages::requests::components::status_label::request_status_label;
-use crate::pages::requests::types::{RequestKind, RequestSummary};
+use crate::pages::requests::components::status_label::{request_kind_title, request_status_label};
+use crate::pages::requests::types::RequestSummary;
 use leptos::ev::KeyboardEvent;
 use leptos::html;
 use leptos::*;
@@ -93,19 +93,15 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                 >
                                     <div class="flex items-center justify-between">
                                         <div>
-                                            <p class="text-sm text-fg-muted">{"申請の詳細"}</p>
+                                            <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.subtitle")}</p>
                                             <p class="text-lg font-semibold text-fg">
-                                                {match summary.kind {
-                                                    RequestKind::Leave => "休暇申請",
-                                                    RequestKind::Overtime => "残業申請",
-                                                    RequestKind::AttendanceCorrection => "勤怠修正依頼",
-                                                }}
+                                                {request_kind_title(summary.kind)}
                                             </p>
                                         </div>
                                         <button
                                             id="request-detail-modal-header-close"
                                             node_ref=header_close_ref
-                                            aria-label="閉じる"
+                                            aria-label={rust_i18n::t!("common.actions.close")}
                                             class="text-fg-muted hover:text-fg"
                                             on:click=move |_| {
                                                 selected.set(None);
@@ -121,23 +117,23 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                     </div>
                                     <div class="space-y-2 text-sm text-fg">
                                         <div>
-                                            <span class="font-medium text-fg-muted">{"ステータス: "}</span>
+                                            <span class="font-medium text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.status")}{": "}</span>
                                             <span class="capitalize">{request_status_label(&summary.status)}</span>
                                         </div>
                                         <div>
-                                            <span class="font-medium text-fg-muted">{"期間/日付: "}</span>
+                                            <span class="font-medium text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.period")}{": "}</span>
                                             <span>{summary.primary_label.clone().unwrap_or_else(|| "-".into())}</span>
                                         </div>
                                         <div>
-                                            <span class="font-medium text-fg-muted">{"補足: "}</span>
+                                            <span class="font-medium text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.secondary")}{": "}</span>
                                             <span>{summary.secondary_label.clone().unwrap_or_else(|| "-".into())}</span>
                                         </div>
                                         <div>
-                                            <span class="font-medium text-fg-muted">{"理由: "}</span>
-                                            <span>{summary.reason.clone().unwrap_or_else(|| "未入力".into())}</span>
+                                            <span class="font-medium text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.reason")}{": "}</span>
+                                            <span>{summary.reason.clone().unwrap_or_else(|| rust_i18n::t!("pages.requests.detail_modal.empty_reason").into_owned())}</span>
                                         </div>
                                         <div>
-                                            <span class="font-medium text-fg-muted">{"提出日: "}</span>
+                                            <span class="font-medium text-fg-muted">{rust_i18n::t!("pages.requests.detail_modal.submitted_at")}{": "}</span>
                                             <span>{summary.submitted_at.clone().unwrap_or_else(|| "-".into())}</span>
                                         </div>
                                     </div>
@@ -155,7 +151,7 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
                                                 }
                                             }
                                         >
-                                            {"閉じる"}
+                                            {rust_i18n::t!("common.actions.close")}
                                         </button>
                                     </div>
                                 </div>
@@ -170,11 +166,12 @@ pub fn RequestDetailModal(selected: RwSignal<Option<RequestSummary>>) -> impl In
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
     use serde_json::json;
 
     #[test]
     fn request_detail_modal_renders_summary() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let summary = RequestSummary::from_leave(&json!({
                 "id": "req-1",
@@ -188,11 +185,11 @@ mod host_tests {
             let selected = create_rw_signal(Some(summary));
             view! { <RequestDetailModal selected=selected /> }
         });
-        assert!(html.contains("休暇申請"));
+        assert!(html.contains("Leave Request"));
         assert!(html.contains("role=\"dialog\""));
         assert!(html.contains("aria-modal=\"true\""));
-        assert!(html.contains("aria-label=\"閉じる\""));
-        assert!(html.contains("承認待ち"));
+        assert!(html.contains("aria-label=\"Close\""));
+        assert!(html.contains("Pending"));
         assert!(html.contains("family"));
     }
 }

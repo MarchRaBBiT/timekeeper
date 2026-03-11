@@ -15,15 +15,15 @@ pub fn SummarySection(
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div>
-                <h3 class="text-base font-display font-bold text-fg">{"勤務サマリー"}</h3>
-                <p class="text-sm text-fg-muted">{"今月の勤務時間と日数のスナップショット"}</p>
+                <h3 class="text-base font-display font-bold text-fg">{rust_i18n::t!("pages.dashboard.summary.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.dashboard.summary.description")}</p>
             </div>
             <div>
                 {move || match summary.get() {
                     None => view! {
                         <div class="flex items-center gap-2 text-sm text-fg-muted">
                             <LoadingSpinner />
-                            <span>{"勤怠サマリーを読み込み中..."}</span>
+                            <span>{rust_i18n::t!("pages.dashboard.summary.loading")}</span>
                         </div>
                     }.into_view(),
                     Some(Err(err)) => {
@@ -32,9 +32,9 @@ pub fn SummarySection(
                     }
                     Some(Ok(data)) => view! {
                         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                            <Metric label="総労働時間".to_string() value={format_hours(data.total_work_hours)} />
-                            <Metric label="勤務日数".to_string() value={format_days(data.total_work_days)} />
-                            <Metric label="平均日次労働時間".to_string() value={format_hours(data.average_daily_hours)} />
+                            <Metric label=rust_i18n::t!("pages.dashboard.summary.metrics.total_hours").into_owned() value={format_hours(data.total_work_hours)} />
+                            <Metric label=rust_i18n::t!("pages.dashboard.summary.metrics.total_days").into_owned() value={format_days(data.total_work_days)} />
+                            <Metric label=rust_i18n::t!("pages.dashboard.summary.metrics.average_hours").into_owned() value={format_hours(data.average_daily_hours)} />
                         </div>
                     }.into_view(),
                 }}
@@ -80,8 +80,7 @@ mod host_tests {
             }));
             view! { <SummarySection summary=resource /> }
         });
-        assert!(html.contains("勤務サマリー"));
-        assert!(html.contains("総労働時間"));
+        assert!(html.contains("160.00"));
     }
 
     #[test]

@@ -17,11 +17,11 @@ pub fn HolidayAlerts(
         <div class="bg-surface-elevated shadow rounded-lg p-4 space-y-3">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h3 class="text-base font-semibold text-fg">{"今月の休日"}</h3>
+                    <h3 class="text-base font-semibold text-fg">{rust_i18n::t!("pages.attendance.alerts.title")}</h3>
                     <p class="text-sm text-fg-muted">
                         {move || {
                             let (year, month) = active_period.get();
-                            format!("{year}年{month}月に登録済みの休日一覧です。")
+                            rust_i18n::t!("pages.attendance.alerts.description", year = year, month = month)
                         }}
                     </p>
                 </div>
@@ -30,7 +30,7 @@ pub fn HolidayAlerts(
                     disabled={move || loading.get()}
                     on:click=move |_| on_refresh.call(())
                 >
-                    {"再取得"}
+                    {rust_i18n::t!("common.actions.retry")}
                 </button>
             </div>
             <Show when=move || error.get().is_some()>
@@ -39,11 +39,11 @@ pub fn HolidayAlerts(
             <Show when=move || loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
-                    <span>{"休日カレンダーを読み込み中..."}</span>
+                    <span>{rust_i18n::t!("pages.attendance.alerts.loading")}</span>
                 </div>
             </Show>
             <Show when=move || !loading.get() && holiday_entries.get().is_empty()>
-                <p class="text-sm text-fg-muted">{"登録された休日はありません。必要に応じて管理者へ連絡してください。"} </p>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.attendance.alerts.empty")}</p>
             </Show>
             <Show when=move || !loading.get() && !holiday_entries.get().is_empty()>
                 <ul class="space-y-2">
@@ -72,6 +72,7 @@ pub fn HolidayAlerts(
 mod host_tests {
     use super::*;
     use crate::api::{ApiError, HolidayCalendarEntry};
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
     use chrono::NaiveDate;
 
@@ -84,6 +85,7 @@ mod host_tests {
 
     #[test]
     fn holiday_alerts_renders_empty_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let (entries, _) = create_signal(Vec::<HolidayCalendarEntry>::new());
             let (loading, _) = create_signal(false);
@@ -99,11 +101,12 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("登録された休日はありません。"));
+        assert!(html.contains(rust_i18n::t!("pages.attendance.alerts.empty").as_ref()));
     }
 
     #[test]
     fn holiday_alerts_renders_list() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let (entries, _) = create_signal(vec![entry()]);
             let (loading, _) = create_signal(false);
@@ -120,7 +123,7 @@ mod host_tests {
             }
         });
         assert!(html.contains("2025-01-01"));
-        assert!(html.contains("祝日"));
+        assert!(html.contains("public holiday"));
     }
 
     #[test]

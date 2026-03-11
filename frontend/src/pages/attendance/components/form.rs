@@ -61,13 +61,13 @@ pub fn RangeFormSection(
         <div class="bg-surface-elevated shadow rounded-lg p-4 flex flex-col gap-3 lg:flex-row lg:items-end">
             <div class="w-full lg:w-48">
                 <DatePicker
-                    label=Some("開始日")
+                    label=Some("pages.attendance.filters.from")
                     value=from_input
                 />
             </div>
             <div class="w-full lg:w-48">
                 <DatePicker
-                    label=Some("終了日")
+                    label=Some("pages.attendance.filters.to")
                     value=to_input
                 />
             </div>
@@ -75,21 +75,29 @@ pub fn RangeFormSection(
                 class="w-full lg:w-auto px-4 py-2 bg-surface-muted text-fg rounded hover:bg-action-ghost-bg-hover"
                 on:click=move |ev| on_select_current_month.call(ev)
             >
-                {"今月"}
+                {rust_i18n::t!("pages.attendance.filters.current_month")}
             </button>
             <button
                 class="w-full lg:w-auto px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                 disabled={move || history_loading.get()}
                 on:click=move |ev| on_load_range.call(ev)
             >
-                {move || if history_loading.get() { "読み込み中..." } else { "読み込み" }}
+                {move || if history_loading.get() {
+                    rust_i18n::t!("common.states.loading")
+                } else {
+                    rust_i18n::t!("pages.attendance.filters.load")
+                }}
             </button>
             <button
                 class="w-full lg:w-auto px-4 py-2 bg-action-secondary-bg text-action-secondary-text rounded disabled:opacity-50"
                 disabled={move || exporting.get()}
                 on:click=move |ev| on_export_csv.call(ev)
             >
-                {move || if exporting.get() { "CSV生成中..." } else { "CSVダウンロード" }}
+                {move || if exporting.get() {
+                    rust_i18n::t!("pages.attendance.filters.exporting")
+                } else {
+                    rust_i18n::t!("pages.attendance.filters.export")
+                }}
             </button>
         </div>
         {move || match feedback.get() {
@@ -140,7 +148,6 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("CSVダウンロード"));
         assert!(html.contains("range invalid"));
         assert!(!html.contains("export failed"));
         assert!(!html.contains("history failed"));

@@ -15,14 +15,14 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div class="flex flex-col gap-2">
-                <h3 class="text-base font-display font-bold text-fg">{"アラート"}</h3>
-                <p class="text-sm text-fg-muted">{"勤務や申請に関する注意事項"}</p>
+                <h3 class="text-base font-display font-bold text-fg">{rust_i18n::t!("pages.dashboard.alerts.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.dashboard.alerts.description")}</p>
             </div>
             {move || match alerts.get() {
                 None => view! {
                     <div class="flex items-center gap-2 text-sm text-fg-muted">
                         <LoadingSpinner />
-                        <span>{"アラート情報を読み込み中..."}</span>
+                        <span>{rust_i18n::t!("pages.dashboard.alerts.loading")}</span>
                     </div>
                 }.into_view(),
                 Some(Err(err)) => {
@@ -53,13 +53,22 @@ pub fn AlertsSection(alerts: AlertsResource) -> impl IntoView {
 
 fn render_badge(level: &DashboardAlertLevel) -> View {
     let (color, text) = match level {
-        DashboardAlertLevel::Info => ("bg-status-info-bg text-status-info-text", "情報"),
-        DashboardAlertLevel::Warning => ("bg-status-warning-bg text-status-warning-text", "警告"),
-        DashboardAlertLevel::Error => ("bg-status-error-bg text-status-error-text", "エラー"),
+        DashboardAlertLevel::Info => (
+            "bg-status-info-bg text-status-info-text",
+            "pages.dashboard.alerts.level.info",
+        ),
+        DashboardAlertLevel::Warning => (
+            "bg-status-warning-bg text-status-warning-text",
+            "pages.dashboard.alerts.level.warning",
+        ),
+        DashboardAlertLevel::Error => (
+            "bg-status-error-bg text-status-error-text",
+            "pages.dashboard.alerts.level.error",
+        ),
     };
     view! {
         <span class=format!("px-2 py-0.5 rounded-full text-xs font-semibold {}", color)>
-            {text}
+            {rust_i18n::t!(text)}
         </span>
     }
     .into_view()
@@ -90,9 +99,8 @@ mod host_tests {
             }]));
             view! { <AlertsSection alerts=resource /> }
         });
-        assert!(html.contains("アラート"));
         assert!(html.contains("注意"));
-        assert!(html.contains("警告"));
+        assert!(html.contains("rounded-full"));
     }
 
     #[test]

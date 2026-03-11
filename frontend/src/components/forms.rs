@@ -3,6 +3,18 @@ use chrono::{Datelike, NaiveDate};
 use leptos::{ev::MouseEvent, *};
 use wasm_bindgen::JsCast;
 
+fn weekday_label(weekday: chrono::Weekday) -> &'static str {
+    match weekday {
+        chrono::Weekday::Mon => "common.time.weekdays.mon",
+        chrono::Weekday::Tue => "common.time.weekdays.tue",
+        chrono::Weekday::Wed => "common.time.weekdays.wed",
+        chrono::Weekday::Thu => "common.time.weekdays.thu",
+        chrono::Weekday::Fri => "common.time.weekdays.fri",
+        chrono::Weekday::Sat => "common.time.weekdays.sat",
+        chrono::Weekday::Sun => "common.time.weekdays.sun",
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct AttendanceButtonFlags {
     clock_in: bool,
@@ -69,19 +81,21 @@ pub fn AttendanceActionButtons(
                         <i class="fas fa-user-clock text-lg"></i>
                     </div>
                     <div>
-                        <p class="text-xs font-display font-bold text-action-primary-bg uppercase tracking-wider">{"現在のステータス"}</p>
+                        <p class="text-xs font-display font-bold text-action-primary-bg uppercase tracking-wider">
+                            {rust_i18n::t!("components.forms.current_status")}
+                        </p>
                         {move || {
                             let status = status_snapshot();
-                            let (label, color, dot_color) = match status.as_ref().map(|s| s.status.as_str()) {
-                                Some("clocked_in") => ("勤務中", "text-status-attendance-text-active", "bg-status-attendance-clock_in animate-pulse"),
-                                Some("on_break") => ("休憩中", "text-status-attendance-text-active", "bg-status-attendance-break animate-pulse"),
-                                Some("clocked_out") => ("退勤済み", "text-status-attendance-text-inactive", "bg-status-attendance-clock_out"),
-                                _ => ("未出勤", "text-status-attendance-text-inactive", "bg-status-attendance-not_started"),
+                            let (label_key, color, dot_color) = match status.as_ref().map(|s| s.status.as_str()) {
+                                Some("clocked_in") => ("components.forms.status.clocked_in", "text-status-attendance-text-active", "bg-status-attendance-clock_in animate-pulse"),
+                                Some("on_break") => ("components.forms.status.on_break", "text-status-attendance-text-active", "bg-status-attendance-break animate-pulse"),
+                                Some("clocked_out") => ("components.forms.status.clocked_out", "text-status-attendance-text-inactive", "bg-status-attendance-clock_out"),
+                                _ => ("components.forms.status.not_started", "text-status-attendance-text-inactive", "bg-status-attendance-not_started"),
                             };
                             view! {
                                 <div class="flex items-center gap-2 mt-0.5">
                                     <span class=format!("w-2 h-2 rounded-full {}", dot_color)></span>
-                                    <span class=format!("text-lg font-bold {}", color)>{label}</span>
+                                    <span class=format!("text-lg font-bold {}", color)>{rust_i18n::t!(label_key)}</span>
                                 </div>
                             }.into_view()
                         }}
@@ -97,7 +111,7 @@ pub fn AttendanceActionButtons(
                     on:click=move |ev| on_clock_in.call(ev)
                 >
                     <i class="fas fa-sign-in-alt text-xl mb-2 group-disabled:text-state-disabled-text"></i>
-                    <span class="font-bold">{"出勤"}</span>
+                    <span class="font-bold">{rust_i18n::t!("components.forms.actions.clock_in")}</span>
                 </button>
 
                 <button
@@ -107,7 +121,7 @@ pub fn AttendanceActionButtons(
                     on:click=move |ev| on_break_start.call(ev)
                 >
                     <i class="fas fa-coffee text-xl mb-2 group-disabled:text-state-disabled-text"></i>
-                    <span class="font-bold">{"休憩開始"}</span>
+                    <span class="font-bold">{rust_i18n::t!("components.forms.actions.break_start")}</span>
                 </button>
 
                 <button
@@ -117,7 +131,7 @@ pub fn AttendanceActionButtons(
                     on:click=move |ev| on_break_end.call(ev)
                 >
                     <i class="fas fa-mug-hot text-xl mb-2 group-disabled:text-state-disabled-text"></i>
-                    <span class="font-bold">{"休憩終了"}</span>
+                    <span class="font-bold">{rust_i18n::t!("components.forms.actions.break_end")}</span>
                 </button>
 
                 <button
@@ -127,7 +141,7 @@ pub fn AttendanceActionButtons(
                     on:click=move |ev| on_clock_out.call(ev)
                 >
                     <i class="fas fa-sign-out-alt text-xl mb-2 group-disabled:text-state-disabled-text"></i>
-                    <span class="font-bold">{"退勤"}</span>
+                    <span class="font-bold">{rust_i18n::t!("components.forms.actions.clock_out")}</span>
                 </button>
             </div>
 
@@ -139,7 +153,9 @@ pub fn AttendanceActionButtons(
                         view! {
                             <div class="flex items-center gap-3 p-4 rounded-2xl bg-status-warning-bg border border-status-warning-border text-status-warning-text animate-pop-in">
                                 <i class="fas fa-calendar-day text-status-warning-text text-xl"></i>
-                                <span class="text-sm font-medium">{format!("本日は{}のため打刻できません。", label)}</span>
+                                <span class="text-sm font-medium">
+                                    {rust_i18n::t!("components.forms.holiday_blocked", label = label)}
+                                </span>
                             </div>
                         }
                         .into_view()
@@ -150,7 +166,7 @@ pub fn AttendanceActionButtons(
             <Show when=move || action_pending.get()>
                 <div class="flex items-center justify-center gap-2 py-2 text-action-primary-bg">
                     <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                    <p class="text-sm font-medium">{"処理中..."}</p>
+                    <p class="text-sm font-medium">{rust_i18n::t!("common.states.processing")}</p>
                 </div>
             </Show>
 
@@ -224,9 +240,29 @@ mod tests {
     }
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod host_tests {
+    use super::*;
+    use crate::test_support::helpers::set_test_locale;
+    use crate::test_support::ssr::render_to_string;
+
+    #[test]
+    fn date_picker_resolves_label_keys_and_weekday_text() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal("2025-01-01".to_string());
+            view! { <DatePicker value=value label=Some("pages.attendance.filters.from") /> }
+        });
+
+        assert!(html.contains("From"));
+    }
+}
+
 #[component]
 pub fn DatePicker(
     #[prop(into)] value: RwSignal<String>,
+    /// Translation key for the field label. Pass locale keys such as
+    /// `pages.attendance.filters.from`, not already-rendered display text.
     label: Option<&'static str>,
     #[prop(optional)] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
@@ -235,18 +271,10 @@ pub fn DatePicker(
     let display_value = move || {
         let val = value.get();
         if val.is_empty() {
-            return "日付を選択".to_string();
+            return rust_i18n::t!("components.forms.date_picker.placeholder").into_owned();
         }
         if let Ok(date) = NaiveDate::parse_from_str(&val, "%Y-%m-%d") {
-            let day_of_week = match date.weekday() {
-                chrono::Weekday::Mon => "月",
-                chrono::Weekday::Tue => "火",
-                chrono::Weekday::Wed => "水",
-                chrono::Weekday::Thu => "木",
-                chrono::Weekday::Fri => "金",
-                chrono::Weekday::Sat => "土",
-                chrono::Weekday::Sun => "日",
-            };
+            let day_of_week = rust_i18n::t!(weekday_label(date.weekday())).into_owned();
             format!("{} ({})", date.format("%Y/%m/%d"), day_of_week)
         } else {
             val
@@ -275,7 +303,9 @@ pub fn DatePicker(
 
     view! {
         <div class="flex flex-col gap-1.5 w-full">
-            {label.map(|l| view! { <label class="text-sm font-bold text-fg-muted ml-1">{l}</label> })}
+            {label.map(|label_key| view! {
+                <label class="text-sm font-bold text-fg-muted ml-1">{rust_i18n::t!(label_key)}</label>
+            })}
             <div
                 class=move || format!(
                     "relative group cursor-pointer rounded-xl border-2 transition-all duration-200 bg-form-control-bg py-2.5 px-4 flex items-center justify-between shadow-sm border-form-control-border hover:border-action-primary-border-hover hover:shadow-md active:scale-[0.98] {}",

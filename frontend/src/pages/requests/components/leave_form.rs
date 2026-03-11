@@ -58,8 +58,8 @@ pub fn LeaveRequestForm(
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div>
-                <h3 class="text-lg font-display font-bold text-fg">{"休暇申請"}</h3>
-                <p class="text-sm text-fg-muted">{"休暇の種類と期間を入力して申請を送信します。"} </p>
+                <h3 class="text-lg font-display font-bold text-fg">{rust_i18n::t!("pages.requests.leave_form.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.requests.leave_form.description")} </p>
                 <Show
                     when=move || {
                         editing
@@ -69,9 +69,9 @@ pub fn LeaveRequestForm(
                     }
                 >
                     <p class="mt-1 text-xs text-status-info-text bg-status-info-bg border border-status-info-border rounded px-2 py-1 inline-flex items-center gap-2">
-                        {"編集中: 既存の休暇申請を更新します。"}
+                        {rust_i18n::t!("pages.requests.forms.editing_leave")}
                         <button class="text-status-info-text underline" on:click=move |_| on_cancel_edit.call(())>
-                            {"キャンセル"}
+                            {rust_i18n::t!("common.actions.cancel")}
                         </button>
                     </p>
                 </Show>
@@ -84,30 +84,30 @@ pub fn LeaveRequestForm(
             </Show>
             <form class="space-y-4" on:submit=on_submit>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"種類"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.leave_form.type_label")}</label>
                     <select
                         class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=move || leave_type.get()
                         on:change=move |ev| leave_type.set(event_target_value(&ev))
                     >
-                        <option value="annual">{"年次有給"}</option>
-                        <option value="sick">{"病気"}</option>
-                        <option value="personal">{"私用"}</option>
-                        <option value="other">{"その他"}</option>
+                        <option value="annual">{rust_i18n::t!("pages.requests.leave_form.types.annual")}</option>
+                        <option value="sick">{rust_i18n::t!("pages.requests.leave_form.types.sick")}</option>
+                        <option value="personal">{rust_i18n::t!("pages.requests.leave_form.types.personal")}</option>
+                        <option value="other">{rust_i18n::t!("pages.requests.leave_form.types.other")}</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <DatePicker
-                        label=Some("開始日")
+                        label=Some("pages.requests.leave_form.start_date")
                         value=start_signal
                     />
                     <DatePicker
-                        label=Some("終了日")
+                        label=Some("pages.requests.leave_form.end_date")
                         value=end_signal
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"理由（任意）"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.leave_form.reason_label")}</label>
                     <textarea
                         rows=3
                         class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -122,15 +122,15 @@ pub fn LeaveRequestForm(
                 >
                     {move || {
                         if pending.get() || updating.get() {
-                            "送信中..."
+                            rust_i18n::t!("pages.requests.forms.submitting").into_owned()
                         } else if editing
                             .get()
                             .map(|target| target.kind == RequestKind::Leave)
                             .unwrap_or(false)
                         {
-                            "休暇申請を更新"
+                            rust_i18n::t!("pages.requests.leave_form.actions.update").into_owned()
                         } else {
-                            "休暇申請を送信"
+                            rust_i18n::t!("pages.requests.leave_form.actions.submit").into_owned()
                         }
                     }}
                 </button>
@@ -142,10 +142,11 @@ pub fn LeaveRequestForm(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn leave_request_form_renders_editing_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let state = LeaveFormState::default();
             let message = create_rw_signal(MessageState::default());
@@ -167,8 +168,8 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("休暇申請"));
-        assert!(html.contains("編集中"));
-        assert!(html.contains("休暇申請を更新"));
+        assert!(html.contains("Leave Request"));
+        assert!(html.contains("Editing"));
+        assert!(html.contains("Update Leave Request"));
     }
 }

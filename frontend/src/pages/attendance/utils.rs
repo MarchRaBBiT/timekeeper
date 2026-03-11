@@ -32,13 +32,13 @@ impl AttendanceFormState {
     pub fn to_payload(&self) -> Result<(Option<NaiveDate>, Option<NaiveDate>), ApiError> {
         let from_val = self.from.get();
         let to_val = self.to.get();
-        let from = parse_date_input(&from_val, "開始日は YYYY-MM-DD 形式で入力してください。")?;
-        let to = parse_date_input(&to_val, "終了日は YYYY-MM-DD 形式で入力してください。")?;
+        let from = parse_date_input(&from_val, "pages.attendance.validation.from_date")?;
+        let to = parse_date_input(&to_val, "pages.attendance.validation.to_date")?;
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err(ApiError::validation(
-                    "開始日は終了日以前の日付を指定してください。",
-                ));
+                return Err(ApiError::validation(rust_i18n::t!(
+                    "pages.attendance.validation.range_order"
+                )));
             }
         }
         Ok((from, to))
@@ -51,7 +51,7 @@ fn parse_date_input(value: &str, error_message: &str) -> Result<Option<NaiveDate
     }
     NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d")
         .map(Some)
-        .map_err(|_| ApiError::validation(error_message))
+        .map_err(|_| ApiError::validation(rust_i18n::t!(error_message)))
 }
 
 pub fn month_bounds(today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {

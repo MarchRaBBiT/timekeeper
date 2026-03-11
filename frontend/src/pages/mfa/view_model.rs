@@ -62,8 +62,7 @@ pub fn use_mfa_view_model() -> MfaViewModel {
                 Ok(info) => {
                     setup_info.set(Some(info));
                     messages.set_success(
-                        "認証アプリにシークレットを登録し、確認コードを入力してください。"
-                            .to_string(),
+                        rust_i18n::t!("pages.mfa.feedback.register_success").to_string(),
                     );
                 }
                 Err(err) => messages.set_error(err),
@@ -78,8 +77,7 @@ pub fn use_mfa_view_model() -> MfaViewModel {
                     setup_info.set(None);
                     totp_code.set(String::new());
                     messages.set_success(
-                        "MFA を有効化しました。次回以降のログインで認証コードが求められます。"
-                            .to_string(),
+                        rust_i18n::t!("pages.mfa.feedback.activate_success").to_string(),
                     );
 
                     // Update global auth state

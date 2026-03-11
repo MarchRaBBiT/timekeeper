@@ -70,7 +70,7 @@ impl RequestSummary {
         let hours = value
             .get("planned_hours")
             .and_then(|v| v.as_f64())
-            .map(|h| format!("{} 時間", h));
+            .map(|h| rust_i18n::t!("pages.requests.summary.overtime_hours", hours = h).to_string());
         Self {
             id: extract_string(value, "id"),
             kind: RequestKind::Overtime,
@@ -101,7 +101,13 @@ impl RequestSummary {
             .get("proposed_values")
             .and_then(|v| v.get("breaks"))
             .and_then(|v| v.as_array())
-            .map(|arr| format!("休憩{}件", arr.len()));
+            .map(|arr| {
+                rust_i18n::t!(
+                    "pages.requests.summary.correction_breaks",
+                    count = arr.len()
+                )
+                .to_string()
+            });
 
         Self {
             id: extract_string(value, "id"),
@@ -156,10 +162,12 @@ pub fn flatten_requests(response: &MyRequestsResponse) -> Vec<RequestSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pages::requests::components::status_label::request_kind_label;
     use serde_json::json;
 
     #[test]
     fn summarizes_leave_request() {
+        let _locale = crate::test_support::helpers::set_test_locale("ja");
         let value = json!({
             "id": "req-1",
             "status": "pending",
@@ -181,6 +189,7 @@ mod tests {
 
     #[test]
     fn summarizes_overtime_request() {
+        let _locale = crate::test_support::helpers::set_test_locale("ja");
         let value = json!({
             "id": "ot-1",
             "status": "approved",
@@ -193,5 +202,14 @@ mod tests {
         assert_eq!(summary.kind, RequestKind::Overtime);
         assert_eq!(summary.primary_label.as_deref(), Some("2025-01-15"));
         assert_eq!(summary.secondary_label.as_deref(), Some("3.5 時間"));
+    }
+
+    #[test]
+    fn request_kind_labels_are_translatable() {
+        let _locale = crate::test_support::helpers::set_test_locale("en");
+        assert_eq!(
+            request_kind_label(RequestKind::AttendanceCorrection),
+            "Attendance Fix"
+        );
     }
 }

@@ -56,16 +56,16 @@ pub fn AttendanceCorrectionRequestForm(
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
-                <h3 class="text-lg font-medium text-fg">{"勤怠修正依頼"}</h3>
-                <p class="text-sm text-fg-muted">{"出勤・退勤・休憩を入力して修正依頼を送信します。"} </p>
+                <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("pages.requests.correction_form.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.requests.correction_form.description")} </p>
                 <Show when=move || editing
                     .get()
                     .map(|target| target.kind == RequestKind::AttendanceCorrection)
                     .unwrap_or(false)>
                     <p class="mt-1 text-xs text-status-info-text bg-status-info-bg border border-status-info-border rounded px-2 py-1 inline-flex items-center gap-2">
-                        {"編集中: 既存の勤怠修正依頼を更新します。"}
+                        {rust_i18n::t!("pages.requests.forms.editing_correction")}
                         <button class="text-status-info-text underline" on:click=move |_| on_cancel_edit.call(())>
-                            {"キャンセル"}
+                            {rust_i18n::t!("common.actions.cancel")}
                         </button>
                     </p>
                 </Show>
@@ -78,13 +78,13 @@ pub fn AttendanceCorrectionRequestForm(
             </Show>
             <form class="space-y-4" on:submit=on_submit>
                 <DatePicker
-                    label=Some("対象日")
+                    label=Some("pages.requests.correction_form.date")
                     value=date_signal
                     disabled=MaybeSignal::derive(editing_correction)
                 />
                 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div>
-                        <label class="block text-sm font-medium text-fg-muted">{"出勤時刻"}</label>
+                        <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.correction_form.clock_in_label")}</label>
                         <input
                             type="datetime-local"
                             class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -93,7 +93,7 @@ pub fn AttendanceCorrectionRequestForm(
                         />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-fg-muted">{"退勤時刻"}</label>
+                        <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.correction_form.clock_out_label")}</label>
                         <input
                             type="datetime-local"
                             class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -104,18 +104,18 @@ pub fn AttendanceCorrectionRequestForm(
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-fg-muted">
-                        {"休憩（1行ごとに `開始,終了(任意)`）"}
+                        {rust_i18n::t!("pages.requests.correction_form.breaks_label")}
                     </label>
                     <textarea
                         rows=4
                         class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 font-mono text-sm"
-                        placeholder="2026-02-13T12:00,2026-02-13T13:00"
+                        placeholder={rust_i18n::t!("pages.requests.correction_form.breaks_placeholder").into_owned()}
                         prop:value=move || break_rows_signal.get()
                         on:input=move |ev| break_rows_signal.set(event_target_value(&ev))
                     ></textarea>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"修正理由"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.correction_form.reason_label")}</label>
                     <textarea
                         rows=3
                         class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -130,15 +130,15 @@ pub fn AttendanceCorrectionRequestForm(
                 >
                     {move || {
                         if pending.get() || updating.get() {
-                            "送信中..."
+                            rust_i18n::t!("pages.requests.forms.submitting").into_owned()
                         } else if editing
                             .get()
                             .map(|target| target.kind == RequestKind::AttendanceCorrection)
                             .unwrap_or(false)
                         {
-                            "勤怠修正依頼を更新"
+                            rust_i18n::t!("pages.requests.correction_form.actions.update").into_owned()
                         } else {
-                            "勤怠修正依頼を送信"
+                            rust_i18n::t!("pages.requests.correction_form.actions.submit").into_owned()
                         }
                     }}
                 </button>
@@ -150,10 +150,11 @@ pub fn AttendanceCorrectionRequestForm(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn correction_form_renders_editing_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let state = AttendanceCorrectionFormState::default();
             let message = create_rw_signal(MessageState::default());
@@ -174,8 +175,8 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("勤怠修正依頼"));
-        assert!(html.contains("編集中"));
-        assert!(html.contains("勤怠修正依頼を更新"));
+        assert!(html.contains("Attendance Correction Request"));
+        assert!(html.contains("Editing"));
+        assert!(html.contains("Update Attendance Correction Request"));
     }
 }

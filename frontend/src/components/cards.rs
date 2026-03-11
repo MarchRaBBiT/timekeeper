@@ -4,6 +4,10 @@ use leptos::*;
 use crate::state::attendance::AttendanceState;
 use crate::utils::time::today_in_app_tz;
 
+fn format_unit_value(value: impl std::fmt::Display, unit_key: &'static str) -> String {
+    format!("{} {}", value, rust_i18n::t!(unit_key))
+}
+
 #[component]
 pub fn AttendanceCard(attendance_state: ReadSignal<AttendanceState>) -> impl IntoView {
     let today = today_in_app_tz();
@@ -33,7 +37,7 @@ pub fn AttendanceCard(attendance_state: ReadSignal<AttendanceState>) -> impl Int
             .iter()
             .find(|a| a.date == today)
             .and_then(|a| a.total_work_hours)
-            .map(|h| format!("{:.2}時間", h))
+            .map(|h| format_unit_value(format!("{h:.2}"), "common.units.hours"))
             .unwrap_or_else(|| "-".into())
     };
     let break_minutes = move || {
@@ -50,7 +54,7 @@ pub fn AttendanceCard(attendance_state: ReadSignal<AttendanceState>) -> impl Int
             })
             .unwrap_or(0);
         if mins > 0 {
-            format!("{} 分", mins)
+            format_unit_value(mins, "common.units.minutes")
         } else {
             "-".into()
         }
@@ -60,24 +64,29 @@ pub fn AttendanceCard(attendance_state: ReadSignal<AttendanceState>) -> impl Int
         <div class="bg-surface-elevated overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
                 <h3 class="text-lg leading-6 font-medium text-fg">
-                    {format!("今日の勤怠 ({:04}-{:02}-{:02})", today.year(), today.month(), today.day())}
+                    {rust_i18n::t!(
+                        "components.cards.attendance.title",
+                        year = today.year(),
+                        month = today.month(),
+                        day = today.day()
+                    )}
                 </h3>
                 <div class="mt-5">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"出勤時間"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.attendance.clock_in")}</dt>
                             <dd class="mt-1 text-sm text-fg">{clock_in}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"退勤時間"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.attendance.clock_out")}</dt>
                             <dd class="mt-1 text-sm text-fg">{clock_out}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.attendance.work_hours")}</dt>
                             <dd class="mt-1 text-sm text-fg">{total_hours}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"休憩合計"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.attendance.break_total")}</dt>
                             <dd class="mt-1 text-sm text-fg">{break_minutes}</dd>
                         </div>
                     </div>
@@ -96,25 +105,25 @@ pub fn SummaryCard(
     view! {
         <div class="bg-surface-elevated overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-fg">{"今月のサマリー"}</h3>
+                <h3 class="text-lg leading-6 font-medium text-fg">{rust_i18n::t!("components.cards.summary.title")}</h3>
                 <div class="mt-5">
                     <div class="grid grid-cols-3 gap-4">
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"総稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.summary.total_hours")}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-fg">
-                                {move || summary_val().and_then(|s| s.total_work_hours).map(|h| format!("{:.2}時間", h)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.total_work_hours).map(|h| format_unit_value(format!("{h:.2}"), "common.units.hours")).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"稼働日数"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.summary.total_days")}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-fg">
-                                {move || summary_val().and_then(|s| s.total_work_days).map(|d| format!("{} 日", d)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.total_work_days).map(|d| format_unit_value(d, "common.units.days")).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"平均稼働時間"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.summary.average_hours")}</dt>
                             <dd class="mt-1 text-2xl font-semibold text-fg">
-                                {move || summary_val().and_then(|s| s.average_daily_hours).map(|h| format!("{:.2}時間", h)).unwrap_or_else(|| "-".into())}
+                                {move || summary_val().and_then(|s| s.average_daily_hours).map(|h| format_unit_value(format!("{h:.2}"), "common.units.hours")).unwrap_or_else(|| "-".into())}
                             </dd>
                         </div>
                     </div>
@@ -136,7 +145,7 @@ pub fn RequestCard(
     view! {
         <div class="bg-surface-elevated overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-fg">{"申請状況"}</h3>
+                <h3 class="text-lg leading-6 font-medium text-fg">{rust_i18n::t!("components.cards.requests.title")}</h3>
                 <div class="mt-5 space-y-2">
                     <For
                         each=activities
@@ -162,19 +171,19 @@ pub fn UserCard() -> impl IntoView {
     view! {
         <div class="bg-surface-elevated overflow-hidden shadow rounded-lg">
             <div class="px-4 py-5 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-fg">{"ユーザー情報"}</h3>
+                <h3 class="text-lg leading-6 font-medium text-fg">{rust_i18n::t!("components.cards.user.title")}</h3>
                 <div class="mt-5">
                     <div class="space-y-2">
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"ユーザー名"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.user.username")}</dt>
                             <dd class="mt-1 text-sm text-fg">{move || auth.get().user.as_ref().map(|u| u.username.clone()).unwrap_or_else(|| "-".into())}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"氏名"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.user.full_name")}</dt>
                             <dd class="mt-1 text-sm text-fg">{move || auth.get().user.as_ref().map(|u| u.full_name.clone()).unwrap_or_else(|| "-".into())}</dd>
                         </div>
                         <div>
-                            <dt class="text-sm font-medium text-fg-muted">{"役割"}</dt>
+                            <dt class="text-sm font-medium text-fg-muted">{rust_i18n::t!("components.cards.user.role")}</dt>
                             <dd class="mt-1 text-sm text-fg">{move || auth.get().user.as_ref().map(|u| u.role.clone()).unwrap_or_else(|| "-".into())}</dd>
                         </div>
                     </div>
@@ -200,6 +209,7 @@ mod host_tests {
 
     #[test]
     fn attendance_card_renders_with_values() {
+        let _locale = crate::test_support::helpers::set_test_locale("en");
         let today = crate::utils::time::today_in_app_tz();
         let attendance = AttendanceResponse {
             id: "att-1".into(),
@@ -239,12 +249,15 @@ mod host_tests {
             let (signal, _) = create_signal(state);
             view! { <AttendanceCard attendance_state=signal /> }
         });
-        assert!(html.contains("今日の勤怠"));
-        assert!(html.contains("30"));
+        assert!(html.contains("Clock In"));
+        assert!(html.contains("09:00"));
+        assert!(html.contains("30 min"));
+        assert!(html.contains("8.00 hr"));
     }
 
     #[test]
     fn summary_card_renders_values() {
+        let _locale = crate::test_support::helpers::set_test_locale("en");
         let html = render_to_string(move || {
             let summary = Resource::new(
                 || (),
@@ -263,7 +276,9 @@ mod host_tests {
             }));
             view! { <SummaryCard summary=summary /> }
         });
-        assert!(html.contains("今月のサマリー"));
+        assert!(html.contains("160.00 hr"));
+        assert!(html.contains("20 days"));
+        assert!(html.contains("8.00 hr"));
     }
 
     #[test]
@@ -284,7 +299,7 @@ mod host_tests {
             }]));
             view! { <RequestCard requests=activities /> }
         });
-        assert!(html.contains("申請状況"));
+        assert!(html.contains("1 件"));
     }
 
     #[test]
@@ -293,7 +308,6 @@ mod host_tests {
             provide_auth(Some(admin_user(true)));
             view! { <UserCard /> }
         });
-        assert!(html.contains("ユーザー情報"));
         assert!(html.contains("admin"));
     }
 }

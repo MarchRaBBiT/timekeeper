@@ -50,11 +50,15 @@ pub fn use_reset_password_view_model() -> ResetPasswordViewModel {
 fn validate_reset_input(token: &str, new_password: &str) -> Result<(String, String), ApiError> {
     let token = token.trim();
     if token.is_empty() {
-        return Err(ApiError::validation("Invalid token"));
+        return Err(ApiError::validation(
+            rust_i18n::t!("pages.reset_password.validation.invalid_token").to_string(),
+        ));
     }
     let new_password = new_password.trim();
     if new_password.is_empty() {
-        return Err(ApiError::validation("Password is required"));
+        return Err(ApiError::validation(
+            rust_i18n::t!("pages.reset_password.validation.password_required").to_string(),
+        ));
     }
     Ok((token.to_string(), new_password.to_string()))
 }

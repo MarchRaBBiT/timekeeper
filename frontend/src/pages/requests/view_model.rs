@@ -102,7 +102,9 @@ fn apply_optional_update_action_result(
     if let Some(result) = result {
         match result {
             Ok(_) => {
-                list_message.update(|msg| msg.set_success("申請内容を更新しました。"));
+                list_message.update(|msg| {
+                    msg.set_success(rust_i18n::t!("pages.requests.messages.updated").into_owned())
+                });
                 editing_request.set(None);
                 leave_state.reset();
                 overtime_state.reset();
@@ -122,7 +124,9 @@ fn apply_optional_cancel_action_result(
     if let Some(result) = result {
         match result {
             Ok(_) => {
-                list_message.update(|msg| msg.set_success("申請を取消しました。"));
+                list_message.update(|msg| {
+                    msg.set_success(rust_i18n::t!("pages.requests.messages.cancelled").into_owned())
+                });
                 reload.update(|value| *value = value.wrapping_add(1));
             }
             Err(err) => list_message.update(|msg| msg.set_error(err)),
@@ -138,7 +142,11 @@ fn apply_optional_leave_action_result(
     if let Some(result) = result {
         match result {
             Ok(_) => {
-                leave_message.update(|msg| msg.set_success("休暇申請を送信しました。"));
+                leave_message.update(|msg| {
+                    msg.set_success(
+                        rust_i18n::t!("pages.requests.messages.leave_submitted").into_owned(),
+                    )
+                });
                 reload.update(|value| *value = value.wrapping_add(1));
             }
             Err(err) => leave_message.update(|msg| msg.set_error(err)),
@@ -154,7 +162,11 @@ fn apply_optional_overtime_action_result(
     if let Some(result) = result {
         match result {
             Ok(_) => {
-                overtime_message.update(|msg| msg.set_success("残業申請を送信しました。"));
+                overtime_message.update(|msg| {
+                    msg.set_success(
+                        rust_i18n::t!("pages.requests.messages.overtime_submitted").into_owned(),
+                    )
+                });
                 reload.update(|value| *value = value.wrapping_add(1));
             }
             Err(err) => overtime_message.update(|msg| msg.set_error(err)),
@@ -170,7 +182,11 @@ fn apply_optional_correction_action_result(
     if let Some(result) = result {
         match result {
             Ok(_) => {
-                correction_message.update(|msg| msg.set_success("勤怠修正依頼を送信しました。"));
+                correction_message.update(|msg| {
+                    msg.set_success(
+                        rust_i18n::t!("pages.requests.messages.correction_submitted").into_owned(),
+                    )
+                });
                 reload.update(|value| *value = value.wrapping_add(1));
             }
             Err(err) => correction_message.update(|msg| msg.set_error(err)),
@@ -751,6 +767,7 @@ mod host_tests {
     #[test]
     fn helper_effect_and_selection_paths_cover_branches() {
         with_runtime(|| {
+            let _locale = crate::test_support::helpers::set_test_locale("en");
             let leave_state = LeaveFormState::default();
             let overtime_state = OvertimeFormState::default();
             let correction_state = AttendanceCorrectionFormState::default();
@@ -777,7 +794,7 @@ mod host_tests {
             );
             assert_eq!(
                 list_message.get().success.as_deref(),
-                Some("申請内容を更新しました。")
+                Some("The request was updated.")
             );
             assert!(editing_request.get().is_none());
             assert_eq!(leave_state.start_signal().get(), "");
@@ -801,7 +818,7 @@ mod host_tests {
             apply_optional_cancel_action_result(Some(Ok(())), list_message, reload);
             assert_eq!(
                 list_message.get().success.as_deref(),
-                Some("申請を取消しました。")
+                Some("The request was cancelled.")
             );
             assert_eq!(reload.get(), 2);
             apply_optional_cancel_action_result(
@@ -817,7 +834,7 @@ mod host_tests {
             apply_optional_leave_action_result(Some(Ok(())), leave_message, reload);
             assert_eq!(
                 leave_message.get().success.as_deref(),
-                Some("休暇申請を送信しました。")
+                Some("The leave request was submitted.")
             );
             assert_eq!(reload.get(), 3);
             apply_optional_leave_action_result(
@@ -833,7 +850,7 @@ mod host_tests {
             apply_optional_overtime_action_result(Some(Ok(())), overtime_message, reload);
             assert_eq!(
                 overtime_message.get().success.as_deref(),
-                Some("残業申請を送信しました。")
+                Some("The overtime request was submitted.")
             );
             assert_eq!(reload.get(), 4);
             apply_optional_overtime_action_result(
@@ -849,7 +866,7 @@ mod host_tests {
             apply_optional_correction_action_result(Some(Ok(())), correction_message, reload);
             assert_eq!(
                 correction_message.get().success.as_deref(),
-                Some("勤怠修正依頼を送信しました。")
+                Some("The attendance correction request was submitted.")
             );
             assert_eq!(reload.get(), 5);
             apply_optional_correction_action_result(
