@@ -423,7 +423,7 @@ pub fn AdminAttendanceToolsSection(
                         placeholder="ユーザーを選択してください".into()
                     />
                     <DatePicker
-                        label=Some("対象日")
+                        label=Some("admin_components.attendance.fields.target_date")
                         value=att_date
                     />
                     <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_in, event_target_value(&ev)) />

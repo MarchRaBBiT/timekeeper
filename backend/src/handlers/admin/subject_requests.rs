@@ -228,8 +228,10 @@ mod tests {
     fn app_error_message(err: AppError) -> String {
         match err {
             AppError::BadRequest(message)
+            | AppError::BadRequestWithCode { message, .. }
             | AppError::Forbidden(message)
             | AppError::Unauthorized(message)
+            | AppError::UnauthorizedWithCode { message, .. }
             | AppError::Conflict(message)
             | AppError::NotFound(message) => message,
             AppError::Validation(errors) => errors.join(", "),

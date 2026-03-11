@@ -54,23 +54,23 @@ pub fn LoginForm(
             <div class="max-w-md w-full space-y-8">
                 <div>
                     <h2 class="mt-6 text-center text-3xl font-extrabold text-fg">
-                        {"Timekeeper にログイン"}
+                        {rust_i18n::t!("pages.login.title")}
                     </h2>
                     <p class="mt-2 text-center text-sm text-fg-muted">
-                        {"勤怠管理システム"}
+                        {rust_i18n::t!("pages.login.subtitle")}
                     </p>
                 </div>
                 <form class="mt-8 space-y-6" on:submit=on_submit>
                     <div class="rounded-md shadow-sm -space-y-px">
                         <div>
-                            <label for="username" class="sr-only">{"ユーザー名"}</label>
+                            <label for="username" class="sr-only">{rust_i18n::t!("pages.login.fields.username")}</label>
                             <input
                                 id="username"
                                 name="username"
                                 type="text"
                                 required
                                 class="appearance-none rounded-none relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text rounded-t-md focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
-                                placeholder="ユーザー名"
+                                placeholder={rust_i18n::t!("pages.login.fields.username")}
                                 prop:value=form.username
                                 on:input=move |ev| {
                                     let target = event_target::<HtmlInputElement>(&ev);
@@ -79,14 +79,14 @@ pub fn LoginForm(
                             />
                         </div>
                         <div>
-                            <label for="password" class="sr-only">{"パスワード"}</label>
+                            <label for="password" class="sr-only">{rust_i18n::t!("pages.login.fields.password")}</label>
                             <input
                                 id="password"
                                 name="password"
                                 type="password"
                                 required
                                 class="appearance-none rounded-none relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text rounded-b-md focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
-                                placeholder="パスワード"
+                                placeholder={rust_i18n::t!("pages.login.fields.password")}
                                 prop:value=form.password
                                 on:input=move |ev| {
                                     let target = event_target::<HtmlInputElement>(&ev);
@@ -108,15 +108,15 @@ pub fn LoginForm(
                         >
                             {move || {
                                 if show_mfa.get() {
-                                    "MFAコード入力を閉じる"
+                                    rust_i18n::t!("pages.login.actions.hide_mfa")
                                 } else {
-                                    "MFAコードを入力する"
+                                    rust_i18n::t!("pages.login.actions.show_mfa")
                                 }
                             }}
                         </button>
                         <Show when=move || show_mfa.get()>
                             <div class="animate-pop-in">
-                                <label for="totp_code" class="sr-only">{"MFAコード"}</label>
+                                <label for="totp_code" class="sr-only">{rust_i18n::t!("pages.login.fields.mfa_code")}</label>
                                 <input
                                     id="totp_code"
                                     name="totp_code"
@@ -124,7 +124,7 @@ pub fn LoginForm(
                                     inputmode="numeric"
                                     autocomplete="one-time-code"
                                     class="appearance-none rounded relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
-                                    placeholder="MFAコード"
+                                    placeholder={rust_i18n::t!("pages.login.fields.mfa_code")}
                                     prop:value=form.totp_code
                                     on:input=move |ev| {
                                         let target = event_target::<HtmlInputElement>(&ev);
@@ -138,7 +138,7 @@ pub fn LoginForm(
                     <div class="flex items-center justify-between">
                         <div class="text-sm">
                             <A href="/forgot-password" class="font-medium text-link hover:text-link-hover">
-                                "パスワードをお忘れですか？"
+                                {rust_i18n::t!("pages.login.actions.forgot_password")}
                             </A>
                         </div>
                     </div>
@@ -166,7 +166,13 @@ pub fn LoginForm(
                                     />
                                 </svg>
                             </span>
-                            {move || if pending.get() { "ログイン中..." } else { "ログイン" }}
+                            {move || {
+                                if pending.get() {
+                                    rust_i18n::t!("pages.login.actions.logging_in")
+                                } else {
+                                    rust_i18n::t!("pages.login.actions.submit")
+                                }
+                            }}
                         </button>
                     </div>
                 </form>
@@ -178,11 +184,13 @@ pub fn LoginForm(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     #[test]
     fn login_form_renders_fields() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/".to_string(),
@@ -196,11 +204,10 @@ mod host_tests {
                 </Router>
             }
         });
-        assert!(html.contains("Timekeeper にログイン"));
-        assert!(html.contains("ユーザー名"));
-        assert!(html.contains("パスワード"));
-        assert!(html.contains("MFAコードを入力する"));
-        assert!(!html.contains("placeholder=\"MFAコード\""));
+        assert!(html.contains("id=\"username\""));
+        assert!(html.contains("id=\"password\""));
+        assert!(html.contains("href=\"/forgot-password\""));
+        assert!(!html.contains("id=\"totp_code\""));
     }
 
     #[test]
@@ -230,6 +237,7 @@ mod host_tests {
 
     #[test]
     fn login_form_renders_inline_error_message() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/".to_string(),

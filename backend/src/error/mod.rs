@@ -18,9 +18,11 @@ pub struct ErrorResponse {
 pub enum AppError {
     NotFound(String),
     Unauthorized(String),
+    UnauthorizedWithCode { message: String, code: String },
     Forbidden(String),
     Conflict(String),
     BadRequest(String),
+    BadRequestWithCode { message: String, code: String },
     InternalServerError(anyhow::Error),
     Validation(Vec<String>),
 }
@@ -35,6 +37,9 @@ impl IntoResponse for AppError {
                 "UNAUTHORIZED".to_string(),
                 None,
             ),
+            AppError::UnauthorizedWithCode { message, code } => {
+                (StatusCode::UNAUTHORIZED, message, code, None)
+            }
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg, "FORBIDDEN".to_string(), None),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg, "CONFLICT".to_string(), None),
             AppError::BadRequest(msg) => (
@@ -43,6 +48,9 @@ impl IntoResponse for AppError {
                 "BAD_REQUEST".to_string(),
                 None,
             ),
+            AppError::BadRequestWithCode { message, code } => {
+                (StatusCode::BAD_REQUEST, message, code, None)
+            }
             AppError::InternalServerError(err) => {
                 tracing::error!("Internal server error: {:?}", err);
                 (
@@ -120,11 +128,31 @@ mod tests {
         assert_eq!(json["error"], "bad");
         assert_eq!(json["code"], "BAD_REQUEST");
 
+        let response = AppError::BadRequestWithCode {
+            message: "coded-bad".to_string(),
+            code: "PASSWORD_CHANGE_MUST_DIFFER".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "coded-bad");
+        assert_eq!(json["code"], "PASSWORD_CHANGE_MUST_DIFFER");
+
         let response = AppError::Unauthorized("nope".to_string()).into_response();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let json = response_json(response).await;
         assert_eq!(json["error"], "nope");
         assert_eq!(json["code"], "UNAUTHORIZED");
+
+        let response = AppError::UnauthorizedWithCode {
+            message: "coded-nope".to_string(),
+            code: "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let json = response_json(response).await;
+        assert_eq!(json["error"], "coded-nope");
+        assert_eq!(json["code"], "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT");
 
         let response = AppError::Forbidden("denied".to_string()).into_response();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);

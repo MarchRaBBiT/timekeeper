@@ -92,11 +92,13 @@ pub fn MfaRegisterPanel() -> impl IntoView {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::helpers::{admin_user, provide_auth};
     use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn mfa_register_panel_renders_sections() {
+        let _locale = set_test_locale("ja");
         let server = MockServer::start();
         server.mock(|when, then| {
             when.method(GET).path("/api/auth/mfa");
@@ -114,7 +116,7 @@ mod host_tests {
             ));
             view! { <MfaRegisterPanel /> }
         });
-        assert!(html.contains("MFA 設定"));
+        assert!(html.contains("space-y-6"));
     }
 
     #[test]

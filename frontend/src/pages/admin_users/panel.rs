@@ -68,7 +68,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                             }
                             on:click=set_tab_active
                         >
-                            {"アクティブユーザー"}
+                            {rust_i18n::t!("pages.admin_users.panel.tabs.active")}
                         </button>
                         <button
                             class=move || {
@@ -80,7 +80,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                             }
                             on:click=set_tab_archived
                         >
-                            {"退職ユーザー"}
+                            {rust_i18n::t!("pages.admin_users.panel.tabs.archived")}
                         </button>
                     </div>
 
@@ -99,7 +99,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                     >
                         <Show when=move || vm.pii_masked.get()>
                             <div class="mb-4 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
-                                {"この一覧の個人情報はマスキング表示されています。"}
+                                {rust_i18n::t!("pages.admin_users.panel.pii_masked")}
                             </div>
                         </Show>
                         <InviteForm
@@ -143,12 +143,13 @@ pub fn AdminUsersPage() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::helpers::{admin_user, provide_auth, set_test_locale};
     use crate::test_support::ssr::render_to_string;
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     #[test]
     fn admin_users_page_renders_for_system_admin() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/admin/users".to_string(),
@@ -156,7 +157,7 @@ mod host_tests {
             provide_auth(Some(admin_user(true)));
             view! { <Router><AdminUsersPage /></Router> }
         });
-        assert!(html.contains("ユーザー管理"));
-        assert!(html.contains("アクティブユーザー"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_users.layout.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_users.panel.tabs.active").as_ref()));
     }
 }

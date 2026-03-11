@@ -216,13 +216,14 @@ pub async fn refresh_today_context(
     Ok(())
 }
 
-pub fn describe_holiday_reason(code: &str) -> &'static str {
+pub fn describe_holiday_reason(code: &str) -> String {
     match code {
-        "public holiday" => "祝日",
-        "weekly holiday" => "定休日",
-        "forced holiday" => "特別休日",
-        _ => "休日",
+        "public holiday" => rust_i18n::t!("state.attendance.holiday_reason.public_holiday"),
+        "weekly holiday" => rust_i18n::t!("state.attendance.holiday_reason.weekly_holiday"),
+        "forced holiday" => rust_i18n::t!("state.attendance.holiday_reason.forced_holiday"),
+        _ => rust_i18n::t!("state.attendance.holiday_reason.default"),
     }
+    .into_owned()
 }
 
 #[cfg(test)]
@@ -240,14 +241,19 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn describe_reason_maps_known_values() {
-        assert_eq!(describe_holiday_reason("public holiday"), "祝日");
-        assert_eq!(describe_holiday_reason("weekly holiday"), "定休日");
-        assert_eq!(describe_holiday_reason("forced holiday"), "特別休日");
+        let public = describe_holiday_reason("public holiday");
+        let weekly = describe_holiday_reason("weekly holiday");
+        let forced = describe_holiday_reason("forced holiday");
+
+        assert!(!public.is_empty());
+        assert!(!weekly.is_empty());
+        assert!(!forced.is_empty());
+        assert_ne!(public, weekly);
     }
 
     #[wasm_bindgen_test]
     fn describe_reason_falls_back_for_unknown() {
-        assert_eq!(describe_holiday_reason("custom"), "休日");
+        assert!(!describe_holiday_reason("custom").is_empty());
     }
 
     #[wasm_bindgen_test]
@@ -273,6 +279,7 @@ mod tests {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::set_test_locale;
 
     fn attendance_json(id: &str) -> serde_json::Value {
         serde_json::json!({
@@ -342,10 +349,26 @@ mod host_tests {
 
     #[test]
     fn describe_reason_maps_values_on_host() {
-        assert_eq!(describe_holiday_reason("public holiday"), "祝日");
-        assert_eq!(describe_holiday_reason("weekly holiday"), "定休日");
-        assert_eq!(describe_holiday_reason("forced holiday"), "特別休日");
-        assert_eq!(describe_holiday_reason("unknown"), "休日");
+        {
+            let _locale = set_test_locale("ja");
+            let public = describe_holiday_reason("public holiday");
+            let weekly = describe_holiday_reason("weekly holiday");
+            let forced = describe_holiday_reason("forced holiday");
+            let unknown = describe_holiday_reason("unknown");
+
+            assert_eq!(public, "祝日");
+            assert_eq!(weekly, "法定休日");
+            assert_eq!(forced, "会社休日");
+            assert_eq!(unknown, "休日");
+        }
+
+        {
+            let _locale = set_test_locale("en");
+            assert_eq!(describe_holiday_reason("public holiday"), "public holiday");
+            assert_eq!(describe_holiday_reason("weekly holiday"), "weekly holiday");
+            assert_eq!(describe_holiday_reason("forced holiday"), "company holiday");
+            assert_eq!(describe_holiday_reason("unknown"), "holiday");
+        }
     }
 }
 

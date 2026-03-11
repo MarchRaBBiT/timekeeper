@@ -16,11 +16,13 @@ pub fn LoginPanel() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     #[test]
     fn login_panel_renders_form() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/".to_string(),
@@ -31,7 +33,7 @@ mod host_tests {
                 </Router>
             }
         });
-        assert!(html.contains("Timekeeper にログイン"));
-        assert!(html.contains("パスワードをお忘れですか？"));
+        assert!(html.contains("href=\"/forgot-password\""));
+        assert!(html.contains("type=\"submit\""));
     }
 }

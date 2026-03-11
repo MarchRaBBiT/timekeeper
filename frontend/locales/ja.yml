@@ -16,14 +16,42 @@ common:
     retrying: "再取得中..."
     logout: "ログアウト"
     close: "閉じる"
+    clear: "クリア"
+    details: "詳細"
+    edit: "編集"
+    cancel: "取消"
+    submit: "送信"
+    sending: "送信中..."
   labels:
     code: "コード"
-  states: {}
+    status: "ステータス"
+    period_or_date: "期間 / 日付"
+    notes: "補足"
+    reason: "理由"
+    submitted_at: "提出日"
+    request_id: "申請ID"
+    type: "種類"
+    actions: "操作"
+  states:
+    loading: "読み込み中..."
+    refreshing: "更新中..."
+    processing: "処理中..."
   status: {}
   feedback: {}
   validation: {}
-  time: {}
-  units: {}
+  time:
+    weekdays:
+      mon: "月"
+      tue: "火"
+      wed: "水"
+      thu: "木"
+      fri: "金"
+      sat: "土"
+      sun: "日"
+  units:
+    hours: "時間"
+    minutes: "分"
+    days: "日"
   pagination: {}
   navigation:
     dashboard: "ダッシュボード"
@@ -50,33 +78,705 @@ components:
     cancel: "いいえ"
   error: {}
   empty_state: {}
-  cards: {}
-  forms: {}
+  cards:
+    attendance:
+      title: "本日の勤怠 (%{year}/%{month}/%{day})"
+      clock_in: "出勤"
+      clock_out: "退勤"
+      work_hours: "勤務時間"
+      break_total: "休憩合計"
+    summary:
+      title: "月次サマリー"
+      total_hours: "総勤務時間"
+      total_days: "勤務日数"
+      average_hours: "平均勤務時間"
+    requests:
+      title: "直近の申請状況"
+    user:
+      title: "アカウント"
+      username: "ユーザー名"
+      full_name: "氏名"
+      role: "権限"
+  forms:
+    current_status: "現在の状態"
+    holiday_blocked: "本日は%{label}のため操作できません。"
+    actions:
+      clock_in: "出勤"
+      break_start: "休憩開始"
+      break_end: "休憩終了"
+      clock_out: "退勤"
+    status:
+      not_started: "未出勤"
+      clocked_in: "勤務中"
+      on_break: "休憩中"
+      clocked_out: "退勤済み"
+    date_picker:
+      placeholder: "日付を選択"
   guard: {}
 
 pages:
-  attendance: {}
-  dashboard: {}
-  requests: {}
-  login: {}
-  forgot_password: {}
-  reset_password: {}
-  mfa: {}
-  settings: {}
-  admin: {}
-  admin_users: {}
-  admin_audit_logs: {}
-  admin_export: {}
+  attendance:
+    unauthorized: "勤怠画面を表示する権限がありません。"
+    summary:
+      title: "勤怠"
+      description: "現在の状態確認、履歴の再取得、CSV 出力を行えます。"
+    filters:
+      from: "開始日"
+      to: "終了日"
+      current_month: "今月"
+      load: "表示"
+      exporting: "出力中..."
+      export: "CSV 出力"
+    alerts:
+      title: "休日アラート"
+      description: "%{year}年%{month}月の休日情報"
+      loading: "休日情報を読み込み中..."
+      empty: "この期間の休日登録はありません。"
+    history:
+      title: "勤怠履歴"
+      empty: "勤怠履歴はありません。"
+      no_record: "記録なし"
+      work_hours: "勤務時間"
+      break_details: "休憩詳細"
+      breaks_empty: "休憩記録はありません。"
+      break_ongoing: "継続中"
+      clock_range_open: "%{start} - 継続中"
+    feedback:
+      clock_in: "出勤しました。"
+      break_start: "休憩を開始しました。"
+      break_end: "休憩を終了しました。"
+      clock_out: "退勤しました。"
+      default: "操作が完了しました。"
+      export_success: "勤怠 CSV をダウンロードしました。"
+      export_failed: "勤怠 CSV のダウンロードに失敗しました。"
+    validation:
+      from_date: "開始日を YYYY-MM-DD 形式で入力してください。"
+      to_date: "終了日を YYYY-MM-DD 形式で入力してください。"
+      range_order: "開始日は終了日以前の日付を指定してください。"
+      status_unavailable: "ステータスを取得できません。"
+      break_start_requires_clocked_in: "出勤中のみ休憩を開始できます。"
+      attendance_record_missing: "出勤レコードが見つかりません。"
+      break_end_requires_on_break: "休憩中のみ休憩を終了できます。"
+      break_record_missing: "休憩レコードが見つかりません。"
+  dashboard:
+    unauthorized: "ダッシュボードを表示する権限がありません。"
+    summary:
+      title: "今月のサマリー"
+      description: "今月の勤務状況をひと目で確認できます。"
+      loading: "サマリーを読み込み中..."
+      metrics:
+        total_hours: "総勤務時間"
+        total_days: "勤務日数"
+        average_hours: "平均勤務時間"
+    alerts:
+      title: "アラート"
+      description: "最新の勤怠データに基づく注意点を表示します。"
+      loading: "アラートを読み込み中..."
+      level:
+        info: "情報"
+        warning: "注意"
+        error: "エラー"
+      messages:
+        no_workdays: "今月の勤務日がまだ登録されていません。"
+        empty: "現在、対応が必要なアラートはありません。"
+    activities:
+      title: "申請アクティビティ"
+      description: "休暇と残業申請の件数を確認できます。"
+      loading: "アクティビティを読み込み中..."
+      items:
+        leave_pending: "休暇申請（承認待ち）"
+        overtime_pending: "残業申請（承認待ち）"
+        leave_approved: "休暇申請（承認済み）"
+        overtime_approved: "残業申請（承認済み）"
+    filters:
+      title: "絞り込み"
+      status: "ステータス"
+      options:
+        all: "すべて"
+        pending: "承認待ち"
+        approved: "承認済み"
+    feedback:
+      clock_in: "出勤しました。"
+      break_start: "休憩を開始しました。"
+      break_end: "休憩を終了しました。"
+      clock_out: "退勤しました。"
+      default: "操作が完了しました。"
+    validation:
+      status_unavailable: "ステータスを取得できません。"
+      break_start_requires_clocked_in: "出勤中のみ休憩を開始できます。"
+      attendance_record_missing: "出勤レコードが見つかりません。"
+      break_end_requires_on_break: "休憩中のみ休憩を終了できます。"
+      break_record_missing: "休憩レコードが見つかりません。"
+  requests:
+    layout:
+      title: "申請管理"
+      description: "休暇と残業申請を作成し、申請状況をまとめて確認できます。"
+    tabs:
+      leave: "休暇申請"
+      attendance_correction: "勤怠修正"
+      overtime: "残業申請"
+    filter:
+      title: "申請の絞り込み"
+      description: "ステータスで一覧の表示を切り替えます。"
+      clear: "クリア"
+      options:
+        all: "すべて"
+        pending: "保留"
+        approved: "承認済み"
+        rejected: "却下"
+        cancelled: "取消"
+    list:
+      title: "申請一覧"
+      loading: "データを取得中..."
+      empty_title: "表示できる申請がありません"
+      empty_description: "左または上のフォームから新しい申請を送信できます"
+      kind: "種類"
+      secondary: "補足"
+      submitted_at: "提出日"
+      break_count: "休憩%{count}件"
+      cancel_dialog:
+        title: "申請取消の確認"
+        message: "本当にこの申請を取り消しますか？"
+      mobile_locked: "操作できません"
+    detail:
+      title: "申請の詳細"
+      no_reason: "未入力"
+    detail_modal:
+      subtitle: "申請の詳細"
+      status: "ステータス"
+      period: "期間/日付"
+      secondary: "補足"
+      reason: "理由"
+      submitted_at: "提出日"
+      empty_reason: "未入力"
+    kind:
+      leave: "休暇"
+      overtime: "残業"
+      attendance_correction: "勤怠修正"
+      attendance_correction_short: "勤怠修正"
+      leave_request: "休暇申請"
+      overtime_request: "残業申請"
+      attendance_correction_request: "勤怠修正依頼"
+    status:
+      pending: "承認待ち"
+      approved: "承認済み"
+      rejected: "却下"
+      cancelled: "取消"
+    leave_form:
+      title: "休暇申請"
+      description: "休暇の種類と期間を入力して申請を送信します。"
+      editing: "編集中: 既存の休暇申請を更新します。"
+      submit: "休暇申請を送信"
+      update: "休暇申請を更新"
+      leave_type: "種類"
+      type_label: "種類"
+      reason_label: "理由（任意）"
+      actions:
+        submit: "休暇申請を送信"
+        update: "休暇申請を更新"
+      types:
+        annual: "年次有給"
+        sick: "病気"
+        personal: "私用"
+        other: "その他"
+      start_date: "開始日"
+      end_date: "終了日"
+      reason_optional: "理由（任意）"
+    overtime_form:
+      title: "残業申請"
+      description: "残業予定日と時間を入力して申請を送信します。"
+      editing: "編集中: 既存の残業申請を更新します。"
+      submit: "残業申請を送信"
+      update: "残業申請を更新"
+      date: "残業日"
+      planned_hours: "予定時間（時間）"
+      hours_label: "予定時間（時間）"
+      reason_label: "理由（任意）"
+      actions:
+        submit: "残業申請を送信"
+        update: "残業申請を更新"
+      reason_optional: "理由（任意）"
+    correction_form:
+      title: "勤怠修正依頼"
+      description: "出勤・退勤・休憩を入力して修正依頼を送信します。"
+      editing: "編集中: 既存の勤怠修正依頼を更新します。"
+      submit: "勤怠修正依頼を送信"
+      update: "勤怠修正依頼を更新"
+      date: "対象日"
+      clock_in: "出勤時刻"
+      clock_out: "退勤時刻"
+      clock_in_label: "出勤時刻"
+      clock_out_label: "退勤時刻"
+      breaks: "休憩（1行ごとに `開始,終了(任意)`）"
+      breaks_label: "休憩（1行ごとに `開始,終了(任意)`）"
+      breaks_placeholder: "2026-02-13T12:00,2026-02-13T13:00"
+      reason: "修正理由"
+      reason_label: "修正理由"
+      actions:
+        submit: "勤怠修正依頼を送信"
+        update: "勤怠修正依頼を更新"
+    forms:
+      editing_leave: "編集中: 既存の休暇申請を更新します。"
+      editing_overtime: "編集中: 既存の残業申請を更新します。"
+      editing_correction: "編集中: 既存の勤怠修正依頼を更新します。"
+      submitting: "送信中..."
+    messages:
+      updated: "申請内容を更新しました。"
+      cancelled: "申請を取消しました。"
+      leave_submitted: "休暇申請を送信しました。"
+      overtime_submitted: "残業申請を送信しました。"
+      correction_submitted: "勤怠修正依頼を送信しました。"
+    summary:
+      overtime_hours: "%{hours} 時間"
+      correction_breaks: "休憩%{count}件"
+    validation:
+      leave_start_date: "開始日を YYYY-MM-DD 形式で入力してください。"
+      leave_end_date: "終了日を YYYY-MM-DD 形式で入力してください。"
+      leave_date_order: "終了日は開始日以降の日付を指定してください。"
+      overtime_date: "残業日を YYYY-MM-DD 形式で入力してください。"
+      overtime_hours_number: "残業時間は数値で入力してください。"
+      overtime_hours_range: "残業時間は0.25〜24.0の範囲で指定してください。"
+      correction_date: "対象日を YYYY-MM-DD 形式で入力してください。"
+      correction_clock_in: "出勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。"
+      correction_clock_out: "退勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。"
+      correction_reason_required: "修正理由を入力してください。"
+      break_row_format: "休憩行は `開始時刻,終了時刻(任意)` 形式で入力してください。"
+      break_start: "休憩開始は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。"
+      break_end: "休憩終了は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。"
+  login:
+    title: "Timekeeper にログイン"
+    subtitle: "資格情報を入力して続行してください。"
+    fields:
+      username: "ユーザー名"
+      password: "パスワード"
+      mfa_code: "認証コード"
+    actions:
+      show_mfa: "MFA コードを使用"
+      hide_mfa: "MFA コードを隠す"
+      forgot_password: "パスワードを忘れた場合"
+      logging_in: "ログイン中..."
+      submit: "ログイン"
+    validation:
+      username_required: "ユーザー名を入力してください。"
+      password_required: "パスワードを入力してください。"
+  forgot_password:
+    title: "パスワードを再設定"
+    subtitle: "アカウントに登録されているメールアドレスを入力してください。"
+    fields:
+      email: "メールアドレス"
+    actions:
+      submit: "再設定リンクを送信"
+      sending: "送信中..."
+      back_to_login: "ログインに戻る"
+    success:
+      detail: "メールアドレスが存在する場合、再設定リンクを送信しました。"
+    error:
+      title: "パスワード再設定を開始できませんでした"
+    validation:
+      email_required: "メールアドレスを入力してください。"
+  reset_password:
+    title: "新しいパスワードを設定"
+    fields:
+      password: "新しいパスワード"
+    actions:
+      submit: "パスワードを更新"
+      submitting: "更新中..."
+      go_to_login: "ログインへ移動"
+    success:
+      title: "パスワードを更新しました"
+    error:
+      title: "パスワードを更新できませんでした"
+    validation:
+      invalid_token: "再設定リンクが無効です。"
+      password_required: "新しいパスワードを入力してください。"
+  mfa:
+    title: "多要素認証"
+    status:
+      enabled: "MFA は有効です。"
+      pending: "MFA 設定は有効化待ちです。"
+      disabled: "MFA は無効です。"
+    actions:
+      issue_secret: "設定シークレットを発行"
+      registering: "設定情報を準備中..."
+      refresh_status: "状態を再取得"
+      activate: "MFA を有効化"
+      activating: "有効化中..."
+    verify:
+      title: "設定を確認"
+      qr_alt: "MFA 設定用 QR コード"
+      code_label: "認証コード"
+      code_placeholder: "6 桁のコードを入力"
+    feedback:
+      register_success: "MFA 設定情報を生成しました。"
+      activate_success: "MFA を有効化しました。"
+    validation:
+      code_required: "6 桁の認証コードを入力してください。"
+  settings:
+    tabs:
+      password: "パスワード"
+      mfa: "MFA"
+      sessions: "セッション"
+      subject_request: "本人対応申請"
+    password:
+      title: "パスワード変更"
+      fields:
+        current: "現在のパスワード"
+        new: "新しいパスワード"
+        confirm: "新しいパスワード（確認）"
+      actions:
+        submit: "パスワードを更新"
+        updating: "更新中..."
+      errors:
+        current_incorrect: "現在のパスワードが正しくありません。"
+        min_length: "12 文字以上で入力してください。"
+        uppercase: "大文字を 1 文字以上含めてください。"
+        lowercase: "小文字を 1 文字以上含めてください。"
+        number: "数字を 1 文字以上含めてください。"
+        symbol: "記号を 1 文字以上含めてください。"
+        too_common: "推測されやすいパスワードは使用できません。"
+        must_differ: "現在のパスワードとは異なる値を指定してください。"
+        update_failed: "パスワードの更新に失敗しました。"
+        confirm_mismatch: "確認用パスワードが一致しません。"
+      feedback:
+        updated: "パスワードを更新しました。"
+      policy:
+        helper: "以下の条件を満たす強力なパスワードを設定してください。"
+        requirements:
+          min_length: "12 文字以上"
+          uppercase: "大文字"
+          lowercase: "小文字"
+          number: "数字"
+          symbol: "記号"
+          avoid_common: "よく使われるパスワードを避ける"
+      strength:
+        title: "パスワード強度"
+        labels:
+          weak: "弱い"
+          fair: "普通"
+          good: "良い"
+          strong: "強い"
+        hints:
+          complete: "すべてのパスワード要件を満たしています。"
+          missing: "不足: %{requirements}"
+      expiry:
+        expires_today: "パスワードは本日失効します。"
+        remaining_days: "パスワード失効まで %{days} 日です。"
+    sessions:
+      title: "アクティブセッション"
+      description: "サインイン中の端末を確認し、必要に応じてログアウトできます。"
+      empty: "アクティブなセッションはありません。"
+      actions:
+        current: "現在のセッション"
+        logout: "ログアウト"
+      feedback:
+        revoked: "セッションをログアウトしました。"
+      fields:
+        started_at: "開始日時"
+        last_seen_at: "最終利用"
+        expires_at: "有効期限"
+        not_recorded: "記録なし"
+      status:
+        current: "現在"
+        other: "他の端末"
+      device:
+        unknown: "不明な端末"
+    subject_request:
+      title: "本人対応申請"
+      fields:
+        type: "申請種別"
+        details: "詳細"
+      types:
+        access: "開示請求"
+        rectify: "訂正請求"
+        delete: "削除請求"
+        stop: "利用停止請求"
+      status:
+        pending: "承認待ち"
+        approved: "承認済み"
+        rejected: "却下"
+        cancelled: "取消"
+      actions:
+        submit: "申請を送信"
+        submitting: "送信中..."
+        cancel: "申請を取消"
+      feedback:
+        submitted: "本人対応申請を送信しました。"
+        cancelled: "本人対応申請を取消しました。"
+      errors:
+        type_required: "申請種別を選択してください。"
+      history:
+        title: "申請履歴"
+        columns:
+          type: "種別"
+          status: "ステータス"
+          created_at: "作成日時"
+          actions: "操作"
+  admin:
+    title: "管理者ツール"
+    description: "週次休日や申請、勤怠、MFA、祝日管理をまとめて実行できます。"
+    unauthorized: "このページは管理者以上の権限が必要です。"
+    validation:
+      request_id_missing: "リクエストIDを取得できませんでした。"
+  admin_users:
+    roles:
+      admin: "管理者"
+      employee: "従業員"
+      member: "メンバー"
+    errors:
+      system_admin_only: "この操作はシステム管理者のみ実行できます。"
+    messages:
+      invite_success: "%{username} を招待しました。"
+      reset_mfa_success: "選択中ユーザーのMFAをリセットしました。"
+      delete_user_success: "選択中ユーザーをアーカイブしました。"
+      unlock_user_success: "選択中ユーザーのロックを解除しました。"
+      revoke_session_success: "選択中セッションを無効化しました。"
+      restore_archived_user_success: "アーカイブ済みユーザーを復元しました。"
+      delete_archived_user_success: "アーカイブ済みユーザーを完全削除しました。"
+    layout:
+      title: "ユーザー追加"
+      description: "ユーザー招待、アカウント状態の確認、アーカイブ済みアカウントの管理を行います。"
+      unauthorized: "このページはシステム管理者権限が必要です。"
+    panel:
+      pii_masked: "表示中の個人情報はマスキングされています。"
+      tabs:
+        active: "有効ユーザー"
+        archived: "アーカイブ済み"
+    invite_form:
+      title: "ユーザー招待"
+      description: "新しいアカウントを作成し、初期権限を設定します。"
+      errors:
+        system_admin_only: "ユーザー招待はシステム管理者のみ実行できます。"
+        required_fields: "必須項目をすべて入力してください。"
+      fields:
+        username: "ユーザー名"
+        full_name: "氏名"
+        email: "メールアドレス"
+        password: "初期パスワード"
+        role: "ロール"
+        system_admin: "システム管理者権限を付与"
+      placeholders:
+        username: "ユーザー名を入力"
+        full_name: "氏名を入力"
+        email: "メールアドレスを入力"
+      actions:
+        submit: "招待を送信"
+        submitting: "招待を送信中..."
+    list:
+      title: "有効ユーザー"
+      description: "ユーザーを選択して詳細確認や操作を行います。"
+      empty: "有効ユーザーは見つかりませんでした。"
+      columns:
+        username: "ユーザー名"
+        full_name: "氏名"
+        role: "ロール"
+        system_admin: "システム管理者"
+        mfa: "MFA"
+        status: "状態"
+      values:
+        yes: "はい"
+        no: "いいえ"
+        enabled: "有効"
+        disabled: "無効"
+        active: "有効"
+        locked: "ロック中"
+    detail:
+      self_delete_blocked: "自分自身のアカウントはアーカイブまたは削除できません。"
+      delete_section:
+        title: "アカウント削除"
+      fields:
+        role: "ロール"
+        system_admin: "システム管理者"
+        mfa: "MFA"
+        account_status: "アカウント状態"
+      values:
+        enabled: "有効"
+        disabled: "無効"
+        registered: "登録済み"
+        unregistered: "未登録"
+        locked: "ロック中"
+        normal: "通常"
+      actions:
+        reset_mfa: "MFAをリセット"
+        reset_mfa_pending: "MFAをリセット中..."
+        unlock: "ロックを解除"
+        unlock_pending: "解除中..."
+        archive: "アーカイブ"
+        hard_delete: "完全削除"
+      confirm:
+        title: "アカウント削除の確認"
+        cancel: "キャンセル"
+        archive_message: "このユーザーをアーカイブしますか。"
+        hard_delete_message: "このユーザーを完全削除しますか。"
+        archive_confirm: "アーカイブする"
+        hard_delete_confirm: "完全削除する"
+      sessions:
+        title: "セッション"
+        description: "このユーザーの有効セッションを確認し、必要に応じて無効化します。"
+        empty: "セッションはありません。"
+        loading: "セッションを読み込み中..."
+        unknown_device: "不明なデバイス"
+        not_recorded: "記録なし"
+        current: "現在のセッション"
+        other: "他のセッション"
+        current_button: "現在"
+        revoke: "無効化"
+        started_at: "開始日時"
+        last_seen_at: "最終アクセス"
+        expires_at: "有効期限"
+    archived_list:
+      loading: "アーカイブ済みユーザーを読み込み中..."
+      empty: "アーカイブ済みユーザーは見つかりませんでした。"
+      archived_at: "アーカイブ日時"
+    archived_detail:
+      fields:
+        role: "ロール"
+        system_admin: "システム管理者"
+        archived_at: "アーカイブ日時"
+      values:
+        enabled: "有効"
+        disabled: "無効"
+      actions:
+        restore: "ユーザーを復元"
+        restoring: "復元中..."
+        delete: "完全削除"
+      confirm:
+        title: "完全削除の確認"
+        message: "このアーカイブ済みユーザーを完全削除しますか。"
+        confirm: "削除する"
+        deleting: "削除中..."
+        cancel: "キャンセル"
+  admin_audit_logs:
+    title: "監査ログ"
+    description: "システム操作の履歴を確認・エクスポートします。"
+    unauthorized: "監査ログを閲覧する権限がありません。"
+    masked_notice: "表示中の監査ログは個人情報がマスキングされています。"
+    empty:
+      title: "ログがありません"
+      description: "検索条件に一致する監査ログは見つかりませんでした。"
+    filters:
+      from: "日時 (From)"
+      to: "日時 (To)"
+      user_id: "ユーザーID"
+      event_type: "イベントタイプ"
+      result: "結果"
+      per_page: "表示件数"
+      all: "すべて"
+      per_page_10: "10件"
+      per_page_20: "20件"
+      per_page_50: "50件"
+    actions:
+      clear_filters: "フィルタをクリア"
+      export: "JSONエクスポート"
+      exporting: "エクスポート中..."
+    results:
+      success: "成功"
+      failure: "失敗"
+    table:
+      occurred_at: "日時"
+      user: "ユーザー"
+      event: "イベント"
+      target: "対象"
+      result: "結果"
+      metadata: "詳細"
+      request_id: "リクエストID"
+      error: "エラー"
+    pagination:
+      previous: "前へ"
+      next: "次へ"
+      page: "ページ"
+    metadata:
+      title: "メタデータ詳細"
+    events:
+      auth_login: "ログイン"
+      auth_logout: "ログアウト"
+      auth_refresh: "トークン更新"
+      mfa_activate: "MFA有効化"
+      mfa_disable: "MFA無効化"
+      mfa_register: "MFA登録"
+      mfa_setup: "MFAセットアップ"
+      password_change: "パスワード変更"
+      attendance_break_end: "休憩終了"
+      attendance_break_start: "休憩開始"
+      attendance_clock_in: "出勤打刻"
+      attendance_clock_out: "退勤打刻"
+      attendance_export: "勤怠データ出力"
+      request_cancel: "申請取消"
+      request_leave_create: "休暇申請作成"
+      request_overtime_create: "残業申請作成"
+      request_update: "申請更新"
+      subject_request_cancel: "本人確認申請取消"
+      subject_request_create: "本人確認申請作成"
+      consent_record: "同意記録"
+      admin_attendance_list: "勤怠一覧参照(管理者)"
+      admin_attendance_upsert: "勤怠修正(管理者)"
+      admin_audit_log_detail: "監査ログ詳細参照(管理者)"
+      admin_audit_log_export: "監査ログ出力(管理者)"
+      admin_audit_log_list: "監査ログ一覧参照(管理者)"
+      admin_break_force_end: "休憩強制終了(管理者)"
+      admin_export: "データ一括出力(管理者)"
+      admin_holiday_create: "祝日作成(管理者)"
+      admin_holiday_delete: "祝日削除(管理者)"
+      admin_holiday_google_fetch: "Googleカレンダー連携(管理者)"
+      admin_holiday_list: "祝日一覧参照(管理者)"
+      admin_mfa_reset: "MFAリセット(管理者)"
+      admin_request_approve: "申請承認(管理者)"
+      admin_request_detail: "申請詳細参照(管理者)"
+      admin_request_list: "申請一覧参照(管理者)"
+      admin_request_reject: "申請却下(管理者)"
+      admin_subject_request_approve: "本人確認承認(管理者)"
+      admin_subject_request_list: "本人確認一覧参照(管理者)"
+      admin_subject_request_reject: "本人確認却下(管理者)"
+      admin_user_create: "ユーザー作成(管理者)"
+      admin_user_list: "ユーザー一覧参照(管理者)"
+      admin_weekly_holiday_create: "週間祝日作成(管理者)"
+      admin_weekly_holiday_list: "週間祝日一覧参照(管理者)"
+  admin_export:
+    title: "データエクスポート (CSV)"
+    unauthorized: "このページは管理者以上の権限が必要です。"
+    masked_notice: "エクスポート対象の個人情報はマスキング済みです。"
+    fields:
+      user: "ユーザー"
+      username_placeholder: "username を直接入力"
+      user_select_placeholder: "ユーザーを選択してください"
+      start_date: "開始日"
+      end_date: "終了日"
+    scope:
+      all_users: "全ユーザー"
+      specific_user: "指定ユーザー"
+    actions:
+      export: "CSVをエクスポート"
+      exporting: "エクスポート中..."
+    preview:
+      label: "プレビュー (先頭2KB) - ファイル名: "
+    validation:
+      user_required: "指定ユーザーを選択してください。"
+      date_format: "日付は YYYY-MM-DD 形式で入力してください。"
+      date_order: "From は To 以前の日付を指定してください。"
   home: {}
 
 admin_components:
-  attendance: {}
-  holidays: {}
+  attendance:
+    fields:
+      target_date: "対象日"
+  holidays:
+    fields:
+      date: "日付"
+    filters:
+      from: "開始日"
+      to: "終了日"
   requests: {}
   subject_requests: {}
   system_tools: {}
-  user_select: {}
-  weekly_holidays: {}
+  user_select:
+    placeholder: "ユーザーを選択"
+    loading: "ユーザーを読み込み中..."
+    fetch_failed: "ユーザーの取得に失敗しました"
+    empty: "ユーザーが0件です"
+  weekly_holidays:
+    fields:
+      starts_on: "稼働開始日"
+      ends_on: "稼働終了日（任意）"
+    title: "週次休日"
 
 api:
   errors: {}
@@ -87,7 +787,12 @@ api:
   subject_requests: {}
 
 state:
-  attendance: {}
+  attendance:
+    holiday_reason:
+      public_holiday: "祝日"
+      weekly_holiday: "法定休日"
+      forced_holiday: "会社休日"
+      default: "休日"
   auth: {}
   config: {}
 

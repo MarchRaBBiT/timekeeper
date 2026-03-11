@@ -25,6 +25,13 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
         .await
 }
 
+async fn response_json(response: axum::response::Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    serde_json::from_slice(&bytes).expect("parse json")
+}
+
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());
     Router::new()
@@ -104,6 +111,8 @@ async fn test_change_password_with_incorrect_current_password_fails() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let json = response_json(response).await;
+    assert_eq!(json["code"], "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT");
 }
 
 #[tokio::test]
@@ -138,6 +147,8 @@ async fn test_change_password_same_as_current_fails() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = response_json(response).await;
+    assert_eq!(json["code"], "PASSWORD_CHANGE_MUST_DIFFER");
 }
 
 #[tokio::test]
@@ -172,6 +183,8 @@ async fn test_change_password_with_weak_password_fails() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = response_json(response).await;
+    assert_eq!(json["code"], "VALIDATION_ERROR");
 }
 
 #[tokio::test]

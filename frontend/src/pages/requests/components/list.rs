@@ -3,8 +3,8 @@ use crate::components::{
     confirm_dialog::ConfirmDialog, empty_state::EmptyState, error::InlineErrorMessage,
     layout::LoadingSpinner,
 };
-use crate::pages::requests::components::status_label::request_status_label;
-use crate::pages::requests::types::{RequestKind, RequestSummary};
+use crate::pages::requests::components::status_label::{request_kind_label, request_status_label};
+use crate::pages::requests::types::RequestSummary;
 use leptos::ev::KeyboardEvent;
 use leptos::*;
 
@@ -32,7 +32,7 @@ pub fn RequestsList(
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm overflow-hidden border border-border">
             <div class="px-8 py-6 border-b border-border">
-                <h3 class="text-xl font-display font-bold text-fg">{"申請一覧"}</h3>
+                <h3 class="text-xl font-display font-bold text-fg">{rust_i18n::t!("pages.requests.list.title")}</h3>
                 <Show when=move || message.get().error.is_some()>
                     <div class="mt-4">
                         <InlineErrorMessage error={Signal::derive(move || message.get().error)} />
@@ -55,14 +55,14 @@ pub fn RequestsList(
             <Show when=move || loading.get()>
                 <div class="p-12 flex flex-col items-center justify-center gap-4 text-fg-muted">
                     <LoadingSpinner />
-                    <span class="text-sm font-medium tracking-widest uppercase">{"データを取得中..."}</span>
+                    <span class="text-sm font-medium tracking-widest uppercase">{rust_i18n::t!("pages.requests.list.loading")}</span>
                 </div>
             </Show>
 
             <Show when=move || !loading.get() && summaries.get().is_empty() && error.get().is_none()>
                 <EmptyState
-                    title="表示できる申請がありません"
-                    description="左または上のフォームから新しい申請を送信できます"
+                    title={rust_i18n::t!("pages.requests.list.empty_title").into_owned()}
+                    description={rust_i18n::t!("pages.requests.list.empty_description").into_owned()}
                     icon=view! { <i class="fas fa-inbox text-4xl text-fg-muted"></i> }.into_view()
                 />
             </Show>
@@ -97,28 +97,24 @@ pub fn RequestsList(
                                 <div class="rounded-xl border border-border bg-surface-elevated p-4 space-y-3">
                                     <div class="flex items-center justify-between">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-status-neutral-bg text-status-neutral-text uppercase">
-                                            {match summary_value.kind {
-                                                RequestKind::Leave => "休暇",
-                                                RequestKind::Overtime => "残業",
-                                                RequestKind::AttendanceCorrection => "勤怠修正",
-                                            }}
+                                            {request_kind_label(summary_value.kind)}
                                         </span>
                                         <span class=format!("inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider {}", status_style)>
                                             {status_label.clone()}
                                         </span>
                                     </div>
                                     <div class="grid grid-cols-1 gap-2 text-sm">
-                                        <div><span class="text-fg-muted">{"申請ID: "}</span><span class="text-fg">{summary_value.id.clone()}</span></div>
-                                        <div><span class="text-fg-muted">{"期間 / 日付: "}</span><span class="text-fg font-bold">{primary_label.clone()}</span></div>
-                                        <div><span class="text-fg-muted">{"補足: "}</span><span class="text-fg">{secondary_label.clone()}</span></div>
-                                        <div><span class="text-fg-muted">{"提出日: "}</span><span class="text-fg">{submitted_at.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{rust_i18n::t!("common.labels.request_id")}{": "}</span><span class="text-fg">{summary_value.id.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{rust_i18n::t!("common.labels.period_or_date")}{": "}</span><span class="text-fg font-bold">{primary_label.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{rust_i18n::t!("pages.requests.list.secondary")}{": "}</span><span class="text-fg">{secondary_label.clone()}</span></div>
+                                        <div><span class="text-fg-muted">{rust_i18n::t!("pages.requests.list.submitted_at")}{": "}</span><span class="text-fg">{submitted_at.clone()}</span></div>
                                     </div>
                                     <div class="pt-1 flex items-center justify-between">
                                         <button
                                             class="text-link hover:text-link-hover font-bold text-sm"
                                             on:click=move |_| on_select.call(summary.get_value())
                                         >
-                                            {"詳細"}
+                                            {rust_i18n::t!("common.actions.details")}
                                         </button>
                                         <Show when=move || status_for_pending == "pending">
                                             <div class="flex gap-4">
@@ -127,14 +123,14 @@ pub fn RequestsList(
                                                     on:click=move |_| on_edit.call(summary.get_value())
                                                 >
                                                     <i class="fas fa-edit text-xs"></i>
-                                                    {"編集"}
+                                                    {rust_i18n::t!("common.actions.edit")}
                                                 </button>
                                                 <button
                                                     class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
                                                     on:click=move |_| on_cancel.call(summary.get_value())
                                                 >
                                                     <i class="fas fa-times-circle text-xs"></i>
-                                                    {"取消"}
+                                                    {rust_i18n::t!("common.actions.cancel")}
                                                 </button>
                                             </div>
                                         </Show>
@@ -153,12 +149,12 @@ pub fn RequestsList(
                     <table class="min-w-full divide-y divide-border">
                         <thead>
                             <tr class="bg-surface-muted">
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"種類"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"期間 / 日付"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"補足"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"ステータス"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"提出日"}</th>
-                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{"操作"}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("pages.requests.list.kind")}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("common.labels.period_or_date")}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("pages.requests.list.secondary")}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("common.labels.status")}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("pages.requests.list.submitted_at")}</th>
+                                <th class="px-8 py-4 text-left text-xs font-bold text-fg-muted uppercase tracking-widest">{rust_i18n::t!("common.labels.actions")}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-border bg-surface-elevated">
@@ -203,11 +199,7 @@ pub fn RequestsList(
                                         >
                                             <td class="px-8 py-5 whitespace-nowrap">
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-status-neutral-bg text-status-neutral-text uppercase">
-                                                    {match summary_value.kind {
-                                                        RequestKind::Leave => "休暇",
-                                                        RequestKind::Overtime => "残業",
-                                                        RequestKind::AttendanceCorrection => "勤怠修正",
-                                                    }}
+                                                    {request_kind_label(summary_value.kind)}
                                                 </span>
                                             </td>
                                             <td class="px-8 py-5 whitespace-nowrap text-sm font-bold text-fg">
@@ -235,7 +227,7 @@ pub fn RequestsList(
                                                             }
                                                         >
                                                             <i class="fas fa-edit text-xs"></i>
-                                                            {"編集"}
+                                                            {rust_i18n::t!("common.actions.edit")}
                                                         </button>
                                                         <button
                                                             class="text-action-danger-bg hover:text-action-danger-bg-hover font-bold flex items-center gap-1 transition-colors"
@@ -245,7 +237,7 @@ pub fn RequestsList(
                                                             }
                                                         >
                                                             <i class="fas fa-times-circle text-xs"></i>
-                                                            {"取消"}
+                                                            {rust_i18n::t!("common.actions.cancel")}
                                                         </button>
                                                     </div>
                                                 </Show>
@@ -266,8 +258,8 @@ pub fn RequestsList(
 
             <ConfirmDialog
                 is_open=Signal::derive(move || pending_cancel_request.get().is_some())
-                title="申請取消の確認"
-                message="本当にこの申請を取り消しますか？"
+                title={rust_i18n::t!("pages.requests.list.cancel_dialog.title").into_owned()}
+                message={rust_i18n::t!("pages.requests.list.cancel_dialog.message").into_owned()}
                 on_confirm=confirm_cancel_request
                 on_cancel=dismiss_cancel_dialog
                 destructive=true
@@ -280,7 +272,7 @@ pub fn RequestsList(
 mod host_tests {
     use super::*;
     use crate::pages::requests::utils::MessageState;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
     use serde_json::json;
 
     fn summary() -> RequestSummary {
@@ -297,6 +289,7 @@ mod host_tests {
 
     #[test]
     fn requests_list_renders_empty_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let (summaries, _) = create_signal(Vec::<RequestSummary>::new());
             let (loading, _) = create_signal(false);
@@ -314,11 +307,12 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("表示できる申請がありません"));
+        assert!(html.contains("No requests to display"));
     }
 
     #[test]
     fn requests_list_renders_rows() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let (summaries, _) = create_signal(vec![summary()]);
             let (loading, _) = create_signal(false);
@@ -336,9 +330,9 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("申請一覧"));
-        assert!(html.contains("承認待ち"));
-        assert!(html.contains("休暇"));
+        assert!(html.contains("Request List"));
+        assert!(html.contains("Pending"));
+        assert!(html.contains("Leave"));
     }
 
     #[test]

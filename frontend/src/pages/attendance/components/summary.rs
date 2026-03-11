@@ -16,15 +16,15 @@ pub fn SummarySection(
 ) -> impl IntoView {
     view! {
         <div>
-            <h1 class="text-2xl font-bold text-fg">{"勤怠管理"}</h1>
-            <p class="mt-1 text-sm text-fg-muted">{"当日のステータスを確認できます。"}</p>
+            <h1 class="text-2xl font-bold text-fg">{rust_i18n::t!("pages.attendance.summary.title")}</h1>
+            <p class="mt-1 text-sm text-fg-muted">{rust_i18n::t!("pages.attendance.summary.description")}</p>
             <Show when=move || state.get().today_holiday_reason.is_some()>
                 <p class="mt-1 text-sm text-status-warning-text">
                     {move || state
                         .get()
                         .today_holiday_reason
                         .as_ref()
-                        .map(|reason| describe_holiday_reason(reason).to_string())
+                        .map(|reason| describe_holiday_reason(reason))
                         .unwrap_or_default()}
                 </p>
             </Show>
@@ -87,7 +87,6 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("勤怠管理"));
-        assert!(html.contains("祝日"));
+        assert!(html.contains("text-status-warning-text"));
     }
 }

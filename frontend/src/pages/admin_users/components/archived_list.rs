@@ -16,7 +16,11 @@ pub fn ArchivedUserList(
                 when=move || loading.get()
                 fallback=move || {
                     view! {
-                        <Suspense fallback=move || view! { <p class="text-fg-muted">{"読み込み中..."}</p> }>
+                        <Suspense fallback=move || view! {
+                            <p class="text-fg-muted">
+                                {rust_i18n::t!("pages.admin_users.archived_list.loading")}
+                            </p>
+                        }>
                             {move || {
                                 archived_users_resource
                                     .get()
@@ -24,7 +28,7 @@ pub fn ArchivedUserList(
                                         Ok(users) if users.is_empty() => {
                                             view! {
                                                 <p class="text-fg-muted text-center py-8">
-                                                    {"退職ユーザーはいません。"}
+                                                    {rust_i18n::t!("pages.admin_users.archived_list.empty")}
                                                 </p>
                                             }
                                                 .into_view()
@@ -54,7 +58,11 @@ pub fn ArchivedUserList(
                                                                     </p>
                                                                 </div>
                                                                 <div class="text-right">
-                                                                    <p class="text-xs text-fg-muted">{"退職日"}</p>
+                                                                    <p class="text-xs text-fg-muted">
+                                                                        {rust_i18n::t!(
+                                                                            "pages.admin_users.archived_list.archived_at"
+                                                                        )}
+                                                                    </p>
                                                                     <p class="text-sm text-fg-muted">
                                                                         {user.archived_at.split('T').next().unwrap_or(&user.archived_at).to_string()}
                                                                     </p>
@@ -80,7 +88,9 @@ pub fn ArchivedUserList(
                     }
                 }
             >
-                <p class="text-fg-muted">{"読み込み中..."}</p>
+                <p class="text-fg-muted">
+                    {rust_i18n::t!("pages.admin_users.archived_list.loading")}
+                </p>
             </Show>
         </div>
     }
@@ -90,7 +100,7 @@ pub fn ArchivedUserList(
 mod host_tests {
     use super::*;
     use crate::api::ArchivedUserResponse;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     fn sample_user() -> ArchivedUserResponse {
         ArchivedUserResponse {
@@ -106,6 +116,7 @@ mod host_tests {
 
     #[test]
     fn archived_list_renders_empty_state() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
             resource.set(Ok(Vec::new()));
@@ -119,11 +130,12 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("退職ユーザーはいません。"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_users.archived_list.empty").as_ref()));
     }
 
     #[test]
     fn archived_list_renders_rows() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let resource = Resource::new(|| (true, 0u32), |_| async move { Ok(Vec::new()) });
             resource.set(Ok(vec![sample_user()]));
@@ -138,7 +150,9 @@ mod host_tests {
             }
         });
         assert!(html.contains("Archived User"));
-        assert!(html.contains("退職日"));
+        assert!(
+            html.contains(rust_i18n::t!("pages.admin_users.archived_list.archived_at").as_ref())
+        );
     }
 
     #[test]

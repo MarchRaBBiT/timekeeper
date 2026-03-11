@@ -74,7 +74,7 @@ pub fn RequestsPage() -> impl IntoView {
                             }
                             on:click=move |_| set_active_form.set(RequestFormKind::Leave)
                         >
-                            {"休暇申請"}
+                            {rust_i18n::t!("pages.requests.tabs.leave")}
                         </button>
                         <button
                             class=move || {
@@ -87,7 +87,7 @@ pub fn RequestsPage() -> impl IntoView {
                             }
                             on:click=move |_| set_active_form.set(RequestFormKind::AttendanceCorrection)
                         >
-                            {"勤怠修正"}
+                            {rust_i18n::t!("pages.requests.tabs.attendance_correction")}
                         </button>
                         <button
                             class=move || {
@@ -100,7 +100,7 @@ pub fn RequestsPage() -> impl IntoView {
                             }
                             on:click=move |_| set_active_form.set(RequestFormKind::Overtime)
                         >
-                            {"残業申請"}
+                            {rust_i18n::t!("pages.requests.tabs.overtime")}
                         </button>
                     </div>
                     <Show when=move || matches!(active_form.get(), RequestFormKind::Leave)>
@@ -179,15 +179,16 @@ pub fn RequestsPage() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_with_router_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_with_router_to_string};
 
     #[test]
     fn requests_page_renders_forms() {
+        let _locale = set_test_locale("en");
         let html =
             render_with_router_to_string("http://localhost/", move || view! { <RequestsPage /> });
-        assert!(html.contains("休暇申請"));
-        assert!(html.contains("残業申請"));
-        assert!(html.contains("勤怠修正"));
-        assert!(html.contains("申請一覧"));
+        assert!(html.contains("Leave Request"));
+        assert!(html.contains("Overtime Request"));
+        assert!(html.contains("Attendance Correction Request"));
+        assert!(html.contains("Requests"));
     }
 }

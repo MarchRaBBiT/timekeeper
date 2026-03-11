@@ -68,6 +68,15 @@ const LOGIN_FAILURE_JITTER_MIN_MS: u64 = 15;
 const LOGIN_FAILURE_JITTER_MAX_MS: u64 = 35;
 const LOGIN_FAILURE_REDIS_KEY_PREFIX: &str = "auth:login-failures:";
 const PASSWORD_EXPIRY_WARNING_WINDOW_DAYS: i64 = 7;
+const PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE: &str =
+    "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT";
+const PASSWORD_CHANGE_MIN_LENGTH_CODE: &str = "PASSWORD_CHANGE_MIN_LENGTH";
+const PASSWORD_CHANGE_UPPERCASE_CODE: &str = "PASSWORD_CHANGE_UPPERCASE";
+const PASSWORD_CHANGE_LOWERCASE_CODE: &str = "PASSWORD_CHANGE_LOWERCASE";
+const PASSWORD_CHANGE_NUMBER_CODE: &str = "PASSWORD_CHANGE_NUMBER";
+const PASSWORD_CHANGE_SYMBOL_CODE: &str = "PASSWORD_CHANGE_SYMBOL";
+const PASSWORD_CHANGE_TOO_COMMON_CODE: &str = "PASSWORD_CHANGE_TOO_COMMON";
+const PASSWORD_CHANGE_MUST_DIFFER_CODE: &str = "PASSWORD_CHANGE_MUST_DIFFER";
 const LOGIN_FAILURE_REDIS_SCRIPT: &str = r#"
 local key = KEYS[1]
 local threshold = tonumber(ARGV[1])
@@ -513,6 +522,7 @@ pub async fn update_profile(
             current_password,
             &user.password_hash,
             "Current password is incorrect",
+            None,
         )
         .await?;
     }
@@ -681,10 +691,11 @@ pub async fn change_password(
     crate::utils::security::verify_request_origin(&headers, &state.config)?;
     payload.validate()?;
     validate_password_complexity(&payload.new_password, &state.config)
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(map_change_password_policy_error)?;
     if payload.new_password == payload.current_password {
-        return Err(bad_request(
+        return Err(bad_request_with_code(
             "New password must differ from current password",
+            PASSWORD_CHANGE_MUST_DIFFER_CODE,
         ));
     }
 
@@ -692,6 +703,7 @@ pub async fn change_password(
         &payload.current_password,
         &user.password_hash,
         "Current password is incorrect",
+        Some(PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE),
     )
     .await?;
 
@@ -930,6 +942,7 @@ where
         &payload.password,
         &user.password_hash,
         "Invalid username or password",
+        None,
     )
     .await?;
     enforce_mfa(&user, payload.totp_code.as_deref(), config)?;
@@ -1297,6 +1310,7 @@ async fn verify_missing_user_login(candidate: &str) -> HandlerResult<()> {
         candidate,
         DUMMY_LOGIN_PASSWORD_HASH,
         "Invalid username or password",
+        None,
     )
     .await
 }
@@ -1313,18 +1327,57 @@ fn bad_request(message: impl Into<String>) -> AppError {
     AppError::BadRequest(message.into())
 }
 
+fn bad_request_with_code(message: impl Into<String>, code: impl Into<String>) -> AppError {
+    AppError::BadRequestWithCode {
+        message: message.into(),
+        code: code.into(),
+    }
+}
+
 fn unauthorized(message: impl Into<String>) -> AppError {
     AppError::Unauthorized(message.into())
+}
+
+fn unauthorized_with_code(message: impl Into<String>, code: impl Into<String>) -> AppError {
+    AppError::UnauthorizedWithCode {
+        message: message.into(),
+        code: code.into(),
+    }
 }
 
 fn internal_error(message: impl Into<String>) -> AppError {
     AppError::InternalServerError(anyhow::anyhow!(message.into()))
 }
 
+fn map_change_password_policy_error(error: anyhow::Error) -> AppError {
+    let message = error.to_string();
+    let code = if message.contains("at least") && message.contains("characters") {
+        Some(PASSWORD_CHANGE_MIN_LENGTH_CODE)
+    } else if message.contains("uppercase") {
+        Some(PASSWORD_CHANGE_UPPERCASE_CODE)
+    } else if message.contains("lowercase") {
+        Some(PASSWORD_CHANGE_LOWERCASE_CODE)
+    } else if message.contains("number") {
+        Some(PASSWORD_CHANGE_NUMBER_CODE)
+    } else if message.contains("symbol") {
+        Some(PASSWORD_CHANGE_SYMBOL_CODE)
+    } else if message.contains("too common") {
+        Some(PASSWORD_CHANGE_TOO_COMMON_CODE)
+    } else {
+        None
+    };
+
+    match code {
+        Some(code) => bad_request_with_code(message, code),
+        None => bad_request(message),
+    }
+}
+
 pub async fn ensure_password_matches(
     candidate: &str,
     expected_hash: &str,
     unauthorized_message: &'static str,
+    unauthorized_code: Option<&'static str>,
 ) -> HandlerResult<()> {
     let candidate = candidate.to_owned();
     let expected_hash = expected_hash.to_owned();
@@ -1335,7 +1388,10 @@ pub async fn ensure_password_matches(
     if matches {
         Ok(())
     } else {
-        Err(unauthorized(unauthorized_message))
+        Err(unauthorized_code.map_or_else(
+            || unauthorized(unauthorized_message),
+            |code| unauthorized_with_code(unauthorized_message, code),
+        ))
     }
 }
 
@@ -1423,14 +1479,18 @@ fn lockout_policy(config: &Config) -> LockoutPolicy {
 
 fn should_track_login_failure(err: &AppError) -> bool {
     match err {
-        AppError::Unauthorized(message) => message != "Password expired",
+        AppError::Unauthorized(message) | AppError::UnauthorizedWithCode { message, .. } => {
+            message != "Password expired"
+        }
         _ => false,
     }
 }
 
 fn genericize_login_error(err: AppError) -> AppError {
     match err {
-        AppError::Unauthorized(_) => unauthorized("Invalid username or password"),
+        AppError::Unauthorized(_) | AppError::UnauthorizedWithCode { .. } => {
+            unauthorized("Invalid username or password")
+        }
         other => other,
     }
 }
@@ -1793,7 +1853,7 @@ mod tests {
     #[tokio::test]
     async fn ensure_password_matches_accepts_correct_password() {
         let user = build_user();
-        ensure_password_matches("Secret123!", &user.password_hash, "invalid")
+        ensure_password_matches("Secret123!", &user.password_hash, "invalid", None)
             .await
             .expect("password should match");
     }
@@ -1801,7 +1861,7 @@ mod tests {
     #[tokio::test]
     async fn ensure_password_matches_rejects_wrong_password() {
         let user = build_user();
-        let err = ensure_password_matches("wrong", &user.password_hash, "invalid")
+        let err = ensure_password_matches("wrong", &user.password_hash, "invalid", None)
             .await
             .expect_err("should fail");
         assert!(matches!(err, AppError::Unauthorized(_)));

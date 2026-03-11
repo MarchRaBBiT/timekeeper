@@ -5,56 +5,163 @@ use wasm_bindgen::JsCast;
 pub const DEFAULT_AUDIT_LOGS_PER_PAGE: i64 = 20;
 
 pub const AUDIT_EVENT_TYPES: &[(&str, &str)] = &[
-    // 認証・アカウント
-    ("auth_login", "ログイン"),
-    ("auth_logout", "ログアウト"),
-    ("auth_refresh", "トークン更新"),
-    ("mfa_activate", "MFA有効化"),
-    ("mfa_disable", "MFA無効化"),
-    ("mfa_register", "MFA登録"),
-    ("mfa_setup", "MFAセットアップ"),
-    ("password_change", "パスワード変更"),
-    // 勤怠
-    ("attendance_break_end", "休憩終了"),
-    ("attendance_break_start", "休憩開始"),
-    ("attendance_clock_in", "出勤打刻"),
-    ("attendance_clock_out", "退勤打刻"),
-    ("attendance_export", "勤怠データ出力"),
-    // 申請
-    ("request_cancel", "申請取消"),
-    ("request_leave_create", "休暇申請作成"),
-    ("request_overtime_create", "残業申請作成"),
-    ("request_update", "申請更新"),
-    // 本人確認・データ要求
-    ("subject_request_cancel", "本人確認申請取消"),
-    ("subject_request_create", "本人確認申請作成"),
-    // 同意
-    ("consent_record", "同意記録"),
-    // 管理者操作
-    ("admin_attendance_list", "勤怠一覧参照(管理者)"),
-    ("admin_attendance_upsert", "勤怠修正(管理者)"),
-    ("admin_audit_log_detail", "監査ログ詳細参照(管理者)"),
-    ("admin_audit_log_export", "監査ログ出力(管理者)"),
-    ("admin_audit_log_list", "監査ログ一覧参照(管理者)"),
-    ("admin_break_force_end", "休憩強制終了(管理者)"),
-    ("admin_export", "データ一括出力(管理者)"),
-    ("admin_holiday_create", "祝日作成(管理者)"),
-    ("admin_holiday_delete", "祝日削除(管理者)"),
-    ("admin_holiday_google_fetch", "Googleカレンダー連携(管理者)"),
-    ("admin_holiday_list", "祝日一覧参照(管理者)"),
-    ("admin_mfa_reset", "MFAリセット(管理者)"),
-    ("admin_request_approve", "申請承認(管理者)"),
-    ("admin_request_detail", "申請詳細参照(管理者)"),
-    ("admin_request_list", "申請一覧参照(管理者)"),
-    ("admin_request_reject", "申請却下(管理者)"),
-    ("admin_subject_request_approve", "本人確認承認(管理者)"),
-    ("admin_subject_request_list", "本人確認一覧参照(管理者)"),
-    ("admin_subject_request_reject", "本人確認却下(管理者)"),
-    ("admin_user_create", "ユーザー作成(管理者)"),
-    ("admin_user_list", "ユーザー一覧参照(管理者)"),
-    ("admin_weekly_holiday_create", "週間祝日作成(管理者)"),
-    ("admin_weekly_holiday_list", "週間祝日一覧参照(管理者)"),
+    ("auth_login", "pages.admin_audit_logs.events.auth_login"),
+    ("auth_logout", "pages.admin_audit_logs.events.auth_logout"),
+    ("auth_refresh", "pages.admin_audit_logs.events.auth_refresh"),
+    ("mfa_activate", "pages.admin_audit_logs.events.mfa_activate"),
+    ("mfa_disable", "pages.admin_audit_logs.events.mfa_disable"),
+    ("mfa_register", "pages.admin_audit_logs.events.mfa_register"),
+    ("mfa_setup", "pages.admin_audit_logs.events.mfa_setup"),
+    (
+        "password_change",
+        "pages.admin_audit_logs.events.password_change",
+    ),
+    (
+        "attendance_break_end",
+        "pages.admin_audit_logs.events.attendance_break_end",
+    ),
+    (
+        "attendance_break_start",
+        "pages.admin_audit_logs.events.attendance_break_start",
+    ),
+    (
+        "attendance_clock_in",
+        "pages.admin_audit_logs.events.attendance_clock_in",
+    ),
+    (
+        "attendance_clock_out",
+        "pages.admin_audit_logs.events.attendance_clock_out",
+    ),
+    (
+        "attendance_export",
+        "pages.admin_audit_logs.events.attendance_export",
+    ),
+    (
+        "request_cancel",
+        "pages.admin_audit_logs.events.request_cancel",
+    ),
+    (
+        "request_leave_create",
+        "pages.admin_audit_logs.events.request_leave_create",
+    ),
+    (
+        "request_overtime_create",
+        "pages.admin_audit_logs.events.request_overtime_create",
+    ),
+    (
+        "request_update",
+        "pages.admin_audit_logs.events.request_update",
+    ),
+    (
+        "subject_request_cancel",
+        "pages.admin_audit_logs.events.subject_request_cancel",
+    ),
+    (
+        "subject_request_create",
+        "pages.admin_audit_logs.events.subject_request_create",
+    ),
+    (
+        "consent_record",
+        "pages.admin_audit_logs.events.consent_record",
+    ),
+    (
+        "admin_attendance_list",
+        "pages.admin_audit_logs.events.admin_attendance_list",
+    ),
+    (
+        "admin_attendance_upsert",
+        "pages.admin_audit_logs.events.admin_attendance_upsert",
+    ),
+    (
+        "admin_audit_log_detail",
+        "pages.admin_audit_logs.events.admin_audit_log_detail",
+    ),
+    (
+        "admin_audit_log_export",
+        "pages.admin_audit_logs.events.admin_audit_log_export",
+    ),
+    (
+        "admin_audit_log_list",
+        "pages.admin_audit_logs.events.admin_audit_log_list",
+    ),
+    (
+        "admin_break_force_end",
+        "pages.admin_audit_logs.events.admin_break_force_end",
+    ),
+    ("admin_export", "pages.admin_audit_logs.events.admin_export"),
+    (
+        "admin_holiday_create",
+        "pages.admin_audit_logs.events.admin_holiday_create",
+    ),
+    (
+        "admin_holiday_delete",
+        "pages.admin_audit_logs.events.admin_holiday_delete",
+    ),
+    (
+        "admin_holiday_google_fetch",
+        "pages.admin_audit_logs.events.admin_holiday_google_fetch",
+    ),
+    (
+        "admin_holiday_list",
+        "pages.admin_audit_logs.events.admin_holiday_list",
+    ),
+    (
+        "admin_mfa_reset",
+        "pages.admin_audit_logs.events.admin_mfa_reset",
+    ),
+    (
+        "admin_request_approve",
+        "pages.admin_audit_logs.events.admin_request_approve",
+    ),
+    (
+        "admin_request_detail",
+        "pages.admin_audit_logs.events.admin_request_detail",
+    ),
+    (
+        "admin_request_list",
+        "pages.admin_audit_logs.events.admin_request_list",
+    ),
+    (
+        "admin_request_reject",
+        "pages.admin_audit_logs.events.admin_request_reject",
+    ),
+    (
+        "admin_subject_request_approve",
+        "pages.admin_audit_logs.events.admin_subject_request_approve",
+    ),
+    (
+        "admin_subject_request_list",
+        "pages.admin_audit_logs.events.admin_subject_request_list",
+    ),
+    (
+        "admin_subject_request_reject",
+        "pages.admin_audit_logs.events.admin_subject_request_reject",
+    ),
+    (
+        "admin_user_create",
+        "pages.admin_audit_logs.events.admin_user_create",
+    ),
+    (
+        "admin_user_list",
+        "pages.admin_audit_logs.events.admin_user_list",
+    ),
+    (
+        "admin_weekly_holiday_create",
+        "pages.admin_audit_logs.events.admin_weekly_holiday_create",
+    ),
+    (
+        "admin_weekly_holiday_list",
+        "pages.admin_audit_logs.events.admin_weekly_holiday_list",
+    ),
 ];
+
+pub fn audit_event_label(event_type: &str) -> String {
+    AUDIT_EVENT_TYPES
+        .iter()
+        .find(|(code, _)| *code == event_type)
+        .map(|(_, key)| rust_i18n::t!(*key).into_owned())
+        .unwrap_or_else(|| event_type.to_string())
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AuditLogFilters {

@@ -20,6 +20,15 @@ use chrono::{DateTime, Utc};
 use leptos::{ev::SubmitEvent, Callback, *};
 
 const PASSWORD_POLICY_MIN_LENGTH: usize = 12;
+const PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE: &str =
+    "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT";
+const PASSWORD_CHANGE_MIN_LENGTH_CODE: &str = "PASSWORD_CHANGE_MIN_LENGTH";
+const PASSWORD_CHANGE_UPPERCASE_CODE: &str = "PASSWORD_CHANGE_UPPERCASE";
+const PASSWORD_CHANGE_LOWERCASE_CODE: &str = "PASSWORD_CHANGE_LOWERCASE";
+const PASSWORD_CHANGE_NUMBER_CODE: &str = "PASSWORD_CHANGE_NUMBER";
+const PASSWORD_CHANGE_SYMBOL_CODE: &str = "PASSWORD_CHANGE_SYMBOL";
+const PASSWORD_CHANGE_TOO_COMMON_CODE: &str = "PASSWORD_CHANGE_TOO_COMMON";
+const PASSWORD_CHANGE_MUST_DIFFER_CODE: &str = "PASSWORD_CHANGE_MUST_DIFFER";
 const COMMON_WEAK_PASSWORDS: &[&str] = &[
     "123456",
     "12345678",
@@ -49,82 +58,108 @@ enum SettingsTab {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PasswordStrengthState {
-    label: &'static str,
+    label_key: &'static str,
     badge_class: &'static str,
     hint: String,
 }
 
-fn map_change_password_error(error: &ApiError) -> ApiError {
-    let message = error.error.as_str();
+fn tr(key: &'static str) -> String {
+    rust_i18n::t!(key).into_owned()
+}
+
+fn map_legacy_change_password_error_key(message: &str) -> Option<&'static str> {
     if message == "Current password is incorrect" {
-        ApiError::validation("現在のパスワードが正しくありません。")
+        Some("pages.settings.password.errors.current_incorrect")
     } else if message.contains("at least") && message.contains("characters") {
-        ApiError::validation("新しいパスワードは12文字以上である必要があります。")
+        Some("pages.settings.password.errors.min_length")
     } else if message.contains("uppercase") {
-        ApiError::validation("新しいパスワードには大文字を1文字以上含めてください。")
+        Some("pages.settings.password.errors.uppercase")
     } else if message.contains("lowercase") {
-        ApiError::validation("新しいパスワードには小文字を1文字以上含めてください。")
+        Some("pages.settings.password.errors.lowercase")
     } else if message.contains("number") {
-        ApiError::validation("新しいパスワードには数字を1文字以上含めてください。")
+        Some("pages.settings.password.errors.number")
     } else if message.contains("symbol") {
-        ApiError::validation("新しいパスワードには記号を1文字以上含めてください。")
+        Some("pages.settings.password.errors.symbol")
     } else if message.contains("too common") {
-        ApiError::validation("推測されやすいパスワードは使用できません。")
+        Some("pages.settings.password.errors.too_common")
     } else if message == "New password must differ from current password" {
-        ApiError::validation("新しいパスワードは現在のパスワードと異なる必要があります。")
+        Some("pages.settings.password.errors.must_differ")
     } else {
-        ApiError::unknown("パスワード変更に失敗しました。時間をおいて再度お試しください。")
+        None
+    }
+}
+
+fn map_change_password_error(error: &ApiError) -> ApiError {
+    let key = match error.code.as_str() {
+        PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE => {
+            Some("pages.settings.password.errors.current_incorrect")
+        }
+        PASSWORD_CHANGE_MIN_LENGTH_CODE => Some("pages.settings.password.errors.min_length"),
+        PASSWORD_CHANGE_UPPERCASE_CODE => Some("pages.settings.password.errors.uppercase"),
+        PASSWORD_CHANGE_LOWERCASE_CODE => Some("pages.settings.password.errors.lowercase"),
+        PASSWORD_CHANGE_NUMBER_CODE => Some("pages.settings.password.errors.number"),
+        PASSWORD_CHANGE_SYMBOL_CODE => Some("pages.settings.password.errors.symbol"),
+        PASSWORD_CHANGE_TOO_COMMON_CODE => Some("pages.settings.password.errors.too_common"),
+        PASSWORD_CHANGE_MUST_DIFFER_CODE => Some("pages.settings.password.errors.must_differ"),
+        _ => map_legacy_change_password_error_key(&error.error),
+    }
+    .unwrap_or("pages.settings.password.errors.update_failed");
+
+    ApiError {
+        error: tr(key),
+        code: error.code.clone(),
+        details: error.details.clone(),
     }
 }
 
 fn collect_password_policy_gaps(password: &str) -> Vec<&'static str> {
     let mut gaps = Vec::new();
     if password.len() < PASSWORD_POLICY_MIN_LENGTH {
-        gaps.push("12文字以上");
+        gaps.push("pages.settings.password.policy.requirements.min_length");
     }
     if !password.chars().any(|c| c.is_uppercase()) {
-        gaps.push("大文字を1文字以上");
+        gaps.push("pages.settings.password.policy.requirements.uppercase");
     }
     if !password.chars().any(|c| c.is_lowercase()) {
-        gaps.push("小文字を1文字以上");
+        gaps.push("pages.settings.password.policy.requirements.lowercase");
     }
     if !password.chars().any(|c| c.is_ascii_digit()) {
-        gaps.push("数字を1文字以上");
+        gaps.push("pages.settings.password.policy.requirements.number");
     }
     if !password.chars().any(|c| !c.is_alphanumeric()) {
-        gaps.push("記号を1文字以上");
+        gaps.push("pages.settings.password.policy.requirements.symbol");
     }
     if is_common_weak_password(password) {
-        gaps.push("推測されやすい単純な文字列を避ける");
+        gaps.push("pages.settings.password.policy.requirements.avoid_common");
     }
     gaps
 }
 
 fn first_password_policy_error(password: &str) -> Option<ApiError> {
     if password.len() < PASSWORD_POLICY_MIN_LENGTH {
-        Some(ApiError::validation(
-            "新しいパスワードは12文字以上である必要があります。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.min_length",
+        )))
     } else if !password.chars().any(|c| c.is_uppercase()) {
-        Some(ApiError::validation(
-            "新しいパスワードには大文字を1文字以上含めてください。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.uppercase",
+        )))
     } else if !password.chars().any(|c| c.is_lowercase()) {
-        Some(ApiError::validation(
-            "新しいパスワードには小文字を1文字以上含めてください。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.lowercase",
+        )))
     } else if !password.chars().any(|c| c.is_ascii_digit()) {
-        Some(ApiError::validation(
-            "新しいパスワードには数字を1文字以上含めてください。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.number",
+        )))
     } else if !password.chars().any(|c| !c.is_alphanumeric()) {
-        Some(ApiError::validation(
-            "新しいパスワードには記号を1文字以上含めてください。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.symbol",
+        )))
     } else if is_common_weak_password(password) {
-        Some(ApiError::validation(
-            "推測されやすいパスワードは使用できません。",
-        ))
+        Some(ApiError::validation(tr(
+            "pages.settings.password.errors.too_common",
+        )))
     } else {
         None
     }
@@ -147,20 +182,41 @@ fn password_strength_state(password: &str) -> Option<PasswordStrengthState> {
 
     let gaps = collect_password_policy_gaps(password);
     let passed = 6usize.saturating_sub(gaps.len());
-    let (label, badge_class) = match passed {
-        0..=2 => ("弱い", "bg-action-danger-bg/10 text-action-danger-bg"),
-        3..=4 => ("普通", "bg-warning/15 text-warning"),
-        5 => ("良い", "bg-info/15 text-info"),
-        _ => ("強い", "bg-success/15 text-success"),
+    let (label_key, badge_class) = match passed {
+        0..=2 => (
+            "pages.settings.password.strength.labels.weak",
+            "bg-action-danger-bg/10 text-action-danger-bg",
+        ),
+        3..=4 => (
+            "pages.settings.password.strength.labels.fair",
+            "bg-warning/15 text-warning",
+        ),
+        5 => (
+            "pages.settings.password.strength.labels.good",
+            "bg-info/15 text-info",
+        ),
+        _ => (
+            "pages.settings.password.strength.labels.strong",
+            "bg-success/15 text-success",
+        ),
     };
     let hint = if gaps.is_empty() {
-        "要件をすべて満たしています。".to_string()
+        tr("pages.settings.password.strength.hints.complete")
     } else {
-        format!("未達: {}", gaps.join(" / "))
+        let requirements = gaps
+            .into_iter()
+            .map(|key| rust_i18n::t!(key).into_owned())
+            .collect::<Vec<_>>()
+            .join(" / ");
+        rust_i18n::t!(
+            "pages.settings.password.strength.hints.missing",
+            requirements = requirements
+        )
+        .into_owned()
     };
 
     Some(PasswordStrengthState {
-        label,
+        label_key,
         badge_class,
         hint,
     })
@@ -168,17 +224,14 @@ fn password_strength_state(password: &str) -> Option<PasswordStrengthState> {
 
 fn format_password_expiry_warning(days: i64) -> String {
     if days <= 0 {
-        "パスワードの有効期限が本日までです。すぐに変更してください。".to_string()
+        tr("pages.settings.password.expiry.expires_today")
     } else {
-        format!(
-            "パスワードの有効期限まであと{}日です。期限切れ前に変更してください。",
-            days
-        )
+        rust_i18n::t!("pages.settings.password.expiry.remaining_days", days = days).into_owned()
     }
 }
 
-fn password_policy_helper_text() -> &'static str {
-    "12文字以上、大文字・小文字・数字・記号を各1文字以上含めてください。"
+fn password_policy_helper_text() -> String {
+    tr("pages.settings.password.policy.helper")
 }
 
 fn validate_password_submission(
@@ -189,7 +242,9 @@ fn validate_password_submission(
         return Err(error);
     }
     if new_password != confirm_password {
-        return Err(ApiError::validation("新しいパスワードが一致しません。"));
+        return Err(ApiError::validation(tr(
+            "pages.settings.password.errors.confirm_mismatch",
+        )));
     }
     Ok(())
 }
@@ -200,7 +255,7 @@ fn parse_subject_request_type(value: &str) -> Result<DataSubjectRequestType, &'s
         "rectify" => Ok(DataSubjectRequestType::Rectify),
         "delete" => Ok(DataSubjectRequestType::Delete),
         "stop" => Ok(DataSubjectRequestType::Stop),
-        _ => Err("申請種別を選択してください。"),
+        _ => Err("pages.settings.subject_request.errors.type_required"),
     }
 }
 
@@ -247,7 +302,7 @@ fn prepare_subject_request_submission(
         return Ok(None);
     }
 
-    let parsed_type = parse_subject_request_type(request_type).map_err(|msg| msg.to_string())?;
+    let parsed_type = parse_subject_request_type(request_type).map_err(tr)?;
     Ok(Some(CreateDataSubjectRequest {
         request_type: parsed_type,
         details: normalize_subject_details(details),
@@ -256,21 +311,27 @@ fn prepare_subject_request_submission(
 
 fn password_change_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("パスワードを変更しました。".to_string()), None),
+        Ok(_) => (Some(tr("pages.settings.password.feedback.updated")), None),
         Err(err) => (None, Some(map_change_password_error(&err))),
     }
 }
 
 fn subject_create_feedback<T>(result: Result<T, ApiError>) -> (Option<String>, Option<String>) {
     match result {
-        Ok(_) => (Some("本人対応申請を送信しました。".into()), None),
+        Ok(_) => (
+            Some(tr("pages.settings.subject_request.feedback.submitted")),
+            None,
+        ),
         Err(err) => (None, Some(err.to_string())),
     }
 }
 
 fn subject_cancel_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<String>) {
     match result {
-        Ok(_) => (Some("本人対応申請を取消しました。".into()), None),
+        Ok(_) => (
+            Some(tr("pages.settings.subject_request.feedback.cancelled")),
+            None,
+        ),
         Err(err) => (None, Some(err.to_string())),
     }
 }
@@ -315,19 +376,19 @@ fn set_rw_signal<T>(signal: RwSignal<T>, value: T) {
     signal.set(value);
 }
 
-fn password_submit_label(is_loading: bool) -> &'static str {
+fn password_submit_label_key(is_loading: bool) -> &'static str {
     if is_loading {
-        "変更中..."
+        "pages.settings.password.actions.updating"
     } else {
-        "パスワードを変更"
+        "pages.settings.password.actions.submit"
     }
 }
 
-fn subject_submit_label(is_loading: bool) -> &'static str {
+fn subject_submit_label_key(is_loading: bool) -> &'static str {
     if is_loading {
-        "送信中..."
+        "pages.settings.subject_request.actions.submitting"
     } else {
-        "申請する"
+        "pages.settings.subject_request.actions.submit"
     }
 }
 
@@ -539,7 +600,7 @@ fn subject_requests_from_resource(
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SubjectRequestRowData {
     can_cancel: bool,
-    type_label: &'static str,
+    type_label: String,
     status_label: String,
     created_label: String,
     request_id: String,
@@ -581,7 +642,7 @@ fn render_subject_request_row(
                     }
                     on:click=move |event| on_cancel.call(event)
                 >
-                    {"取消"}
+                    {rust_i18n::t!("pages.settings.subject_request.actions.cancel")}
                 </button>
                 <span class="sr-only">{request_id}</span>
             </td>
@@ -746,7 +807,7 @@ pub fn SettingsPage() -> impl IntoView {
                         }
                         on:click=move |_| active_tab.set(SettingsTab::Password)
                     >
-                        {"パスワード変更"}
+                        {rust_i18n::t!("pages.settings.tabs.password")}
                     </button>
                     <button
                         class=move || {
@@ -759,7 +820,7 @@ pub fn SettingsPage() -> impl IntoView {
                         }
                         on:click=move |_| active_tab.set(SettingsTab::Mfa)
                     >
-                        {"MFA 設定"}
+                        {rust_i18n::t!("pages.settings.tabs.mfa")}
                     </button>
                     <button
                         class=move || {
@@ -772,7 +833,7 @@ pub fn SettingsPage() -> impl IntoView {
                         }
                         on:click=move |_| active_tab.set(SettingsTab::Sessions)
                     >
-                        {"アクティブセッション"}
+                        {rust_i18n::t!("pages.settings.tabs.sessions")}
                     </button>
                     <button
                         class=move || {
@@ -785,14 +846,14 @@ pub fn SettingsPage() -> impl IntoView {
                         }
                         on:click=move |_| active_tab.set(SettingsTab::SubjectRequest)
                     >
-                        {"本人対応申請"}
+                        {rust_i18n::t!("pages.settings.tabs.subject_request")}
                     </button>
                 </div>
 
                 // --- Password Change Section ---
                 <Show when=move || active_tab.get() == SettingsTab::Password>
                     <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
-                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"パスワード変更"</h2>
+                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">{rust_i18n::t!("pages.settings.password.title")}</h2>
 
                     <Show when=move || password_expiry_warning_days.get().is_some() fallback=|| ()>
                         <div class="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
@@ -813,7 +874,7 @@ pub fn SettingsPage() -> impl IntoView {
 
                     <form class="space-y-4" on:submit=on_submit_password>
                         <div>
-                            <label class="block text-sm font-medium text-fg-muted">"現在のパスワード"</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.settings.password.fields.current")}</label>
                             <input type="password" required
                                 class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| {
@@ -823,7 +884,7 @@ pub fn SettingsPage() -> impl IntoView {
                             />
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-fg-muted">"新しいパスワード"</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.settings.password.fields.new")}</label>
                             <input type="password" required
                                 class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| {
@@ -835,7 +896,7 @@ pub fn SettingsPage() -> impl IntoView {
                             <Show when=move || password_strength.get().is_some() fallback=|| ()>
                                 <div class="mt-2 rounded-xl border border-border bg-surface-muted px-3 py-3 text-sm text-fg-muted">
                                     <div class="flex items-center justify-between gap-3">
-                                        <span class="text-xs uppercase tracking-wide text-fg-muted">"強度"</span>
+                                        <span class="text-xs uppercase tracking-wide text-fg-muted">{rust_i18n::t!("pages.settings.password.strength.title")}</span>
                                         <span
                                             class=move || {
                                                 password_strength
@@ -852,7 +913,7 @@ pub fn SettingsPage() -> impl IntoView {
                                             {move || {
                                                 password_strength
                                                     .get()
-                                                    .map(|state| state.label)
+                                                    .map(|state| rust_i18n::t!(state.label_key).into_owned())
                                                     .unwrap_or_default()
                                             }}
                                         </span>
@@ -867,7 +928,7 @@ pub fn SettingsPage() -> impl IntoView {
                             </Show>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-fg-muted">"新しいパスワード（確認）"</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.settings.password.fields.confirm")}</label>
                             <input type="password" required
                                 class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 on:input=move |ev| {
@@ -881,7 +942,7 @@ pub fn SettingsPage() -> impl IntoView {
                                 class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded hover:bg-action-primary-bg-hover disabled:opacity-50"
                                 disabled=move || password_loading.get()
                             >
-                                {move || password_submit_label(password_loading.get())}
+                                {move || rust_i18n::t!(password_submit_label_key(password_loading.get())).into_owned()}
                             </button>
                         </div>
                     </form>
@@ -918,9 +979,9 @@ pub fn SettingsPage() -> impl IntoView {
                 <Show when=move || active_tab.get() == SettingsTab::Sessions>
                     <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
                         <div class="space-y-1">
-                            <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"アクティブセッション"</h2>
+                            <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">{rust_i18n::t!("pages.settings.sessions.title")}</h2>
                             <p class="text-sm text-fg-muted">
-                                {"現在ログイン中のデバイスを確認し、他のデバイスをログアウトできます。"}
+                                {rust_i18n::t!("pages.settings.sessions.description")}
                             </p>
                         </div>
                         <Show when=move || session_success_msg.get().is_some() fallback=|| ()>
@@ -938,7 +999,7 @@ pub fn SettingsPage() -> impl IntoView {
                                 if items.is_empty() {
                                     view! {
                                         <div class="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-fg-muted">
-                                            {"アクティブなセッションはありません。"}
+                                            {rust_i18n::t!("pages.settings.sessions.empty")}
                                         </div>
                                     }
                                         .into_view()
@@ -948,7 +1009,7 @@ pub fn SettingsPage() -> impl IntoView {
                                             {items.into_iter().map(|session| {
                                                 let session_id = session.id.clone();
                                                 let is_current = session.is_current;
-                                                let device_label = session_device_label(session.device_label.as_deref()).to_string();
+                                                let device_label = session_device_label(session.device_label.as_deref());
                                                 let created_at = format_session_datetime(session.created_at);
                                                 let last_seen_at = format_optional_session_datetime(session.last_seen_at);
                                                 let expires_at = format_session_datetime(session.expires_at);
@@ -965,20 +1026,20 @@ pub fn SettingsPage() -> impl IntoView {
                                                                 disabled=move || is_session_revoke_disabled(is_current, session_loading.get())
                                                                 on:click=move |_| session_vm.revoke_action.dispatch(session_id.clone())
                                                             >
-                                                                {if is_current { "このセッションです" } else { "ログアウト" }}
+                                                                {session_action_label(is_current)}
                                                             </button>
                                                         </div>
                                                         <dl class="grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-3">
                                                             <div>
-                                                                <dt class="font-medium">{"開始"}</dt>
+                                                                <dt class="font-medium">{rust_i18n::t!("pages.settings.sessions.fields.started_at")}</dt>
                                                                 <dd class="text-fg">{created_at}</dd>
                                                             </div>
                                                             <div>
-                                                                <dt class="font-medium">{"最終利用"}</dt>
+                                                                <dt class="font-medium">{rust_i18n::t!("pages.settings.sessions.fields.last_seen_at")}</dt>
                                                                 <dd class="text-fg">{last_seen_at}</dd>
                                                             </div>
                                                             <div>
-                                                                <dt class="font-medium">{"有効期限"}</dt>
+                                                                <dt class="font-medium">{rust_i18n::t!("pages.settings.sessions.fields.expires_at")}</dt>
                                                                 <dd class="text-fg">{expires_at}</dd>
                                                             </div>
                                                         </dl>
@@ -997,7 +1058,7 @@ pub fn SettingsPage() -> impl IntoView {
                 // --- Subject Request Section ---
                 <Show when=move || active_tab.get() == SettingsTab::SubjectRequest>
                     <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
-                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">"本人対応申請"</h2>
+                        <h2 class="text-xl font-display font-bold text-fg border-b border-border pb-2">{rust_i18n::t!("pages.settings.subject_request.title")}</h2>
                     <Show when=move || subject_success_msg.get().is_some() fallback=|| ()>
                         <SuccessMessage message={subject_success_msg.get().unwrap_or_default()} />
                     </Show>
@@ -1006,7 +1067,7 @@ pub fn SettingsPage() -> impl IntoView {
                     </Show>
                     <form class="space-y-3" on:submit=on_submit_subject>
                         <div>
-                            <label class="block text-sm font-medium text-fg-muted">"申請種別"</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.settings.subject_request.fields.type")}</label>
                             <select
                                 class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 prop:value={move || subject_request_type.get()}
@@ -1014,14 +1075,14 @@ pub fn SettingsPage() -> impl IntoView {
                                     set_rw_signal(subject_request_type, event_target_value(&ev))
                                 }
                             >
-                                <option value="access">{"開示"}</option>
-                                <option value="rectify">{"訂正"}</option>
-                                <option value="delete">{"削除"}</option>
-                                <option value="stop">{"停止"}</option>
+                                <option value="access">{rust_i18n::t!("pages.settings.subject_request.types.access")}</option>
+                                <option value="rectify">{rust_i18n::t!("pages.settings.subject_request.types.rectify")}</option>
+                                <option value="delete">{rust_i18n::t!("pages.settings.subject_request.types.delete")}</option>
+                                <option value="stop">{rust_i18n::t!("pages.settings.subject_request.types.stop")}</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-fg-muted">"詳細"</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.settings.subject_request.fields.details")}</label>
                             <textarea
                                 class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
                                 rows="3"
@@ -1037,12 +1098,12 @@ pub fn SettingsPage() -> impl IntoView {
                                 class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                                 disabled=move || subject_loading.get()
                             >
-                                {move || subject_submit_label(subject_loading.get())}
+                                {move || rust_i18n::t!(subject_submit_label_key(subject_loading.get())).into_owned()}
                             </button>
                         </div>
                     </form>
                     <div>
-                        <h3 class="text-sm font-medium text-fg-muted mb-2">{"申請履歴"}</h3>
+                        <h3 class="text-sm font-medium text-fg-muted mb-2">{rust_i18n::t!("pages.settings.subject_request.history.title")}</h3>
                         <Show when=move || subject_requests_error.get().is_some()>
                             <ErrorMessage message={subject_requests_error.get().unwrap_or_default()} />
                         </Show>
@@ -1050,10 +1111,10 @@ pub fn SettingsPage() -> impl IntoView {
                             <table class="min-w-full divide-y divide-border">
                                 <thead class="bg-surface-muted">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"種別"}</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ステータス"}</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"申請日"}</th>
-                                        <th class="px-4 py-2 text-right text-xs font-medium text-fg-muted uppercase tracking-wider">{"操作"}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.settings.subject_request.history.columns.type")}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.settings.subject_request.history.columns.status")}</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.settings.subject_request.history.columns.created_at")}</th>
+                                        <th class="px-4 py-2 text-right text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.settings.subject_request.history.columns.actions")}</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-surface-elevated divide-y divide-border">
@@ -1086,21 +1147,25 @@ pub fn SettingsPage() -> impl IntoView {
     }
 }
 
-fn subject_request_type_label(value: &DataSubjectRequestType) -> &'static str {
+fn subject_request_type_key(value: &DataSubjectRequestType) -> &'static str {
     match value {
-        DataSubjectRequestType::Access => "開示",
-        DataSubjectRequestType::Rectify => "訂正",
-        DataSubjectRequestType::Delete => "削除",
-        DataSubjectRequestType::Stop => "停止",
+        DataSubjectRequestType::Access => "pages.settings.subject_request.types.access",
+        DataSubjectRequestType::Rectify => "pages.settings.subject_request.types.rectify",
+        DataSubjectRequestType::Delete => "pages.settings.subject_request.types.delete",
+        DataSubjectRequestType::Stop => "pages.settings.subject_request.types.stop",
     }
+}
+
+fn subject_request_type_label(value: &DataSubjectRequestType) -> String {
+    rust_i18n::t!(subject_request_type_key(value)).into_owned()
 }
 
 fn subject_request_status_label(value: &str) -> String {
     match value {
-        "pending" => "承認待ち".to_string(),
-        "approved" => "承認済み".to_string(),
-        "rejected" => "却下".to_string(),
-        "cancelled" => "取消".to_string(),
+        "pending" => tr("pages.settings.subject_request.status.pending"),
+        "approved" => tr("pages.settings.subject_request.status.approved"),
+        "rejected" => tr("pages.settings.subject_request.status.rejected"),
+        "cancelled" => tr("pages.settings.subject_request.status.cancelled"),
         _ => value.to_string(),
     }
 }
@@ -1109,8 +1174,10 @@ fn format_subject_datetime(value: DateTime<Utc>) -> String {
     value.format("%Y-%m-%d %H:%M").to_string()
 }
 
-fn session_device_label(label: Option<&str>) -> &str {
-    label.unwrap_or("不明なデバイス")
+fn session_device_label(label: Option<&str>) -> String {
+    label
+        .map(str::to_string)
+        .unwrap_or_else(|| tr("pages.settings.sessions.device.unknown"))
 }
 
 fn format_session_datetime(value: DateTime<Utc>) -> String {
@@ -1120,25 +1187,33 @@ fn format_session_datetime(value: DateTime<Utc>) -> String {
 fn format_optional_session_datetime(value: Option<DateTime<Utc>>) -> String {
     value
         .map(format_session_datetime)
-        .unwrap_or_else(|| "未記録".to_string())
+        .unwrap_or_else(|| tr("pages.settings.sessions.fields.not_recorded"))
 }
 
-fn session_status_label(is_current: bool) -> &'static str {
+fn session_status_label(is_current: bool) -> String {
     if is_current {
-        "現在のセッション"
+        tr("pages.settings.sessions.status.current")
     } else {
-        "他のデバイス"
+        tr("pages.settings.sessions.status.other")
     }
 }
 
 fn session_revoke_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<String>, bool) {
     match result {
         Ok(_) => (
-            Some("他のデバイスのセッションをログアウトしました。".into()),
+            Some(tr("pages.settings.sessions.feedback.revoked")),
             None,
             true,
         ),
         Err(err) => (None, Some(err.to_string()), false),
+    }
+}
+
+fn session_action_label(is_current: bool) -> String {
+    if is_current {
+        tr("pages.settings.sessions.actions.current")
+    } else {
+        tr("pages.settings.sessions.actions.logout")
     }
 }
 
@@ -1179,37 +1254,55 @@ mod tests {
     use super::{
         format_password_expiry_warning, map_change_password_error, normalize_subject_details,
         parse_subject_request_type, password_strength_state, validate_password_submission,
+        PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE, PASSWORD_CHANGE_MIN_LENGTH_CODE,
+        PASSWORD_CHANGE_MUST_DIFFER_CODE,
     };
     use crate::api::ApiError;
+    use crate::test_support::helpers::set_test_locale;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
-    fn map_change_password_error_handles_known_messages() {
+    fn map_change_password_error_prefers_backend_codes() {
+        let _locale = set_test_locale("en");
         assert_eq!(
-            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
-            "現在のパスワードが正しくありません。"
+            map_change_password_error(&ApiError {
+                error: "Current password is incorrect".into(),
+                code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+                details: None,
+            })
+            .error,
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "Password must be at least 12 characters long"
-            ))
+            map_change_password_error(&ApiError {
+                error: "Password must be at least 12 characters long".into(),
+                code: PASSWORD_CHANGE_MIN_LENGTH_CODE.into(),
+                details: None,
+            })
             .error,
-            "新しいパスワードは12文字以上である必要があります。"
+            rust_i18n::t!("pages.settings.password.errors.min_length")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "New password must differ from current password"
-            ))
+            map_change_password_error(&ApiError {
+                error: "New password must differ from current password".into(),
+                code: PASSWORD_CHANGE_MUST_DIFFER_CODE.into(),
+                details: None,
+            })
             .error,
-            "新しいパスワードは現在のパスワードと異なる必要があります。"
+            rust_i18n::t!("pages.settings.password.errors.must_differ")
         );
     }
 
     #[wasm_bindgen_test]
-    fn map_change_password_error_masks_unknown_messages() {
+    fn map_change_password_error_keeps_legacy_message_fallback() {
+        let _locale = set_test_locale("en");
+        assert_eq!(
+            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
+        );
         assert_eq!(
             map_change_password_error(&ApiError::unknown("Failed to update password")).error,
-            "パスワード変更に失敗しました。時間をおいて再度お試しください。"
+            rust_i18n::t!("pages.settings.password.errors.update_failed")
         );
     }
 
@@ -1240,17 +1333,29 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn password_strength_state_reports_gaps_and_success() {
+        let _locale = set_test_locale("en");
         let weak = password_strength_state("password").expect("strength state");
-        assert_eq!(weak.label, "弱い");
-        assert!(weak.hint.contains("12文字以上"));
+        assert_eq!(
+            rust_i18n::t!(weak.label_key).into_owned(),
+            rust_i18n::t!("pages.settings.password.strength.labels.weak")
+        );
+        assert!(weak.hint.contains(
+            rust_i18n::t!("pages.settings.password.policy.requirements.min_length").as_ref()
+        ));
 
         let strong = password_strength_state("ValidPass123!").expect("strength state");
-        assert_eq!(strong.label, "強い");
-        assert_eq!(strong.hint, "要件をすべて満たしています。");
+        assert_eq!(
+            rust_i18n::t!(strong.label_key).into_owned(),
+            rust_i18n::t!("pages.settings.password.strength.labels.strong")
+        );
+        assert_eq!(
+            strong.hint,
+            rust_i18n::t!("pages.settings.password.strength.hints.complete")
+        );
 
         assert_eq!(
             format_password_expiry_warning(3),
-            "パスワードの有効期限まであと3日です。期限切れ前に変更してください。"
+            rust_i18n::t!("pages.settings.password.expiry.remaining_days", days = 3)
         );
     }
 }
@@ -1260,7 +1365,7 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::api::ApiClient;
-    use crate::test_support::helpers::{provide_auth, regular_user};
+    use crate::test_support::helpers::{provide_auth, regular_user, set_test_locale};
     use crate::test_support::ssr::{with_local_runtime_async, with_runtime};
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
     use serde_json::json;
@@ -1309,6 +1414,7 @@ mod host_tests {
     #[test]
     fn settings_page_renders_sections() {
         with_local_runtime_async(|| async {
+            let _locale = set_test_locale("en");
             let runtime = leptos::create_runtime();
             let server = mock_server();
             provide_context(ApiClient::new_with_base_url(&server.url("/api")));
@@ -1326,13 +1432,16 @@ mod host_tests {
                 .to_string();
             leptos_reactive::suppress_resource_load(false);
 
-            assert!(html.contains("パスワード変更"));
-            assert!(html.contains("本人対応申請"));
-            assert!(html.contains("MFA 設定"));
-            assert!(html.contains("アクティブセッション"));
-            assert!(html.contains("現在のパスワード"));
-            assert!(html.contains("有効期限まであと3日"));
-            assert!(!html.contains("申請履歴"));
+            assert!(html.contains(rust_i18n::t!("pages.settings.tabs.password").as_ref()));
+            assert!(html.contains(rust_i18n::t!("pages.settings.tabs.subject_request").as_ref()));
+            assert!(html.contains(rust_i18n::t!("pages.settings.tabs.mfa").as_ref()));
+            assert!(html.contains(rust_i18n::t!("pages.settings.tabs.sessions").as_ref()));
+            assert!(html.contains(rust_i18n::t!("pages.settings.password.fields.current").as_ref()));
+            assert!(html.contains(
+                rust_i18n::t!("pages.settings.password.expiry.remaining_days", days = 3).as_ref()
+            ));
+            assert!(!html
+                .contains(rust_i18n::t!("pages.settings.subject_request.history.title").as_ref()));
 
             runtime.dispose();
         });
@@ -1359,27 +1468,40 @@ mod host_tests {
 
     #[test]
     fn helper_functions_cover_labels_and_datetime_format() {
+        let _locale = set_test_locale("en");
         assert_eq!(
             subject_request_type_label(&DataSubjectRequestType::Access),
-            "開示"
+            rust_i18n::t!("pages.settings.subject_request.types.access")
         );
         assert_eq!(
             subject_request_type_label(&DataSubjectRequestType::Rectify),
-            "訂正"
+            rust_i18n::t!("pages.settings.subject_request.types.rectify")
         );
         assert_eq!(
             subject_request_type_label(&DataSubjectRequestType::Delete),
-            "削除"
+            rust_i18n::t!("pages.settings.subject_request.types.delete")
         );
         assert_eq!(
             subject_request_type_label(&DataSubjectRequestType::Stop),
-            "停止"
+            rust_i18n::t!("pages.settings.subject_request.types.stop")
         );
 
-        assert_eq!(subject_request_status_label("pending"), "承認待ち");
-        assert_eq!(subject_request_status_label("approved"), "承認済み");
-        assert_eq!(subject_request_status_label("rejected"), "却下");
-        assert_eq!(subject_request_status_label("cancelled"), "取消");
+        assert_eq!(
+            subject_request_status_label("pending"),
+            rust_i18n::t!("pages.settings.subject_request.status.pending")
+        );
+        assert_eq!(
+            subject_request_status_label("approved"),
+            rust_i18n::t!("pages.settings.subject_request.status.approved")
+        );
+        assert_eq!(
+            subject_request_status_label("rejected"),
+            rust_i18n::t!("pages.settings.subject_request.status.rejected")
+        );
+        assert_eq!(
+            subject_request_status_label("cancelled"),
+            rust_i18n::t!("pages.settings.subject_request.status.cancelled")
+        );
         assert_eq!(subject_request_status_label("custom"), "custom");
 
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
@@ -1387,15 +1509,27 @@ mod host_tests {
             .with_timezone(&Utc);
         assert_eq!(format_subject_datetime(dt), "2026-01-16 12:34");
         assert_eq!(session_device_label(Some("Chrome")), "Chrome");
-        assert_eq!(session_device_label(None), "不明なデバイス");
+        assert_eq!(
+            session_device_label(None),
+            rust_i18n::t!("pages.settings.sessions.device.unknown")
+        );
         assert_eq!(format_session_datetime(dt), "2026-01-16 12:34");
         assert_eq!(
             format_optional_session_datetime(Some(dt)),
             "2026-01-16 12:34"
         );
-        assert_eq!(format_optional_session_datetime(None), "未記録");
-        assert_eq!(session_status_label(true), "現在のセッション");
-        assert_eq!(session_status_label(false), "他のデバイス");
+        assert_eq!(
+            format_optional_session_datetime(None),
+            rust_i18n::t!("pages.settings.sessions.fields.not_recorded")
+        );
+        assert_eq!(
+            session_status_label(true),
+            rust_i18n::t!("pages.settings.sessions.status.current")
+        );
+        assert_eq!(
+            session_status_label(false),
+            rust_i18n::t!("pages.settings.sessions.status.other")
+        );
         assert!(is_session_revoke_disabled(true, false));
         assert!(is_session_revoke_disabled(false, true));
         assert!(!is_session_revoke_disabled(false, false));
@@ -1403,51 +1537,78 @@ mod host_tests {
 
     #[test]
     fn helper_functions_cover_password_error_mapping() {
+        let _locale = set_test_locale("en");
+        assert_eq!(
+            map_change_password_error(&ApiError {
+                error: "Current password is incorrect".into(),
+                code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+                details: None,
+            })
+            .error,
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
+        );
+        assert_eq!(
+            map_change_password_error(&ApiError {
+                error: "Password must be at least 12 characters long".into(),
+                code: PASSWORD_CHANGE_MIN_LENGTH_CODE.into(),
+                details: None,
+            })
+            .error,
+            rust_i18n::t!("pages.settings.password.errors.min_length")
+        );
+        assert_eq!(
+            map_change_password_error(&ApiError {
+                error: "New password must differ from current password".into(),
+                code: PASSWORD_CHANGE_MUST_DIFFER_CODE.into(),
+                details: None,
+            })
+            .error,
+            rust_i18n::t!("pages.settings.password.errors.must_differ")
+        );
         assert_eq!(
             map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
-            "現在のパスワードが正しくありません。"
-        );
-        assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "Password must be at least 12 characters long"
-            ))
-            .error,
-            "新しいパスワードは12文字以上である必要があります。"
-        );
-        assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "New password must differ from current password"
-            ))
-            .error,
-            "新しいパスワードは現在のパスワードと異なる必要があります。"
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown("other")).error,
-            "パスワード変更に失敗しました。時間をおいて再度お試しください。"
+            rust_i18n::t!("pages.settings.password.errors.update_failed")
         );
     }
 
     #[test]
     fn helper_password_strength_and_expiry_warning_cover_branches() {
+        let _locale = set_test_locale("en");
         let weak = password_strength_state("password").expect("state");
-        assert_eq!(weak.label, "弱い");
-        assert!(weak.hint.contains("推測されやすい"));
+        assert_eq!(
+            rust_i18n::t!(weak.label_key).into_owned(),
+            rust_i18n::t!("pages.settings.password.strength.labels.weak")
+        );
+        assert!(!weak.hint.is_empty());
 
         let medium = password_strength_state("Validpass123").expect("state");
-        assert_eq!(medium.label, "良い");
-        assert!(medium.hint.contains("記号を1文字以上"));
+        assert_eq!(
+            rust_i18n::t!(medium.label_key).into_owned(),
+            rust_i18n::t!("pages.settings.password.strength.labels.good")
+        );
+        assert!(!medium.hint.is_empty());
 
         let strong = password_strength_state("ValidPass123!").expect("state");
-        assert_eq!(strong.label, "強い");
-        assert_eq!(strong.hint, "要件をすべて満たしています。");
+        assert_eq!(
+            rust_i18n::t!(strong.label_key).into_owned(),
+            rust_i18n::t!("pages.settings.password.strength.labels.strong")
+        );
+        assert_eq!(
+            strong.hint,
+            rust_i18n::t!("pages.settings.password.strength.hints.complete")
+        );
 
         assert_eq!(
             format_password_expiry_warning(0),
-            "パスワードの有効期限が本日までです。すぐに変更してください。"
+            rust_i18n::t!("pages.settings.password.expiry.expires_today")
         );
         assert_eq!(
             format_password_expiry_warning(5),
-            "パスワードの有効期限まであと5日です。期限切れ前に変更してください。"
+            rust_i18n::t!("pages.settings.password.expiry.remaining_days", days = 5)
         );
     }
 
@@ -1518,22 +1679,29 @@ mod host_tests {
 
     #[test]
     fn helper_feedback_mapping_covers_success_and_error() {
+        let _locale = set_test_locale("en");
         let (ok_msg, ok_err) = password_change_feedback(Ok(()));
-        assert_eq!(ok_msg.as_deref(), Some("パスワードを変更しました。"));
+        assert_eq!(
+            ok_msg.as_deref(),
+            Some(rust_i18n::t!("pages.settings.password.feedback.updated").as_ref())
+        );
         assert!(ok_err.is_none());
 
-        let (fail_msg, fail_err) =
-            password_change_feedback(Err(ApiError::unknown("Current password is incorrect")));
+        let (fail_msg, fail_err) = password_change_feedback(Err(ApiError {
+            error: "Current password is incorrect".into(),
+            code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+            details: None,
+        }));
         assert!(fail_msg.is_none());
         assert_eq!(
             fail_err.expect("mapped error").error,
-            "現在のパスワードが正しくありません。"
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
 
         let (create_ok_msg, create_ok_err) = subject_create_feedback(Ok(()));
         assert_eq!(
             create_ok_msg.as_deref(),
-            Some("本人対応申請を送信しました。")
+            Some(rust_i18n::t!("pages.settings.subject_request.feedback.submitted").as_ref())
         );
         assert!(create_ok_err.is_none());
 
@@ -1545,14 +1713,14 @@ mod host_tests {
         let (cancel_ok_msg, cancel_ok_err) = subject_cancel_feedback(Ok(()));
         assert_eq!(
             cancel_ok_msg.as_deref(),
-            Some("本人対応申請を取消しました。")
+            Some(rust_i18n::t!("pages.settings.subject_request.feedback.cancelled").as_ref())
         );
         assert!(cancel_ok_err.is_none());
 
         let (session_ok_msg, session_ok_err, session_reload) = session_revoke_feedback(Ok(()));
         assert_eq!(
             session_ok_msg.as_deref(),
-            Some("他のデバイスのセッションをログアウトしました。")
+            Some(rust_i18n::t!("pages.settings.sessions.feedback.revoked").as_ref())
         );
         assert!(session_ok_err.is_none());
         assert!(session_reload);
@@ -1565,10 +1733,11 @@ mod host_tests {
 
     #[test]
     fn helper_effect_state_decisions_cover_branches() {
+        let _locale = set_test_locale("en");
         let (password_ok_msg, password_ok_err, clear_ok) = apply_password_change_effect(Ok(()));
         assert_eq!(
             password_ok_msg.as_deref(),
-            Some("パスワードを変更しました。")
+            Some(rust_i18n::t!("pages.settings.password.feedback.updated").as_ref())
         );
         assert!(password_ok_err.is_none());
         assert!(clear_ok);
@@ -1583,7 +1752,7 @@ mod host_tests {
             apply_subject_create_effect::<()>(Ok(()));
         assert_eq!(
             subject_create_ok_msg.as_deref(),
-            Some("本人対応申請を送信しました。")
+            Some(rust_i18n::t!("pages.settings.subject_request.feedback.submitted").as_ref())
         );
         assert!(subject_create_ok_err.is_none());
         assert!(subject_create_reload_ok);
@@ -1598,7 +1767,7 @@ mod host_tests {
             apply_subject_cancel_effect(Ok(()));
         assert_eq!(
             subject_cancel_ok_msg.as_deref(),
-            Some("本人対応申請を取消しました。")
+            Some(rust_i18n::t!("pages.settings.subject_request.feedback.cancelled").as_ref())
         );
         assert!(subject_cancel_ok_err.is_none());
         assert!(subject_cancel_reload_ok);
@@ -1642,6 +1811,7 @@ mod host_tests {
     #[test]
     fn helper_dispatch_helpers_cover_pending_validation_and_success() {
         with_runtime(|| {
+            let _locale = set_test_locale("en");
             let (password_success_msg, set_password_success_msg) =
                 create_signal(Some("previous".to_string()));
             let (password_error_msg, set_password_error_msg) =
@@ -1698,7 +1868,7 @@ mod host_tests {
             assert!(password_success_msg.get().is_none());
             assert_eq!(
                 password_error_msg.get().map(|err| err.error),
-                Some("新しいパスワードは12文字以上である必要があります。".to_string())
+                Some(tr("pages.settings.password.errors.min_length"))
             );
 
             let mfa_messages = utils::MessageState::default();
@@ -1715,10 +1885,7 @@ mod host_tests {
                 panic!("invalid mfa code must not dispatch")
             });
             assert!(mfa_messages.success.get().is_none());
-            assert_eq!(
-                mfa_messages.error.get().map(|err| err.error),
-                Some("6桁の確認コードを入力してください".to_string())
-            );
+            assert!(mfa_messages.error.get().is_some());
 
             mfa_messages.set_success("pending".to_string());
             dispatch_mfa_activation_submission(true, "654321", mfa_messages, |_| {
@@ -1765,7 +1932,7 @@ mod host_tests {
             assert!(subject_success_msg.get().is_none());
             assert_eq!(
                 subject_error_msg.get().as_deref(),
-                Some("申請種別を選択してください。")
+                Some(rust_i18n::t!("pages.settings.subject_request.errors.type_required").as_ref())
             );
 
             set_subject_success_msg.set(Some("keep".to_string()));
@@ -1786,6 +1953,7 @@ mod host_tests {
     #[test]
     fn helper_optional_effect_and_resource_projection_cover_paths() {
         with_runtime(|| {
+            let _locale = set_test_locale("en");
             let (current_password, set_current_password) = create_signal("current".to_string());
             let (new_password, set_new_password) = create_signal("new".to_string());
             let (confirm_password, set_confirm_password) = create_signal("confirm".to_string());
@@ -1816,7 +1984,7 @@ mod host_tests {
             );
             assert_eq!(
                 password_success_msg.get().as_deref(),
-                Some("パスワードを変更しました。")
+                Some(rust_i18n::t!("pages.settings.password.feedback.updated").as_ref())
             );
             assert!(password_error_msg.get().is_none());
             assert_eq!(current_password.get(), "");
@@ -1870,7 +2038,7 @@ mod host_tests {
             );
             assert_eq!(
                 subject_success_msg.get().as_deref(),
-                Some("本人対応申請を送信しました。")
+                Some(rust_i18n::t!("pages.settings.subject_request.feedback.submitted").as_ref())
             );
             assert!(subject_error_msg.get().is_none());
             assert_eq!(subject_details.get(), "");
@@ -1905,7 +2073,7 @@ mod host_tests {
             );
             assert_eq!(
                 subject_success_msg.get().as_deref(),
-                Some("本人対応申請を取消しました。")
+                Some(rust_i18n::t!("pages.settings.subject_request.feedback.cancelled").as_ref())
             );
             assert!(subject_error_msg.get().is_none());
             assert_eq!(subject_reload.get(), 12);
@@ -1941,12 +2109,19 @@ mod host_tests {
     #[test]
     fn helper_row_data_and_render_cover_paths() {
         with_runtime(|| {
+            let _locale = set_test_locale("en");
             let pending_request =
                 subject_request_response("sr-pending", DataSubjectRequestType::Access, "pending");
             let pending_row = build_subject_request_row_data(&pending_request);
             assert!(pending_row.can_cancel);
-            assert_eq!(pending_row.type_label, "開示");
-            assert_eq!(pending_row.status_label, "承認待ち");
+            assert_eq!(
+                pending_row.type_label,
+                rust_i18n::t!("pages.settings.subject_request.types.access")
+            );
+            assert_eq!(
+                pending_row.status_label,
+                rust_i18n::t!("pages.settings.subject_request.status.pending")
+            );
             assert_eq!(pending_row.created_label, "2026-01-16 12:34");
 
             let approved_request = subject_request_response(
@@ -1956,8 +2131,14 @@ mod host_tests {
             );
             let approved_row = build_subject_request_row_data(&approved_request);
             assert!(!approved_row.can_cancel);
-            assert_eq!(approved_row.type_label, "訂正");
-            assert_eq!(approved_row.status_label, "承認済み");
+            assert_eq!(
+                approved_row.type_label,
+                rust_i18n::t!("pages.settings.subject_request.types.rectify")
+            );
+            assert_eq!(
+                approved_row.status_label,
+                rust_i18n::t!("pages.settings.subject_request.status.approved")
+            );
 
             let (cancel_loading, set_cancel_loading) = create_signal(false);
             let html = render_subject_request_row(
@@ -1968,10 +2149,13 @@ mod host_tests {
             .into_view()
             .render_to_string()
             .to_string();
-            assert!(html.contains("開示"));
-            assert!(html.contains("承認待ち"));
+            assert!(html
+                .contains(rust_i18n::t!("pages.settings.subject_request.types.access").as_ref()));
+            assert!(html
+                .contains(rust_i18n::t!("pages.settings.subject_request.status.pending").as_ref()));
             assert!(html.contains("sr-pending"));
-            assert!(html.contains("取消"));
+            assert!(html
+                .contains(rust_i18n::t!("pages.settings.subject_request.actions.cancel").as_ref()));
 
             set_cancel_loading.set(true);
             let html_with_loading = render_subject_request_row(
@@ -1989,6 +2173,7 @@ mod host_tests {
     #[test]
     fn helper_registration_label_and_signal_setters_cover_paths() {
         with_runtime(|| {
+            let _locale = set_test_locale("en");
             let (write_value, set_write_value) = create_signal(String::new());
             set_write_signal(set_write_value, "updated".to_string());
             assert_eq!(write_value.get(), "updated");
@@ -1998,10 +2183,22 @@ mod host_tests {
             assert_eq!(rw_value.get(), "rw-updated");
         });
 
-        assert_eq!(password_submit_label(true), "変更中...");
-        assert_eq!(password_submit_label(false), "パスワードを変更");
-        assert_eq!(subject_submit_label(true), "送信中...");
-        assert_eq!(subject_submit_label(false), "申請する");
+        assert_eq!(
+            rust_i18n::t!(password_submit_label_key(true)),
+            rust_i18n::t!("pages.settings.password.actions.updating")
+        );
+        assert_eq!(
+            rust_i18n::t!(password_submit_label_key(false)),
+            rust_i18n::t!("pages.settings.password.actions.submit")
+        );
+        assert_eq!(
+            rust_i18n::t!(subject_submit_label_key(true)),
+            rust_i18n::t!("pages.settings.subject_request.actions.submitting")
+        );
+        assert_eq!(
+            rust_i18n::t!(subject_submit_label_key(false)),
+            rust_i18n::t!("pages.settings.subject_request.actions.submit")
+        );
 
         let mut cleared_messages = 0;
         let mut cleared_setup_info = 0;

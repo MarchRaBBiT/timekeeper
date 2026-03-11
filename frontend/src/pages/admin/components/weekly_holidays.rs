@@ -120,7 +120,9 @@ pub fn WeeklyHolidaySection(
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div class="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-fg">{"週次休日"}</h2>
+                    <h2 class="text-lg font-semibold text-fg">
+                        {rust_i18n::t!("admin_components.weekly_holidays.title")}
+                    </h2>
                     <p class="text-sm text-fg-muted">
                         {"週単位の休日を登録します。システム管理者は即日開始も設定できます。"}
                     </p>
@@ -157,7 +159,7 @@ pub fn WeeklyHolidaySection(
                 </div>
                 <div class="lg:col-span-1">
                     <DatePicker
-                        label=Some("稼働開始日")
+                        label=Some("admin_components.weekly_holidays.fields.starts_on")
                         value=starts_on_signal
                     />
                     <p class="text-xs text-fg-muted mt-1">
@@ -166,7 +168,7 @@ pub fn WeeklyHolidaySection(
                 </div>
                 <div class="lg:col-span-1">
                     <DatePicker
-                        label=Some("稼働終了日（任意）")
+                        label=Some("admin_components.weekly_holidays.fields.ends_on")
                         value=ends_on_signal
                     />
                 </div>
@@ -319,14 +321,14 @@ mod host_tests {
     #[test]
     fn weekly_holiday_section_renders_empty_state() {
         let html = render_with_resource(Vec::new(), true, false);
-        assert!(html.contains("週次休日"));
+        assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
         assert!(html.contains("登録済みの週次休日はありません。"));
     }
 
     #[test]
     fn weekly_holiday_section_renders_table() {
         let html = render_with_resource(vec![sample_item()], true, true);
-        assert!(html.contains("週次休日"));
+        assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
         assert!(html.contains("月"));
     }
 

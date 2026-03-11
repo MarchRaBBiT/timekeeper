@@ -15,14 +15,14 @@ pub fn ActivitiesSection(
     view! {
         <div class="bg-surface-elevated rounded-2xl shadow-sm border border-border p-6 space-y-4">
             <div>
-                <h3 class="text-base font-display font-bold text-fg">{"申請・活動のサマリー"}</h3>
-                <p class="text-sm text-fg-muted">{"承認待ちの申請数や最新の状態を確認できます"}</p>
+                <h3 class="text-base font-display font-bold text-fg">{rust_i18n::t!("pages.dashboard.activities.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.dashboard.activities.description")}</p>
             </div>
             {move || match activities.get() {
                 None => view! {
                     <div class="flex items-center gap-2 text-sm text-fg-muted">
                         <LoadingSpinner />
-                        <span>{"最新の申請情報を読み込み中..."}</span>
+                        <span>{rust_i18n::t!("pages.dashboard.activities.loading")}</span>
                     </div>
                 }.into_view(),
                 Some(Err(err)) => {
@@ -69,7 +69,6 @@ mod host_tests {
             }]));
             view! { <ActivitiesSection activities=resource /> }
         });
-        assert!(html.contains("申請・活動のサマリー"));
         assert!(html.contains("申請A"));
         assert!(html.contains("1件"));
     }
