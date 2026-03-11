@@ -1,0 +1,95 @@
+app:
+  name: "Timekeeper"
+  locale:
+    label: "言語"
+    options:
+      en: "English"
+      ja: "日本語"
+    actions:
+      open_menu: "言語メニューを開く"
+      change_to_en: "英語に切り替える"
+      change_to_ja: "日本語に切り替える"
+
+common:
+  actions:
+    retry: "再取得"
+    retrying: "再取得中..."
+    logout: "ログアウト"
+    close: "閉じる"
+  labels:
+    code: "Code"
+  states: {}
+  status: {}
+  feedback: {}
+  validation: {}
+  time: {}
+  units: {}
+  pagination: {}
+  navigation:
+    dashboard: "ダッシュボード"
+    attendance: "勤怠"
+    requests: "申請"
+    settings: "設定"
+    admin: "管理"
+    admin_export: "データエクスポート"
+    admin_audit_logs: "監査ログ"
+    admin_users: "ユーザー追加"
+
+components:
+  layout:
+    menu:
+      open: "メニューを開く"
+      close: "メニューを閉じる"
+    time_zone_warning:
+      title: "タイムゾーン情報に関する警告"
+      loading: "バックエンドのタイムゾーン情報を再取得しています..."
+      fetch_failed: "サーバーのタイムゾーン情報を取得できませんでした (%{error})。現在 %{time_zone} として動作しています。"
+      fallback: "サーバーのタイムゾーン情報を取得できず、現在 %{time_zone} として動作しています。"
+  confirm_dialog:
+    confirm: "はい"
+    cancel: "いいえ"
+  error: {}
+  empty_state: {}
+  cards: {}
+  forms: {}
+  guard: {}
+
+pages:
+  attendance: {}
+  dashboard: {}
+  requests: {}
+  login: {}
+  forgot_password: {}
+  reset_password: {}
+  mfa: {}
+  settings: {}
+  admin: {}
+  admin_users: {}
+  admin_audit_logs: {}
+  admin_export: {}
+  home: {}
+
+admin_components:
+  attendance: {}
+  holidays: {}
+  requests: {}
+  subject_requests: {}
+  system_tools: {}
+  user_select: {}
+  weekly_holidays: {}
+
+api:
+  errors: {}
+  auth: {}
+  attendance: {}
+  requests: {}
+  audit_log: {}
+  subject_requests: {}
+
+state:
+  attendance: {}
+  auth: {}
+  config: {}
+
+docs:
+  i18n: {}

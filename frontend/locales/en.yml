@@ -1,0 +1,95 @@
+app:
+  name: "Timekeeper"
+  locale:
+    label: "Language"
+    options:
+      en: "English"
+      ja: "Japanese"
+    actions:
+      open_menu: "Open language menu"
+      change_to_en: "Switch to English"
+      change_to_ja: "Switch to Japanese"
+
+common:
+  actions:
+    retry: "Retry"
+    retrying: "Retrying..."
+    logout: "Log out"
+    close: "Close"
+  labels:
+    code: "Code"
+  states: {}
+  status: {}
+  feedback: {}
+  validation: {}
+  time: {}
+  units: {}
+  pagination: {}
+  navigation:
+    dashboard: "Dashboard"
+    attendance: "Attendance"
+    requests: "Requests"
+    settings: "Settings"
+    admin: "Admin"
+    admin_export: "Data Export"
+    admin_audit_logs: "Audit Logs"
+    admin_users: "User Provisioning"
+
+components:
+  layout:
+    menu:
+      open: "Open menu"
+      close: "Close menu"
+    time_zone_warning:
+      title: "Time zone information warning"
+      loading: "Refreshing backend time zone information..."
+      fetch_failed: "Failed to fetch the server time zone information (%{error}). The app is currently running as %{time_zone}."
+      fallback: "Failed to fetch the server time zone information. The app is currently running as %{time_zone}."
+  confirm_dialog:
+    confirm: "Yes"
+    cancel: "No"
+  error: {}
+  empty_state: {}
+  cards: {}
+  forms: {}
+  guard: {}
+
+pages:
+  attendance: {}
+  dashboard: {}
+  requests: {}
+  login: {}
+  forgot_password: {}
+  reset_password: {}
+  mfa: {}
+  settings: {}
+  admin: {}
+  admin_users: {}
+  admin_audit_logs: {}
+  admin_export: {}
+  home: {}
+
+admin_components:
+  attendance: {}
+  holidays: {}
+  requests: {}
+  subject_requests: {}
+  system_tools: {}
+  user_select: {}
+  weekly_holidays: {}
+
+api:
+  errors: {}
+  auth: {}
+  attendance: {}
+  requests: {}
+  audit_log: {}
+  subject_requests: {}
+
+state:
+  attendance: {}
+  auth: {}
+  config: {}
+
+docs:
+  i18n: {}

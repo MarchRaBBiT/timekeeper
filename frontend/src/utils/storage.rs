@@ -20,6 +20,18 @@ pub fn local_storage() -> Result<Storage, String> {
     Err("No localStorage".to_string())
 }
 
+pub fn get_local_storage_item(key: &str) -> Result<Option<String>, String> {
+    local_storage()?
+        .get_item(key)
+        .map_err(|_| format!("Failed to read localStorage key: {key}"))
+}
+
+pub fn set_local_storage_item(key: &str, value: &str) -> Result<(), String> {
+    local_storage()?
+        .set_item(key, value)
+        .map_err(|_| format!("Failed to write localStorage key: {key}"))
+}
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
@@ -40,5 +52,15 @@ mod host_tests {
     #[test]
     fn local_storage_returns_error_on_host() {
         assert!(local_storage().is_err());
+    }
+
+    #[test]
+    fn get_local_storage_item_returns_error_on_host() {
+        assert!(get_local_storage_item("locale").is_err());
+    }
+
+    #[test]
+    fn set_local_storage_item_returns_error_on_host() {
+        assert!(set_local_storage_item("locale", "en").is_err());
     }
 }

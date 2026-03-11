@@ -22,7 +22,7 @@ pub fn ConfirmDialog(
     let confirm_label_text = Signal::derive(move || {
         let text = confirm_label.get();
         if text.trim().is_empty() {
-            "はい".to_string()
+            rust_i18n::t!("components.confirm_dialog.confirm").to_string()
         } else {
             text
         }
@@ -32,7 +32,7 @@ pub fn ConfirmDialog(
     let cancel_label_text = Signal::derive(move || {
         let text = cancel_label.get();
         if text.trim().is_empty() {
-            "いいえ".to_string()
+            rust_i18n::t!("components.confirm_dialog.cancel").to_string()
         } else {
             text
         }
@@ -49,7 +49,7 @@ pub fn ConfirmDialog(
             <div class="fixed inset-0 z-[70] flex items-center justify-center p-4">
                 <button
                     type="button"
-                    aria-label="閉じる"
+                    aria-label={rust_i18n::t!("common.actions.close")}
                     class="absolute inset-0 bg-overlay-backdrop"
                     on:click=move |_| cancel_on_backdrop.call(())
                 ></button>
@@ -69,7 +69,7 @@ pub fn ConfirmDialog(
                         <h2 class="text-lg font-semibold text-fg">{move || title_text.get()}</h2>
                         <button
                             type="button"
-                            aria-label="閉じる"
+                            aria-label={rust_i18n::t!("common.actions.close")}
                             class="text-fg-muted hover:text-fg"
                             on:click=move |_| cancel_on_header_button.call(())
                         >
@@ -103,10 +103,11 @@ pub fn ConfirmDialog(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn confirm_dialog_renders_with_default_labels() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let is_open = Signal::derive(|| true);
             view! {
