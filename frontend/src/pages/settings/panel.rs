@@ -20,6 +20,15 @@ use chrono::{DateTime, Utc};
 use leptos::{ev::SubmitEvent, Callback, *};
 
 const PASSWORD_POLICY_MIN_LENGTH: usize = 12;
+const PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE: &str =
+    "PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT";
+const PASSWORD_CHANGE_MIN_LENGTH_CODE: &str = "PASSWORD_CHANGE_MIN_LENGTH";
+const PASSWORD_CHANGE_UPPERCASE_CODE: &str = "PASSWORD_CHANGE_UPPERCASE";
+const PASSWORD_CHANGE_LOWERCASE_CODE: &str = "PASSWORD_CHANGE_LOWERCASE";
+const PASSWORD_CHANGE_NUMBER_CODE: &str = "PASSWORD_CHANGE_NUMBER";
+const PASSWORD_CHANGE_SYMBOL_CODE: &str = "PASSWORD_CHANGE_SYMBOL";
+const PASSWORD_CHANGE_TOO_COMMON_CODE: &str = "PASSWORD_CHANGE_TOO_COMMON";
+const PASSWORD_CHANGE_MUST_DIFFER_CODE: &str = "PASSWORD_CHANGE_MUST_DIFFER";
 const COMMON_WEAK_PASSWORDS: &[&str] = &[
     "123456",
     "12345678",
@@ -58,26 +67,48 @@ fn tr(key: &'static str) -> String {
     rust_i18n::t!(key).into_owned()
 }
 
-fn map_change_password_error(error: &ApiError) -> ApiError {
-    let message = error.error.as_str();
+fn map_legacy_change_password_error_key(message: &str) -> Option<&'static str> {
     if message == "Current password is incorrect" {
-        ApiError::validation(tr("pages.settings.password.errors.current_incorrect"))
+        Some("pages.settings.password.errors.current_incorrect")
     } else if message.contains("at least") && message.contains("characters") {
-        ApiError::validation(tr("pages.settings.password.errors.min_length"))
+        Some("pages.settings.password.errors.min_length")
     } else if message.contains("uppercase") {
-        ApiError::validation(tr("pages.settings.password.errors.uppercase"))
+        Some("pages.settings.password.errors.uppercase")
     } else if message.contains("lowercase") {
-        ApiError::validation(tr("pages.settings.password.errors.lowercase"))
+        Some("pages.settings.password.errors.lowercase")
     } else if message.contains("number") {
-        ApiError::validation(tr("pages.settings.password.errors.number"))
+        Some("pages.settings.password.errors.number")
     } else if message.contains("symbol") {
-        ApiError::validation(tr("pages.settings.password.errors.symbol"))
+        Some("pages.settings.password.errors.symbol")
     } else if message.contains("too common") {
-        ApiError::validation(tr("pages.settings.password.errors.too_common"))
+        Some("pages.settings.password.errors.too_common")
     } else if message == "New password must differ from current password" {
-        ApiError::validation(tr("pages.settings.password.errors.must_differ"))
+        Some("pages.settings.password.errors.must_differ")
     } else {
-        ApiError::unknown(tr("pages.settings.password.errors.update_failed"))
+        None
+    }
+}
+
+fn map_change_password_error(error: &ApiError) -> ApiError {
+    let key = match error.code.as_str() {
+        PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE => {
+            Some("pages.settings.password.errors.current_incorrect")
+        }
+        PASSWORD_CHANGE_MIN_LENGTH_CODE => Some("pages.settings.password.errors.min_length"),
+        PASSWORD_CHANGE_UPPERCASE_CODE => Some("pages.settings.password.errors.uppercase"),
+        PASSWORD_CHANGE_LOWERCASE_CODE => Some("pages.settings.password.errors.lowercase"),
+        PASSWORD_CHANGE_NUMBER_CODE => Some("pages.settings.password.errors.number"),
+        PASSWORD_CHANGE_SYMBOL_CODE => Some("pages.settings.password.errors.symbol"),
+        PASSWORD_CHANGE_TOO_COMMON_CODE => Some("pages.settings.password.errors.too_common"),
+        PASSWORD_CHANGE_MUST_DIFFER_CODE => Some("pages.settings.password.errors.must_differ"),
+        _ => map_legacy_change_password_error_key(&error.error),
+    }
+    .unwrap_or("pages.settings.password.errors.update_failed");
+
+    ApiError {
+        error: tr(key),
+        code: error.code.clone(),
+        details: error.details.clone(),
     }
 }
 
@@ -1223,37 +1254,52 @@ mod tests {
     use super::{
         format_password_expiry_warning, map_change_password_error, normalize_subject_details,
         parse_subject_request_type, password_strength_state, validate_password_submission,
+        PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE, PASSWORD_CHANGE_MIN_LENGTH_CODE,
+        PASSWORD_CHANGE_MUST_DIFFER_CODE,
     };
     use crate::api::ApiError;
     use crate::test_support::helpers::set_test_locale;
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
-    fn map_change_password_error_handles_known_messages() {
+    fn map_change_password_error_prefers_backend_codes() {
         let _locale = set_test_locale("en");
         assert_eq!(
-            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
+            map_change_password_error(&ApiError {
+                error: "Current password is incorrect".into(),
+                code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+                details: None,
+            })
+            .error,
             rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "Password must be at least 12 characters long"
-            ))
+            map_change_password_error(&ApiError {
+                error: "Password must be at least 12 characters long".into(),
+                code: PASSWORD_CHANGE_MIN_LENGTH_CODE.into(),
+                details: None,
+            })
             .error,
             rust_i18n::t!("pages.settings.password.errors.min_length")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "New password must differ from current password"
-            ))
+            map_change_password_error(&ApiError {
+                error: "New password must differ from current password".into(),
+                code: PASSWORD_CHANGE_MUST_DIFFER_CODE.into(),
+                details: None,
+            })
             .error,
             rust_i18n::t!("pages.settings.password.errors.must_differ")
         );
     }
 
     #[wasm_bindgen_test]
-    fn map_change_password_error_masks_unknown_messages() {
+    fn map_change_password_error_keeps_legacy_message_fallback() {
         let _locale = set_test_locale("en");
+        assert_eq!(
+            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
+        );
         assert_eq!(
             map_change_password_error(&ApiError::unknown("Failed to update password")).error,
             rust_i18n::t!("pages.settings.password.errors.update_failed")
@@ -1493,22 +1539,35 @@ mod host_tests {
     fn helper_functions_cover_password_error_mapping() {
         let _locale = set_test_locale("en");
         assert_eq!(
-            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
+            map_change_password_error(&ApiError {
+                error: "Current password is incorrect".into(),
+                code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+                details: None,
+            })
+            .error,
             rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "Password must be at least 12 characters long"
-            ))
+            map_change_password_error(&ApiError {
+                error: "Password must be at least 12 characters long".into(),
+                code: PASSWORD_CHANGE_MIN_LENGTH_CODE.into(),
+                details: None,
+            })
             .error,
             rust_i18n::t!("pages.settings.password.errors.min_length")
         );
         assert_eq!(
-            map_change_password_error(&ApiError::unknown(
-                "New password must differ from current password"
-            ))
+            map_change_password_error(&ApiError {
+                error: "New password must differ from current password".into(),
+                code: PASSWORD_CHANGE_MUST_DIFFER_CODE.into(),
+                details: None,
+            })
             .error,
             rust_i18n::t!("pages.settings.password.errors.must_differ")
+        );
+        assert_eq!(
+            map_change_password_error(&ApiError::unknown("Current password is incorrect")).error,
+            rust_i18n::t!("pages.settings.password.errors.current_incorrect")
         );
         assert_eq!(
             map_change_password_error(&ApiError::unknown("other")).error,
@@ -1628,8 +1687,11 @@ mod host_tests {
         );
         assert!(ok_err.is_none());
 
-        let (fail_msg, fail_err) =
-            password_change_feedback(Err(ApiError::unknown("Current password is incorrect")));
+        let (fail_msg, fail_err) = password_change_feedback(Err(ApiError {
+            error: "Current password is incorrect".into(),
+            code: PASSWORD_CHANGE_CURRENT_PASSWORD_INCORRECT_CODE.into(),
+            details: None,
+        }));
         assert!(fail_msg.is_none());
         assert_eq!(
             fail_err.expect("mapped error").error,

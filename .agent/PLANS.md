@@ -51,6 +51,46 @@
 - YYYY-MM-DD: <実施内容>
 ```
 
+# EP-20260311-pr430-431-review-followup
+
+## Goal
+- PR #430 / #431 に残っているレビューコメントを、stack 構造を壊さずに反映する
+
+## Scope
+- In: `frontend/src/state/locale.rs`, `frontend/src/components/confirm_dialog.rs`, `frontend/locales/*.yml`, `frontend/src/pages/settings/panel.rs`, 必要最小限の backend error response
+- Out: `rust-i18n` preview 依存の見直し、locale リロード方式そのものの再設計
+
+## Done Criteria (Observable)
+- [ ] locale context 初期化直後から期待 locale で翻訳されることを test で確認できる
+- [ ] dialog close label と `common.labels.code` 翻訳の指摘が修正されている
+- [ ] settings のパスワード変更エラーが backend 文言ではなく error code でローカライズされる
+- [ ] 関連する frontend/backend の focused test が green
+
+## Constraints / Non-goals
+- stacked PR のため、PR #430 相当の修正と PR #431 相当の修正を意識して差分を分ける
+- 不要な広範囲 i18n 置換や UI リファクタは行わない
+
+## Task Breakdown
+1. [ ] PR #430 レイヤーの未対応コメントを test 追加込みで修正
+2. [ ] PR #431 レイヤーの password change error mapping を error code ベースへ移行
+3. [ ] focused validation 実施
+4. [ ] `jj` snapshot を作成し、必要なら stack/bookmark を整理
+
+## Validation Plan
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo test -p timekeeper-frontend locale -- --nocapture --test-threads=1`
+- [ ] `cargo test -p timekeeper-frontend confirm_dialog -- --nocapture --test-threads=1`
+- [ ] `cargo test -p timekeeper-frontend settings -- --nocapture --test-threads=1`
+- [ ] `cargo test -p timekeeper-backend change_password -- --nocapture`
+
+## JJ Snapshot Log
+- [ ] `jj status`
+- [ ] focused tests pass
+- [ ] `jj commit -m "fix(i18n): address PR 430 and 431 review follow-ups"`
+
+## Progress Notes
+- 2026-03-11: PR #430 / #431 review threads を確認し、残差分を locale 初期化・dialog a11y・ja 翻訳・password error code に絞り込んだ。
+
 # EP-20260212-kms-provider-abstraction
 
 ## Goal
