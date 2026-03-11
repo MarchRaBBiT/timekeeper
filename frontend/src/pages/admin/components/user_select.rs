@@ -18,7 +18,8 @@ pub fn AdminUserSelect(
     users: UsersResource,
     selected: RwSignal<String>,
     #[prop(optional_no_strip)] label: Option<String>,
-    #[prop(default = "ユーザーを選択".to_string())] placeholder: String,
+    #[prop(default = rust_i18n::t!("admin_components.user_select.placeholder").into_owned())]
+    placeholder: String,
     #[prop(default = UserSelectValue::Id)] value_kind: UserSelectValue,
     #[prop(into, default = MaybeSignal::Static(false))] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
@@ -54,19 +55,19 @@ pub fn AdminUserSelect(
 
     let options_view = move || {
         if loading.get() {
-            return view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }
+            return view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.loading")}</option> }
                 .into_view();
         }
         match users.get() {
             None => {
-                view! { <option value="" disabled>{"ユーザーを読み込み中..."}</option> }.into_view()
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.loading")}</option> }.into_view()
             }
             Some(Err(_)) => {
-                view! { <option value="" disabled>{"ユーザーの取得に失敗しました"}</option> }
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.fetch_failed")}</option> }
                     .into_view()
             }
             Some(Ok(list)) if list.is_empty() => {
-                view! { <option value="" disabled>{"ユーザーが0件です"}</option> }.into_view()
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.empty")}</option> }.into_view()
             }
             Some(Ok(list)) => {
                 let mut sorted = list.clone();
@@ -121,7 +122,7 @@ pub fn AdminUserSelect(
                         on:click=on_retry
                         disabled=move || loading.get()
                     >
-                        {"再試行"}
+                        {rust_i18n::t!("common.actions.retry")}
                     </button>
                     <Show when=move || loading.get()>
                         <LoadingSpinner />
@@ -136,7 +137,7 @@ pub fn AdminUserSelect(
 mod host_tests {
     use super::*;
     use crate::api::UserResponse;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     fn user(id: &str, name: &str, username: &str) -> UserResponse {
         UserResponse {
@@ -155,24 +156,26 @@ mod host_tests {
 
     #[test]
     fn user_select_renders_empty_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             users.set(Ok(Vec::new()));
             let selected = create_rw_signal(String::new());
             view! { <AdminUserSelect users=users selected=selected /> }
         });
-        assert!(html.contains("ユーザーが0件です"));
+        assert!(html.contains("No users found"));
     }
 
     #[test]
     fn user_select_renders_error_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             users.set(Err(ApiError::validation("fetch error")));
             let selected = create_rw_signal(String::new());
             view! { <AdminUserSelect users=users selected=selected /> }
         });
-        assert!(html.contains("ユーザーの取得に失敗しました"));
+        assert!(html.contains("Failed to load users"));
     }
 
     #[test]

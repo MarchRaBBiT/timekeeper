@@ -82,16 +82,18 @@ pub fn AdminPanel() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::helpers::{admin_user, provide_auth};
+    use crate::test_support::helpers::{admin_user, provide_auth, set_test_locale};
     use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn admin_panel_renders_sections_for_admin() {
+        let _locale = set_test_locale("ja");
         let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(admin_user(true)));
             view! { <AdminPanel /> }
         });
-        assert!(html.contains("管理者ツール"));
-        assert!(html.contains("週次休日"));
+        println!("{html}");
+        assert!(html.contains(rust_i18n::t!("pages.admin.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
     }
 }

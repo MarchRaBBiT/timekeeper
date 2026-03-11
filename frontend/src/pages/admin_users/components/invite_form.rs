@@ -1,7 +1,7 @@
 use crate::{
     api::{ApiError, CreateUser, UserResponse},
     components::{error::InlineErrorMessage, layout::SuccessMessage},
-    pages::admin_users::utils::{InviteFormState, MessageState},
+    pages::admin_users::utils::{localized_role_label, InviteFormState, MessageState},
 };
 use leptos::{ev, *};
 use wasm_bindgen::JsCast;
@@ -11,10 +11,14 @@ fn prepare_invite_submission(
     form_state: InviteFormState,
 ) -> Result<CreateUser, ApiError> {
     if !is_system_admin {
-        return Err(ApiError::unknown("システム管理者のみ操作できます。"));
+        return Err(ApiError::unknown(
+            rust_i18n::t!("pages.admin_users.invite_form.errors.system_admin_only").to_string(),
+        ));
     }
     if !form_state.is_valid() {
-        return Err(ApiError::validation("すべての必須項目を入力してください。"));
+        return Err(ApiError::validation(
+            rust_i18n::t!("pages.admin_users.invite_form.errors.required_fields").to_string(),
+        ));
     }
     Ok(form_state.to_request())
 }
@@ -41,8 +45,12 @@ pub fn InviteForm(
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
-                <h2 class="text-lg font-medium text-fg">{"ユーザー招待 (管理者専用)"}</h2>
-                <p class="text-sm text-fg-muted">{"ユーザー名・氏名・権限を入力し、必要に応じてシステム管理者権限を付与します。"}</p>
+                <h2 class="text-lg font-medium text-fg">
+                    {rust_i18n::t!("pages.admin_users.invite_form.title")}
+                </h2>
+                <p class="text-sm text-fg-muted">
+                    {rust_i18n::t!("pages.admin_users.invite_form.description")}
+                </p>
             </div>
 
             <Show when=move || messages.error.get().is_some()>
@@ -54,35 +62,49 @@ pub fn InviteForm(
 
             <form class="grid grid-cols-1 lg:grid-cols-2 gap-4" on:submit=on_submit>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"ユーザー名"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.username")}
+                    </label>
                     <input
                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
-                        placeholder="username"
+                        placeholder={rust_i18n::t!(
+                            "pages.admin_users.invite_form.placeholders.username"
+                        )}
                         prop:value=form_state.username
                         on:input=move |ev| form_state.username.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"氏名"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.full_name")}
+                    </label>
                     <input
                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
-                        placeholder="山田太郎"
+                        placeholder={rust_i18n::t!(
+                            "pages.admin_users.invite_form.placeholders.full_name"
+                        )}
                         prop:value=form_state.full_name
                         on:input=move |ev| form_state.full_name.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"メールアドレス"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.email")}
+                    </label>
                     <input
                         type="email"
                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
-                        placeholder="user@example.com"
+                        placeholder={rust_i18n::t!(
+                            "pages.admin_users.invite_form.placeholders.email"
+                        )}
                         prop:value=form_state.email
                         on:input=move |ev| form_state.email.set(event_target_value(&ev))
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"パスワード"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.password")}
+                    </label>
                     <input
                         type="password"
                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -91,14 +113,16 @@ pub fn InviteForm(
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"権限"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.role")}
+                    </label>
                     <select
                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                         prop:value=form_state.role
                         on:change=move |ev| form_state.role.set(event_target_value(&ev))
                     >
-                        <option value="employee">{"employee"}</option>
-                        <option value="admin">{"admin"}</option>
+                        <option value="employee">{localized_role_label("employee")}</option>
+                        <option value="admin">{localized_role_label("admin")}</option>
                     </select>
                 </div>
                 <div class="flex items-center space-x-2 h-full pt-6">
@@ -114,7 +138,9 @@ pub fn InviteForm(
                             }
                         }
                     />
-                    <span class="text-sm text-fg">{"システム管理者権限を付与"}</span>
+                    <span class="text-sm text-fg">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.system_admin")}
+                    </span>
                 </div>
                 <div class="lg:col-span-2">
                     <button
@@ -122,7 +148,13 @@ pub fn InviteForm(
                         disabled=move || pending.get()
                         class="px-4 py-2 bg-action-primary-bg text-action-primary-text rounded disabled:opacity-50"
                     >
-                        {move || if pending.get() { "作成中..." } else { "ユーザーを作成" }}
+                        {move || {
+                            if pending.get() {
+                                rust_i18n::t!("pages.admin_users.invite_form.actions.submitting")
+                            } else {
+                                rust_i18n::t!("pages.admin_users.invite_form.actions.submit")
+                            }
+                        }}
                     </button>
                 </div>
             </form>
@@ -133,10 +165,11 @@ pub fn InviteForm(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn invite_form_renders() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let form_state = InviteFormState::default();
             let messages = MessageState::default();
@@ -152,18 +185,24 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("ユーザー招待"));
-        assert!(html.contains("ユーザーを作成"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_users.invite_form.title").as_ref()));
+        assert!(
+            html.contains(rust_i18n::t!("pages.admin_users.invite_form.actions.submit").as_ref())
+        );
     }
 
     #[test]
     fn prepare_invite_submission_validates_permissions_and_required_fields() {
+        let _locale = set_test_locale("ja");
         let runtime = create_runtime();
         let form_state = InviteFormState::default();
 
         let non_admin_err =
             prepare_invite_submission(false, form_state).expect_err("must require admin");
-        assert_eq!(non_admin_err.error, "システム管理者のみ操作できます。");
+        assert_eq!(
+            non_admin_err.error,
+            rust_i18n::t!("pages.admin_users.invite_form.errors.system_admin_only")
+        );
 
         let form_state = InviteFormState::default();
         let invalid_err =

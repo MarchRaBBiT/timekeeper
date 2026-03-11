@@ -39,8 +39,9 @@ impl ExportFilters {
         let to_str = self.to_date.trim();
 
         let parse_date = |value: &str| {
-            NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))
+            NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+                ApiError::validation(rust_i18n::t!("pages.admin_export.validation.date_format"))
+            })
         };
 
         let from = if from_str.is_empty() {
@@ -56,9 +57,9 @@ impl ExportFilters {
 
         if let (Some(f), Some(t)) = (from, to) {
             if f > t {
-                return Err(ApiError::validation(
-                    "From は To 以前の日付を指定してください。",
-                ));
+                return Err(ApiError::validation(rust_i18n::t!(
+                    "pages.admin_export.validation.date_order"
+                )));
             }
         }
 
@@ -171,6 +172,7 @@ pub fn needs_specific_user_selection(use_specific_user: bool, username: &str) ->
 #[cfg(test)]
 mod tests {
     use super::{needs_specific_user_selection, ExportFilters};
+    use crate::test_support::helpers::set_test_locale;
 
     #[test]
     fn specific_user_requires_selection() {
@@ -206,6 +208,7 @@ mod tests {
 
     #[test]
     fn export_filters_validate_rejects_invalid_date_format() {
+        let _locale = set_test_locale("ja");
         let filters = ExportFilters {
             username: "alice".into(),
             from_date: "2026/01/01".into(),
@@ -217,6 +220,7 @@ mod tests {
 
     #[test]
     fn export_filters_validate_rejects_reversed_date_range() {
+        let _locale = set_test_locale("ja");
         let filters = ExportFilters {
             username: "alice".into(),
             from_date: "2026-02-01".into(),

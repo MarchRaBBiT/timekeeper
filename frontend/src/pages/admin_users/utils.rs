@@ -53,6 +53,15 @@ impl InviteFormState {
     }
 }
 
+pub fn localized_role_label(role: &str) -> String {
+    match role {
+        "employee" => rust_i18n::t!("pages.admin_users.roles.employee").to_string(),
+        "admin" => rust_i18n::t!("pages.admin_users.roles.admin").to_string(),
+        "member" => rust_i18n::t!("pages.admin_users.roles.member").to_string(),
+        _ => role.to_string(),
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct MessageState {
     pub success: RwSignal<Option<String>>,

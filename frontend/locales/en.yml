@@ -511,20 +511,272 @@ pages:
           status: "Status"
           created_at: "Created"
           actions: "Actions"
-  admin: {}
-  admin_users: {}
-  admin_audit_logs: {}
-  admin_export: {}
+  admin:
+    title: "Admin Tools"
+    description: "Manage weekly holidays, requests, attendance, MFA, and holidays from one place."
+    unauthorized: "This page requires administrator privileges."
+    validation:
+      request_id_missing: "The request ID could not be resolved."
+  admin_users:
+    roles:
+      admin: "Administrator"
+      employee: "Employee"
+      member: "Member"
+    errors:
+      system_admin_only: "This action requires system administrator privileges."
+    messages:
+      invite_success: "Invited %{username} successfully."
+      reset_mfa_success: "Reset MFA for the selected user."
+      delete_user_success: "Archived the selected user."
+      unlock_user_success: "Unlocked the selected user."
+      revoke_session_success: "Revoked the selected session."
+      restore_archived_user_success: "Restored the archived user."
+      delete_archived_user_success: "Permanently deleted the archived user."
+    layout:
+      title: "User Provisioning"
+      description: "Invite users, review account status, and manage archived accounts."
+      unauthorized: "This page requires system administrator privileges."
+    panel:
+      pii_masked: "Displayed personal information is masked."
+      tabs:
+        active: "Active Users"
+        archived: "Archived Users"
+    invite_form:
+      title: "Invite a User"
+      description: "Create a new account and assign its initial role."
+      errors:
+        system_admin_only: "Only system administrators can invite users."
+        required_fields: "Fill in all required fields."
+      fields:
+        username: "Username"
+        full_name: "Full Name"
+        email: "Email"
+        password: "Temporary Password"
+        role: "Role"
+        system_admin: "Grant system administrator privileges"
+      placeholders:
+        username: "Enter a username"
+        full_name: "Enter the full name"
+        email: "Enter an email address"
+      actions:
+        submit: "Send Invite"
+        submitting: "Sending invite..."
+    list:
+      title: "Active Users"
+      description: "Select a user to review details and take action."
+      empty: "No active users were found."
+      columns:
+        username: "Username"
+        full_name: "Full Name"
+        role: "Role"
+        system_admin: "System Admin"
+        mfa: "MFA"
+        status: "Status"
+      values:
+        yes: "Yes"
+        no: "No"
+        enabled: "Enabled"
+        disabled: "Disabled"
+        active: "Active"
+        locked: "Locked"
+    detail:
+      self_delete_blocked: "You cannot archive or delete your own account."
+      delete_section:
+        title: "Account Removal"
+      fields:
+        role: "Role"
+        system_admin: "System Admin"
+        mfa: "MFA"
+        account_status: "Account Status"
+      values:
+        enabled: "Enabled"
+        disabled: "Disabled"
+        registered: "Registered"
+        unregistered: "Not Registered"
+        locked: "Locked"
+        normal: "Normal"
+      actions:
+        reset_mfa: "Reset MFA"
+        reset_mfa_pending: "Resetting MFA..."
+        unlock: "Unlock Account"
+        unlock_pending: "Unlocking..."
+        archive: "Archive User"
+        hard_delete: "Delete Permanently"
+      confirm:
+        title: "Confirm Account Removal"
+        cancel: "Cancel"
+        archive_message: "Archive this user account?"
+        hard_delete_message: "Permanently delete this user account?"
+        archive_confirm: "Archive"
+        hard_delete_confirm: "Delete Permanently"
+      sessions:
+        title: "Sessions"
+        description: "Review and revoke active sessions for this user."
+        empty: "No sessions were found."
+        loading: "Loading sessions..."
+        unknown_device: "Unknown device"
+        not_recorded: "Not recorded"
+        current: "Current session"
+        other: "Other session"
+        current_button: "Current"
+        revoke: "Revoke"
+        started_at: "Started At"
+        last_seen_at: "Last Seen"
+        expires_at: "Expires At"
+    archived_list:
+      loading: "Loading archived users..."
+      empty: "No archived users were found."
+      archived_at: "Archived At"
+    archived_detail:
+      fields:
+        role: "Role"
+        system_admin: "System Admin"
+        archived_at: "Archived At"
+      values:
+        enabled: "Enabled"
+        disabled: "Disabled"
+      actions:
+        restore: "Restore User"
+        restoring: "Restoring..."
+        delete: "Delete Permanently"
+      confirm:
+        title: "Confirm Permanent Deletion"
+        message: "Permanently delete this archived user?"
+        confirm: "Delete"
+        deleting: "Deleting..."
+        cancel: "Cancel"
+  admin_audit_logs:
+    title: "Audit Logs"
+    description: "Review and export system activity history."
+    unauthorized: "You do not have permission to view audit logs."
+    masked_notice: "Displayed audit logs have masked personal information."
+    empty:
+      title: "No logs found"
+      description: "No audit logs matched the current filters."
+    filters:
+      from: "Date/Time (From)"
+      to: "Date/Time (To)"
+      user_id: "User ID"
+      event_type: "Event Type"
+      result: "Result"
+      per_page: "Rows Per Page"
+      all: "All"
+      per_page_10: "10 rows"
+      per_page_20: "20 rows"
+      per_page_50: "50 rows"
+    actions:
+      clear_filters: "Clear Filters"
+      export: "Export JSON"
+      exporting: "Exporting..."
+    results:
+      success: "Success"
+      failure: "Failure"
+    table:
+      occurred_at: "Date/Time"
+      user: "User"
+      event: "Event"
+      target: "Target"
+      result: "Result"
+      metadata: "Details"
+      request_id: "Request ID"
+      error: "Error"
+    pagination:
+      previous: "Previous"
+      next: "Next"
+      page: "Page"
+    metadata:
+      title: "Metadata Details"
+    events:
+      auth_login: "Login"
+      auth_logout: "Logout"
+      auth_refresh: "Token Refresh"
+      mfa_activate: "MFA Enabled"
+      mfa_disable: "MFA Disabled"
+      mfa_register: "MFA Registered"
+      mfa_setup: "MFA Setup"
+      password_change: "Password Changed"
+      attendance_break_end: "Break End"
+      attendance_break_start: "Break Start"
+      attendance_clock_in: "Clock In"
+      attendance_clock_out: "Clock Out"
+      attendance_export: "Attendance Export"
+      request_cancel: "Request Cancelled"
+      request_leave_create: "Leave Request Created"
+      request_overtime_create: "Overtime Request Created"
+      request_update: "Request Updated"
+      subject_request_cancel: "Subject Request Cancelled"
+      subject_request_create: "Subject Request Created"
+      consent_record: "Consent Recorded"
+      admin_attendance_list: "Admin Attendance List Viewed"
+      admin_attendance_upsert: "Admin Attendance Updated"
+      admin_audit_log_detail: "Admin Audit Log Detail Viewed"
+      admin_audit_log_export: "Admin Audit Logs Exported"
+      admin_audit_log_list: "Admin Audit Log List Viewed"
+      admin_break_force_end: "Admin Break Force End"
+      admin_export: "Admin Data Export"
+      admin_holiday_create: "Admin Holiday Created"
+      admin_holiday_delete: "Admin Holiday Deleted"
+      admin_holiday_google_fetch: "Admin Google Holiday Sync"
+      admin_holiday_list: "Admin Holiday List Viewed"
+      admin_mfa_reset: "Admin MFA Reset"
+      admin_request_approve: "Admin Request Approved"
+      admin_request_detail: "Admin Request Detail Viewed"
+      admin_request_list: "Admin Request List Viewed"
+      admin_request_reject: "Admin Request Rejected"
+      admin_subject_request_approve: "Admin Subject Request Approved"
+      admin_subject_request_list: "Admin Subject Request List Viewed"
+      admin_subject_request_reject: "Admin Subject Request Rejected"
+      admin_user_create: "Admin User Created"
+      admin_user_list: "Admin User List Viewed"
+      admin_weekly_holiday_create: "Admin Weekly Holiday Created"
+      admin_weekly_holiday_list: "Admin Weekly Holiday List Viewed"
+  admin_export:
+    title: "Data Export (CSV)"
+    unauthorized: "This page requires administrator privileges."
+    masked_notice: "Personal data in the export target is masked."
+    fields:
+      user: "User"
+      username_placeholder: "Enter username directly"
+      user_select_placeholder: "Select a user"
+      start_date: "Start Date"
+      end_date: "End Date"
+    scope:
+      all_users: "All Users"
+      specific_user: "Specific User"
+    actions:
+      export: "Export CSV"
+      exporting: "Exporting..."
+    preview:
+      label: "Preview (first 2KB) - Filename: "
+    validation:
+      user_required: "Select a specific user."
+      date_format: "Enter dates in YYYY-MM-DD format."
+      date_order: "From must be on or before To."
   home: {}
 
 admin_components:
-  attendance: {}
-  holidays: {}
+  attendance:
+    fields:
+      target_date: "Target Date"
+  holidays:
+    fields:
+      date: "Date"
+    filters:
+      from: "Start Date"
+      to: "End Date"
   requests: {}
   subject_requests: {}
   system_tools: {}
-  user_select: {}
-  weekly_holidays: {}
+  user_select:
+    placeholder: "Select a user"
+    loading: "Loading users..."
+    fetch_failed: "Failed to load users"
+    empty: "No users found"
+  weekly_holidays:
+    fields:
+      starts_on: "Effective Start Date"
+      ends_on: "Effective End Date (Optional)"
+    title: "Weekly Holidays"
 
 api:
   errors: {}

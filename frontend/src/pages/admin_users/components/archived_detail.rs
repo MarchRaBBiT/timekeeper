@@ -3,9 +3,13 @@ use crate::{
     components::{
         confirm_dialog::ConfirmDialog, error::InlineErrorMessage, layout::SuccessMessage,
     },
-    pages::admin_users::utils::MessageState,
+    pages::admin_users::utils::{localized_role_label, MessageState},
 };
 use leptos::*;
+
+fn archived_delete_message() -> String {
+    rust_i18n::t!("pages.admin_users.archived_detail.confirm.message").to_string()
+}
 
 #[component]
 pub fn ArchivedUserDetailDrawer(
@@ -84,17 +88,37 @@ pub fn ArchivedUserDetailDrawer(
                                     </div>
                                     <div class="p-6 space-y-4">
                                         <div>
-                                            <p class="text-sm text-fg-muted">{"権限"}</p>
-                                            <p class="text-base text-fg font-medium">{user.role.clone()}</p>
-                                        </div>
-                                        <div>
-                                            <p class="text-sm text-fg-muted">{"システム管理者"}</p>
+                                            <p class="text-sm text-fg-muted">
+                                                {rust_i18n::t!("pages.admin_users.archived_detail.fields.role")}
+                                            </p>
                                             <p class="text-base text-fg font-medium">
-                                                {if user.is_system_admin { "有効" } else { "無効" }}
+                                                {localized_role_label(&user.role)}
                                             </p>
                                         </div>
                                         <div>
-                                            <p class="text-sm text-fg-muted">{"退職日"}</p>
+                                            <p class="text-sm text-fg-muted">
+                                                {rust_i18n::t!(
+                                                    "pages.admin_users.archived_detail.fields.system_admin"
+                                                )}
+                                            </p>
+                                            <p class="text-base text-fg font-medium">
+                                                {if user.is_system_admin {
+                                                    rust_i18n::t!(
+                                                        "pages.admin_users.archived_detail.values.enabled"
+                                                    )
+                                                } else {
+                                                    rust_i18n::t!(
+                                                        "pages.admin_users.archived_detail.values.disabled"
+                                                    )
+                                                }}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p class="text-sm text-fg-muted">
+                                                {rust_i18n::t!(
+                                                    "pages.admin_users.archived_detail.fields.archived_at"
+                                                )}
+                                            </p>
                                             <p class="text-base text-fg font-medium">
                                                 {user.archived_at.split('T').next().unwrap_or(&user.archived_at).to_string()}
                                             </p>
@@ -113,7 +137,17 @@ pub fn ArchivedUserDetailDrawer(
                                                 disabled=move || restore_pending.get() || delete_pending.get()
                                                 on:click=restore_click
                                             >
-                                                {move || if restore_pending.get() { "復職処理中..." } else { "復職させる" }}
+                                                {move || {
+                                                    if restore_pending.get() {
+                                                        rust_i18n::t!(
+                                                            "pages.admin_users.archived_detail.actions.restoring"
+                                                        )
+                                                    } else {
+                                                        rust_i18n::t!(
+                                                            "pages.admin_users.archived_detail.actions.restore"
+                                                        )
+                                                    }
+                                                }}
                                             </button>
 
                                             <button
@@ -121,18 +155,34 @@ pub fn ArchivedUserDetailDrawer(
                                                 disabled=move || restore_pending.get() || delete_pending.get()
                                                 on:click=delete_click
                                             >
-                                                {"完全削除"}
+                                                {rust_i18n::t!("pages.admin_users.archived_detail.actions.delete")}
                                             </button>
                                         </div>
                                     </div>
                                     <ConfirmDialog
                                         is_open=Signal::derive(move || show_delete_confirm.get())
-                                        title="完全削除の確認"
-                                        message="この退職ユーザーのデータを完全に削除しますか？この操作は取り消せません。"
+                                        title={rust_i18n::t!(
+                                            "pages.admin_users.archived_detail.confirm.title"
+                                        ).to_string()}
+                                        message=Signal::derive(archived_delete_message)
                                         on_confirm=confirm_delete
                                         on_cancel=cancel_delete
-                                        confirm_label=Signal::derive(move || if delete_pending.get() { "削除中...".to_string() } else { "完全削除する".to_string() })
-                                        cancel_label="いいえ"
+                                        confirm_label=Signal::derive(move || {
+                                            if delete_pending.get() {
+                                                rust_i18n::t!(
+                                                    "pages.admin_users.archived_detail.confirm.deleting"
+                                                )
+                                                .to_string()
+                                            } else {
+                                                rust_i18n::t!(
+                                                    "pages.admin_users.archived_detail.confirm.confirm"
+                                                )
+                                                .to_string()
+                                            }
+                                        })
+                                        cancel_label={rust_i18n::t!(
+                                            "pages.admin_users.archived_detail.confirm.cancel"
+                                        ).to_string()}
                                         confirm_disabled=Signal::derive(move || delete_pending.get())
                                         destructive=true
                                     />
@@ -149,7 +199,7 @@ pub fn ArchivedUserDetailDrawer(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
     use chrono::Utc;
 
     fn archived_user() -> ArchivedUserResponse {
@@ -166,6 +216,7 @@ mod host_tests {
 
     #[test]
     fn archived_detail_drawer_renders() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let selected = create_rw_signal(Some(archived_user()));
             let messages = MessageState::default();
@@ -181,6 +232,7 @@ mod host_tests {
             }
         });
         assert!(html.contains("Archived User"));
-        assert!(html.contains("完全削除"));
+        assert!(html
+            .contains(rust_i18n::t!("pages.admin_users.archived_detail.actions.delete").as_ref()));
     }
 }

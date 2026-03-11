@@ -80,7 +80,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
             let repo = repo_sessions.clone();
             async move {
                 if !allowed {
-                    Err(ApiError::validation("システム管理者のみ利用できます。"))
+                    Err(ApiError::validation(
+                        rust_i18n::t!("pages.admin_users.errors.system_admin_only").to_string(),
+                    ))
                 } else if let Some(user_id) = maybe_user_id {
                     repo.fetch_user_sessions(user_id).await
                 } else {
@@ -99,7 +101,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
             let pii_masked = pii_masked;
             async move {
                 if !allowed {
-                    Err(ApiError::validation("システム管理者のみ利用できます。"))
+                    Err(ApiError::validation(
+                        rust_i18n::t!("pages.admin_users.errors.system_admin_only").to_string(),
+                    ))
                 } else {
                     let response = repo.fetch_users().await?;
                     pii_masked.set(response.pii_masked);
@@ -117,7 +121,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
             let repo = repo_archived.clone();
             async move {
                 if !allowed {
-                    Err(ApiError::validation("システム管理者のみ利用できます。"))
+                    Err(ApiError::validation(
+                        rust_i18n::t!("pages.admin_users.errors.system_admin_only").to_string(),
+                    ))
                 } else {
                     repo.fetch_archived_users().await
                 }
@@ -179,8 +185,13 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = invite_action.value().get() {
             match result {
                 Ok(user) => {
-                    invite_messages
-                        .set_success(format!("ユーザー '{}' を作成しました。", user.username));
+                    invite_messages.set_success(
+                        rust_i18n::t!(
+                            "pages.admin_users.messages.invite_success",
+                            username = user.username.as_str()
+                        )
+                        .to_string(),
+                    );
                     invite_form.reset();
                     users_resource.refetch();
                 }
@@ -195,7 +206,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = reset_mfa_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("MFA をリセットしました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.reset_mfa_success").to_string(),
+                    );
                 }
                 Err(err) => {
                     drawer_messages.set_error(err);
@@ -208,7 +221,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = delete_user_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("ユーザーを削除しました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.delete_user_success").to_string(),
+                    );
                     selected_user.set(None);
                     users_resource.refetch();
                     archived_users_resource.refetch();
@@ -224,7 +239,9 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = unlock_user_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("ユーザーのロックを解除しました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.unlock_user_success").to_string(),
+                    );
                     users_resource.refetch();
                 }
                 Err(err) => {
@@ -238,7 +255,10 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = revoke_user_session_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("セッションをログアウトしました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.revoke_session_success")
+                            .to_string(),
+                    );
                     user_sessions_resource.refetch();
                 }
                 Err(err) => {
@@ -252,7 +272,10 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = restore_archived_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("ユーザーを復職させました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.restore_archived_user_success")
+                            .to_string(),
+                    );
                     selected_archived_user.set(None);
                     users_resource.refetch();
                     archived_users_resource.refetch();
@@ -268,7 +291,10 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         if let Some(result) = delete_archived_action.value().get() {
             match result {
                 Ok(_) => {
-                    drawer_messages.set_success("退職ユーザーを完全削除しました。");
+                    drawer_messages.set_success(
+                        rust_i18n::t!("pages.admin_users.messages.delete_archived_user_success")
+                            .to_string(),
+                    );
                     selected_archived_user.set(None);
                     archived_users_resource.refetch();
                 }

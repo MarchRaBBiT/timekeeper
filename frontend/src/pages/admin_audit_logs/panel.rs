@@ -1,6 +1,8 @@
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use super::view_model::DEFAULT_AUDIT_LOGS_PER_PAGE;
-use super::view_model::{use_audit_log_view_model, AuditLogFilters, AUDIT_EVENT_TYPES};
+use super::view_model::{
+    audit_event_label, use_audit_log_view_model, AuditLogFilters, AUDIT_EVENT_TYPES,
+};
 use crate::api::{ApiError, AuditLog, AuditLogListResponse};
 use crate::components::common::{Button, ButtonVariant};
 use crate::components::empty_state::EmptyState;
@@ -140,6 +142,11 @@ fn render_log_row(log: AuditLog, selected_metadata: RwSignal<Option<serde_json::
     let target = target_label(log.target_type, log.target_id);
     let result_text = log.result;
     let result_class = result_badge_class(&result_text);
+    let result_label = if result_text == "success" {
+        rust_i18n::t!("pages.admin_audit_logs.results.success").into_owned()
+    } else {
+        rust_i18n::t!("pages.admin_audit_logs.results.failure").into_owned()
+    };
     let error_code = log.error_code;
     let metadata_payload = metadata_button_payload(log.metadata, 50);
 
@@ -153,14 +160,14 @@ fn render_log_row(log: AuditLog, selected_metadata: RwSignal<Option<serde_json::
                 <span class="text-xs text-fg-muted block">{log.actor_type}</span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">
-                {log.event_type}
+                {audit_event_label(&log.event_type)}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-fg-muted">
                 {target}
             </td>
              <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <span class=result_class>
-                    {result_text}
+                    {result_label}
                 </span>
                 {error_code.map(|code| view! { <span class="block text-xs text-status-error-text">{code}</span> })}
             </td>
@@ -190,8 +197,8 @@ fn render_logs_content(
                     <tr>
                         <td colspan="6" class="p-4">
                             <EmptyState
-                                title="ログがありません"
-                                description="検索条件に一致する監査ログは見つかりませんでした。"
+                                title=rust_i18n::t!("pages.admin_audit_logs.empty.title").into_owned()
+                                description=rust_i18n::t!("pages.admin_audit_logs.empty.description").into_owned()
                             />
                         </td>
                     </tr>
@@ -218,6 +225,11 @@ fn render_log_card(log: AuditLog, selected_metadata: RwSignal<Option<serde_json:
     let target = target_label(log.target_type, log.target_id);
     let result_text = log.result;
     let result_class = result_badge_class(&result_text);
+    let result_label = if result_text == "success" {
+        rust_i18n::t!("pages.admin_audit_logs.results.success").into_owned()
+    } else {
+        rust_i18n::t!("pages.admin_audit_logs.results.failure").into_owned()
+    };
     let error_code_text = log.error_code.unwrap_or_default();
     let has_error_code = !error_code_text.is_empty();
     let metadata_payload = metadata_button_payload(log.metadata, 80);
@@ -235,20 +247,20 @@ fn render_log_card(log: AuditLog, selected_metadata: RwSignal<Option<serde_json:
     view! {
         <div class="rounded-xl border border-border bg-surface-elevated p-4 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-semibold text-fg">{log.event_type}</span>
-                <span class=result_class>{result_text}</span>
+                <span class="text-sm font-semibold text-fg">{audit_event_label(&log.event_type)}</span>
+                <span class=result_class>{result_label}</span>
             </div>
             <div class="space-y-1 text-sm">
-                <div><span class="text-fg-muted">{"日時: "}</span><span class="text-fg">{occurred_at}</span></div>
-                <div><span class="text-fg-muted">{"ユーザー: "}</span><span class="text-fg">{actor}</span></div>
-                <div><span class="text-fg-muted">{"対象: "}</span><span class="text-fg">{target}</span></div>
-                <div><span class="text-fg-muted">{"リクエストID: "}</span><span class="text-fg">{log.request_id.unwrap_or_else(|| "-".to_string())}</span></div>
+                <div><span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.occurred_at")}{": "}</span><span class="text-fg">{occurred_at}</span></div>
+                <div><span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.user")}{": "}</span><span class="text-fg">{actor}</span></div>
+                <div><span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.target")}{": "}</span><span class="text-fg">{target}</span></div>
+                <div><span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.request_id")}{": "}</span><span class="text-fg">{log.request_id.unwrap_or_else(|| "-".to_string())}</span></div>
                 <Show when=move || has_error_code>
-                    <div><span class="text-fg-muted">{"エラー: "}</span><span class="text-status-error-text">{error_code_text.clone()}</span></div>
+                    <div><span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.error")}{": "}</span><span class="text-status-error-text">{error_code_text.clone()}</span></div>
                 </Show>
                 <Show when=move || has_metadata>
                     <div>
-                        <span class="text-fg-muted">{"詳細: "}</span>
+                        <span class="text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.table.metadata")}{": "}</span>
                         <button
                             class="text-link hover:text-link-hover hover:underline text-left font-mono text-xs"
                             on:click=move |_| selected_metadata.set(metadata_value.get_value())
@@ -272,8 +284,8 @@ fn render_logs_mobile_content(
             if response.items.is_empty() {
                 view! {
                     <EmptyState
-                        title="ログがありません"
-                        description="検索条件に一致する監査ログは見つかりませんでした。"
+                        title=rust_i18n::t!("pages.admin_audit_logs.empty.title").into_owned()
+                        description=rust_i18n::t!("pages.admin_audit_logs.empty.description").into_owned()
                     />
                 }
                 .into_view()
@@ -378,76 +390,76 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
         <Layout>
             <Show
                 when=move || is_system_admin.get()
-                fallback=move || view! { <div class="p-6 bg-surface-elevated text-fg shadow rounded">"権限がありません"</div> }
+                fallback=move || view! { <div class="p-6 bg-surface-elevated text-fg shadow rounded">{rust_i18n::t!("pages.admin_audit_logs.unauthorized")}</div> }
             >
                 <div class="space-y-6">
                     <div>
-                        <h1 class="text-2xl font-bold text-fg">"監査ログ"</h1>
-                        <p class="mt-1 text-sm text-fg-muted">"システム操作の履歴を確認・エクスポートします。"</p>
+                        <h1 class="text-2xl font-bold text-fg">{rust_i18n::t!("pages.admin_audit_logs.title")}</h1>
+                        <p class="mt-1 text-sm text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.description")}</p>
                     </div>
 
                     <Show when=move || vm.pii_masked.get()>
                         <div class="rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
-                            {"表示中の監査ログは個人情報がマスキングされています。"}
+                            {rust_i18n::t!("pages.admin_audit_logs.masked_notice")}
                         </div>
                     </Show>
 
                     <div class="bg-surface-elevated p-4 rounded-lg shadow space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"日時 (From)"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.from")}</label>
                                 <input type="datetime-local" class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().from
                                     on:input=move |ev| on_filter_change(ev, "from")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"日時 (To)"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.to")}</label>
                                 <input type="datetime-local" class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().to
                                     on:input=move |ev| on_filter_change(ev, "to")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"ユーザーID"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.user_id")}</label>
                                 <input type="text" class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().actor_id
                                     on:input=move |ev| on_filter_change(ev, "actor_id")
                                 />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"イベントタイプ"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.event_type")}</label>
                                 <select class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().event_type
                                     on:change=move |ev| on_filter_change(ev, "event_type")
                                 >
-                                    <option value="">"すべて"</option>
+                                    <option value="">{rust_i18n::t!("pages.admin_audit_logs.filters.all")}</option>
                                     {AUDIT_EVENT_TYPES.iter().map(|(val, label)| view! {
-                                        <option value=*val>{*label}</option>
+                                        <option value=*val>{rust_i18n::t!(*label)}</option>
                                     }).collect_view()}
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"結果"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.result")}</label>
                                 <select class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.filters.get().result
                                     on:change=move |ev| on_filter_change(ev, "result")
                                 >
-                                    <option value="">"すべて"</option>
-                                    <option value="success">"成功"</option>
-                                    <option value="failure">"失敗"</option>
+                                    <option value="">{rust_i18n::t!("pages.admin_audit_logs.filters.all")}</option>
+                                    <option value="success">{rust_i18n::t!("pages.admin_audit_logs.results.success")}</option>
+                                    <option value="failure">{rust_i18n::t!("pages.admin_audit_logs.results.failure")}</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-fg-muted">"表示件数"</label>
+                                <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.admin_audit_logs.filters.per_page")}</label>
                                 <select
                                     class="mt-1 block w-full rounded-md border-form-control-border bg-form-control-bg text-form-control-text shadow-sm sm:text-sm border px-2 py-1"
                                     prop:value=move || vm.per_page.get().to_string()
                                     on:change=on_per_page_change
                                 >
-                                    <option value="10">"10件"</option>
-                                    <option value="20">"20件"</option>
-                                    <option value="50">"50件"</option>
+                                    <option value="10">{rust_i18n::t!("pages.admin_audit_logs.filters.per_page_10")}</option>
+                                    <option value="20">{rust_i18n::t!("pages.admin_audit_logs.filters.per_page_20")}</option>
+                                    <option value="50">{rust_i18n::t!("pages.admin_audit_logs.filters.per_page_50")}</option>
                                 </select>
                             </div>
                         </div>
@@ -463,7 +475,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                     vm.page.set(page);
                                 }
                             >
-                                "フィルタをクリア"
+                                {rust_i18n::t!("pages.admin_audit_logs.actions.clear_filters")}
                             </button>
                             <Button
                                 variant=ButtonVariant::Primary
@@ -471,13 +483,13 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 disabled=Signal::derive(move || vm.export_action.pending().get())
                                 loading=Signal::derive(move || vm.export_action.pending().get())
                             >
-                                {move || if vm.export_action.pending().get() { "エクスポート中..." } else { "JSONエクスポート" }}
+                                {move || if vm.export_action.pending().get() { rust_i18n::t!("pages.admin_audit_logs.actions.exporting").into_owned() } else { rust_i18n::t!("pages.admin_audit_logs.actions.export").into_owned() }}
                             </Button>
                         </div>
                     </div>
 
                     <div class="space-y-3 lg:hidden">
-                        <Suspense fallback=move || view! { <div class="p-4 text-center">"読み込み中..."</div> }>
+                        <Suspense fallback=move || view! { <div class="p-4 text-center">{rust_i18n::t!("common.states.loading")}</div> }>
                             {move || vm.logs_resource.get().map(|res| render_logs_mobile_content(res, selected_metadata))}
                         </Suspense>
                     </div>
@@ -486,16 +498,16 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                         <table class="min-w-full divide-y divide-border">
                             <thead class="bg-surface-muted">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"日時"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"ユーザー"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"イベント"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"対象"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"結果"</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">"詳細"</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.occurred_at")}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.user")}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.event")}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.target")}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.result")}</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("pages.admin_audit_logs.table.metadata")}</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-surface-elevated divide-y divide-border">
-                                <Suspense fallback=move || view! { <tr><td colspan="6" class="p-4 text-center">"読み込み中..."</td></tr> }>
+                                <Suspense fallback=move || view! { <tr><td colspan="6" class="p-4 text-center">{rust_i18n::t!("common.states.loading")}</td></tr> }>
                                     {move || vm.logs_resource.get().map(|res| render_logs_content(res, selected_metadata))}
                                 </Suspense>
                             </tbody>
@@ -508,10 +520,10 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                             disabled=move || vm.page.get() <= 1
                             on:click=move |_| vm.page.update(|page| *page = previous_page(*page))
                         >
-                            "前へ"
+                            {rust_i18n::t!("pages.admin_audit_logs.pagination.previous")}
                         </button>
                         <div class="text-sm text-fg">
-                            "ページ " {move || vm.page.get()}
+                            {rust_i18n::t!("pages.admin_audit_logs.pagination.page")} {move || vm.page.get()}
                              {move || page_summary_from_logs(vm.logs_resource.get())}
                         </div>
                         <button
@@ -519,7 +531,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                             disabled=move || is_next_page_disabled(vm.page.get(), vm.logs_resource.get())
                             on:click=move |_| vm.page.update(|page| *page = next_page(*page))
                         >
-                            "次へ"
+                            {rust_i18n::t!("pages.admin_audit_logs.pagination.next")}
                         </button>
                     </div>
 
@@ -533,11 +545,11 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                 on:keydown=on_metadata_modal_keydown
                             >
                                 <div class="p-4 border-b border-border flex justify-between items-center">
-                                    <h3 class="text-lg font-bold text-fg">"メタデータ詳細"</h3>
+                                    <h3 class="text-lg font-bold text-fg">{rust_i18n::t!("pages.admin_audit_logs.metadata.title")}</h3>
                                     <button
                                         id="audit-metadata-modal-header-close"
                                         node_ref=metadata_header_close_ref
-                                        aria-label="閉じる"
+                                        aria-label={rust_i18n::t!("common.actions.close")}
                                         class="text-fg-muted hover:text-fg"
                                         on:click=move |_| {
                                             selected_metadata.update(clear_selected_metadata);
@@ -568,7 +580,7 @@ pub fn AdminAuditLogsPage() -> impl IntoView {
                                             }
                                         }
                                     >
-                                        "閉じる"
+                                        {rust_i18n::t!("common.actions.close")}
                                     </button>
                                 </div>
                             </div>
@@ -585,7 +597,7 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::api::{ApiError, AuditLog, AuditLogListResponse};
-    use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
+    use crate::test_support::helpers::{admin_user, provide_auth, regular_user, set_test_locale};
     use crate::test_support::ssr::{render_to_string, with_runtime};
     use chrono::{DateTime, Utc};
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
@@ -640,6 +652,7 @@ mod host_tests {
 
     #[test]
     fn audit_logs_page_renders_denied_for_non_admin() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/admin/audit-logs".to_string(),
@@ -647,11 +660,12 @@ mod host_tests {
             provide_auth(Some(regular_user()));
             view! { <Router><AdminAuditLogsPage /></Router> }
         });
-        assert!(html.contains("権限がありません"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.unauthorized").as_ref()));
     }
 
     #[test]
     fn audit_logs_page_renders_empty_state_for_admin() {
+        let _locale = set_test_locale("en");
         let server = MockServer::start();
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/audit-logs");
@@ -678,10 +692,10 @@ mod host_tests {
             ));
             view! { <Router><AdminAuditLogsPage /></Router> }
         });
-        assert!(html.contains("監査ログ"));
-        assert!(html.contains("JSONエクスポート"));
-        assert!(html.contains("表示件数"));
-        assert!(html.contains("20件"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.actions.export").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.filters.per_page").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.filters.per_page_20").as_ref()));
     }
 
     #[test]
@@ -793,8 +807,9 @@ mod host_tests {
 
     #[test]
     fn render_logs_content_covers_empty_rows_and_error_branches() {
+        let _locale = set_test_locale("en");
         let empty_html = render_logs_html(Ok(sample_log_response(vec![], 0, 20)));
-        assert!(empty_html.contains("ログがありません"));
+        assert!(empty_html.contains(rust_i18n::t!("pages.admin_audit_logs.empty.title").as_ref()));
 
         let row_html = render_logs_html(Ok(sample_log_response(
             vec![sample_audit_log(
@@ -809,9 +824,10 @@ mod host_tests {
         assert!(row_html.contains("2026-01-17 09:30:15"));
         assert!(row_html.contains("admin-1"));
         assert!(row_html.contains("system_admin"));
-        assert!(row_html.contains("admin_user_create"));
+        assert!(row_html
+            .contains(rust_i18n::t!("pages.admin_audit_logs.events.admin_user_create").as_ref()));
         assert!(row_html.contains("user u-100"));
-        assert!(row_html.contains("failure"));
+        assert!(row_html.contains(rust_i18n::t!("pages.admin_audit_logs.results.failure").as_ref()));
         assert!(row_html.contains("AUTH_001"));
         assert!(row_html.contains("key"));
 
@@ -821,7 +837,8 @@ mod host_tests {
             20,
         )));
         assert!(fallback_html.contains("-"));
-        assert!(fallback_html.contains("success"));
+        assert!(fallback_html
+            .contains(rust_i18n::t!("pages.admin_audit_logs.results.success").as_ref()));
 
         let error_html = render_logs_html(Err(ApiError::unknown("fetch failed")));
         assert!(error_html.contains("fetch failed"));
@@ -829,6 +846,7 @@ mod host_tests {
 
     #[test]
     fn render_logs_mobile_content_renders_cards() {
+        let _locale = set_test_locale("en");
         let html = with_runtime(|| {
             let selected_metadata = create_rw_signal(None::<serde_json::Value>);
             render_logs_mobile_content(
@@ -847,7 +865,7 @@ mod host_tests {
             .render_to_string()
             .to_string()
         });
-        assert!(html.contains("リクエストID"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_audit_logs.table.request_id").as_ref()));
         assert!(html.contains("admin-1"));
     }
 }

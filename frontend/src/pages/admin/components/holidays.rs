@@ -689,7 +689,7 @@ pub fn HolidayManagementSection(
             <h3 class="text-lg font-medium text-fg">{"祝日管理"}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <DatePicker
-                    label=Some("日付")
+                    label=Some("admin_components.holidays.fields.date")
                     value=holiday_date_input
                 />
                 <div>
@@ -741,11 +741,11 @@ pub fn HolidayManagementSection(
                 </div>
                 <div class="grid gap-3 lg:grid-cols-4 align-bottom">
                     <DatePicker
-                        label=Some("開始日")
+                        label=Some("admin_components.holidays.filters.from")
                         value=filter_from_input
                     />
                     <DatePicker
-                        label=Some("終了日")
+                        label=Some("admin_components.holidays.filters.to")
                         value=filter_to_input
                     />
                     <div class="lg:col-span-2 flex items-end gap-2 mb-0.5">

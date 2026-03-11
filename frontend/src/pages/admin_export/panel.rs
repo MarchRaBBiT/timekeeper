@@ -29,7 +29,7 @@ pub fn AdminExportPage() -> impl IntoView {
                         <div class="space-y-6">
                             <div class="bg-surface-elevated shadow rounded-lg p-6">
                                 <p class="text-sm text-fg">
-                                    {"このページは管理者以上の権限が必要です。"}
+                                    {rust_i18n::t!("pages.admin_export.unauthorized")}
                                 </p>
                             </div>
                         </div>
@@ -67,9 +67,9 @@ fn AdminExportPanel() -> impl IntoView {
                 vm.use_specific_user.get_untracked(),
                 &filters.username,
             ) {
-                vm.error.set(Some(ApiError::validation(
-                    "指定ユーザーを選択してください。",
-                )));
+                vm.error.set(Some(ApiError::validation(rust_i18n::t!(
+                    "pages.admin_export.validation.user_required"
+                ))));
                 vm.preview.set(None);
                 return;
             }
@@ -89,15 +89,15 @@ fn AdminExportPanel() -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div class="bg-surface-elevated shadow rounded-lg p-6">
-                <h2 class="text-lg font-medium text-fg mb-4">{"データエクスポート (CSV)"}</h2>
+                <h2 class="text-lg font-medium text-fg mb-4">{rust_i18n::t!("pages.admin_export.title")}</h2>
                 <Show when=move || vm.pii_masked.get()>
                     <div class="mb-4 rounded-lg border border-status-warning-border bg-status-warning-bg px-3 py-2 text-sm text-status-warning-text">
-                        {"エクスポート対象の個人情報はマスキング済みです。"}
+                        {rust_i18n::t!("pages.admin_export.masked_notice")}
                     </div>
                 </Show>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
                     <div>
-                        <label class="block text-sm text-fg-muted">{"ユーザー"}</label>
+                        <label class="block text-sm text-fg-muted">{rust_i18n::t!("pages.admin_export.fields.user")}</label>
                         <div class="mt-1 space-y-2">
                             <div class="flex items-center gap-4 text-sm text-fg">
                                 <label class="flex items-center gap-1">
@@ -113,7 +113,7 @@ fn AdminExportPanel() -> impl IntoView {
                                             vm.preview.set(None);
                                         }
                                     />
-                                    {"全ユーザー"}
+                                    {rust_i18n::t!("pages.admin_export.scope.all_users")}
                                 </label>
                                 <label class="flex items-center gap-1">
                                     <input
@@ -127,14 +127,14 @@ fn AdminExportPanel() -> impl IntoView {
                                             vm.preview.set(None);
                                         }
                                     />
-                                    {"指定ユーザー"}
+                                    {rust_i18n::t!("pages.admin_export.scope.specific_user")}
                                 </label>
                             </div>
                             <Show when=move || users_error.get().is_some()>
                                 <div class="space-y-1">
                                     <input
                                         class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 disabled:opacity-50"
-                                        placeholder="username を直接入力"
+                                        placeholder={rust_i18n::t!("pages.admin_export.fields.username_placeholder")}
                                         prop:value={move || vm.username.get()}
                                         on:input=move |ev| vm.username.set(event_target_value(&ev))
                                         disabled=specific_user_disabled
@@ -147,24 +147,24 @@ fn AdminExportPanel() -> impl IntoView {
                                     users=vm.users_resource
                                     selected=vm.username
                                     label=None
-                                    placeholder="ユーザーを選択してください".into()
+                                    placeholder=rust_i18n::t!("pages.admin_export.fields.user_select_placeholder").into_owned()
                                     value_kind=UserSelectValue::Username
                                     disabled=specific_user_disabled
                                 />
                             </Show>
                             <Show when=move || specific_user_required.get()>
                                 <p class="text-xs text-status-warning-text">
-                                    {"指定ユーザーを選択してください。"}
+                                    {rust_i18n::t!("pages.admin_export.validation.user_required")}
                                 </p>
                             </Show>
                         </div>
                     </div>
                     <DatePicker
-                        label=Some("開始日")
+                        label=Some("pages.admin_export.fields.start_date")
                         value=vm.from_date
                     />
                     <DatePicker
-                        label=Some("終了日")
+                        label=Some("pages.admin_export.fields.end_date")
                         value=vm.to_date
                     />
                 </div>
@@ -180,13 +180,13 @@ fn AdminExportPanel() -> impl IntoView {
                         <Show when=move || downloading.get()>
                             <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                         </Show>
-                        {move || if downloading.get() { "エクスポート中..." } else { "CSVをエクスポート" }}
+                        {move || if downloading.get() { rust_i18n::t!("pages.admin_export.actions.exporting").into_owned() } else { rust_i18n::t!("pages.admin_export.actions.export").into_owned() }}
                     </span>
                 </button>
                 <Show when=move || vm.preview.get().is_some()>
                     <div class="mt-4">
                         <h3 class="text-sm text-fg">
-                            {"プレビュー (先頭2KB) - ファイル名: "}
+                            {rust_i18n::t!("pages.admin_export.preview.label")}
                             {move || vm.filename.get()}
                         </h3>
                         <pre class="mt-2 text-xs bg-surface-muted p-3 rounded overflow-auto max-h-64 whitespace-pre-wrap">
@@ -203,20 +203,22 @@ fn AdminExportPanel() -> impl IntoView {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
+    use crate::test_support::helpers::{admin_user, provide_auth, regular_user, set_test_locale};
     use crate::test_support::ssr::render_with_router_to_string;
 
     #[test]
     fn admin_export_page_denied_for_non_admin() {
+        let _locale = set_test_locale("en");
         let html = render_with_router_to_string("http://localhost/", move || {
             provide_auth(Some(regular_user()));
             view! { <AdminExportPage /> }
         });
-        assert!(html.contains("このページは管理者以上の権限が必要です。"));
+        assert!(html.contains("administrator privileges"));
     }
 
     #[test]
     fn admin_export_page_renders_panel_for_admin() {
+        let _locale = set_test_locale("en");
         let server = MockServer::start();
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/users");
@@ -231,9 +233,9 @@ mod host_tests {
             ));
             view! { <AdminExportPage /> }
         });
-        assert!(html.contains("データエクスポート"));
-        assert!(html.contains("CSVをエクスポート"));
-        assert!(html.contains("開始日"));
-        assert!(html.contains("終了日"));
+        assert!(html.contains("Data Export"));
+        assert!(html.contains("Export CSV"));
+        assert!(html.contains("Start Date"));
+        assert!(html.contains("End Date"));
     }
 }

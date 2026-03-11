@@ -511,20 +511,272 @@ pages:
           status: "ステータス"
           created_at: "作成日時"
           actions: "操作"
-  admin: {}
-  admin_users: {}
-  admin_audit_logs: {}
-  admin_export: {}
+  admin:
+    title: "管理者ツール"
+    description: "週次休日や申請、勤怠、MFA、祝日管理をまとめて実行できます。"
+    unauthorized: "このページは管理者以上の権限が必要です。"
+    validation:
+      request_id_missing: "リクエストIDを取得できませんでした。"
+  admin_users:
+    roles:
+      admin: "管理者"
+      employee: "従業員"
+      member: "メンバー"
+    errors:
+      system_admin_only: "この操作はシステム管理者のみ実行できます。"
+    messages:
+      invite_success: "%{username} を招待しました。"
+      reset_mfa_success: "選択中ユーザーのMFAをリセットしました。"
+      delete_user_success: "選択中ユーザーをアーカイブしました。"
+      unlock_user_success: "選択中ユーザーのロックを解除しました。"
+      revoke_session_success: "選択中セッションを無効化しました。"
+      restore_archived_user_success: "アーカイブ済みユーザーを復元しました。"
+      delete_archived_user_success: "アーカイブ済みユーザーを完全削除しました。"
+    layout:
+      title: "ユーザー追加"
+      description: "ユーザー招待、アカウント状態の確認、アーカイブ済みアカウントの管理を行います。"
+      unauthorized: "このページはシステム管理者権限が必要です。"
+    panel:
+      pii_masked: "表示中の個人情報はマスキングされています。"
+      tabs:
+        active: "有効ユーザー"
+        archived: "アーカイブ済み"
+    invite_form:
+      title: "ユーザー招待"
+      description: "新しいアカウントを作成し、初期権限を設定します。"
+      errors:
+        system_admin_only: "ユーザー招待はシステム管理者のみ実行できます。"
+        required_fields: "必須項目をすべて入力してください。"
+      fields:
+        username: "ユーザー名"
+        full_name: "氏名"
+        email: "メールアドレス"
+        password: "初期パスワード"
+        role: "ロール"
+        system_admin: "システム管理者権限を付与"
+      placeholders:
+        username: "ユーザー名を入力"
+        full_name: "氏名を入力"
+        email: "メールアドレスを入力"
+      actions:
+        submit: "招待を送信"
+        submitting: "招待を送信中..."
+    list:
+      title: "有効ユーザー"
+      description: "ユーザーを選択して詳細確認や操作を行います。"
+      empty: "有効ユーザーは見つかりませんでした。"
+      columns:
+        username: "ユーザー名"
+        full_name: "氏名"
+        role: "ロール"
+        system_admin: "システム管理者"
+        mfa: "MFA"
+        status: "状態"
+      values:
+        yes: "はい"
+        no: "いいえ"
+        enabled: "有効"
+        disabled: "無効"
+        active: "有効"
+        locked: "ロック中"
+    detail:
+      self_delete_blocked: "自分自身のアカウントはアーカイブまたは削除できません。"
+      delete_section:
+        title: "アカウント削除"
+      fields:
+        role: "ロール"
+        system_admin: "システム管理者"
+        mfa: "MFA"
+        account_status: "アカウント状態"
+      values:
+        enabled: "有効"
+        disabled: "無効"
+        registered: "登録済み"
+        unregistered: "未登録"
+        locked: "ロック中"
+        normal: "通常"
+      actions:
+        reset_mfa: "MFAをリセット"
+        reset_mfa_pending: "MFAをリセット中..."
+        unlock: "ロックを解除"
+        unlock_pending: "解除中..."
+        archive: "アーカイブ"
+        hard_delete: "完全削除"
+      confirm:
+        title: "アカウント削除の確認"
+        cancel: "キャンセル"
+        archive_message: "このユーザーをアーカイブしますか。"
+        hard_delete_message: "このユーザーを完全削除しますか。"
+        archive_confirm: "アーカイブする"
+        hard_delete_confirm: "完全削除する"
+      sessions:
+        title: "セッション"
+        description: "このユーザーの有効セッションを確認し、必要に応じて無効化します。"
+        empty: "セッションはありません。"
+        loading: "セッションを読み込み中..."
+        unknown_device: "不明なデバイス"
+        not_recorded: "記録なし"
+        current: "現在のセッション"
+        other: "他のセッション"
+        current_button: "現在"
+        revoke: "無効化"
+        started_at: "開始日時"
+        last_seen_at: "最終アクセス"
+        expires_at: "有効期限"
+    archived_list:
+      loading: "アーカイブ済みユーザーを読み込み中..."
+      empty: "アーカイブ済みユーザーは見つかりませんでした。"
+      archived_at: "アーカイブ日時"
+    archived_detail:
+      fields:
+        role: "ロール"
+        system_admin: "システム管理者"
+        archived_at: "アーカイブ日時"
+      values:
+        enabled: "有効"
+        disabled: "無効"
+      actions:
+        restore: "ユーザーを復元"
+        restoring: "復元中..."
+        delete: "完全削除"
+      confirm:
+        title: "完全削除の確認"
+        message: "このアーカイブ済みユーザーを完全削除しますか。"
+        confirm: "削除する"
+        deleting: "削除中..."
+        cancel: "キャンセル"
+  admin_audit_logs:
+    title: "監査ログ"
+    description: "システム操作の履歴を確認・エクスポートします。"
+    unauthorized: "監査ログを閲覧する権限がありません。"
+    masked_notice: "表示中の監査ログは個人情報がマスキングされています。"
+    empty:
+      title: "ログがありません"
+      description: "検索条件に一致する監査ログは見つかりませんでした。"
+    filters:
+      from: "日時 (From)"
+      to: "日時 (To)"
+      user_id: "ユーザーID"
+      event_type: "イベントタイプ"
+      result: "結果"
+      per_page: "表示件数"
+      all: "すべて"
+      per_page_10: "10件"
+      per_page_20: "20件"
+      per_page_50: "50件"
+    actions:
+      clear_filters: "フィルタをクリア"
+      export: "JSONエクスポート"
+      exporting: "エクスポート中..."
+    results:
+      success: "成功"
+      failure: "失敗"
+    table:
+      occurred_at: "日時"
+      user: "ユーザー"
+      event: "イベント"
+      target: "対象"
+      result: "結果"
+      metadata: "詳細"
+      request_id: "リクエストID"
+      error: "エラー"
+    pagination:
+      previous: "前へ"
+      next: "次へ"
+      page: "ページ"
+    metadata:
+      title: "メタデータ詳細"
+    events:
+      auth_login: "ログイン"
+      auth_logout: "ログアウト"
+      auth_refresh: "トークン更新"
+      mfa_activate: "MFA有効化"
+      mfa_disable: "MFA無効化"
+      mfa_register: "MFA登録"
+      mfa_setup: "MFAセットアップ"
+      password_change: "パスワード変更"
+      attendance_break_end: "休憩終了"
+      attendance_break_start: "休憩開始"
+      attendance_clock_in: "出勤打刻"
+      attendance_clock_out: "退勤打刻"
+      attendance_export: "勤怠データ出力"
+      request_cancel: "申請取消"
+      request_leave_create: "休暇申請作成"
+      request_overtime_create: "残業申請作成"
+      request_update: "申請更新"
+      subject_request_cancel: "本人確認申請取消"
+      subject_request_create: "本人確認申請作成"
+      consent_record: "同意記録"
+      admin_attendance_list: "勤怠一覧参照(管理者)"
+      admin_attendance_upsert: "勤怠修正(管理者)"
+      admin_audit_log_detail: "監査ログ詳細参照(管理者)"
+      admin_audit_log_export: "監査ログ出力(管理者)"
+      admin_audit_log_list: "監査ログ一覧参照(管理者)"
+      admin_break_force_end: "休憩強制終了(管理者)"
+      admin_export: "データ一括出力(管理者)"
+      admin_holiday_create: "祝日作成(管理者)"
+      admin_holiday_delete: "祝日削除(管理者)"
+      admin_holiday_google_fetch: "Googleカレンダー連携(管理者)"
+      admin_holiday_list: "祝日一覧参照(管理者)"
+      admin_mfa_reset: "MFAリセット(管理者)"
+      admin_request_approve: "申請承認(管理者)"
+      admin_request_detail: "申請詳細参照(管理者)"
+      admin_request_list: "申請一覧参照(管理者)"
+      admin_request_reject: "申請却下(管理者)"
+      admin_subject_request_approve: "本人確認承認(管理者)"
+      admin_subject_request_list: "本人確認一覧参照(管理者)"
+      admin_subject_request_reject: "本人確認却下(管理者)"
+      admin_user_create: "ユーザー作成(管理者)"
+      admin_user_list: "ユーザー一覧参照(管理者)"
+      admin_weekly_holiday_create: "週間祝日作成(管理者)"
+      admin_weekly_holiday_list: "週間祝日一覧参照(管理者)"
+  admin_export:
+    title: "データエクスポート (CSV)"
+    unauthorized: "このページは管理者以上の権限が必要です。"
+    masked_notice: "エクスポート対象の個人情報はマスキング済みです。"
+    fields:
+      user: "ユーザー"
+      username_placeholder: "username を直接入力"
+      user_select_placeholder: "ユーザーを選択してください"
+      start_date: "開始日"
+      end_date: "終了日"
+    scope:
+      all_users: "全ユーザー"
+      specific_user: "指定ユーザー"
+    actions:
+      export: "CSVをエクスポート"
+      exporting: "エクスポート中..."
+    preview:
+      label: "プレビュー (先頭2KB) - ファイル名: "
+    validation:
+      user_required: "指定ユーザーを選択してください。"
+      date_format: "日付は YYYY-MM-DD 形式で入力してください。"
+      date_order: "From は To 以前の日付を指定してください。"
   home: {}
 
 admin_components:
-  attendance: {}
-  holidays: {}
+  attendance:
+    fields:
+      target_date: "対象日"
+  holidays:
+    fields:
+      date: "日付"
+    filters:
+      from: "開始日"
+      to: "終了日"
   requests: {}
   subject_requests: {}
   system_tools: {}
-  user_select: {}
-  weekly_holidays: {}
+  user_select:
+    placeholder: "ユーザーを選択"
+    loading: "ユーザーを読み込み中..."
+    fetch_failed: "ユーザーの取得に失敗しました"
+    empty: "ユーザーが0件です"
+  weekly_holidays:
+    fields:
+      starts_on: "稼働開始日"
+      ends_on: "稼働終了日（任意）"
+    title: "週次休日"
 
 api:
   errors: {}

@@ -7,7 +7,7 @@ pub fn UnauthorizedMessage() -> impl IntoView {
         <div class="space-y-6">
             <div class="bg-surface-elevated shadow rounded-lg p-6">
                 <p class="text-sm text-fg">
-                    {"このページは管理者以上の権限が必要です。"}
+                    {rust_i18n::t!("pages.admin.unauthorized")}
                 </p>
             </div>
         </div>
@@ -19,9 +19,9 @@ pub fn AdminDashboardFrame(children: Children) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div>
-                <h1 class="text-2xl font-bold text-fg">{"管理者ツール"}</h1>
+                <h1 class="text-2xl font-bold text-fg">{rust_i18n::t!("pages.admin.title")}</h1>
                 <p class="mt-1 text-sm text-fg-muted">
-                    {"週次休日や申請、勤怠、MFA、祝日管理をまとめて実行できます。"}
+                    {rust_i18n::t!("pages.admin.description")}
                 </p>
             </div>
             {children()}
@@ -49,16 +49,21 @@ pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::{render_to_string, render_with_router_to_string};
+    use crate::test_support::{
+        helpers::set_test_locale,
+        ssr::{render_to_string, render_with_router_to_string},
+    };
 
     #[test]
     fn unauthorized_message_renders_copy() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || view! { <UnauthorizedMessage /> });
-        assert!(html.contains("このページは管理者以上の権限が必要です。"));
+        assert!(html.contains("administrator privileges"));
     }
 
     #[test]
     fn admin_dashboard_frame_renders_header() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             view! {
                 <AdminDashboardFrame>
@@ -66,12 +71,13 @@ mod host_tests {
                 </AdminDashboardFrame>
             }
         });
-        assert!(html.contains("管理者ツール"));
+        assert!(html.contains("Admin Tools"));
         assert!(html.contains("child"));
     }
 
     #[test]
     fn admin_dashboard_scaffold_switches_content() {
+        let _locale = set_test_locale("en");
         let allowed_html = render_with_router_to_string("http://localhost/", move || {
             let allowed = create_memo(|_| true);
             view! {
@@ -80,7 +86,7 @@ mod host_tests {
                 </AdminDashboardScaffold>
             }
         });
-        assert!(allowed_html.contains("管理者ツール"));
+        assert!(allowed_html.contains("Admin Tools"));
         assert!(allowed_html.contains("allowed"));
 
         let denied_html = render_with_router_to_string("http://localhost/", move || {
@@ -91,6 +97,6 @@ mod host_tests {
                 </AdminDashboardScaffold>
             }
         });
-        assert!(denied_html.contains("このページは管理者以上の権限が必要です。"));
+        assert!(denied_html.contains("administrator privileges"));
     }
 }

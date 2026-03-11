@@ -24,7 +24,9 @@ fn is_system_admin_user(user: Option<&UserResponse>) -> bool {
 
 fn validate_action_id(id: &str) -> Result<(), ApiError> {
     if id.trim().is_empty() {
-        Err(ApiError::validation("リクエストIDを取得できませんでした。"))
+        Err(ApiError::validation(rust_i18n::t!(
+            "pages.admin.validation.request_id_missing"
+        )))
     } else {
         Ok(())
     }
@@ -271,7 +273,7 @@ pub struct SubjectRequestActionPayload {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
-    use crate::test_support::helpers::{admin_user, provide_auth, regular_user};
+    use crate::test_support::helpers::{admin_user, provide_auth, regular_user, set_test_locale};
     use crate::test_support::ssr::{render_to_string, with_local_runtime_async};
     use chrono::NaiveDate;
 
@@ -388,6 +390,7 @@ mod host_tests {
     #[test]
     fn admin_view_model_resources_and_actions_cover_runtime_paths() {
         with_local_runtime_async(|| async {
+            let _locale = set_test_locale("ja");
             let runtime = leptos::create_runtime();
             let server = MockServer::start();
             server.mock(|when, then| {
