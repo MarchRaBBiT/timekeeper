@@ -280,6 +280,7 @@
 **Status (2026-03-12)**
 
 - PR #430 / #431 の merge-blocking review comment は解消済み
+- PR #435 では merge-blocking ではない follow-up として、翻訳キー解決を直接検証しない監査ログ event test と、一部 host test / view model test の hardcoded assertion が指摘された
 - ただし reviewer が low / optional とした follow-up は別件化前の debt として残す
 
 **Symptoms**
@@ -287,6 +288,7 @@
 - locale foundation まわりに low-priority の設計・運用 debt が残っている
 - frontend と backend の password change error code が二重定義で、将来の drift 耐性が弱い
 - host test の一部が翻訳済み日本語テキストに直接依存しており、翻訳変更時に UI 構造と無関係な failure を起こしうる
+- `AUDIT_EVENT_TYPES` の test が翻訳キー文字列の非空確認に留まり、`t!()` で実際に locale 解決できるかは保証していない
 
 **Evidence**
 
@@ -301,6 +303,12 @@
 - [frontend/src/components/cards.rs](../../frontend/src/components/cards.rs)
   - host test が翻訳済み文言に直接依存する箇所が残る
 - [frontend/src/pages/settings/panel.rs](../../frontend/src/pages/settings/panel.rs)
+- [frontend/src/pages/admin_audit_logs/view_model.rs](../../frontend/src/pages/admin_audit_logs/view_model.rs)
+  - `audit_event_types_keys_are_unique_and_labels_not_empty` は key string の形だけを見ており、翻訳解決を直接検証していない
+- [frontend/src/pages/admin_export/panel.rs](../../frontend/src/pages/admin_export/panel.rs)
+  - host test に `Data Export` など hardcoded 文字列 assertion が残っている
+- [frontend/src/pages/admin/view_model.rs](../../frontend/src/pages/admin/view_model.rs)
+  - validation message の test が翻訳キー経由ではなく最終文字列を直接比較している
 - [backend/src/handlers/auth.rs](../../backend/src/handlers/auth.rs)
   - `PASSWORD_CHANGE_*` code を frontend/backend で別管理している
 
@@ -309,6 +317,7 @@
 - `rust-i18n` preview 依存が長引くと、将来の stable 移行時にまとめて差分が大きくなる
 - locale context の fallback / storage failure が本番で silent degradation として残る
 - 翻訳変更だけで host test が落ち、review と reapply のノイズになる
+- 監査ログ event key の typo や locale file 側の欠落が、現在の test だと未検知で混入しうる
 - error code の片側変更時に frontend/backend の対応がずれる余地がある
 
 **Recommended Fix**
@@ -319,6 +328,8 @@
 4. `LocaleSwitcher` の clone 群は意図が明確な小さな構造へ寄せる
 5. text 直書き assertion が必要な host test と、DOM 構造 assertion で十分な host test を整理する
 6. password change error code は共有定数または schema 生成で一元化する
+7. `AUDIT_EVENT_TYPES` については、`en` / `ja` の両 locale で `rust_i18n::t!(*key) != key` を確認する translation-resolution test を追加する
+8. review comment で指摘された hardcoded assertion は `rust_i18n::t!(...)` ベースへ寄せ、翻訳文面変更と UI 回帰を切り分けやすくする
 
 ## Suggested Execution Order
 
