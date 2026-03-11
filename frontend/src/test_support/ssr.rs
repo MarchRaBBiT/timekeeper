@@ -1,6 +1,8 @@
 use leptos::*;
 use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
+use crate::state::locale::LocaleProvider;
+
 pub fn with_runtime<T>(f: impl FnOnce() -> T) -> T {
     let runtime = leptos::create_runtime();
     let result = f();
@@ -50,9 +52,11 @@ where
     render_to_string(move || {
         provide_context(RouterIntegrationContext::new(ServerIntegration { path }));
         view! {
-            <Router>
-                {view()}
-            </Router>
+            <LocaleProvider>
+                <Router>
+                    {view()}
+                </Router>
+            </LocaleProvider>
         }
     })
 }
