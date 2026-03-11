@@ -1,6 +1,8 @@
 use leptos::ev::KeyboardEvent;
 use leptos::*;
 
+use crate::state::locale::LocaleState;
+
 #[component]
 pub fn ConfirmDialog(
     is_open: Signal<bool>,
@@ -13,6 +15,8 @@ pub fn ConfirmDialog(
     #[prop(optional, into)] confirm_disabled: MaybeSignal<bool>,
     #[prop(optional)] destructive: bool,
 ) -> impl IntoView {
+    let locale_state = use_context::<(ReadSignal<LocaleState>, WriteSignal<LocaleState>)>()
+        .map(|ctx| Signal::derive(move || ctx.0.get().current));
     let confirm_button_class = if destructive {
         "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold bg-action-danger-bg text-action-danger-text hover:bg-action-danger-bg-hover disabled:opacity-50"
     } else {
@@ -22,7 +26,7 @@ pub fn ConfirmDialog(
     let confirm_label_text = Signal::derive(move || {
         let text = confirm_label.get();
         if text.trim().is_empty() {
-            "はい".to_string()
+            rust_i18n::t!("components.confirm_dialog.confirm").to_string()
         } else {
             text
         }
@@ -32,10 +36,16 @@ pub fn ConfirmDialog(
     let cancel_label_text = Signal::derive(move || {
         let text = cancel_label.get();
         if text.trim().is_empty() {
-            "いいえ".to_string()
+            rust_i18n::t!("components.confirm_dialog.cancel").to_string()
         } else {
             text
         }
+    });
+    let close_label_text = Signal::derive(move || {
+        if let Some(locale) = locale_state.as_ref() {
+            let _ = locale.get();
+        }
+        rust_i18n::t!("common.actions.close").to_string()
     });
 
     let cancel_on_backdrop = on_cancel;
@@ -49,7 +59,7 @@ pub fn ConfirmDialog(
             <div class="fixed inset-0 z-[70] flex items-center justify-center p-4">
                 <button
                     type="button"
-                    aria-label="閉じる"
+                    aria-label=move || close_label_text.get()
                     class="absolute inset-0 bg-overlay-backdrop"
                     on:click=move |_| cancel_on_backdrop.call(())
                 ></button>
@@ -69,7 +79,7 @@ pub fn ConfirmDialog(
                         <h2 class="text-lg font-semibold text-fg">{move || title_text.get()}</h2>
                         <button
                             type="button"
-                            aria-label="閉じる"
+                            aria-label=move || close_label_text.get()
                             class="text-fg-muted hover:text-fg"
                             on:click=move |_| cancel_on_header_button.call(())
                         >
@@ -103,10 +113,11 @@ pub fn ConfirmDialog(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn confirm_dialog_renders_with_default_labels() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let is_open = Signal::derive(|| true);
             view! {
@@ -122,6 +133,7 @@ mod host_tests {
         assert!(html.contains("role=\"dialog\""));
         assert!(html.contains("aria-modal=\"true\""));
         assert!(html.contains("本当に実行しますか？"));
+        assert!(html.contains("aria-label=\"閉じる\""));
         assert!(html.contains("はい"));
         assert!(html.contains("いいえ"));
     }

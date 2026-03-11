@@ -10,7 +10,7 @@ use crate::{
         mfa::MfaRegisterPage, requests::RequestsPage, reset_password::ResetPasswordPage,
         settings::SettingsPage,
     },
-    state::auth::AuthProvider,
+    state::{auth::AuthProvider, locale::LocaleProvider},
 };
 
 pub const ROUTE_PATHS: &[&str] = &[
@@ -50,25 +50,27 @@ pub fn mount_app() {
 pub fn app_root() -> impl IntoView {
     provide_context(crate::api::ApiClient::new());
     view! {
-        <AuthProvider>
-            <Router>
-                <Routes>
-                    <Route path="/" view=HomePage/>
-                    <Route path="/login" view=LoginPage/>
-                    <Route path="/forgot-password" view=ForgotPasswordPage/>
-                    <Route path="/reset-password" view=ResetPasswordPage/>
-                    <Route path="/dashboard" view=ProtectedDashboard/>
-                    <Route path="/attendance" view=ProtectedAttendance/>
-                    <Route path="/requests" view=ProtectedRequests/>
-                    <Route path="/mfa/register" view=ProtectedMfaRegister/>
-                    <Route path="/settings" view=ProtectedSettings/>
-                    <Route path="/admin" view=ProtectedAdmin/>
-                    <Route path="/admin/users" view=ProtectedAdminUsers/>
-                    <Route path="/admin/export" view=ProtectedAdminExport/>
-                    <Route path="/admin/audit-logs" view=ProtectedAdminAuditLogs/>
-                </Routes>
-            </Router>
-        </AuthProvider>
+        <LocaleProvider>
+            <AuthProvider>
+                <Router>
+                    <Routes>
+                        <Route path="/" view=HomePage/>
+                        <Route path="/login" view=LoginPage/>
+                        <Route path="/forgot-password" view=ForgotPasswordPage/>
+                        <Route path="/reset-password" view=ResetPasswordPage/>
+                        <Route path="/dashboard" view=ProtectedDashboard/>
+                        <Route path="/attendance" view=ProtectedAttendance/>
+                        <Route path="/requests" view=ProtectedRequests/>
+                        <Route path="/mfa/register" view=ProtectedMfaRegister/>
+                        <Route path="/settings" view=ProtectedSettings/>
+                        <Route path="/admin" view=ProtectedAdmin/>
+                        <Route path="/admin/users" view=ProtectedAdminUsers/>
+                        <Route path="/admin/export" view=ProtectedAdminExport/>
+                        <Route path="/admin/audit-logs" view=ProtectedAdminAuditLogs/>
+                    </Routes>
+                </Router>
+            </AuthProvider>
+        </LocaleProvider>
     }
 }
 

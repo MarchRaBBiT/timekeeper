@@ -7,6 +7,18 @@ pub mod helpers {
     use crate::config::TimeZoneStatus;
     use crate::state::auth::AuthState;
     use leptos::*;
+    use std::sync::MutexGuard;
+
+    pub struct TestLocaleGuard {
+        _guard: MutexGuard<'static, ()>,
+        previous: String,
+    }
+
+    impl Drop for TestLocaleGuard {
+        fn drop(&mut self) {
+            rust_i18n::set_locale(&self.previous);
+        }
+    }
 
     pub fn admin_user(system_admin: bool) -> UserResponse {
         UserResponse {
@@ -57,5 +69,15 @@ pub mod helpers {
             last_error: None,
             loading: false,
         });
+    }
+
+    pub fn set_test_locale(locale: &str) -> TestLocaleGuard {
+        let guard = crate::config::acquire_test_serial_lock();
+        let previous = rust_i18n::locale().to_string();
+        rust_i18n::set_locale(locale);
+        TestLocaleGuard {
+            _guard: guard,
+            previous,
+        }
     }
 }

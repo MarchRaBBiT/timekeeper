@@ -24,7 +24,13 @@ pub fn InlineErrorMessage(error: Signal<Option<ApiError>>) -> impl IntoView {
                         }
                     }
                     if code != "UNKNOWN" && !code.is_empty() {
-                         view! { <div class="text-xs opacity-75">{"Code: "}{code.clone()}</div> }.into_view()
+                         view! {
+                            <div class="text-xs opacity-75">
+                                {rust_i18n::t!("common.labels.code")}
+                                {": "}
+                                {code.clone()}
+                            </div>
+                         }.into_view()
                     } else {
                         ().into_view()
                     }
@@ -37,11 +43,12 @@ pub fn InlineErrorMessage(error: Signal<Option<ApiError>>) -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
     use serde_json::json;
 
     #[test]
     fn inline_error_renders_validation_details() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let error = ApiError {
                 error: "Validation failed".into(),
@@ -60,6 +67,7 @@ mod host_tests {
 
     #[test]
     fn inline_error_renders_code_when_present() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let error = ApiError {
                 error: "Request failed".into(),
