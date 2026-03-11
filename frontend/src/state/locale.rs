@@ -23,10 +23,18 @@ impl Default for LocaleState {
 }
 
 fn create_locale_context() -> LocaleContext {
-    let initial = resolve_initial_locale(
-        load_persisted_locale().as_deref(),
-        browser_locale().as_deref(),
-    );
+    let persisted = load_persisted_locale();
+    let browser = browser_locale();
+    let current = current_global_locale();
+    let initial = if persisted.is_some() || browser.is_some() {
+        resolve_initial_locale(persisted.as_deref(), browser.as_deref())
+    } else {
+        current
+            .as_deref()
+            .map(normalize_locale)
+            .unwrap_or(DEFAULT_LOCALE)
+            .to_string()
+    };
     rust_i18n::set_locale(&initial);
     create_signal(LocaleState { current: initial })
 }
@@ -91,6 +99,11 @@ pub fn available_locales() -> Vec<String> {
         .collect()
 }
 
+fn current_global_locale() -> Option<String> {
+    let current = rust_i18n::locale().to_string();
+    (!current.trim().is_empty()).then_some(current)
+}
+
 fn load_persisted_locale() -> Option<String> {
     get_local_storage_item(LOCALE_STORAGE_KEY).ok().flatten()
 }
@@ -150,8 +163,8 @@ mod tests {
         let _locale = set_test_locale("ja");
         with_runtime(|| {
             let (read, _write) = create_locale_context();
-            assert_eq!(read.get().current, "en");
-            assert_eq!(rust_i18n::locale().to_string(), "en");
+            assert_eq!(read.get().current, "ja");
+            assert_eq!(rust_i18n::locale().to_string(), "ja");
         });
     }
 
@@ -160,6 +173,16 @@ mod tests {
         with_runtime(|| {
             let (read, _write) = use_locale();
             assert_eq!(read.get().current, "en");
+        });
+    }
+
+    #[test]
+    fn use_locale_without_context_preserves_existing_global_locale() {
+        let _locale = set_test_locale("ja");
+        with_runtime(|| {
+            let (read, _write) = use_locale();
+            assert_eq!(read.get().current, "ja");
+            assert_eq!(rust_i18n::locale().to_string(), "ja");
         });
     }
 
