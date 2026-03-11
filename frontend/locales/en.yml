@@ -16,14 +16,42 @@ common:
     retrying: "Retrying..."
     logout: "Log out"
     close: "Close"
+    clear: "Clear"
+    details: "Details"
+    edit: "Edit"
+    cancel: "Cancel"
+    submit: "Submit"
+    sending: "Submitting..."
   labels:
     code: "Code"
-  states: {}
+    status: "Status"
+    period_or_date: "Period / Date"
+    notes: "Notes"
+    reason: "Reason"
+    submitted_at: "Submitted"
+    request_id: "Request ID"
+    type: "Type"
+    actions: "Actions"
+  states:
+    loading: "Loading..."
+    refreshing: "Refreshing..."
+    processing: "Processing..."
   status: {}
   feedback: {}
   validation: {}
-  time: {}
-  units: {}
+  time:
+    weekdays:
+      mon: "Mon"
+      tue: "Tue"
+      wed: "Wed"
+      thu: "Thu"
+      fri: "Fri"
+      sat: "Sat"
+      sun: "Sun"
+  units:
+    hours: "hr"
+    minutes: "min"
+    days: "days"
   pagination: {}
   navigation:
     dashboard: "Dashboard"
@@ -50,19 +78,439 @@ components:
     cancel: "No"
   error: {}
   empty_state: {}
-  cards: {}
-  forms: {}
+  cards:
+    attendance:
+      title: "Today's Attendance (%{year}/%{month}/%{day})"
+      clock_in: "Clock In"
+      clock_out: "Clock Out"
+      work_hours: "Work Hours"
+      break_total: "Break Total"
+    summary:
+      title: "Monthly Summary"
+      total_hours: "Total Hours"
+      total_days: "Total Days"
+      average_hours: "Average Daily Hours"
+    requests:
+      title: "Recent Request Activity"
+    user:
+      title: "Account"
+      username: "Username"
+      full_name: "Full Name"
+      role: "Role"
+  forms:
+    current_status: "Current Status"
+    holiday_blocked: "Actions are unavailable because today is %{label}."
+    actions:
+      clock_in: "Clock In"
+      break_start: "Start Break"
+      break_end: "End Break"
+      clock_out: "Clock Out"
+    status:
+      not_started: "Not Started"
+      clocked_in: "Clocked In"
+      on_break: "On Break"
+      clocked_out: "Clocked Out"
+    date_picker:
+      placeholder: "Select a date"
   guard: {}
 
 pages:
-  attendance: {}
-  dashboard: {}
-  requests: {}
-  login: {}
-  forgot_password: {}
-  reset_password: {}
-  mfa: {}
-  settings: {}
+  attendance:
+    unauthorized: "You are not authorized to view attendance."
+    summary:
+      title: "Attendance"
+      description: "Review your current status, refresh your records, and export your history."
+    filters:
+      from: "From"
+      to: "To"
+      current_month: "Current Month"
+      load: "Load"
+      exporting: "Exporting..."
+      export: "Export CSV"
+    alerts:
+      title: "Holiday Alerts"
+      description: "Holiday information for %{year}/%{month}"
+      loading: "Loading holiday information..."
+      empty: "No holiday entries are registered for this period."
+    history:
+      title: "Attendance History"
+      empty: "No attendance history found."
+      no_record: "No record"
+      work_hours: "Work Hours"
+      break_details: "Break Details"
+      breaks_empty: "No break records."
+      break_ongoing: "Ongoing"
+      clock_range_open: "%{start} - Ongoing"
+    feedback:
+      clock_in: "Clocked in."
+      break_start: "Break started."
+      break_end: "Break ended."
+      clock_out: "Clocked out."
+      default: "Action completed."
+      export_success: "Attendance CSV downloaded."
+      export_failed: "Failed to download the attendance CSV."
+    validation:
+      from_date: "Enter the start date in YYYY-MM-DD format."
+      to_date: "Enter the end date in YYYY-MM-DD format."
+      range_order: "The start date must be on or before the end date."
+      status_unavailable: "Unable to load the current status."
+      break_start_requires_clocked_in: "You can only start a break while clocked in."
+      attendance_record_missing: "Attendance record was not found."
+      break_end_requires_on_break: "You can only end a break while on break."
+      break_record_missing: "Break record was not found."
+  dashboard:
+    unauthorized: "You are not authorized to view the dashboard."
+    summary:
+      title: "Month-to-Date Summary"
+      description: "Track your working time at a glance."
+      loading: "Loading summary..."
+      metrics:
+        total_hours: "Total Hours"
+        total_days: "Working Days"
+        average_hours: "Average Daily Hours"
+    alerts:
+      title: "Alerts"
+      description: "Review attention points based on your latest attendance data."
+      loading: "Loading alerts..."
+      level:
+        info: "Info"
+        warning: "Warning"
+        error: "Error"
+      messages:
+        no_workdays: "No working days have been recorded this month."
+        empty: "No alerts right now."
+    activities:
+      title: "Request Activity"
+      description: "Recent leave and overtime request counts."
+      loading: "Loading activities..."
+      items:
+        leave_pending: "Leave Requests Pending"
+        overtime_pending: "Overtime Requests Pending"
+        leave_approved: "Leave Requests Approved"
+        overtime_approved: "Overtime Requests Approved"
+    filters:
+      title: "Filters"
+      status: "Status"
+      options:
+        all: "All"
+        pending: "Pending"
+        approved: "Approved"
+    feedback:
+      clock_in: "Clocked in."
+      break_start: "Break started."
+      break_end: "Break ended."
+      clock_out: "Clocked out."
+      default: "Action completed."
+    validation:
+      status_unavailable: "Unable to load the current status."
+      break_start_requires_clocked_in: "You can only start a break while clocked in."
+      attendance_record_missing: "Attendance record was not found."
+      break_end_requires_on_break: "You can only end a break while on break."
+      break_record_missing: "Break record was not found."
+  requests:
+    layout:
+      title: "Requests"
+      description: "Create leave and overtime requests, then review their status in one place."
+    tabs:
+      leave: "Leave"
+      attendance_correction: "Attendance Fix"
+      overtime: "Overtime"
+    filter:
+      title: "Filter Requests"
+      description: "Switch the list view by request status."
+      clear: "Clear"
+      options:
+        all: "All"
+        pending: "Pending"
+        approved: "Approved"
+        rejected: "Rejected"
+        cancelled: "Cancelled"
+    list:
+      title: "Request List"
+      loading: "Loading requests..."
+      empty_title: "No requests to display"
+      empty_description: "Submit a new request from the form on the left or above."
+      kind: "Type"
+      secondary: "Notes"
+      submitted_at: "Submitted"
+      break_count: "%{count} breaks"
+      cancel_dialog:
+        title: "Cancel Request"
+        message: "Are you sure you want to cancel this request?"
+      mobile_locked: "Locked"
+    detail:
+      title: "Request Details"
+      no_reason: "Not provided"
+    detail_modal:
+      subtitle: "Request Details"
+      status: "Status"
+      period: "Period / Date"
+      secondary: "Notes"
+      reason: "Reason"
+      submitted_at: "Submitted"
+      empty_reason: "Not provided"
+    kind:
+      leave: "Leave"
+      overtime: "Overtime"
+      attendance_correction: "Attendance Fix"
+      attendance_correction_short: "Attendance Correction"
+      leave_request: "Leave Request"
+      overtime_request: "Overtime Request"
+      attendance_correction_request: "Attendance Correction Request"
+    status:
+      pending: "Pending"
+      approved: "Approved"
+      rejected: "Rejected"
+      cancelled: "Cancelled"
+    leave_form:
+      title: "Leave Request"
+      description: "Enter the leave type and date range to submit your request."
+      editing: "Editing: update an existing leave request."
+      submit: "Submit Leave Request"
+      update: "Update Leave Request"
+      leave_type: "Type"
+      type_label: "Type"
+      reason_label: "Reason (Optional)"
+      actions:
+        submit: "Submit Leave Request"
+        update: "Update Leave Request"
+      types:
+        annual: "Annual Leave"
+        sick: "Sick Leave"
+        personal: "Personal Leave"
+        other: "Other"
+      start_date: "Start Date"
+      end_date: "End Date"
+      reason_optional: "Reason (Optional)"
+    overtime_form:
+      title: "Overtime Request"
+      description: "Enter the planned overtime date and hours to submit your request."
+      editing: "Editing: update an existing overtime request."
+      submit: "Submit Overtime Request"
+      update: "Update Overtime Request"
+      date: "Overtime Date"
+      planned_hours: "Planned Hours"
+      hours_label: "Planned Hours"
+      reason_label: "Reason (Optional)"
+      actions:
+        submit: "Submit Overtime Request"
+        update: "Update Overtime Request"
+      reason_optional: "Reason (Optional)"
+    correction_form:
+      title: "Attendance Correction Request"
+      description: "Enter the updated clock-in, clock-out, and break details to submit a correction request."
+      editing: "Editing: update an existing attendance correction request."
+      submit: "Submit Attendance Correction Request"
+      update: "Update Attendance Correction Request"
+      date: "Target Date"
+      clock_in: "Clock-in Time"
+      clock_out: "Clock-out Time"
+      clock_in_label: "Clock-in Time"
+      clock_out_label: "Clock-out Time"
+      breaks: "Breaks (one row per `start,end(optional)`)"
+      breaks_label: "Breaks (one row per `start,end(optional)`)"
+      breaks_placeholder: "2026-02-13T12:00,2026-02-13T13:00"
+      reason: "Reason"
+      reason_label: "Reason"
+      actions:
+        submit: "Submit Attendance Correction Request"
+        update: "Update Attendance Correction Request"
+    forms:
+      editing_leave: "Editing: update an existing leave request."
+      editing_overtime: "Editing: update an existing overtime request."
+      editing_correction: "Editing: update an existing attendance correction request."
+      submitting: "Submitting..."
+    messages:
+      updated: "The request was updated."
+      cancelled: "The request was cancelled."
+      leave_submitted: "The leave request was submitted."
+      overtime_submitted: "The overtime request was submitted."
+      correction_submitted: "The attendance correction request was submitted."
+    summary:
+      overtime_hours: "%{hours} hours"
+      correction_breaks: "%{count} breaks"
+    validation:
+      leave_start_date: "Enter the start date in YYYY-MM-DD format."
+      leave_end_date: "Enter the end date in YYYY-MM-DD format."
+      leave_date_order: "The end date must be on or after the start date."
+      overtime_date: "Enter the overtime date in YYYY-MM-DD format."
+      overtime_hours_number: "Enter overtime hours as a number."
+      overtime_hours_range: "Overtime hours must be between 0.25 and 24.0."
+      correction_date: "Enter the target date in YYYY-MM-DD format."
+      correction_clock_in: "Enter the clock-in time in YYYY-MM-DDTHH:MM[:SS] format."
+      correction_clock_out: "Enter the clock-out time in YYYY-MM-DDTHH:MM[:SS] format."
+      correction_reason_required: "Enter a reason for the correction."
+      break_row_format: "Enter each break row as `start,end(optional)`."
+      break_start: "Enter the break start time in YYYY-MM-DDTHH:MM[:SS] format."
+      break_end: "Enter the break end time in YYYY-MM-DDTHH:MM[:SS] format."
+  login:
+    title: "Sign in to Timekeeper"
+    subtitle: "Enter your credentials to continue."
+    fields:
+      username: "Username"
+      password: "Password"
+      mfa_code: "Verification Code"
+    actions:
+      show_mfa: "Use MFA code"
+      hide_mfa: "Hide MFA code"
+      forgot_password: "Forgot your password?"
+      logging_in: "Signing in..."
+      submit: "Sign In"
+    validation:
+      username_required: "Enter your username."
+      password_required: "Enter your password."
+  forgot_password:
+    title: "Reset your password"
+    subtitle: "Enter the email address associated with your account."
+    fields:
+      email: "Email address"
+    actions:
+      submit: "Send reset link"
+      sending: "Sending..."
+      back_to_login: "Back to sign in"
+    success:
+      detail: "If the email exists, a password reset link has been sent."
+    error:
+      title: "Unable to request password reset"
+    validation:
+      email_required: "Enter your email address."
+  reset_password:
+    title: "Set a new password"
+    fields:
+      password: "New password"
+    actions:
+      submit: "Update password"
+      submitting: "Updating..."
+      go_to_login: "Go to sign in"
+    success:
+      title: "Password updated"
+    error:
+      title: "Unable to update password"
+    validation:
+      invalid_token: "The reset link is invalid."
+      password_required: "Enter a new password."
+  mfa:
+    title: "Multi-factor Authentication"
+    status:
+      enabled: "MFA is enabled."
+      pending: "MFA setup is pending activation."
+      disabled: "MFA is disabled."
+    actions:
+      issue_secret: "Issue Setup Secret"
+      registering: "Preparing setup..."
+      refresh_status: "Refresh Status"
+      activate: "Activate MFA"
+      activating: "Activating..."
+    verify:
+      title: "Verify Setup"
+      qr_alt: "QR code for MFA setup"
+      code_label: "Verification Code"
+      code_placeholder: "Enter 6-digit code"
+    feedback:
+      register_success: "MFA setup information was generated."
+      activate_success: "MFA has been activated."
+    validation:
+      code_required: "Enter the 6-digit verification code."
+  settings:
+    tabs:
+      password: "Password"
+      mfa: "MFA"
+      sessions: "Sessions"
+      subject_request: "Subject Requests"
+    password:
+      title: "Change Password"
+      fields:
+        current: "Current Password"
+        new: "New Password"
+        confirm: "Confirm New Password"
+      actions:
+        submit: "Update Password"
+        updating: "Updating..."
+      errors:
+        current_incorrect: "The current password is incorrect."
+        min_length: "Use at least 12 characters."
+        uppercase: "Include at least one uppercase letter."
+        lowercase: "Include at least one lowercase letter."
+        number: "Include at least one number."
+        symbol: "Include at least one symbol."
+        too_common: "Avoid common or easily guessed passwords."
+        must_differ: "Use a password different from the current password."
+        update_failed: "Failed to update the password."
+        confirm_mismatch: "The confirmation password does not match."
+      feedback:
+        updated: "Password updated."
+      policy:
+        helper: "Use a strong password that satisfies all of the requirements below."
+        requirements:
+          min_length: "12+ characters"
+          uppercase: "Uppercase letter"
+          lowercase: "Lowercase letter"
+          number: "Number"
+          symbol: "Symbol"
+          avoid_common: "Not a common password"
+      strength:
+        title: "Password Strength"
+        labels:
+          weak: "Weak"
+          fair: "Fair"
+          good: "Good"
+          strong: "Strong"
+        hints:
+          complete: "All password requirements are satisfied."
+          missing: "Missing: %{requirements}"
+      expiry:
+        expires_today: "Password expires today."
+        remaining_days: "Password expires in %{days} days."
+    sessions:
+      title: "Active Sessions"
+      description: "Review and revoke signed-in devices."
+      empty: "No active sessions were found."
+      actions:
+        current: "Current Session"
+        logout: "Sign Out"
+      feedback:
+        revoked: "The session was signed out."
+      fields:
+        started_at: "Started"
+        last_seen_at: "Last Seen"
+        expires_at: "Expires"
+        not_recorded: "Not recorded"
+      status:
+        current: "Current"
+        other: "Other Device"
+      device:
+        unknown: "Unknown Device"
+    subject_request:
+      title: "Subject Requests"
+      fields:
+        type: "Request Type"
+        details: "Details"
+      types:
+        access: "Access Request"
+        rectify: "Rectification Request"
+        delete: "Deletion Request"
+        stop: "Processing Restriction Request"
+      status:
+        pending: "Pending"
+        approved: "Approved"
+        rejected: "Rejected"
+        cancelled: "Cancelled"
+      actions:
+        submit: "Submit Request"
+        submitting: "Submitting..."
+        cancel: "Cancel Request"
+      feedback:
+        submitted: "Subject request submitted."
+        cancelled: "Subject request cancelled."
+      errors:
+        type_required: "Select a request type."
+      history:
+        title: "Request History"
+        columns:
+          type: "Type"
+          status: "Status"
+          created_at: "Created"
+          actions: "Actions"
   admin: {}
   admin_users: {}
   admin_audit_logs: {}
@@ -87,7 +535,12 @@ api:
   subject_requests: {}
 
 state:
-  attendance: {}
+  attendance:
+    holiday_reason:
+      public_holiday: "public holiday"
+      weekly_holiday: "weekly holiday"
+      forced_holiday: "company holiday"
+      default: "holiday"
   auth: {}
   config: {}
 

@@ -17,10 +17,10 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
             <div class="max-w-md w-full space-y-8">
                 <div>
                     <h2 class="mt-6 text-center text-3xl font-extrabold text-fg">
-                        "Reset your password"
+                        {rust_i18n::t!("pages.forgot_password.title")}
                     </h2>
                     <p class="mt-2 text-center text-sm text-fg-muted">
-                        "Enter your email address and we'll send you a link to reset your password."
+                        {rust_i18n::t!("pages.forgot_password.subtitle")}
                     </p>
                 </div>
 
@@ -45,7 +45,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                     <div class="ml-3">
                                         <h3 class="text-sm font-medium text-status-success-text">{msg}</h3>
                                         <div class="mt-2 text-sm text-status-success-text">
-                                            <p>"Check your email for the reset link."</p>
+                                            <p>{rust_i18n::t!("pages.forgot_password.success.detail")}</p>
                                         </div>
                                         <div class="mt-4">
                                             <div class="-mx-2 -my-1.5 flex">
@@ -53,7 +53,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                                     href="/login"
                                                     class="px-2 py-1.5 rounded-md text-sm font-medium text-status-success-text hover:bg-status-success-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-status-success-bg focus:ring-status-success-border"
                                                 >
-                                                    "Back to login"
+                                                    {rust_i18n::t!("pages.forgot_password.actions.back_to_login")}
                                                 </A>
                                             </div>
                                         </div>
@@ -74,7 +74,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                 <div class="rounded-md shadow-sm -space-y-px">
                                     <div>
                                         <label for="email-address" class="sr-only">
-                                            "Email address"
+                                            {rust_i18n::t!("pages.forgot_password.fields.email")}
                                         </label>
                                         <input
                                             id="email-address"
@@ -83,7 +83,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                             autocomplete="email"
                                             required
                                             class="appearance-none rounded-md relative block w-full px-3 py-2 border border-form-control-border bg-form-control-bg placeholder-form-control-placeholder text-form-control-text focus:outline-none focus:ring-2 focus:ring-action-primary-focus focus:border-action-primary-border focus:z-10 sm:text-sm"
-                                            placeholder="Email address"
+                                            placeholder={rust_i18n::t!("pages.forgot_password.fields.email")}
                                             prop:value=email
                                             on:input=move |ev| {
                                                 email.set(event_target_value(&ev));
@@ -99,7 +99,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                                 <div class="flex">
                                                     <div class="ml-3">
                                                         <h3 class="text-sm font-medium text-status-error-text">
-                                                            "Error"
+                                                            {rust_i18n::t!("pages.forgot_password.error.title")}
                                                         </h3>
                                                         <div class="mt-2 text-sm text-status-error-text">
                                                             <p>{err}</p>
@@ -136,7 +136,11 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                             </svg>
                                         </span>
                                         {move || {
-                                            if pending.get() { "Sending..." } else { "Send Reset Link" }
+                                            if pending.get() {
+                                                rust_i18n::t!("pages.forgot_password.actions.sending")
+                                            } else {
+                                                rust_i18n::t!("pages.forgot_password.actions.submit")
+                                            }
                                         }}
 
                                     </button>
@@ -147,7 +151,7 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
                                         href="/login"
                                         class="font-medium text-link hover:text-link-hover"
                                     >
-                                        "Back to login"
+                                        {rust_i18n::t!("pages.forgot_password.actions.back_to_login")}
                                     </A>
                                 </div>
                             </form>
@@ -164,11 +168,13 @@ pub fn ForgotPasswordPanel() -> impl IntoView {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
     use leptos_router::{Router, RouterIntegrationContext, ServerIntegration};
 
     #[test]
     fn forgot_password_panel_renders_form() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             provide_context(RouterIntegrationContext::new(ServerIntegration {
                 path: "http://localhost/".to_string(),
@@ -179,7 +185,7 @@ mod host_tests {
                 </Router>
             }
         });
-        assert!(html.contains("Reset your password"));
-        assert!(html.contains("Send Reset Link"));
+        assert!(html.contains("id=\"email-address\""));
+        assert!(html.contains("type=\"submit\""));
     }
 }

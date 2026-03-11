@@ -96,16 +96,16 @@ impl LeaveFormState {
     pub fn to_payload(self) -> Result<CreateLeaveRequest, ApiError> {
         let start = parse_date(
             &self.start_date.get(),
-            "開始日を YYYY-MM-DD 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.leave_start_date"),
         )?;
         let end = parse_date(
             &self.end_date.get(),
-            "終了日を YYYY-MM-DD 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.leave_end_date"),
         )?;
         if end < start {
-            return Err(ApiError::validation(
-                "終了日は開始日以降の日付を指定してください。",
-            ));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.leave_date_order"
+            )));
         }
         Ok(CreateLeaveRequest {
             leave_type: self.leave_type.get(),
@@ -160,17 +160,18 @@ impl OvertimeFormState {
     pub fn to_payload(self) -> Result<CreateOvertimeRequest, ApiError> {
         let date = parse_date(
             &self.date.get(),
-            "残業日を YYYY-MM-DD 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.overtime_date"),
         )?;
         let hours_raw = self.hours.get();
-        let hours = hours_raw
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| ApiError::validation("残業時間は数値で入力してください。"))?;
+        let hours = hours_raw.trim().parse::<f64>().map_err(|_| {
+            ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.overtime_hours_number"
+            ))
+        })?;
         if !(0.25..=24.0).contains(&hours) {
-            return Err(ApiError::validation(
-                "残業時間は0.25〜24.0の範囲で指定してください。",
-            ));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.overtime_hours_range"
+            )));
         }
         Ok(CreateOvertimeRequest {
             date,
@@ -259,20 +260,22 @@ impl AttendanceCorrectionFormState {
     pub fn to_create_payload(self) -> Result<CreateAttendanceCorrectionRequest, ApiError> {
         let date = parse_date(
             &self.date.get(),
-            "対象日を YYYY-MM-DD 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.correction_date"),
         )?;
         let clock_in = parse_datetime_optional(
             &self.clock_in_time.get(),
-            "出勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.correction_clock_in"),
         )?;
         let clock_out = parse_datetime_optional(
             &self.clock_out_time.get(),
-            "退勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.correction_clock_out"),
         )?;
         let breaks = parse_break_rows(&self.break_rows.get())?;
         let reason = self.reason.get().trim().to_string();
         if reason.is_empty() {
-            return Err(ApiError::validation("修正理由を入力してください。"));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.correction_reason_required"
+            )));
         }
         Ok(CreateAttendanceCorrectionRequest {
             date,
@@ -286,16 +289,18 @@ impl AttendanceCorrectionFormState {
     pub fn to_update_payload(self) -> Result<UpdateAttendanceCorrectionRequest, ApiError> {
         let clock_in = parse_datetime_optional(
             &self.clock_in_time.get(),
-            "出勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.correction_clock_in"),
         )?;
         let clock_out = parse_datetime_optional(
             &self.clock_out_time.get(),
-            "退勤時刻は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.correction_clock_out"),
         )?;
         let breaks = parse_break_rows(&self.break_rows.get())?;
         let reason = self.reason.get().trim().to_string();
         if reason.is_empty() {
-            return Err(ApiError::validation("修正理由を入力してください。"));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.correction_reason_required"
+            )));
         }
         Ok(UpdateAttendanceCorrectionRequest {
             clock_in_time: clock_in,
@@ -388,21 +393,21 @@ fn parse_break_rows(input: &str) -> Result<Vec<CorrectionBreakItem>, ApiError> {
         let mut parts = raw.splitn(2, ',');
         let start_raw = parts.next().unwrap_or_default().trim();
         if start_raw.is_empty() {
-            return Err(ApiError::validation(
-                "休憩行は `開始時刻,終了時刻(任意)` 形式で入力してください。",
-            ));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "pages.requests.validation.break_row_format"
+            )));
         }
         let end_raw = parts.next().map(|s| s.trim()).unwrap_or_default();
         let start = parse_datetime(
             start_raw,
-            "休憩開始は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+            &rust_i18n::t!("pages.requests.validation.break_start"),
         )?;
         let end = if end_raw.is_empty() {
             None
         } else {
             Some(parse_datetime(
                 end_raw,
-                "休憩終了は YYYY-MM-DDTHH:MM[:SS] 形式で入力してください。",
+                &rust_i18n::t!("pages.requests.validation.break_end"),
             )?)
         };
         items.push(CorrectionBreakItem {

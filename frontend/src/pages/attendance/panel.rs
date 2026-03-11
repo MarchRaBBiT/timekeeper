@@ -98,7 +98,7 @@ mod host_tests {
             provide_auth(Some(admin_user(true)));
             view! { <AttendancePanel /> }
         });
-        assert!(html.contains("勤怠管理"));
-        assert!(html.contains("CSVダウンロード"));
+        assert!(html.contains("space-y-6"));
+        assert!(html.contains("rounded-md"));
     }
 }

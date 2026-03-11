@@ -98,14 +98,15 @@ pub struct AttendanceViewModel {
     pub export_success: RwSignal<Option<String>>,
 }
 
-fn clock_success_message(last_event: Option<ClockEventKind>) -> &'static str {
+fn clock_success_message(last_event: Option<ClockEventKind>) -> String {
     match last_event {
-        Some(ClockEventKind::ClockIn) => "出勤しました。",
-        Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
-        Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
-        Some(ClockEventKind::ClockOut) => "退勤しました。",
-        None => "操作が完了しました。",
+        Some(ClockEventKind::ClockIn) => rust_i18n::t!("pages.attendance.feedback.clock_in"),
+        Some(ClockEventKind::BreakStart) => rust_i18n::t!("pages.attendance.feedback.break_start"),
+        Some(ClockEventKind::BreakEnd) => rust_i18n::t!("pages.attendance.feedback.break_end"),
+        Some(ClockEventKind::ClockOut) => rust_i18n::t!("pages.attendance.feedback.clock_out"),
+        None => rust_i18n::t!("pages.attendance.feedback.default"),
     }
+    .into_owned()
 }
 
 fn map_clock_action_result(
@@ -113,7 +114,7 @@ fn map_clock_action_result(
     result: Result<(), ApiError>,
 ) -> ClockMessage {
     match result {
-        Ok(_) => ClockMessage::Success(clock_success_message(last_event).to_string()),
+        Ok(_) => ClockMessage::Success(clock_success_message(last_event)),
         Err(err) => ClockMessage::Error(err),
     }
 }
@@ -130,11 +131,21 @@ fn map_export_action_result(result: Result<Value, ApiError>) -> (Option<String>,
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             match crate::utils::trigger_csv_download(filename, csv) {
-                Ok(_) => (Some(format!("{filename} をダウンロードしました。")), None),
+                Ok(_) => (
+                    Some(
+                        rust_i18n::t!(
+                            "pages.attendance.feedback.export_success",
+                            filename = filename
+                        )
+                        .into_owned(),
+                    ),
+                    None,
+                ),
                 Err(err) => (
                     None,
                     Some(ApiError::unknown(format!(
-                        "CSVのダウンロードに失敗しました: {err}"
+                        "{}: {err}",
+                        rust_i18n::t!("pages.attendance.feedback.export_failed")
                     ))),
                 ),
             }
@@ -363,13 +374,17 @@ impl AttendanceViewModel {
                     }
                     ClockEventKind::BreakStart => {
                         let attendance_id = payload.attendance_id.as_deref().ok_or_else(|| {
-                            ApiError::validation("出勤レコードが見つかりません。")
+                            ApiError::validation(rust_i18n::t!(
+                                "pages.attendance.validation.attendance_record_missing"
+                            ))
                         })?;
                         attendance_state::start_break(&api, attendance_id).await?
                     }
                     ClockEventKind::BreakEnd => {
                         let break_id = payload.break_id.as_deref().ok_or_else(|| {
-                            ApiError::validation("休憩レコードが見つかりません。")
+                            ApiError::validation(rust_i18n::t!(
+                                "pages.attendance.validation.break_record_missing"
+                            ))
                         })?;
                         attendance_state::end_break(&api, break_id).await?
                     }
@@ -555,30 +570,40 @@ fn break_start_attendance_id(
     status: Option<&crate::api::AttendanceStatusResponse>,
 ) -> Result<String, ApiError> {
     let Some(status) = status else {
-        return Err(ApiError::validation("ステータスを取得できません。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.status_unavailable"
+        )));
     };
     if status.status != "clocked_in" {
-        return Err(ApiError::validation("出勤中のみ休憩を開始できます。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.break_start_requires_clocked_in"
+        )));
     }
-    status
-        .attendance_id
-        .clone()
-        .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))
+    status.attendance_id.clone().ok_or_else(|| {
+        ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.attendance_record_missing"
+        ))
+    })
 }
 
 fn break_end_break_id(
     status: Option<&crate::api::AttendanceStatusResponse>,
 ) -> Result<String, ApiError> {
     let Some(status) = status else {
-        return Err(ApiError::validation("ステータスを取得できません。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.status_unavailable"
+        )));
     };
     if status.status != "on_break" {
-        return Err(ApiError::validation("休憩中のみ休憩を終了できます。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.break_end_requires_on_break"
+        )));
     }
-    status
-        .active_break_id
-        .clone()
-        .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))
+    status.active_break_id.clone().ok_or_else(|| {
+        ApiError::validation(rust_i18n::t!(
+            "pages.attendance.validation.break_record_missing"
+        ))
+    })
 }
 
 pub fn use_attendance_view_model() -> AttendanceViewModel {
@@ -620,6 +645,7 @@ mod tests {
 mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::{with_local_runtime, with_local_runtime_async, with_runtime};
 
     async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
@@ -783,6 +809,7 @@ mod host_tests {
 
     #[test]
     fn break_start_requires_status_clocked_in_and_attendance_id() {
+        let _locale = set_test_locale("ja");
         with_local_runtime(|| {
             with_runtime(|| {
                 let server = mock_server();
@@ -790,16 +817,25 @@ mod host_tests {
                 let _vm = AttendanceViewModel::new();
 
                 let no_status = break_start_attendance_id(None).unwrap_err();
-                assert_eq!(no_status.error, "ステータスを取得できません。");
+                assert_eq!(
+                    no_status.error,
+                    rust_i18n::t!("pages.attendance.validation.status_unavailable")
+                );
 
                 let wrong_status =
                     break_start_attendance_id(Some(&status("clocked_out", None, None)))
                         .unwrap_err();
-                assert_eq!(wrong_status.error, "出勤中のみ休憩を開始できます。");
+                assert_eq!(
+                    wrong_status.error,
+                    rust_i18n::t!("pages.attendance.validation.break_start_requires_clocked_in")
+                );
 
                 let missing_id =
                     break_start_attendance_id(Some(&status("clocked_in", None, None))).unwrap_err();
-                assert_eq!(missing_id.error, "出勤レコードが見つかりません。");
+                assert_eq!(
+                    missing_id.error,
+                    rust_i18n::t!("pages.attendance.validation.attendance_record_missing")
+                );
 
                 let ok =
                     break_start_attendance_id(Some(&status("clocked_in", Some("att-1"), None)))
@@ -811,6 +847,7 @@ mod host_tests {
 
     #[test]
     fn break_end_requires_status_on_break_and_break_id() {
+        let _locale = set_test_locale("ja");
         with_local_runtime(|| {
             with_runtime(|| {
                 let server = mock_server();
@@ -818,16 +855,25 @@ mod host_tests {
                 let _vm = AttendanceViewModel::new();
 
                 let no_status = break_end_break_id(None).unwrap_err();
-                assert_eq!(no_status.error, "ステータスを取得できません。");
+                assert_eq!(
+                    no_status.error,
+                    rust_i18n::t!("pages.attendance.validation.status_unavailable")
+                );
 
                 let wrong_status =
                     break_end_break_id(Some(&status("clocked_in", Some("att-1"), None)))
                         .unwrap_err();
-                assert_eq!(wrong_status.error, "休憩中のみ休憩を終了できます。");
+                assert_eq!(
+                    wrong_status.error,
+                    rust_i18n::t!("pages.attendance.validation.break_end_requires_on_break")
+                );
 
                 let missing_id =
                     break_end_break_id(Some(&status("on_break", Some("att-1"), None))).unwrap_err();
-                assert_eq!(missing_id.error, "休憩レコードが見つかりません。");
+                assert_eq!(
+                    missing_id.error,
+                    rust_i18n::t!("pages.attendance.validation.break_record_missing")
+                );
 
                 let ok = break_end_break_id(Some(&status("on_break", Some("att-1"), Some("br-1"))))
                     .unwrap();
@@ -838,33 +884,40 @@ mod host_tests {
 
     #[test]
     fn helper_clock_message_mapping_covers_success_and_error_paths() {
+        let _locale = set_test_locale("ja");
         assert_eq!(
             clock_success_message(Some(ClockEventKind::ClockIn)),
-            "出勤しました。"
+            rust_i18n::t!("pages.attendance.feedback.clock_in")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::BreakStart)),
-            "休憩を開始しました。"
+            rust_i18n::t!("pages.attendance.feedback.break_start")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::BreakEnd)),
-            "休憩を終了しました。"
+            rust_i18n::t!("pages.attendance.feedback.break_end")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::ClockOut)),
-            "退勤しました。"
+            rust_i18n::t!("pages.attendance.feedback.clock_out")
         );
-        assert_eq!(clock_success_message(None), "操作が完了しました。");
+        assert_eq!(
+            clock_success_message(None),
+            rust_i18n::t!("pages.attendance.feedback.default")
+        );
 
         let success = map_clock_action_result(Some(ClockEventKind::ClockIn), Ok(()));
-        assert!(matches!(success, ClockMessage::Success(msg) if msg == "出勤しました。"));
+        assert!(matches!(
+            success,
+            ClockMessage::Success(msg) if msg == rust_i18n::t!("pages.attendance.feedback.clock_in")
+        ));
 
         let failure = map_clock_action_result(None, Err(ApiError::unknown("clock failed")));
         assert!(matches!(failure, ClockMessage::Error(err) if err.error == "clock failed"));
 
         let default_success = map_clock_action_result(None, Ok(()));
         assert!(
-            matches!(default_success, ClockMessage::Success(msg) if msg == "操作が完了しました。")
+            matches!(default_success, ClockMessage::Success(msg) if msg == rust_i18n::t!("pages.attendance.feedback.default"))
         );
     }
 
@@ -886,6 +939,7 @@ mod host_tests {
 
     #[test]
     fn clock_action_dispatch_covers_event_variants_and_validation() {
+        let _locale = set_test_locale("ja");
         with_local_runtime_async(|| async {
             let runtime = leptos::create_runtime();
             let server = mock_server();
@@ -949,7 +1003,7 @@ mod host_tests {
             );
             assert!(matches!(
                 vm.clock_action.value().get(),
-                Some(Err(err)) if err.error == "出勤レコードが見つかりません。"
+                Some(Err(err)) if err.error == rust_i18n::t!("pages.attendance.validation.attendance_record_missing")
             ));
 
             vm.clock_action.dispatch(ClockEventPayload {
@@ -967,7 +1021,7 @@ mod host_tests {
             );
             assert!(matches!(
                 vm.clock_action.value().get(),
-                Some(Err(err)) if err.error == "休憩レコードが見つかりません。"
+                Some(Err(err)) if err.error == rust_i18n::t!("pages.attendance.validation.break_record_missing")
             ));
 
             runtime.dispose();
@@ -976,6 +1030,7 @@ mod host_tests {
 
     #[test]
     fn helper_optional_effect_and_handler_logic_cover_paths() {
+        let _locale = set_test_locale("ja");
         with_runtime(|| {
             let clock_message = create_rw_signal(None);
             let last_clock_event = create_rw_signal(Some(ClockEventKind::ClockIn));
@@ -985,7 +1040,7 @@ mod host_tests {
             apply_optional_clock_action_result(Some(Ok(())), last_clock_event, clock_message);
             assert!(matches!(
                 clock_message.get(),
-                Some(ClockMessage::Success(msg)) if msg == "出勤しました。"
+                Some(ClockMessage::Success(msg)) if msg == rust_i18n::t!("pages.attendance.feedback.clock_in")
             ));
 
             apply_optional_clock_action_result(
@@ -1029,7 +1084,7 @@ mod host_tests {
             assert!(export_success.get().is_none());
             assert!(matches!(
                 export_error.get(),
-                Some(err) if err.error.contains("CSVのダウンロードに失敗しました")
+                Some(err) if err.error.contains(rust_i18n::t!("pages.attendance.feedback.export_failed").as_ref())
             ));
 
             let form_state = AttendanceFormState::new();
@@ -1063,7 +1118,7 @@ mod host_tests {
             );
             assert_eq!(
                 range_error.get().as_deref(),
-                Some("開始日は終了日以前の日付を指定してください。")
+                Some(rust_i18n::t!("pages.attendance.validation.range_order").as_ref())
             );
 
             form_state.start_date_signal().set("2025-02-01".into());
@@ -1135,7 +1190,7 @@ mod host_tests {
             .is_none());
             assert!(matches!(
                 clock_message.get(),
-                Some(ClockMessage::Error(err)) if err.error == "出勤レコードが見つかりません。"
+                Some(ClockMessage::Error(err)) if err.error == rust_i18n::t!("pages.attendance.validation.attendance_record_missing")
             ));
             assert!(resolve_break_start_payload(
                 true,
@@ -1163,7 +1218,7 @@ mod host_tests {
             .is_none());
             assert!(matches!(
                 clock_message.get(),
-                Some(ClockMessage::Error(err)) if err.error == "休憩レコードが見つかりません。"
+                Some(ClockMessage::Error(err)) if err.error == rust_i18n::t!("pages.attendance.validation.break_record_missing")
             ));
             assert!(resolve_break_end_payload(
                 true,
@@ -1177,6 +1232,7 @@ mod host_tests {
 
     #[test]
     fn helper_export_result_mapping_covers_success_and_error_paths() {
+        let _locale = set_test_locale("ja");
         let (success_msg, success_err) = map_export_action_result(Ok(serde_json::json!({
             "filename": "attendance.csv",
             "csv_data": "date,hours\n2025-01-01,8"
@@ -1185,7 +1241,7 @@ mod host_tests {
         let success_err = success_err.expect("expected host download error");
         assert!(success_err
             .error
-            .contains("CSVのダウンロードに失敗しました"));
+            .contains(rust_i18n::t!("pages.attendance.feedback.export_failed").as_ref()));
 
         let (api_fail_msg, api_fail_err) =
             map_export_action_result(Err(ApiError::unknown("export failed")));

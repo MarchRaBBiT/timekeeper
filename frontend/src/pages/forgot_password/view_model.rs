@@ -55,7 +55,9 @@ pub fn use_forgot_password_view_model() -> ForgotPasswordViewModel {
 fn normalize_email(value: &str) -> Result<String, ApiError> {
     let email = value.trim();
     if email.is_empty() {
-        return Err(ApiError::validation("Email is required"));
+        return Err(ApiError::validation(
+            rust_i18n::t!("pages.forgot_password.validation.email_required").to_string(),
+        ));
     }
     Ok(email.to_string())
 }

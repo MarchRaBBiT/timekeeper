@@ -24,14 +24,15 @@ pub struct DashboardViewModel {
     pub last_clock_event: RwSignal<Option<ClockEventKind>>,
 }
 
-fn clock_success_message(last_event: Option<ClockEventKind>) -> &'static str {
+fn clock_success_message(last_event: Option<ClockEventKind>) -> String {
     match last_event {
-        Some(ClockEventKind::ClockIn) => "出勤しました。",
-        Some(ClockEventKind::BreakStart) => "休憩を開始しました。",
-        Some(ClockEventKind::BreakEnd) => "休憩を終了しました。",
-        Some(ClockEventKind::ClockOut) => "退勤しました。",
-        None => "操作が完了しました。",
+        Some(ClockEventKind::ClockIn) => rust_i18n::t!("pages.dashboard.feedback.clock_in"),
+        Some(ClockEventKind::BreakStart) => rust_i18n::t!("pages.dashboard.feedback.break_start"),
+        Some(ClockEventKind::BreakEnd) => rust_i18n::t!("pages.dashboard.feedback.break_end"),
+        Some(ClockEventKind::ClockOut) => rust_i18n::t!("pages.dashboard.feedback.clock_out"),
+        None => rust_i18n::t!("pages.dashboard.feedback.default"),
     }
+    .into_owned()
 }
 
 fn map_clock_action_result(
@@ -39,7 +40,7 @@ fn map_clock_action_result(
     result: Result<(), ApiError>,
 ) -> ClockMessage {
     match result {
-        Ok(_) => ClockMessage::Success(clock_success_message(last_event).to_string()),
+        Ok(_) => ClockMessage::Success(clock_success_message(last_event)),
         Err(err) => ClockMessage::Error(err),
     }
 }
@@ -93,17 +94,19 @@ impl DashboardViewModel {
                         attendance_state::clock_out(&api, set_attendance_state).await?
                     }
                     ClockEventKind::BreakStart => {
-                        let attendance_id = payload
-                            .attendance_id
-                            .as_deref()
-                            .ok_or_else(|| ApiError::unknown("出勤レコードが見つかりません。"))?;
+                        let attendance_id = payload.attendance_id.as_deref().ok_or_else(|| {
+                            ApiError::unknown(rust_i18n::t!(
+                                "pages.dashboard.validation.attendance_record_missing"
+                            ))
+                        })?;
                         attendance_state::start_break(&api, attendance_id).await?
                     }
                     ClockEventKind::BreakEnd => {
-                        let break_id = payload
-                            .break_id
-                            .as_deref()
-                            .ok_or_else(|| ApiError::unknown("休憩レコードが見つかりません。"))?;
+                        let break_id = payload.break_id.as_deref().ok_or_else(|| {
+                            ApiError::unknown(rust_i18n::t!(
+                                "pages.dashboard.validation.break_record_missing"
+                            ))
+                        })?;
                         attendance_state::end_break(&api, break_id).await?
                     }
                 };
@@ -224,30 +227,40 @@ fn break_start_attendance_id(
     status: Option<&crate::api::AttendanceStatusResponse>,
 ) -> Result<String, ApiError> {
     let Some(status) = status else {
-        return Err(ApiError::validation("ステータスを取得できません。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.status_unavailable"
+        )));
     };
     if status.status != "clocked_in" {
-        return Err(ApiError::validation("出勤中のみ休憩を開始できます。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.break_start_requires_clocked_in"
+        )));
     }
-    status
-        .attendance_id
-        .clone()
-        .ok_or_else(|| ApiError::validation("出勤レコードが見つかりません。"))
+    status.attendance_id.clone().ok_or_else(|| {
+        ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.attendance_record_missing"
+        ))
+    })
 }
 
 fn break_end_break_id(
     status: Option<&crate::api::AttendanceStatusResponse>,
 ) -> Result<String, ApiError> {
     let Some(status) = status else {
-        return Err(ApiError::validation("ステータスを取得できません。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.status_unavailable"
+        )));
     };
     if status.status != "on_break" {
-        return Err(ApiError::validation("休憩中のみ休憩を終了できます。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.break_end_requires_on_break"
+        )));
     }
-    status
-        .active_break_id
-        .clone()
-        .ok_or_else(|| ApiError::validation("休憩レコードが見つかりません。"))
+    status.active_break_id.clone().ok_or_else(|| {
+        ApiError::validation(rust_i18n::t!(
+            "pages.dashboard.validation.break_record_missing"
+        ))
+    })
 }
 
 pub fn use_dashboard_view_model() -> DashboardViewModel {
@@ -266,6 +279,7 @@ mod host_tests {
     use super::*;
     use crate::api::test_support::mock::*;
     use crate::pages::dashboard::utils::ActivityStatusFilter;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::{with_local_runtime, with_local_runtime_async, with_runtime};
 
     async fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
@@ -402,16 +416,26 @@ mod host_tests {
 
     #[test]
     fn break_start_validation_covers_error_and_success_paths() {
+        let _locale = set_test_locale("ja");
         let no_status = break_start_attendance_id(None).unwrap_err();
-        assert_eq!(no_status.error, "ステータスを取得できません。");
+        assert_eq!(
+            no_status.error,
+            rust_i18n::t!("pages.dashboard.validation.status_unavailable")
+        );
 
         let wrong_status =
             break_start_attendance_id(Some(&status("clocked_out", None, None))).unwrap_err();
-        assert_eq!(wrong_status.error, "出勤中のみ休憩を開始できます。");
+        assert_eq!(
+            wrong_status.error,
+            rust_i18n::t!("pages.dashboard.validation.break_start_requires_clocked_in")
+        );
 
         let missing_id =
             break_start_attendance_id(Some(&status("clocked_in", None, None))).unwrap_err();
-        assert_eq!(missing_id.error, "出勤レコードが見つかりません。");
+        assert_eq!(
+            missing_id.error,
+            rust_i18n::t!("pages.dashboard.validation.attendance_record_missing")
+        );
 
         let ok =
             break_start_attendance_id(Some(&status("clocked_in", Some("att-1"), None))).unwrap();
@@ -420,16 +444,26 @@ mod host_tests {
 
     #[test]
     fn break_end_validation_covers_error_and_success_paths() {
+        let _locale = set_test_locale("ja");
         let no_status = break_end_break_id(None).unwrap_err();
-        assert_eq!(no_status.error, "ステータスを取得できません。");
+        assert_eq!(
+            no_status.error,
+            rust_i18n::t!("pages.dashboard.validation.status_unavailable")
+        );
 
         let wrong_status =
             break_end_break_id(Some(&status("clocked_in", Some("att-1"), None))).unwrap_err();
-        assert_eq!(wrong_status.error, "休憩中のみ休憩を終了できます。");
+        assert_eq!(
+            wrong_status.error,
+            rust_i18n::t!("pages.dashboard.validation.break_end_requires_on_break")
+        );
 
         let missing_id =
             break_end_break_id(Some(&status("on_break", Some("att-1"), None))).unwrap_err();
-        assert_eq!(missing_id.error, "休憩レコードが見つかりません。");
+        assert_eq!(
+            missing_id.error,
+            rust_i18n::t!("pages.dashboard.validation.break_record_missing")
+        );
 
         let ok =
             break_end_break_id(Some(&status("on_break", Some("att-1"), Some("br-1")))).unwrap();
@@ -438,27 +472,33 @@ mod host_tests {
 
     #[test]
     fn helper_clock_message_mapping_covers_success_and_error_paths() {
+        let _locale = set_test_locale("ja");
         assert_eq!(
             clock_success_message(Some(ClockEventKind::ClockIn)),
-            "出勤しました。"
+            rust_i18n::t!("pages.dashboard.feedback.clock_in")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::BreakStart)),
-            "休憩を開始しました。"
+            rust_i18n::t!("pages.dashboard.feedback.break_start")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::BreakEnd)),
-            "休憩を終了しました。"
+            rust_i18n::t!("pages.dashboard.feedback.break_end")
         );
         assert_eq!(
             clock_success_message(Some(ClockEventKind::ClockOut)),
-            "退勤しました。"
+            rust_i18n::t!("pages.dashboard.feedback.clock_out")
         );
-        assert_eq!(clock_success_message(None), "操作が完了しました。");
+        assert_eq!(
+            clock_success_message(None),
+            rust_i18n::t!("pages.dashboard.feedback.default")
+        );
 
         let success = map_clock_action_result(Some(ClockEventKind::ClockOut), Ok(()));
         match success {
-            ClockMessage::Success(msg) => assert_eq!(msg, "退勤しました。"),
+            ClockMessage::Success(msg) => {
+                assert_eq!(msg, rust_i18n::t!("pages.dashboard.feedback.clock_out"))
+            }
             ClockMessage::Error(_) => panic!("expected success"),
         }
 
@@ -470,7 +510,9 @@ mod host_tests {
 
         let default_success = map_clock_action_result(None, Ok(()));
         match default_success {
-            ClockMessage::Success(msg) => assert_eq!(msg, "操作が完了しました。"),
+            ClockMessage::Success(msg) => {
+                assert_eq!(msg, rust_i18n::t!("pages.dashboard.feedback.default"))
+            }
             ClockMessage::Error(_) => panic!("expected success"),
         }
     }
@@ -498,6 +540,7 @@ mod host_tests {
 
     #[test]
     fn dashboard_resources_and_clock_action_cover_runtime_paths() {
+        let _locale = set_test_locale("ja");
         with_local_runtime_async(|| async {
             let runtime = leptos::create_runtime();
             let server = mock_server();
@@ -607,7 +650,10 @@ mod host_tests {
                 "missing-break-start-id completion timeout"
             );
             match vm.clock_action.value().get() {
-                Some(Err(err)) => assert_eq!(err.error, "出勤レコードが見つかりません。"),
+                Some(Err(err)) => assert_eq!(
+                    err.error,
+                    rust_i18n::t!("pages.dashboard.validation.attendance_record_missing")
+                ),
                 other => panic!("expected break-start validation error, got {:?}", other),
             }
 
@@ -625,7 +671,10 @@ mod host_tests {
                 "missing-break-end-id completion timeout"
             );
             match vm.clock_action.value().get() {
-                Some(Err(err)) => assert_eq!(err.error, "休憩レコードが見つかりません。"),
+                Some(Err(err)) => assert_eq!(
+                    err.error,
+                    rust_i18n::t!("pages.dashboard.validation.break_record_missing")
+                ),
                 other => panic!("expected break-end validation error, got {:?}", other),
             }
 

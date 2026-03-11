@@ -28,7 +28,9 @@ impl MessageState {
 pub fn validate_totp_code(code: &str) -> Result<String, ApiError> {
     let trimmed = code.trim();
     if trimmed.len() < 6 {
-        Err(ApiError::validation("6桁の確認コードを入力してください"))
+        Err(ApiError::validation(
+            rust_i18n::t!("pages.mfa.validation.code_required").to_string(),
+        ))
     } else {
         Ok(trimmed.to_string())
     }

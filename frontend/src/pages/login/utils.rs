@@ -24,10 +24,14 @@ impl LoginFormState {
         let password = self.password.get();
 
         if username.trim().is_empty() {
-            return Err(ApiError::validation("ユーザー名を入力してください"));
+            return Err(ApiError::validation(
+                rust_i18n::t!("pages.login.validation.username_required").to_string(),
+            ));
         }
         if password.is_empty() {
-            return Err(ApiError::validation("パスワードを入力してください"));
+            return Err(ApiError::validation(
+                rust_i18n::t!("pages.login.validation.password_required").to_string(),
+            ));
         }
         Ok(())
     }

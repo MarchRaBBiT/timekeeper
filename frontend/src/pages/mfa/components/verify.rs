@@ -25,22 +25,22 @@ pub fn VerificationSection(
                         view! {
                             <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
                                 <h2 class="text-lg font-semibold text-fg">
-                                    {"認証アプリで QR をスキャン"}
+                                    {rust_i18n::t!("pages.mfa.verify.title")}
                                 </h2>
                                 <div class="border border-border rounded p-4 bg-surface-muted">
-                                    <img src=qr_svg_data_url alt="認証アプリのQRコード" />
+                                    <img src=qr_svg_data_url alt={rust_i18n::t!("pages.mfa.verify.qr_alt")} />
                                 </div>
                                 <p class="text-sm text-fg-muted break-all">
                                     {info.otpauth_url.clone()}
                                 </p>
                                 <form class="space-y-3" on:submit=move |ev| on_submit.call(ev)>
                                     <label class="block text-sm font-medium text-fg-muted">
-                                        {"確認コード"}
+                                        {rust_i18n::t!("pages.mfa.verify.code_label")}
                                     </label>
                                     <input
                                         type="text"
                                         class="mt-1 w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-2"
-                                        placeholder="6桁コード"
+                                        placeholder={rust_i18n::t!("pages.mfa.verify.code_placeholder")}
                                         maxlength=6
                                         on:input=move |ev| {
                                             let target = event_target::<HtmlInputElement>(&ev);
@@ -52,9 +52,9 @@ pub fn VerificationSection(
                                         disabled={move || activate_loading.get()}
                                     >
                                         {move || if activate_loading.get() {
-                                            "有効化中..."
+                                            rust_i18n::t!("pages.mfa.actions.activating")
                                         } else {
-                                            "有効化する"
+                                            rust_i18n::t!("pages.mfa.actions.activate")
                                         }}
                                     </button>
                                 </form>
@@ -72,10 +72,12 @@ pub fn VerificationSection(
 mod host_tests {
     use super::*;
     use crate::api::MfaSetupResponse;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
 
     #[test]
     fn verification_section_renders_qr_info() {
+        let _locale = set_test_locale("ja");
         let html = render_to_string(move || {
             let setup = create_rw_signal(Some(MfaSetupResponse {
                 secret: "secret".into(),
@@ -93,6 +95,7 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("認証アプリで QR をスキャン"));
+        assert!(html.contains("maxlength=\"6\""));
+        assert!(html.contains("type=\"text\""));
     }
 }

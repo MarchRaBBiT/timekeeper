@@ -54,16 +54,16 @@ pub fn OvertimeRequestForm(
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
-                <h3 class="text-lg font-medium text-fg">{"残業申請"}</h3>
-                <p class="text-sm text-fg-muted">{"残業予定日と時間を入力して申請を送信します。"} </p>
+                <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("pages.requests.overtime_form.title")}</h3>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("pages.requests.overtime_form.description")} </p>
                 <Show when=move || editing
                     .get()
                     .map(|target| target.kind == RequestKind::Overtime)
                     .unwrap_or(false)>
                     <p class="mt-1 text-xs text-status-info-text bg-status-info-bg border border-status-info-border rounded px-2 py-1 inline-flex items-center gap-2">
-                        {"編集中: 既存の残業申請を更新します。"}
+                        {rust_i18n::t!("pages.requests.forms.editing_overtime")}
                         <button class="text-status-info-text underline" on:click=move |_| on_cancel_edit.call(())>
-                            {"キャンセル"}
+                            {rust_i18n::t!("common.actions.cancel")}
                         </button>
                     </p>
                 </Show>
@@ -76,11 +76,11 @@ pub fn OvertimeRequestForm(
             </Show>
             <form class="space-y-4" on:submit=on_submit>
                 <DatePicker
-                    label=Some("残業日")
+                    label=Some("pages.requests.overtime_form.date")
                     value=date_signal
                 />
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"予定時間（時間）"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.overtime_form.hours_label")}</label>
                     <input
                         type="number"
                         step="0.25"
@@ -91,7 +91,7 @@ pub fn OvertimeRequestForm(
                     />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-fg-muted">{"理由（任意）"}</label>
+                    <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.overtime_form.reason_label")}</label>
                     <textarea
                         rows=3
                         class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -106,15 +106,15 @@ pub fn OvertimeRequestForm(
                 >
                     {move || {
                         if pending.get() || updating.get() {
-                            "送信中..."
+                            rust_i18n::t!("pages.requests.forms.submitting").into_owned()
                         } else if editing
                             .get()
                             .map(|target| target.kind == RequestKind::Overtime)
                             .unwrap_or(false)
                         {
-                            "残業申請を更新"
+                            rust_i18n::t!("pages.requests.overtime_form.actions.update").into_owned()
                         } else {
-                            "残業申請を送信"
+                            rust_i18n::t!("pages.requests.overtime_form.actions.submit").into_owned()
                         }
                     }}
                 </button>
@@ -126,10 +126,11 @@ pub fn OvertimeRequestForm(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::test_support::ssr::render_to_string;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
 
     #[test]
     fn overtime_request_form_renders_editing_state() {
+        let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let state = OvertimeFormState::default();
             let message = create_rw_signal(MessageState::default());
@@ -151,8 +152,8 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("残業申請"));
-        assert!(html.contains("編集中"));
-        assert!(html.contains("残業申請を更新"));
+        assert!(html.contains("Overtime Request"));
+        assert!(html.contains("Editing"));
+        assert!(html.contains("Update Overtime Request"));
     }
 }
