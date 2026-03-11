@@ -23,6 +23,7 @@
 | P1 | Test harness fragility | integration tests, env mutation, live smoke | flaky / slow / local-only failure を生みやすい |
 | P2 | Docs source-of-truth drift | `AGENTS.md`, `docs/*`, plan placement | 実装ルールと実際の repo 状態がずれる |
 | P2 | Queue / worker operational debt | lockout notification worker | いまは動くが運用境界がまだ薄い |
+| P2 | Frontend i18n follow-up debt | locale foundation, shared/core page localization | PR #430 / #431 で merge-blocking ではない residual review item が残っている |
 
 ## Detailed Items
 
@@ -272,6 +273,53 @@
 2. queue depth / retry depth / DLQ depth の観測項目を定義する
 3. harness に `worker-once` smoke stage を追加する
 
+---
+
+### 8. P2: Frontend I18n Follow-up Debt
+
+**Status (2026-03-12)**
+
+- PR #430 / #431 の merge-blocking review comment は解消済み
+- ただし reviewer が low / optional とした follow-up は別件化前の debt として残す
+
+**Symptoms**
+
+- locale foundation まわりに low-priority の設計・運用 debt が残っている
+- frontend と backend の password change error code が二重定義で、将来の drift 耐性が弱い
+- host test の一部が翻訳済み日本語テキストに直接依存しており、翻訳変更時に UI 構造と無関係な failure を起こしうる
+
+**Evidence**
+
+- [frontend/Cargo.toml](../../frontend/Cargo.toml)
+  - `rust-i18n = "4.0.0-preview1"` のまま
+- [frontend/src/state/locale.rs](../../frontend/src/state/locale.rs)
+  - `use_locale()` fallback は production でも in-memory fallback を生成する
+  - `persist_locale()` failure はコメント付きで無視しているが、UX 上は未通知
+- [frontend/src/components/layout.rs](../../frontend/src/components/layout.rs)
+  - `LocaleSwitcher` に move closure 制約由来の clone が残っている
+- [frontend/src/components/confirm_dialog.rs](../../frontend/src/components/confirm_dialog.rs)
+- [frontend/src/components/cards.rs](../../frontend/src/components/cards.rs)
+  - host test が翻訳済み文言に直接依存する箇所が残る
+- [frontend/src/pages/settings/panel.rs](../../frontend/src/pages/settings/panel.rs)
+- [backend/src/handlers/auth.rs](../../backend/src/handlers/auth.rs)
+  - `PASSWORD_CHANGE_*` code を frontend/backend で別管理している
+
+**Impact**
+
+- `rust-i18n` preview 依存が長引くと、将来の stable 移行時にまとめて差分が大きくなる
+- locale context の fallback / storage failure が本番で silent degradation として残る
+- 翻訳変更だけで host test が落ち、review と reapply のノイズになる
+- error code の片側変更時に frontend/backend の対応がずれる余地がある
+
+**Recommended Fix**
+
+1. `rust-i18n` stable 系への移行計画を別 issue 化し、`Cargo.lock` ごと更新する
+2. `use_locale()` fallback の production diagnostics 方針を決める
+3. `persist_locale()` failure を UX / telemetry のどちらで拾うか決める
+4. `LocaleSwitcher` の clone 群は意図が明確な小さな構造へ寄せる
+5. text 直書き assertion が必要な host test と、DOM 構造 assertion で十分な host test を整理する
+6. password change error code は共有定数または schema 生成で一元化する
+
 ## Suggested Execution Order
 
 1. P0 Build health debt
@@ -281,6 +329,7 @@
 5. P1 Test harness fragility
 6. P2 Docs source-of-truth drift
 7. P2 Queue / worker operational debt
+8. P2 Frontend i18n follow-up debt
 
 ## Notes
 
