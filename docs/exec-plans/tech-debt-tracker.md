@@ -185,6 +185,7 @@
 - integration test が global env mutation と global mutex に依存している
 - SMTP / Redis / Postgres の可用性が test ごとに暗黙前提になっている
 - local timing acceptance は固定できたが、まだ「なぜ安定するか」が harness profile に組み込まれていない
+- file-local な `integration_guard()` では test file をまたぐ DB 競合を防げず、`cargo test` の並列実行で cross-file contention が再発しうる
 
 **Evidence**
 
@@ -209,7 +210,8 @@
 
 1. backend integration fixture を `db-only`, `db+redis`, `db+smtp-failure` の profile に分ける
 2. env mutation helper を共通 service に寄せ、 direct `set_var/remove_var` を減らす
-3. `scripts/harness.sh` に `backend-security-smoke` のような focused stage を追加する
+3. cross-file 競合が出る integration suite には DB 分離、または少なくとも suite-level serial 実行方針を定義する
+4. `scripts/harness.sh` に `backend-security-smoke` のような focused stage を追加する
 
 ---
 

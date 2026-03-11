@@ -92,10 +92,8 @@ run_clippy_frontend() {
 
 run_lint() {
   run_fmt_check
-  run_clippy_backend
-  run_clippy_frontend
-  log "stage=clippy-workspace"
   (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
+  log "stage=clippy-workspace"
   (cd "$ROOT_DIR" && cargo clippy --all-targets -- -D warnings)
 }
 
