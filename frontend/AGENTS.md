@@ -64,6 +64,12 @@ pages/attendance/
 - データ取得: `create_resource`（読み取り）
 - 副作用: `create_action`（書き込み）
 
+### i18n / UI Copy
+- user-facing UI 文言は Rust ソースへ直書きせず、translation key 経由で参照する
+- 新規 UI copy は `frontend/locales/ja.yml` と `frontend/locales/en.yml` の両方へ追加してから使う
+- key は `pages.<page>.*`、`components.<component>.*`、`common.*` の階層命名を優先する
+- backend 由来の自然言語エラーは frontend で再翻訳せず、そのまま表示境界を維持する
+
 ### 状態管理
 - ローカル: `RwSignal<T>` または `*Signal<T>`
 - グローバル: Leptos Context（例: `AuthState`）
@@ -77,6 +83,7 @@ pages/attendance/
 
 ## ANTI-PATTERNS
 - API クライアント直呼び出し禁止（必ず `repository.rs` 経由）
+- user-facing copy の直書き禁止（translation key を使う）
 - 生 DOM 操作禁止（Leptos リアクティブシステム利用）
 - プロパティドリーリング回避（Context 利用推奨）
 - 未実装 TODO コメント禁止（15+ 件存在：リファクタ後判定予定）
