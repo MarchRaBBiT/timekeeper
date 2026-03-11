@@ -6,6 +6,7 @@
 ## Manual
 
 - [Harness Manual](./manual/HARNESS.md)
+- [Frontend i18n Operations](./manual/frontend-i18n-operations.md)
 - [Operational Runbook](./manual/RUNBOOK.md)
 - [Environment Setup](./manual/environment-setup.md)
 - [Environment Setup (JA)](./manual/environment-setup_ja.md)

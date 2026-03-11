@@ -24,15 +24,15 @@ Related Issue: #429
 
 ## Done Criteria (Observable)
 
-- [ ] `frontend/Cargo.toml` に `rust-i18n` が追加され、app root で `i18n!` 初期化が行われる
-- [ ] `frontend/locales/ja.yml` と `frontend/locales/en.yml` が追加される
-- [ ] locale 選択の source of truth が frontend state/context に定義され、ヘッダー右上から変更できる
-- [ ] locale 選択は `localStorage` に保存され、初回訪問時はブラウザ言語判定で `ja` を選び、未一致時は `en` を既定にする
-- [ ] shared components の表示文言が `t!` ベースへ移行される
-- [ ] attendance / dashboard / requests / settings / login / mfa / reset-password の表示文言が `t!` ベースへ移行される
-- [ ] admin / admin_users / admin_audit_logs / admin_export の表示文言が `t!` ベースへ移行される
-- [ ] `en` / `ja` locale 間で frontend 内部生成 UI 文言が完全切替される
-- [ ] 英語文言について自然な英語レビューが完了している
+- [x] `frontend/Cargo.toml` に `rust-i18n` が追加され、app root で `i18n!` 初期化が行われる
+- [x] `frontend/locales/ja.yml` と `frontend/locales/en.yml` が追加される
+- [x] locale 選択の source of truth が frontend state/context に定義され、ヘッダー右上から変更できる
+- [x] locale 選択は `localStorage` に保存され、初回訪問時はブラウザ言語判定で `ja` を選び、未一致時は `en` を既定にする
+- [x] shared components の表示文言が `t!` ベースへ移行される
+- [x] attendance / dashboard / requests / settings / login / mfa / reset-password の表示文言が `t!` ベースへ移行される
+- [x] admin / admin_users / admin_audit_logs / admin_export の表示文言が `t!` ベースへ移行される
+- [x] `en` / `ja` locale 間で frontend 内部生成 UI 文言が完全切替される
+- [x] 英語文言について自然な英語レビューが完了している
 - [ ] frontend production code の日本語直書きが、翻訳定義・テスト assertion・コメント・ログ・API モックデータ・fixture 文字列を除いて解消される
 - [x] frontend 文言追加時に直書き禁止であることが `docs/` の運用ルールと `frontend/AGENTS.md` に明記される
 
@@ -73,51 +73,51 @@ Related Issue: #429
 
 ### PR2: Core Pages
 
-5. [ ] shared components の主要文言を移行する
-   - [ ] `components/forms.rs` のラベル・状態文言を `t!` 化する
-   - [ ] `components/cards.rs` のカード見出し・ラベルを `t!` 化する
-   - [ ] 補間を含む shared component 文言を translation helper 経由へ寄せる
-6. [ ] user-facing core pages を移行する
-   - [ ] attendance を移行する
-   - [ ] dashboard を移行する
-   - [ ] requests を移行する
-   - [ ] login / forgot_password / reset_password を移行する
-   - [ ] mfa / settings を移行する
-7. [ ] frontend 内部生成の status / confirmation 文言を key 化する
-   - [ ] `match => 文字列` を `match => key` or translation helper に寄せる
-   - [ ] ラベルのみ翻訳し、日付・曜日・単位フォーマットは維持する
+5. [x] shared components の主要文言を移行する
+   - [x] `components/forms.rs` のラベル・状態文言を `t!` 化する
+   - [x] `components/cards.rs` のカード見出し・ラベルを `t!` 化する
+   - [x] 補間を含む shared component 文言を translation helper 経由へ寄せる
+6. [x] user-facing core pages を移行する
+   - [x] attendance を移行する
+   - [x] dashboard を移行する
+   - [x] requests を移行する
+   - [x] login / forgot_password / reset_password を移行する
+   - [x] mfa / settings を移行する
+7. [x] frontend 内部生成の status / confirmation 文言を key 化する
+   - [x] `match => 文字列` を `match => key` or translation helper に寄せる
+   - [x] ラベルのみ翻訳し、日付・曜日・単位フォーマットは維持する
 8. [ ] core pages 向けテストを translation key 非依存へ更新する
    - [ ] 文字列の完全一致に依存する assertion を見直す
    - [ ] locale 固定値ではなく構造・状態・key 解決結果で検証する
 
 ### PR3: Admin Pages
 
-9. [ ] admin pages を移行する
-   - [ ] admin を移行する
-   - [ ] admin_users を移行する
-   - [ ] admin_audit_logs を移行する
-   - [ ] admin_export を移行する
-10. [ ] admin 周辺の helper / message を移行する
-   - [ ] admin 向け modal / feedback / banner 文言を `t!` 化する
-   - [ ] related shared helpers の文字列生成を translation helper 経由へ寄せる
-   - [ ] backend 由来エラーをそのまま表示する境界を明示する
-11. [ ] 英語文言の自然さレビューを反映する
-   - [ ] admin 含む `en.yml` を通読し、不自然な直訳を修正する
-   - [ ] 略語、ボタン文言、エラーメッセージのトーンを揃える
+9. [x] admin pages を移行する
+   - [x] admin を移行する
+   - [x] admin_users を移行する
+   - [x] admin_audit_logs を移行する
+   - [x] admin_export を移行する
+10. [x] admin 周辺の helper / message を移行する
+   - [x] admin 向け modal / feedback / banner 文言を `t!` 化する
+   - [x] related shared helpers の文字列生成を translation helper 経由へ寄せる
+   - [x] backend 由来エラーをそのまま表示する境界を明示する
+11. [x] 英語文言の自然さレビューを反映する
+   - [x] admin 含む `en.yml` を通読し、不自然な直訳を修正する
+   - [x] 略語、ボタン文言、エラーメッセージのトーンを揃える
 
 ### PR4: Residual Cleanup
 
-12. [ ] 残直書きを scan して例外を整理する
-   - [ ] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` の結果を確認する
-   - [ ] 許容例外（テスト assertion / コメント / ログ / API モック / fixture）を切り分ける
-   - [ ] production code の残件を解消または明記する
+12. [x] 残直書きを scan して例外を整理する
+   - [x] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` の結果を確認する
+   - [x] 許容例外（テスト assertion / コメント / ログ / API モック / fixture）を切り分ける
+   - [x] production code の残件を解消または明記する
 13. [ ] 運用ルールを追加する
-   - [ ] `docs/` に i18n 運用ルールを追加する
-   - [ ] `frontend/AGENTS.md` に「UI 文言は translation key 経由」を追記する
-14. [ ] 最終検証と仕上げを行う
-   - [ ] 表示文言 assertion を translation key 非依存に更新したテストが green
-   - [ ] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test を通す
-   - [ ] full residual scan の結果を plan / PR に記録する
+   - [x] `docs/` に i18n 運用ルールを追加する
+   - [x] `frontend/AGENTS.md` に「UI 文言は translation key 経由」を追記する
+14. [x] 最終検証と仕上げを行う
+   - [x] 表示文言 assertion を translation key 非依存に更新したテストが green
+   - [x] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test を通す
+   - [x] full residual scan の結果を plan / PR に記録する
 
 ## Sequencing
 
@@ -141,30 +141,33 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 ### PR2: Core Pages
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
 - [ ] `cargo test -p timekeeper-frontend --lib dashboard`
 - [ ] `cargo test -p timekeeper-frontend --lib requests`
 - [ ] `cargo test -p timekeeper-frontend --lib login`
 - [ ] 表示文言 assertion を translation key 非依存へ更新した core page テストが green
+- [ ] broader `cargo test -p timekeeper-frontend --lib` green を focused command 実行ログへ落とし直す
 
 ### PR3: Admin Pages
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
-- [ ] `cargo test -p timekeeper-frontend --lib admin`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_users`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_audit_logs`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_export`
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-frontend --lib admin`
+- [x] `cargo test -p timekeeper-frontend --lib admin_users`
+- [x] `cargo test -p timekeeper-frontend --lib admin_audit_logs`
+- [x] `cargo test -p timekeeper-frontend --lib admin_export`
+- [x] 2026-03-11 residual scan baseline: admin 系 4 ディレクトリで 24 `.rs` files hit
 
 ### PR4: Residual Cleanup
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test -p timekeeper-frontend --lib`
-- [ ] `bash scripts/harness.sh lint`
-- [ ] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'`
-- [ ] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test が green
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-frontend --lib`
+- [x] `bash scripts/harness.sh lint`
+- [x] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'`
+- [x] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test が green
+- [x] 2026-03-11 residual scan baseline: `frontend/src` 全体で 28 `.rs` files hit
 
 ## Risks / Watchpoints
 
@@ -186,18 +189,18 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 - [x] focused host test 追加
 
 想定差分ファイル:
-- [ ] `frontend/Cargo.toml`
-- [ ] `frontend/locales/ja.yml`（新規）
-- [ ] `frontend/locales/en.yml`（新規）
-- [ ] `frontend/src/lib.rs`
+- [x] `frontend/Cargo.toml`
+- [x] `frontend/locales/ja.yml`（新規）
+- [x] `frontend/locales/en.yml`（新規）
+- [x] `frontend/src/lib.rs`
 - [ ] `frontend/src/main.rs`
-- [ ] `frontend/src/router.rs`
-- [ ] `frontend/src/components/layout.rs`
-- [ ] `frontend/src/components/confirm_dialog.rs`
-- [ ] `frontend/src/components/error.rs`
-- [ ] `frontend/src/state/mod.rs`
-- [ ] `frontend/src/utils/storage.rs`
-- [ ] `frontend/src/test_support/mod.rs`
+- [x] `frontend/src/router.rs`
+- [x] `frontend/src/components/layout.rs`
+- [x] `frontend/src/components/confirm_dialog.rs`
+- [x] `frontend/src/components/error.rs`
+- [x] `frontend/src/state/mod.rs`
+- [x] `frontend/src/utils/storage.rs`
+- [x] `frontend/src/test_support/mod.rs`
 - [ ] `frontend/src/test_support/ssr.rs`
 - [ ] `frontend/src/components/mod.rs`
 - [ ] `frontend/src/pages/mod.rs`
@@ -233,61 +236,61 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 ### PR2: Core Pages
 
-- [ ] `forms` / `cards` の主要 shared component を移行
-- [ ] attendance / dashboard / requests / auth / settings 移行
-- [ ] status / confirmation 文言の key 化
+- [x] `forms` / `cards` の主要 shared component を移行
+- [x] attendance / dashboard / requests / auth / settings 移行
+- [x] status / confirmation 文言の key 化
 - [ ] 表示文言 assertion の translation key 非依存化
 
 想定差分ファイル:
-- [ ] `frontend/src/components/forms.rs`
-- [ ] `frontend/src/components/cards.rs`
-- [ ] `frontend/src/state/attendance.rs`
+- [x] `frontend/src/components/forms.rs`
+- [x] `frontend/src/components/cards.rs`
+- [x] `frontend/src/state/attendance.rs`
 - [ ] `frontend/src/api/client.rs`
 - [ ] `frontend/src/api/tests.rs`
-- [ ] `frontend/src/pages/attendance/panel.rs`
-- [ ] `frontend/src/pages/attendance/view_model.rs`
-- [ ] `frontend/src/pages/attendance/layout.rs`
-- [ ] `frontend/src/pages/attendance/utils.rs`
-- [ ] `frontend/src/pages/attendance/components/alerts.rs`
-- [ ] `frontend/src/pages/attendance/components/form.rs`
-- [ ] `frontend/src/pages/attendance/components/history.rs`
-- [ ] `frontend/src/pages/attendance/components/summary.rs`
-- [ ] `frontend/src/pages/dashboard/panel.rs`
-- [ ] `frontend/src/pages/dashboard/view_model.rs`
-- [ ] `frontend/src/pages/dashboard/layout.rs`
-- [ ] `frontend/src/pages/dashboard/utils.rs`
-- [ ] `frontend/src/pages/dashboard/components/activities.rs`
-- [ ] `frontend/src/pages/dashboard/components/alerts.rs`
+- [x] `frontend/src/pages/attendance/panel.rs`
+- [x] `frontend/src/pages/attendance/view_model.rs`
+- [x] `frontend/src/pages/attendance/layout.rs`
+- [x] `frontend/src/pages/attendance/utils.rs`
+- [x] `frontend/src/pages/attendance/components/alerts.rs`
+- [x] `frontend/src/pages/attendance/components/form.rs`
+- [x] `frontend/src/pages/attendance/components/history.rs`
+- [x] `frontend/src/pages/attendance/components/summary.rs`
+- [x] `frontend/src/pages/dashboard/panel.rs`
+- [x] `frontend/src/pages/dashboard/view_model.rs`
+- [x] `frontend/src/pages/dashboard/layout.rs`
+- [x] `frontend/src/pages/dashboard/utils.rs`
+- [x] `frontend/src/pages/dashboard/components/activities.rs`
+- [x] `frontend/src/pages/dashboard/components/alerts.rs`
 - [ ] `frontend/src/pages/dashboard/components/clock.rs`
-- [ ] `frontend/src/pages/dashboard/components/global_filters.rs`
-- [ ] `frontend/src/pages/dashboard/components/summary.rs`
-- [ ] `frontend/src/pages/requests/panel.rs`
-- [ ] `frontend/src/pages/requests/view_model.rs`
-- [ ] `frontend/src/pages/requests/layout.rs`
-- [ ] `frontend/src/pages/requests/utils.rs`
-- [ ] `frontend/src/pages/requests/types.rs`
-- [ ] `frontend/src/pages/requests/components/correction_form.rs`
-- [ ] `frontend/src/pages/requests/components/detail_modal.rs`
-- [ ] `frontend/src/pages/requests/components/filter.rs`
-- [ ] `frontend/src/pages/requests/components/leave_form.rs`
-- [ ] `frontend/src/pages/requests/components/list.rs`
-- [ ] `frontend/src/pages/requests/components/overtime_form.rs`
-- [ ] `frontend/src/pages/requests/components/status_label.rs`
-- [ ] `frontend/src/pages/login/panel.rs`
+- [x] `frontend/src/pages/dashboard/components/global_filters.rs`
+- [x] `frontend/src/pages/dashboard/components/summary.rs`
+- [x] `frontend/src/pages/requests/panel.rs`
+- [x] `frontend/src/pages/requests/view_model.rs`
+- [x] `frontend/src/pages/requests/layout.rs`
+- [x] `frontend/src/pages/requests/utils.rs`
+- [x] `frontend/src/pages/requests/types.rs`
+- [x] `frontend/src/pages/requests/components/correction_form.rs`
+- [x] `frontend/src/pages/requests/components/detail_modal.rs`
+- [x] `frontend/src/pages/requests/components/filter.rs`
+- [x] `frontend/src/pages/requests/components/leave_form.rs`
+- [x] `frontend/src/pages/requests/components/list.rs`
+- [x] `frontend/src/pages/requests/components/overtime_form.rs`
+- [x] `frontend/src/pages/requests/components/status_label.rs`
+- [x] `frontend/src/pages/login/panel.rs`
 - [ ] `frontend/src/pages/login/view_model.rs`
-- [ ] `frontend/src/pages/login/utils.rs`
-- [ ] `frontend/src/pages/login/components/form.rs`
-- [ ] `frontend/src/pages/login/components/messages.rs`
-- [ ] `frontend/src/pages/forgot_password/panel.rs`
-- [ ] `frontend/src/pages/forgot_password/view_model.rs`
-- [ ] `frontend/src/pages/reset_password/panel.rs`
-- [ ] `frontend/src/pages/reset_password/view_model.rs`
-- [ ] `frontend/src/pages/mfa/panel.rs`
-- [ ] `frontend/src/pages/mfa/view_model.rs`
-- [ ] `frontend/src/pages/mfa/utils.rs`
-- [ ] `frontend/src/pages/mfa/components/setup.rs`
-- [ ] `frontend/src/pages/mfa/components/verify.rs`
-- [ ] `frontend/src/pages/settings/panel.rs`
+- [x] `frontend/src/pages/login/utils.rs`
+- [x] `frontend/src/pages/login/components/form.rs`
+- [x] `frontend/src/pages/login/components/messages.rs`
+- [x] `frontend/src/pages/forgot_password/panel.rs`
+- [x] `frontend/src/pages/forgot_password/view_model.rs`
+- [x] `frontend/src/pages/reset_password/panel.rs`
+- [x] `frontend/src/pages/reset_password/view_model.rs`
+- [x] `frontend/src/pages/mfa/panel.rs`
+- [x] `frontend/src/pages/mfa/view_model.rs`
+- [x] `frontend/src/pages/mfa/utils.rs`
+- [x] `frontend/src/pages/mfa/components/setup.rs`
+- [x] `frontend/src/pages/mfa/components/verify.rs`
+- [x] `frontend/src/pages/settings/panel.rs`
 - [ ] `frontend/src/pages/settings/view_model.rs`
 - [ ] `frontend/src/pages/home.rs`
 
@@ -390,7 +393,7 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 想定差分ファイル:
 - [ ] `docs/generated/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
 - [ ] `frontend/AGENTS.md`
-- [ ] `docs/manual/frontend-i18n-rule.md`（新規、命名は調整可）
+- [x] `docs/manual/frontend-i18n-operations.md`（新規）
 - [ ] `frontend/locales/en.yml`
 - [ ] `frontend/locales/ja.yml`
 - [ ] residual scan で見つかった `frontend/src/**/*`
@@ -556,28 +559,31 @@ key 配置の優先順:
 - [x] `jj status`
 - [x] foundation 実装差分を確認
 - [x] foundation validation pass
-- [ ] `jj commit -m "feat(i18n): add frontend locale foundation"`
+- [x] `jj commit -m "feat(i18n): add frontend locale foundation"`
 
 ### PR2: Core Pages
 
-- [ ] `jj status`
-- [ ] core pages 実装差分を確認
-- [ ] core pages validation pass
-- [ ] `jj commit -m "feat(i18n): migrate frontend core pages copy"`
+- [x] `jj status`
+- [x] core pages 実装差分を確認
+- [x] core pages validation pass
+- [x] `jj commit -m "feat(i18n): migrate frontend core pages copy"`
 
 ### PR3: Admin Pages
 
-- [ ] `jj status`
-- [ ] admin pages 実装差分を確認
-- [ ] admin pages validation pass
-- [ ] `jj commit -m "feat(i18n): migrate frontend admin copy"`
+- [x] `jj status`
+- [x] admin pages 実装差分を確認
+- [x] admin pages validation pass
+- [x] `jj commit -m "feat(i18n): localize admin frontend pages"`
+- [x] `jj commit -m "test(i18n): stabilize admin panel locale assertions"`
+- [x] admin residual baseline 24 files の消化計画を更新する
 
 ### PR4: Residual Cleanup
 
-- [ ] `jj status`
-- [ ] residual scan 結果を確認
-- [ ] final validation pass
+- [x] `jj status`
+- [x] residual scan 結果を確認
+- [x] final validation pass
 - [ ] `jj commit -m "docs(i18n): enforce translation-key workflow"`
+- [x] docs sidecar 後の residual baseline 28 files を許容例外と未移行本体へ切り分ける
 
 ## Progress Notes
 
@@ -585,3 +591,10 @@ key 配置の優先順:
 - 2026-03-11: GitHub issue #429 `feat(i18n): migrate frontend hardcoded copy to rust-i18n` を作成し、本 plan を登録。
 - 2026-03-11: 実行前インタビューを反映。locale 切替はヘッダー右上、`localStorage` 永続化、初回はブラウザ言語判定で未一致時 `en` 既定、`en` / `ja` 完全切替、backend 自然言語エラーは対象外、translation key は階層型、docs は `docs/` + `frontend/AGENTS.md` 更新、PR は 4 分割で進める方針を確定。
 - 2026-03-11: PR1 foundation を実装。`rust-i18n` 導入、`frontend/locales/{ja,en}.yml` 新設、`state::locale` によるブラウザ言語判定と `localStorage` 永続化、ヘッダー右上 locale switcher、`layout` / `confirm_dialog` / `error` の基盤翻訳化を追加。`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend --lib` を確認。
+- 2026-03-11: PR2 core pages は commit `07c2c0b37f7b` `feat(i18n): localize shared and core frontend pages` で実装済み。`components/forms.rs` / `components/cards.rs` と attendance / dashboard / requests / login / forgot_password / reset_password / mfa / settings を翻訳キー参照へ移行した。
+- 2026-03-11: PR2 validation は `EP-20260311-p0-build-health-zero` の実測に合わせて更新。`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend --lib` は green だが、`dashboard` / `requests` / `login` の focused コマンド個別ログは未記録のまま。
+- 2026-03-11: PR3 admin pages は commit `779d7cd2e200` `feat(i18n): localize admin frontend pages` と follow-up `ed2c39a53622` `test(i18n): stabilize admin panel locale assertions` で実装。admin / admin_users / admin_audit_logs / admin_export の表示文言と helper message を translation key 参照へ移行した。
+- 2026-03-11: PR3 validation として `cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend admin_view_model -- --nocapture --test-threads=1`、`cargo test -p timekeeper-frontend admin_export -- --nocapture --test-threads=1`、`cargo test -p timekeeper-frontend admin_audit_logs -- --nocapture --test-threads=1`、`cargo test -p timekeeper-frontend admin_users -- --nocapture --test-threads=1` を確認。
+- 2026-03-11: PR4 docs sidecar で i18n 運用ルール文書と `frontend/AGENTS.md` の translation-key ルールを追加。`rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs' -l | wc -l` は 28 files で、内訳は許容例外寄り 17 files、review 候補 11 files である。
+- 2026-03-11: residual scan の内訳として、許容例外側は `frontend/src/api/client.rs`, `frontend/src/api/tests.rs`, `frontend/src/components/cards.rs`, `frontend/src/components/confirm_dialog.rs`, `frontend/src/components/layout.rs`, `frontend/src/pages/attendance/components/history.rs`, `frontend/src/pages/dashboard/components/activities.rs`, `frontend/src/pages/dashboard/components/alerts.rs`, `frontend/src/pages/dashboard/components/clock.rs`, `frontend/src/pages/dashboard/repository.rs`, `frontend/src/pages/dashboard/utils.rs`, `frontend/src/pages/home.rs`, `frontend/src/pages/login/components/form.rs`, `frontend/src/pages/login/components/messages.rs`, `frontend/src/pages/requests/components/status_label.rs`, `frontend/src/pages/requests/types.rs`, `frontend/src/pages/reset_password/view_model.rs` など test / fixture / helper 混在帯が中心。
+- 2026-03-11: residual scan の review 候補は `frontend/src/pages/admin/components/attendance.rs`, `frontend/src/pages/admin/components/holidays.rs`, `frontend/src/pages/admin/components/requests.rs`, `frontend/src/pages/admin/components/subject_requests.rs`, `frontend/src/pages/admin/components/system_tools.rs`, `frontend/src/pages/admin/components/weekly_holidays.rs`, `frontend/src/pages/admin/panel.rs`, `frontend/src/pages/admin/utils.rs`, `frontend/src/pages/admin/view_model.rs`, `frontend/src/pages/admin_audit_logs/panel.rs`, `frontend/src/pages/admin_users/utils.rs` で、未移行 copy と test / helper 混在箇所を follow-up で切り分ける。
