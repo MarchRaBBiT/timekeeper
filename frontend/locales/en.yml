@@ -518,13 +518,28 @@ pages:
   home: {}
 
 admin_components:
-  attendance: {}
-  holidays: {}
+  attendance:
+    fields:
+      target_date: "Target Date"
+  holidays:
+    fields:
+      date: "Date"
+    filters:
+      from: "Start Date"
+      to: "End Date"
   requests: {}
   subject_requests: {}
   system_tools: {}
-  user_select: {}
-  weekly_holidays: {}
+  user_select:
+    placeholder: "Select a user"
+    loading: "Loading users..."
+    fetch_failed: "Failed to load users"
+    empty: "No users found"
+  weekly_holidays:
+    fields:
+      starts_on: "Effective Start Date"
+      ends_on: "Effective End Date (Optional)"
+    title: "Weekly Holidays"
 
 api:
   errors: {}
