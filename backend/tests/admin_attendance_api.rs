@@ -28,11 +28,11 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
         .await
 }
 
-async fn reset_admin_attendance_tables(pool: &PgPool) {
+async fn reset_admin_attendance_test_tables(pool: &PgPool) {
     sqlx::query("TRUNCATE break_records, attendance, users RESTART IDENTITY CASCADE")
         .execute(pool)
         .await
-        .expect("truncate admin attendance tables");
+        .expect("truncate admin attendance test tables");
 }
 
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
@@ -411,7 +411,7 @@ async fn test_system_admin_lists_empty_active_breaks_as_ok() {
         .run(&pool)
         .await
         .expect("run migrations");
-    reset_admin_attendance_tables(&pool).await;
+    reset_admin_attendance_test_tables(&pool).await;
 
     let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
 
@@ -444,7 +444,7 @@ async fn test_system_admin_can_list_active_breaks() {
         .run(&pool)
         .await
         .expect("run migrations");
-    reset_admin_attendance_tables(&pool).await;
+    reset_admin_attendance_test_tables(&pool).await;
 
     let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
@@ -458,6 +458,18 @@ async fn test_system_admin_can_list_active_breaks() {
     let break_start = NaiveDateTime::parse_from_str("2024-07-15T12:00:00", "%Y-%m-%dT%H:%M:%S")
         .expect("break start");
     let active_break = seed_break_record(&pool, attendance.id, break_start, None).await;
+    let ended_break_start =
+        NaiveDateTime::parse_from_str("2024-07-15T10:30:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("ended break start");
+    let ended_break_end = NaiveDateTime::parse_from_str("2024-07-15T10:45:00", "%Y-%m-%dT%H:%M:%S")
+        .expect("ended break end");
+    let _ended_break = seed_break_record(
+        &pool,
+        attendance.id,
+        ended_break_start,
+        Some(ended_break_end),
+    )
+    .await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
@@ -485,6 +497,32 @@ async fn test_system_admin_can_list_active_breaks() {
     assert_eq!(item.username, employee.username);
     assert_eq!(item.full_name.as_deref(), Some(employee.full_name.as_str()));
     assert_eq!(item.break_start_time, break_start);
+}
+
+#[tokio::test]
+async fn test_employee_cannot_list_active_breaks() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_admin_attendance_test_tables(&pool).await;
+
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_upsert(pool.clone(), employee.clone());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/admin/breaks/active")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

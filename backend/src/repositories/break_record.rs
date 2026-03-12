@@ -14,6 +14,7 @@ use sqlx::{PgPool, Row};
 const TABLE_NAME: &str = "break_records";
 const SELECT_COLUMNS: &str =
     "id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at";
+const ACTIVE_BREAKS_LIST_LIMIT: i64 = 500;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BreakRecordRepository;
@@ -92,8 +93,10 @@ impl BreakRecordRepository {
              INNER JOIN attendance att ON att.id = br.attendance_id
              INNER JOIN users ON users.id = att.user_id
              WHERE br.break_end_time IS NULL
-             ORDER BY br.break_start_time DESC, users.username ASC",
+             ORDER BY br.break_start_time DESC, users.username ASC
+             LIMIT $1",
         )
+        .bind(ACTIVE_BREAKS_LIST_LIMIT)
         .fetch_all(db)
         .await?;
         Ok(rows)
