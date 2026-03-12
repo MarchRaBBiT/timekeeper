@@ -121,13 +121,15 @@ fn cache_base_url(value: &str) -> String {
     value
 }
 
+#[cfg(target_arch = "wasm32")]
 fn normalize_api_base_url(value: &str) -> String {
     let trimmed = value.trim();
-    #[cfg(target_arch = "wasm32")]
-    {
-        return normalize_api_base_url_with_base(trimmed, current_window_href().as_deref());
-    }
-    normalize_api_base_url_with_base(trimmed, None)
+    normalize_api_base_url_with_base(trimmed, current_window_href().as_deref())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn normalize_api_base_url(value: &str) -> String {
+    normalize_api_base_url_with_base(value.trim(), None)
 }
 
 fn normalize_api_base_url_with_base(value: &str, base: Option<&str>) -> String {
