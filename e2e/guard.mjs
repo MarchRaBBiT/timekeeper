@@ -1,7 +1,9 @@
 import { chromium } from 'playwright';
-const base = process.env.FRONTEND_BASE_URL || 'http://localhost:8080';
+const base = process.env.FRONTEND_BASE_URL || 'https://localhost:8080';
+const ignoreHTTPSErrors = base.startsWith('https://');
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage();
+const context = await browser.newContext({ ignoreHTTPSErrors });
+const page = await context.newPage();
 try {
   await page.goto(base + '/login', { waitUntil: 'domcontentloaded' });
   await page.fill('#username', 'admin');

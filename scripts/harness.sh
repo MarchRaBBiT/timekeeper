@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_BASE_URL="${BACKEND_BASE_URL:-http://localhost:3000}"
-FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-http://localhost:8080}"
+FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-https://localhost:8080}"
 
 log() {
   printf '[harness] %s\n' "$*"
@@ -32,7 +32,7 @@ Usage:
 
 Environment:
   BACKEND_BASE_URL   default: http://localhost:3000
-  FRONTEND_BASE_URL  default: http://localhost:8080
+  FRONTEND_BASE_URL  default: https://localhost:8080
 EOF
 }
 
@@ -43,7 +43,11 @@ require_cmd() {
 
 check_url() {
   local url="$1"
-  curl -fsS --max-time 5 "$url" >/dev/null
+  if [[ "$url" == https://* ]]; then
+    curl -k -fsS --max-time 5 "$url" >/dev/null
+  else
+    curl -fsS --max-time 5 "$url" >/dev/null
+  fi
 }
 
 run_doctor() {

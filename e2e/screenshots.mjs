@@ -3,7 +3,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const base = process.env.FRONTEND_BASE_URL || "http://localhost:8080";
+const base = process.env.FRONTEND_BASE_URL || "https://localhost:8080";
+const ignoreHTTPSErrors = base.startsWith("https://");
 const adminUsername = process.env.E2E_ADMIN_USER || "admin";
 const adminPassword = process.env.E2E_ADMIN_PASS || "admin123";
 const adminTotpCode = process.env.E2E_TOTP_CODE || "";
@@ -129,6 +130,7 @@ try {
       const context = await browser.newContext({
         viewport: { width: viewport.width, height: viewport.height },
         colorScheme: colorScheme,
+        ignoreHTTPSErrors,
       });
       const page = await context.newPage();
       page.setDefaultTimeout(30000);
@@ -194,6 +196,7 @@ try {
         const nonAdminContext = await browser.newContext({
           viewport: { width: viewport.width, height: viewport.height },
           colorScheme: colorScheme,
+          ignoreHTTPSErrors,
         });
         const nonAdminPage = await nonAdminContext.newPage();
         nonAdminPage.setDefaultTimeout(30000);

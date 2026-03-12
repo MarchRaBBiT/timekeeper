@@ -71,7 +71,7 @@ BACKEND_BASE_URL=http://localhost:3000 bash scripts/harness.sh api-smoke
 ### `frontend-login`
 
 ```bash
-FRONTEND_BASE_URL=http://localhost:8080 bash scripts/harness.sh frontend-login
+FRONTEND_BASE_URL=https://localhost:8080 bash scripts/harness.sh frontend-login
 ```
 
 内部では [scripts/test_frontend_login.mjs](../../scripts/test_frontend_login.mjs) を使います。

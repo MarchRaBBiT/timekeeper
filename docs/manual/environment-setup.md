@@ -102,7 +102,8 @@ Override secrets via `.env` or the Compose `environment` section. Mount volumes 
 ## 8. E2E Smoke Test
 
 1. Start backend and frontend (e.g., `scripts/backend.ps1 start`, `scripts/frontend.ps1 start`).
-2. Run `npm install` (first time only) in the `e2e/` directory, then start `node run.mjs`. Override `FRONTEND_BASE_URL` via environment variable if not `http://localhost:8080`.
+2. Run `npm install` (first time only) in the `e2e/` directory, then start `node run.mjs`. Override `FRONTEND_BASE_URL` via environment variable if you are not using the default target for your setup.
+   The default target is `http://localhost:8000` for the local Python static server and `https://localhost:8080` when using `podman compose`. The Playwright helpers ignore the local self-signed certificate by default.
 
 The Playwright script logs in as admin, navigates through main pages, and logs out as a smoke scenario.
 

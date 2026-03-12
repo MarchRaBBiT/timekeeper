@@ -1,7 +1,8 @@
 import { chromium } from "playwright";
 
 const browser = await chromium.launch({ headless: false });
-const page = await browser.newPage();
+const context = await browser.newContext({ ignoreHTTPSErrors: true });
+const page = await context.newPage();
 
 // Capture console logs
 page.on('console', msg => console.log('BROWSER:', msg.text()));
@@ -20,7 +21,7 @@ page.on('response', response => {
 });
 
 try {
-  await page.goto("http://localhost:8080/login", { waitUntil: "networkidle" });
+  await page.goto("https://localhost:8080/login", { waitUntil: "networkidle" });
   await page.waitForSelector('#username');
   await page.fill('#username', 'admin');
   await page.fill('#password', 'admin123');

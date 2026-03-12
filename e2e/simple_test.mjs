@@ -1,11 +1,12 @@
 import { chromium } from "playwright";
 
 const browser = await chromium.launch({ headless: false });
-const page = await browser.newPage();
+const context = await browser.newContext({ ignoreHTTPSErrors: true });
+const page = await context.newPage();
 
 try {
   console.log("Loading frontend...");
-  await page.goto("http://localhost:8080/login", { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto("https://localhost:8080/login", { waitUntil: "networkidle", timeout: 30000 });
   
   console.log("Page loaded, taking screenshot...");
   await page.screenshot({ path: "./screenshots/before-login.png" });

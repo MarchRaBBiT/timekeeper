@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 
-const base = process.env.FRONTEND_BASE_URL || "http://localhost:8080";
+const base = process.env.FRONTEND_BASE_URL || "https://localhost:8080";
+const ignoreHTTPSErrors = base.startsWith("https://");
 const adminUsername = process.env.E2E_ADMIN_USER || "admin";
 const adminPassword = process.env.E2E_ADMIN_PASS || "admin123";
 
@@ -19,7 +20,8 @@ const holidayName = `E2E祝日-${uniqueTag}`;
 const log = (message) => console.log(`[admin-dashboard-e2e] ${message}`);
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage();
+const context = await browser.newContext({ ignoreHTTPSErrors });
+const page = await context.newPage();
 page.setDefaultTimeout(20000);
 
 try {
