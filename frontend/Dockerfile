@@ -47,6 +47,7 @@ RUN npm run build:css
 FROM nginx:alpine
 ARG FRONTEND_CSP_CONNECT_SRC="'self'"
 WORKDIR /usr/share/nginx/html
+RUN apk add --no-cache openssl
 
 # Place WASM pkg under /pkg to match index.html import path
 COPY --from=builder /app/frontend/pkg/ ./pkg/
@@ -62,5 +63,7 @@ RUN escaped=$(printf '%s\n' "$FRONTEND_CSP_CONNECT_SRC" | sed -e 's/[\/&]/\\&/g'
 
 # Nginx config with SPA fallback
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/docker-entrypoint.sh /docker-entrypoint.d/40-timekeeper-env.sh
+RUN chmod +x /docker-entrypoint.d/40-timekeeper-env.sh
 
-EXPOSE 80
+EXPOSE 80 443

@@ -1,7 +1,10 @@
 import { chromium } from "playwright";
 
+const base = process.env.FRONTEND_BASE_URL || "https://localhost:8080";
+const ignoreHTTPSErrors = base.startsWith("https://");
 const browser = await chromium.launch({ headless: false });
-const page = await browser.newPage();
+const context = await browser.newContext({ ignoreHTTPSErrors });
+const page = await context.newPage();
 
 // Capture console logs
 page.on('console', msg => console.log('BROWSER:', msg.text()));
@@ -20,7 +23,7 @@ page.on('response', response => {
 });
 
 try {
-  await page.goto("http://localhost:8080/login", { waitUntil: "networkidle" });
+  await page.goto(`${base}/login`, { waitUntil: "networkidle" });
   await page.waitForSelector('#username');
   await page.fill('#username', 'admin');
   await page.fill('#password', 'admin123');

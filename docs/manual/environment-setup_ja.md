@@ -102,7 +102,8 @@ podman compose up --build
 ## 8. E2E スモークテスト
 
 1. バックエンドとフロントエンドを起動（例：`scripts/backend.ps1 start`、`scripts/frontend.ps1 start`）。
-2. `e2e/` ディレクトリで `npm install`（初回のみ）を実行し、`node run.mjs` を起動。`FRONTEND_BASE_URL` が `http://localhost:8080` 以外なら環境変数で上書きします。
+2. `e2e/` ディレクトリで `npm install`（初回のみ）を実行し、`node run.mjs` を起動。利用する構成の既定ターゲット以外を使う場合は `FRONTEND_BASE_URL` を環境変数で上書きします。
+   既定ターゲットはローカルの Python 静的サーバでは `http://localhost:8000`、`podman compose` 利用時は `https://localhost:8080` です。Playwright helper はローカルの self-signed 証明書を既定で許容します。
 
 Playwright スクリプトは管理者でログインし、主要ページを巡回してログアウトするスモークシナリオです。
 
