@@ -411,6 +411,25 @@ mod host_tests {
         repo.delete_holiday("h1").await.unwrap();
         assert_eq!(repo.fetch_users().await.unwrap().len(), 1);
     }
+
+    #[tokio::test]
+    async fn admin_repository_list_active_breaks_returns_empty_list_on_not_found() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/breaks/active");
+            then.status(404).json_body(serde_json::json!({
+                "error": "進行中の休憩はありません",
+                "code": "NOT_FOUND"
+            }));
+        });
+
+        let repo = repo(&server);
+        let active_breaks = repo
+            .list_active_breaks()
+            .await
+            .expect("404 active breaks should be treated as empty");
+        assert!(active_breaks.is_empty());
+    }
 }
 
 fn convert_admin_holiday_item(item: AdminHolidayListItem) -> Option<HolidayResponse> {

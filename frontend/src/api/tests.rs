@@ -909,6 +909,26 @@ async fn api_client_get_me_masks_parse_error_details() {
 }
 
 #[tokio::test]
+async fn api_client_admin_list_active_breaks_returns_empty_list_on_not_found() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(GET).path("/api/admin/breaks/active");
+        then.status(404).json_body(serde_json::json!({
+            "error": "進行中の休憩はありません",
+            "code": "NOT_FOUND"
+        }));
+    });
+
+    let client = api_client(&server);
+    let active_breaks = client
+        .admin_list_active_breaks()
+        .await
+        .expect("404 active breaks should be treated as empty");
+    assert!(active_breaks.is_empty());
+}
+
+#[tokio::test]
 async fn api_client_refresh_override_can_return_error() {
     let client = ApiClient::new_with_base_url("http://127.0.0.1:9/api");
     super::auth::queue_refresh_override(
