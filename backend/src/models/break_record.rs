@@ -1,6 +1,6 @@
 //! Models that capture break sessions within an attendance record.
 
-use crate::types::{AttendanceId, BreakRecordId};
+use crate::types::{AttendanceId, BreakRecordId, UserId};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -33,6 +33,17 @@ pub struct BreakRecordResponse {
     pub break_start_time: NaiveDateTime,
     pub break_end_time: Option<NaiveDateTime>,
     pub duration_minutes: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+/// Administrative view of active breaks that can be force-ended.
+pub struct ActiveBreakResponse {
+    pub break_id: BreakRecordId,
+    pub attendance_id: AttendanceId,
+    pub user_id: UserId,
+    pub username: String,
+    pub full_name: Option<String>,
+    pub break_start_time: NaiveDateTime,
 }
 
 impl From<BreakRecord> for BreakRecordResponse {

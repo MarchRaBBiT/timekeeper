@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
     Extension, Router,
 };
@@ -8,6 +8,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::attendance,
+    models::break_record::ActiveBreakResponse,
     models::user::{User, UserRole},
     state::AppState,
 };
@@ -27,6 +28,13 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
         .await
 }
 
+async fn reset_admin_attendance_tables(pool: &PgPool) {
+    sqlx::query("TRUNCATE break_records, attendance, users RESTART IDENTITY CASCADE")
+        .execute(pool)
+        .await
+        .expect("truncate admin attendance tables");
+}
+
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());
     Router::new()
@@ -44,6 +52,10 @@ fn test_router_with_upsert(pool: PgPool, user: User) -> Router {
         .route(
             "/api/admin/attendance",
             axum::routing::put(attendance::upsert_attendance),
+        )
+        .route(
+            "/api/admin/breaks/active",
+            axum::routing::get(attendance::list_active_breaks),
         )
         .route(
             "/api/admin/breaks/{id}/force-end",
@@ -389,6 +401,90 @@ async fn test_system_admin_can_force_end_active_break() {
             .expect("fetch break");
     assert!(ended.0.is_some());
     assert!(ended.1.unwrap_or_default() >= 0);
+}
+
+#[tokio::test]
+async fn test_system_admin_lists_empty_active_breaks_as_ok() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_admin_attendance_tables(&pool).await;
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/admin/breaks/active")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    let payload: Vec<ActiveBreakResponse> =
+        serde_json::from_slice(&body).expect("parse active breaks response");
+
+    assert!(payload.is_empty());
+}
+
+#[tokio::test]
+async fn test_system_admin_can_list_active_breaks() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_admin_attendance_tables(&pool).await;
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let date = NaiveDate::from_ymd_opt(2024, 7, 15).expect("valid date");
+    let clock_in = NaiveDateTime::parse_from_str("2024-07-15T09:00:00", "%Y-%m-%dT%H:%M:%S")
+        .expect("clock in");
+    let clock_out = NaiveDateTime::parse_from_str("2024-07-15T18:00:00", "%Y-%m-%dT%H:%M:%S")
+        .expect("clock out");
+    let attendance =
+        seed_attendance(&pool, employee.id, date, Some(clock_in), Some(clock_out)).await;
+    let break_start = NaiveDateTime::parse_from_str("2024-07-15T12:00:00", "%Y-%m-%dT%H:%M:%S")
+        .expect("break start");
+    let active_break = seed_break_record(&pool, attendance.id, break_start, None).await;
+
+    let token = create_test_token(sysadmin.id, sysadmin.role.clone());
+    let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
+
+    let request = Request::builder()
+        .method("GET")
+        .uri("/api/admin/breaks/active")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    let payload: Vec<ActiveBreakResponse> =
+        serde_json::from_slice(&body).expect("parse active breaks response");
+
+    assert_eq!(payload.len(), 1);
+    let item = &payload[0];
+    assert_eq!(item.break_id, active_break.id);
+    assert_eq!(item.attendance_id, attendance.id);
+    assert_eq!(item.user_id, employee.id);
+    assert_eq!(item.username, employee.username);
+    assert_eq!(item.full_name.as_deref(), Some(employee.full_name.as_str()));
+    assert_eq!(item.break_start_time, break_start);
 }
 
 #[tokio::test]

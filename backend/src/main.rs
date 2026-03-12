@@ -423,6 +423,10 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             put(handlers::admin::force_end_break),
         )
         .route(
+            "/api/admin/breaks/active",
+            get(handlers::admin::list_active_breaks),
+        )
+        .route(
             "/api/admin/users/{id}/reset-mfa",
             post(handlers::admin::reset_user_mfa),
         )

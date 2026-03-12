@@ -19,7 +19,7 @@ use crate::{
     handlers::attendance::recalculate_total_hours,
     handlers::attendance_utils::{get_break_records, get_break_records_map},
     models::{attendance::AttendanceResponse, user::User},
-    utils::time,
+    utils::{encryption::decrypt_pii, time},
 };
 
 pub async fn get_all_attendance(
@@ -189,6 +189,26 @@ pub async fn upsert_attendance(
         total_work_hours: att.total_work_hours,
         break_records: breaks,
     }))
+}
+
+pub async fn list_active_breaks(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+) -> Result<Json<Vec<crate::models::break_record::ActiveBreakResponse>>, AppError> {
+    if !user.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    let break_repo = BreakRecordRepository::new();
+    let mut active_breaks = break_repo.list_active_breaks(state.read_pool()).await?;
+
+    for item in &mut active_breaks {
+        item.full_name = item.full_name.as_ref().map(|encrypted| {
+            decrypt_pii(encrypted, &state.config).unwrap_or_else(|_| "***".to_string())
+        });
+    }
+
+    Ok(Json(active_breaks))
 }
 
 // Admin: force end a break
