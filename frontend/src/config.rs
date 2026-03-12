@@ -116,9 +116,44 @@ fn snapshot_time_zone_from_globals() -> Option<String> {
 }
 
 fn cache_base_url(value: &str) -> String {
-    let value = value.to_string();
+    let value = normalize_api_base_url(value);
     let _ = API_BASE_URL.set(value.clone());
     value
+}
+
+fn normalize_api_base_url(value: &str) -> String {
+    let trimmed = value.trim();
+    #[cfg(target_arch = "wasm32")]
+    {
+        return normalize_api_base_url_with_base(trimmed, current_window_href().as_deref());
+    }
+    normalize_api_base_url_with_base(trimmed, None)
+}
+
+fn normalize_api_base_url_with_base(value: &str, base: Option<&str>) -> String {
+    let trimmed = value.trim().trim_end_matches('/');
+    if reqwest::Url::parse(trimmed).is_ok() {
+        return trimmed.to_string();
+    }
+
+    let Some(base) = base else {
+        return trimmed.to_string();
+    };
+
+    let Some(base_url) = reqwest::Url::parse(base).ok() else {
+        return trimmed.to_string();
+    };
+
+    base_url
+        .join(trimmed)
+        .map(|resolved| resolved.to_string().trim_end_matches('/').to_string())
+        .unwrap_or_else(|_| trimmed.to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn current_window_href() -> Option<String> {
+    let window = web_sys::window()?;
+    window.location().href().ok()
 }
 
 fn cache_time_zone(value: &str, is_fallback: bool) -> String {
@@ -335,6 +370,31 @@ mod tests {
             assert_eq!(default_api_base_url(), "http://localhost:3000/api");
         }
     }
+
+    #[test]
+    fn normalize_api_base_url_trims_trailing_slash_for_absolute_urls() {
+        assert_eq!(
+            normalize_api_base_url("https://example.test/api/"),
+            "https://example.test/api"
+        );
+    }
+
+    #[test]
+    fn normalize_api_base_url_resolves_relative_paths_against_current_origin() {
+        assert_eq!(
+            normalize_api_base_url_with_base("/api", Some("https://localhost:8080/login")),
+            "https://localhost:8080/api"
+        );
+        assert_eq!(
+            normalize_api_base_url_with_base("api/", Some("https://localhost:8080/login")),
+            "https://localhost:8080/api"
+        );
+    }
+
+    #[test]
+    fn normalize_api_base_url_leaves_relative_path_when_base_is_unavailable() {
+        assert_eq!(normalize_api_base_url_with_base("/api/", None), "/api");
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -357,5 +417,13 @@ mod wasm_tests {
 
         let resolved = await_api_base_url().await;
         assert_eq!(resolved, "https://example.test/api");
+    }
+
+    #[wasm_bindgen_test]
+    fn resolves_relative_api_base_url_against_window_origin() {
+        let base = current_window_href().expect("window href available");
+        let resolved = normalize_api_base_url_with_base("/api", Some(&base));
+        assert!(resolved.ends_with("/api"));
+        assert!(resolved.starts_with("http://") || resolved.starts_with("https://"));
     }
 }

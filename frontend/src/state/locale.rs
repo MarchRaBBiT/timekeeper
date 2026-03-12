@@ -115,7 +115,7 @@ fn persist_locale(locale: &str) -> Result<(), String> {
 #[cfg(target_arch = "wasm32")]
 fn browser_locale() -> Option<String> {
     web_sys::window()
-        .map(|window| window.navigator().language())
+        .and_then(|window| window.navigator().language())
         .filter(|locale| !locale.trim().is_empty())
 }
 
