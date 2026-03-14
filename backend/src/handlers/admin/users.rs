@@ -216,10 +216,14 @@ pub async fn reset_user_mfa(
     let parsed_user_id =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
     let success =
-        user_repo::reset_mfa_and_revoke_refresh_tokens(&state.write_pool, parsed_user_id).await?;
+        user_repo::reset_mfa_and_revoke_all_sessions(&state.write_pool, parsed_user_id).await?;
 
     if !success {
         return Err(AppError::NotFound("User not found".into()));
+    }
+
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(parsed_user_id).await;
     }
 
     if let Some(Extension(audit_log_service)) = audit_log_service {
@@ -245,7 +249,7 @@ pub async fn reset_user_mfa(
     }
 
     Ok(Json(json!({
-        "message": "MFA reset and refresh tokens revoked",
+        "message": "MFA reset and active sessions revoked",
         "user_id": user_id
     })))
 }
