@@ -99,11 +99,27 @@ fn shutdown_testcontainer_postgres() {
 
 fn ensure_docker_cli() {
     if env::var("DOCKER_HOST").is_err() {
-        let podman_socket = Path::new("/run/podman/podman.sock");
-        if podman_socket.exists() {
+        let system_socket = Path::new("/run/podman/podman.sock");
+        let user_socket = env::var("XDG_RUNTIME_DIR")
+            .ok()
+            .map(|d| Path::new(&d).join("podman/podman.sock"));
+
+        if system_socket.exists() {
             env::set_var("DOCKER_HOST", "unix:///run/podman/podman.sock");
-        } else if let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") {
-            let path = Path::new(&runtime_dir).join("podman/podman.sock");
+        } else if let Some(ref path) = user_socket {
+            if !path.exists() {
+                // ソケットが未起動の場合 systemd user socket を activate する
+                let _ = Command::new("systemctl")
+                    .args(["--user", "start", "podman.socket"])
+                    .output();
+                // ソケットファイルが出現するまで最大 2 秒待機
+                for _ in 0..10 {
+                    if path.exists() {
+                        break;
+                    }
+                    std::thread::sleep(StdDuration::from_millis(200));
+                }
+            }
             if path.exists() {
                 if let Some(path_str) = path.to_str() {
                     env::set_var("DOCKER_HOST", format!("unix://{}", path_str));

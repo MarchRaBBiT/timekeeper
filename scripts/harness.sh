@@ -79,6 +79,13 @@ run_backend_unit() {
 
 run_backend_integration() {
   log "stage=backend-integration"
+  # Podman socket が未起動の場合は activate する（Docker 未導入環境向け）
+  if command -v systemctl &>/dev/null && command -v podman &>/dev/null; then
+    if ! systemctl --user is-active --quiet podman.socket 2>/dev/null; then
+      systemctl --user start podman.socket 2>/dev/null || true
+    fi
+    export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+  fi
   (cd "$ROOT_DIR" && cargo test -p timekeeper-backend --tests)
 }
 
