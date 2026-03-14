@@ -216,7 +216,7 @@ pub async fn reset_user_mfa(
     let parsed_user_id =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
     let success =
-        user_repo::reset_mfa_and_revoke_refresh_tokens(&state.write_pool, parsed_user_id).await?;
+        user_repo::reset_mfa_and_revoke_all_sessions(&state.write_pool, parsed_user_id).await?;
 
     if !success {
         return Err(AppError::NotFound("User not found".into()));

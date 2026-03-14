@@ -122,8 +122,8 @@ pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error
     Ok(result.rows_affected() > 0)
 }
 
-/// Resets MFA and revokes active sessions, access tokens, and refresh tokens atomically.
-pub async fn reset_mfa_and_revoke_refresh_tokens(
+/// Resets MFA and revokes all active sessions, access tokens, and refresh tokens atomically.
+pub async fn reset_mfa_and_revoke_all_sessions(
     pool: &PgPool,
     user_id: crate::types::UserId,
 ) -> Result<bool, AppError> {

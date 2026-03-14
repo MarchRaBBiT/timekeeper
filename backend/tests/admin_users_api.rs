@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -8,11 +9,13 @@ use axum::{
 use chrono::{Duration, Utc};
 use serde_json::json;
 use sqlx::PgPool;
+use std::sync::{Arc, Mutex};
 use timekeeper_backend::{
     handlers::{admin::users, auth},
     middleware,
     models::user::{CreateUser, UpdateUser, User, UserRole},
     repositories::auth::{self as auth_repo, ActiveAccessToken},
+    services::token_cache::TokenCacheServiceTrait,
     state::AppState,
     types::UserId,
     utils::{
@@ -144,6 +147,39 @@ async fn count_active_sessions(pool: &PgPool, user_id: &str) -> i64 {
         .fetch_one(pool)
         .await
         .expect("count active sessions")
+}
+
+#[derive(Default)]
+struct MockTokenCache {
+    invalidated_users: Mutex<Vec<UserId>>,
+}
+
+#[async_trait]
+impl TokenCacheServiceTrait for MockTokenCache {
+    async fn cache_token(
+        &self,
+        _jti: &str,
+        _user_id: UserId,
+        _ttl_seconds: u64,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_token_active(&self, _jti: &str) -> anyhow::Result<Option<bool>> {
+        Ok(None)
+    }
+
+    async fn invalidate_token(&self, _jti: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn invalidate_user_tokens(&self, user_id: UserId) -> anyhow::Result<()> {
+        self.invalidated_users
+            .lock()
+            .expect("lock invalidated users")
+            .push(user_id);
+        Ok(())
+    }
 }
 
 #[tokio::test]
@@ -556,7 +592,7 @@ async fn test_system_admin_reset_mfa_rejects_non_uuid_without_partial_update() {
 }
 
 #[tokio::test]
-async fn test_system_admin_can_reset_mfa_and_revoke_refresh_tokens() {
+async fn test_system_admin_can_reset_mfa_and_revoke_all_sessions() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
     sqlx::migrate!("./migrations")
@@ -659,7 +695,14 @@ async fn test_system_admin_reset_mfa_revokes_existing_access_tokens_and_sessions
         1
     );
 
-    let state = AppState::new(pool.clone(), None, None, None, test_config());
+    let cache = Arc::new(MockTokenCache::default());
+    let state = AppState::new(
+        pool.clone(),
+        None,
+        None,
+        Some(cache.clone() as Arc<dyn TokenCacheServiceTrait>),
+        test_config(),
+    );
     let protected_routes = Router::new()
         .route("/api/auth/me", get(auth::me))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -703,6 +746,14 @@ async fn test_system_admin_reset_mfa_revokes_existing_access_tokens_and_sessions
     assert_eq!(
         count_active_sessions(&pool, &target.id.to_string()).await,
         0
+    );
+    assert_eq!(
+        cache
+            .invalidated_users
+            .lock()
+            .expect("lock invalidated users")
+            .as_slice(),
+        &[target.id]
     );
 
     let after_request = Request::builder()

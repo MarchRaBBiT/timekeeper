@@ -10,7 +10,7 @@
 ## Done Criteria (Observable)
 - [x] admin MFA reset 実行後、対象ユーザーの `refresh_tokens` / `active_access_tokens` / `active_sessions` がすべて失効する
 - [x] reset 前に発行済みの access token で保護 API を叩いても `401/403` になることを test で確認できる
-- [x] token cache が有効な構成でも stale token が通らないことを実装と invalidate hook で確認し、focused validation を実施する
+- [x] token cache が有効な構成でも stale token が通らないことを mock cache 経由の focused test で確認する
 
 ## Constraints / Non-goals
 - system admin 限定の権限制御は維持する
@@ -25,8 +25,8 @@
 
 ## Validation Plan
 - [x] `bash scripts/harness.sh fmt-check`
-- [ ] `cargo test -p timekeeper-backend --test mfa_api -- --nocapture`
-- [ ] `cargo test -p timekeeper-backend --test session_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --test mfa_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --test session_api -- --nocapture`
 - [x] admin MFA reset を cover する focused backend test
 - [ ] `bash scripts/harness.sh backend-integration`
 - [x] `cargo test -p timekeeper-backend --test admin_users_api -- --nocapture`
@@ -45,3 +45,6 @@
 - 2026-03-14: admin MFA reset を transaction 内で `active_sessions` / `active_access_tokens` / `refresh_tokens` 全失効へ拡張し、handler 側で token cache invalidate と API catalog 更新を反映した。
 - 2026-03-14: `bash scripts/harness.sh fmt-check`、`cargo test -p timekeeper-backend --test admin_users_api -- --nocapture`、`cargo test -p timekeeper-backend --test user_repository -- --nocapture`、`cargo clippy -p timekeeper-backend --all-targets -- -D warnings` を green 確認。
 - 2026-03-14: commit `08a586c` を push し、PR #449 `fix: revoke active sessions on admin MFA reset` を作成。ExecPlan を `done` へ移動した。
+- 2026-03-14: PR #449 review follow-up として repository 関数を `reset_mfa_and_revoke_all_sessions` へ改名し、`admin_users_api` に mock token cache を使った invalidate 呼び出し確認を追加した。
+- 2026-03-14: `cargo test -p timekeeper-backend --test mfa_api -- --nocapture`、`cargo test -p timekeeper-backend --test session_api -- --nocapture`、`cargo test -p timekeeper-backend --test user_repository -- --nocapture`、`cargo clippy -p timekeeper-backend --all-targets -- -D warnings` を green 確認。
+- 2026-03-14: `bash scripts/harness.sh backend-integration` は `active_session_repo` の testcontainers 起動で SIGABRT となり、この環境では完走できなかった。変更 seam に近い focused tests は green。

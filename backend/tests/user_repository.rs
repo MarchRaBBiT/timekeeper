@@ -166,7 +166,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
         .expect("disable mfa"));
     let created_user_id = UserId::from_str(&created_id).expect("created id is uuid");
     assert!(
-        user_repo::reset_mfa_and_revoke_refresh_tokens(&pool, created_user_id)
+        user_repo::reset_mfa_and_revoke_all_sessions(&pool, created_user_id)
             .await
             .expect("reset mfa")
     );
@@ -185,7 +185,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
         .expect("disable mfa missing user"));
     let missing_user_id = UserId::from_str(&missing_id).expect("missing id is uuid");
     assert!(
-        !user_repo::reset_mfa_and_revoke_refresh_tokens(&pool, missing_user_id)
+        !user_repo::reset_mfa_and_revoke_all_sessions(&pool, missing_user_id)
             .await
             .expect("reset mfa missing user")
     );
