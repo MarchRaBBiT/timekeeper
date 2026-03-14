@@ -33,7 +33,7 @@
 ## Git Checkpoint Log
 - [x] `git status --short`
 - [x] header hardening validation pass
-- [ ] `git commit -m "fix(frontend): enforce header-based browser security policy"`
+- [x] `git commit -m "fix(frontend): enforce header-based browser security policy"`
 
 ## Progress Notes
 - 2026-03-14: clickjacking finding を単独で進められるよう、frontend 配信設定中心の ExecPlan として分離。
@@ -45,3 +45,4 @@
 - 2026-03-14: `frontend/Dockerfile` を更新し、`nginx.conf` も `index.html.template` と同じ `__CSP_CONNECT_SRC__` placeholder を build 時に置換するよう変更。
 - 2026-03-14: 回帰テスト再実行で green を確認。加えて `bash scripts/harness.sh fmt-check` と `bash scripts/harness.sh lint` を通過。
 - 2026-03-14: `podman build -f frontend/Dockerfile -t timekeeper-frontend-clickjacking-test .` の後、`podman run --add-host backend:127.0.0.1 -p 8443:443 ...` と `curl -k -I https://127.0.0.1:8443/` で `Content-Security-Policy` に `frame-ancestors 'none'`、`X-Frame-Options: DENY`、`Referrer-Policy: strict-origin-when-cross-origin`、`X-Content-Type-Options: nosniff` が返ることを確認。
+- 2026-03-14: commit `0742c0f fix(frontend): enforce header-based browser security policy` を作成し、PR #451 `fix: enforce header-based clickjacking protection` を登録。
