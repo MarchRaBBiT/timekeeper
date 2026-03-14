@@ -9,18 +9,18 @@ fn frontend_file(path: &str) -> String {
 }
 
 #[test]
-fn nginx_conf_emits_header_based_clickjacking_protection() {
-    let nginx_conf = frontend_file("nginx.conf");
+fn security_headers_snippet_emits_header_based_clickjacking_protection() {
+    let snippet = frontend_file("nginx-security-headers.conf");
 
     assert!(
-        nginx_conf.contains("add_header Content-Security-Policy")
-            && nginx_conf.contains("frame-ancestors 'none'")
-            && nginx_conf.contains("always;"),
-        "nginx.conf must send a header-based CSP with frame-ancestors 'none'"
+        snippet.contains("add_header Content-Security-Policy")
+            && snippet.contains("frame-ancestors 'none'")
+            && snippet.contains("always;"),
+        "security header snippet must send a header-based CSP with frame-ancestors 'none'"
     );
     assert!(
-        nginx_conf.contains("add_header X-Frame-Options \"DENY\" always;"),
-        "nginx.conf must emit X-Frame-Options: DENY"
+        snippet.contains("add_header X-Frame-Options \"DENY\" always;"),
+        "security header snippet must emit X-Frame-Options: DENY"
     );
 }
 
@@ -37,13 +37,38 @@ fn html_files_do_not_keep_anti_framing_in_meta_csp() {
 }
 
 #[test]
+fn nginx_conf_scopes_security_headers_to_browser_routes_only() {
+    let nginx_conf = frontend_file("nginx.conf");
+
+    assert!(
+        nginx_conf
+            .contains("location / {\n        include /etc/nginx/snippets/security-headers.conf;")
+            && nginx_conf.contains(
+                "location /pkg/ {\n        include /etc/nginx/snippets/security-headers.conf;"
+            ),
+        "browser-facing routes must include the shared security headers snippet"
+    );
+    assert!(
+        !nginx_conf.contains(
+            "location /api/ {\n        include /etc/nginx/snippets/security-headers.conf;"
+        ),
+        "/api/ responses should not inherit browser-only security headers from nginx"
+    );
+}
+
+#[test]
 fn dockerfile_generates_nginx_config_from_template_values() {
     let dockerfile = frontend_file("Dockerfile");
 
     assert!(
         dockerfile.contains("frontend/nginx.conf")
             && dockerfile.contains("nginx.conf.template")
-            && dockerfile.contains("sed \"s/__CSP_CONNECT_SRC__/$escaped/g\" ./nginx.conf.template"),
-        "Dockerfile must render nginx.conf with the same CSP connect-src placeholder wiring as index.html"
+            && dockerfile.contains("frontend/nginx-security-headers.conf")
+            && dockerfile.contains("nginx-security-headers.conf.template")
+            && dockerfile.contains("sed \"s/__CSP_CONNECT_SRC__/$escaped/g\" ./nginx.conf.template")
+            && dockerfile.contains(
+                "sed \"s/__CSP_CONNECT_SRC__/$escaped/g\" ./nginx-security-headers.conf.template"
+            ),
+        "Dockerfile must render nginx config and shared security header snippet from the same CSP connect-src placeholder wiring as index.html"
     );
 }

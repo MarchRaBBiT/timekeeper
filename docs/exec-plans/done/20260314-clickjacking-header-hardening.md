@@ -46,3 +46,5 @@
 - 2026-03-14: 回帰テスト再実行で green を確認。加えて `bash scripts/harness.sh fmt-check` と `bash scripts/harness.sh lint` を通過。
 - 2026-03-14: `podman build -f frontend/Dockerfile -t timekeeper-frontend-clickjacking-test .` の後、`podman run --add-host backend:127.0.0.1 -p 8443:443 ...` と `curl -k -I https://127.0.0.1:8443/` で `Content-Security-Policy` に `frame-ancestors 'none'`、`X-Frame-Options: DENY`、`Referrer-Policy: strict-origin-when-cross-origin`、`X-Content-Type-Options: nosniff` が返ることを確認。
 - 2026-03-14: commit `0742c0f fix(frontend): enforce header-based browser security policy` を作成し、PR #451 `fix: enforce header-based clickjacking protection` を登録。
+- 2026-03-14: PR #451 のレビューを受け、security header を `/etc/nginx/snippets/security-headers.conf` に切り出し、`/` と `/pkg/` のみに include する構成へ変更。`/api/` には継承させないようにした。
+- 2026-03-14: review follow-up として `cargo test -p timekeeper-frontend --test browser_security_headers -- --nocapture`、`bash scripts/harness.sh fmt-check`、`bash scripts/harness.sh lint` を再実行。さらに rebuilt container で `curl -k -I https://127.0.0.1:8443/` に security headers があり、`curl -k -I https://127.0.0.1:8443/api/` の `502 Bad Gateway` には browser 向け security headers が付かないことを確認。
