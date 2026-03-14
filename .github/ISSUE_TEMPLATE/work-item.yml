@@ -7,6 +7,7 @@ body:
     attributes:
       value: |
         issue のタイトルは、種別が一目で分かるように次の形式で記載してください。
+        GitHub の仕様上、下の dropdown を選んでも title は自動更新されません。dropdown の選択に合わせて title も手動で書き換えてください。
 
         形式:
         `[Bug] 概要`
