@@ -38,7 +38,7 @@
 3. 最小の再現/検証を先に作る
 4. 実装する
 5. 変更 seam に近い harness stage から順に通す
-6. green になった節目で `jj commit`
+6. green になった節目で `git commit` を作成する
 7. issue / PR / plan を実測値で更新する
 
 ## Validation Ladder
@@ -87,7 +87,7 @@ bash scripts/harness.sh full
 - `cargo fmt --all --check` が通る
 - `cargo clippy --all-targets -- -D warnings` が通る
 - 関連 issue / PR / ExecPlan に実測結果が残っている
-- `jj` snapshot が作成されている
+- 対応する `git` commit が作成されている
 
 ## Task Routing
 
@@ -105,7 +105,7 @@ bash scripts/harness.sh full
 
 ## Non-Negotiables
 
-- `git` ではなく `jj` を使う
+- ソースコード管理は `git` で行う
 - 変更前後で relevant test を必ず回す
 - 新規挙動は test 先行で固定する
 - SQLx migration は既存ファイル編集でなく新規追加
