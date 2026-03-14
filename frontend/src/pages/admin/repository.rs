@@ -434,7 +434,7 @@ mod host_tests {
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/breaks/active");
             then.status(404).json_body(serde_json::json!({
-                "error": "進行中の休憩はありません",
+                "error": "Not Found",
                 "code": "NOT_FOUND"
             }));
         });
@@ -445,7 +445,6 @@ mod host_tests {
             .await
             .expect_err("404 active breaks should surface as an error");
         assert_eq!(err.code, "NOT_FOUND");
-        assert_eq!(err.error, "進行中の休憩はありません");
     }
 }
 

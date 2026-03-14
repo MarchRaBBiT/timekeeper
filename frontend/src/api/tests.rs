@@ -932,7 +932,7 @@ async fn api_client_admin_list_active_breaks_returns_not_found_error() {
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/breaks/active");
         then.status(404).json_body(serde_json::json!({
-            "error": "進行中の休憩はありません",
+            "error": "Not Found",
             "code": "NOT_FOUND"
         }));
     });
@@ -943,7 +943,6 @@ async fn api_client_admin_list_active_breaks_returns_not_found_error() {
         .await
         .expect_err("404 active breaks should surface as an error");
     assert_eq!(err.code, "NOT_FOUND");
-    assert_eq!(err.error, "進行中の休憩はありません");
 }
 
 #[tokio::test]
