@@ -70,6 +70,14 @@ pub struct CreateHolidayPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GoogleHolidayCandidate {
+    pub holiday_date: NaiveDate,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HolidayResponse {
     pub id: HolidayId,
     pub holiday_date: NaiveDate,

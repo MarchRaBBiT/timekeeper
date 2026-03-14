@@ -3,8 +3,9 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum AttendanceCorrectionStatus {
@@ -27,20 +28,20 @@ impl AttendanceCorrectionStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct CorrectionBreakItem {
     pub break_start_time: NaiveDateTime,
     pub break_end_time: Option<NaiveDateTime>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct AttendanceCorrectionSnapshot {
     pub clock_in_time: Option<NaiveDateTime>,
     pub clock_out_time: Option<NaiveDateTime>,
     pub breaks: Vec<CorrectionBreakItem>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateAttendanceCorrectionRequest {
     pub date: NaiveDate,
     pub clock_in_time: Option<NaiveDateTime>,
@@ -49,7 +50,7 @@ pub struct CreateAttendanceCorrectionRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateAttendanceCorrectionRequest {
     pub clock_in_time: Option<NaiveDateTime>,
     pub clock_out_time: Option<NaiveDateTime>,
@@ -57,7 +58,7 @@ pub struct UpdateAttendanceCorrectionRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DecisionPayload {
     pub comment: String,
 }
@@ -94,7 +95,7 @@ pub struct AttendanceCorrectionEffectiveValue {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AttendanceCorrectionResponse {
     pub id: String,
     pub user_id: UserId,

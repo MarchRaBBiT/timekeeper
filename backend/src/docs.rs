@@ -5,11 +5,13 @@ use crate::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayListQuery, AdminHolidayListResponse,
             AdminRequestListPageInfo, AdminRequestListResponse, AdminSessionResponse,
-            ApprovePayload, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
-            AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload, RequestListQuery,
-            SubjectRequestListQuery, SubjectRequestListResponse,
+            ApprovePayload, ArchivedUserResponse, AuditLogExportQuery, AuditLogListQuery,
+            AuditLogListResponse, AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload,
+            RequestListQuery, SubjectRequestListQuery, SubjectRequestListResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
+        config::TimeZoneResponse,
+        holidays::{HolidayCheckResponse, HolidayMonthEntry},
         sessions::SessionResponse,
     },
     models::{
@@ -17,37 +19,62 @@ use crate::{
             AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest,
             ClockInRequest, ClockOutRequest,
         },
-        break_record::BreakRecordResponse,
+        attendance_correction_request::{
+            AttendanceCorrectionResponse, AttendanceCorrectionSnapshot, CorrectionBreakItem,
+            CreateAttendanceCorrectionRequest,
+            DecisionPayload as AttendanceCorrectionDecisionPayload,
+            UpdateAttendanceCorrectionRequest,
+        },
+        break_record::{ActiveBreakResponse, BreakRecordResponse},
         consent_log::{ConsentLogResponse, RecordConsentPayload},
         holiday::{
             AdminHolidayKind, AdminHolidayListItem, CreateHolidayPayload,
-            CreateWeeklyHolidayPayload, HolidayResponse, WeeklyHolidayResponse,
+            CreateWeeklyHolidayPayload, GoogleHolidayCandidate, HolidayResponse,
+            WeeklyHolidayResponse,
         },
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         leave_request::{CreateLeaveRequest, LeaveRequestResponse, LeaveType},
         overtime_request::{CreateOvertimeRequest, OvertimeRequestResponse},
+        password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
         request::RequestStatus,
         subject_request::{
             CreateDataSubjectRequest, DataSubjectRequestResponse, DataSubjectRequestType,
         },
         user::{
             ChangePasswordRequest, CreateUser, LoginRequest, LoginResponse, MfaCodeRequest,
-            MfaSetupResponse, MfaStatusResponse, UpdateUser, UserResponse,
+            MfaSetupResponse, MfaStatusResponse, UpdateProfile, UpdateUser, UserResponse,
         },
+        PaginationQuery,
     },
 };
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
-    Modify, OpenApi,
+    Modify, OpenApi, ToSchema,
 };
+
+#[derive(ToSchema)]
+struct RequestMutationMessageResponse {
+    message: String,
+}
+
+#[derive(ToSchema)]
+struct RequestCancellationResponse {
+    id: String,
+    status: String,
+}
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
         login_doc,
         refresh_doc,
+        request_password_reset_doc,
+        reset_password_doc,
+        timezone_doc,
         me_doc,
+        update_profile_doc,
         mfa_status_doc,
+        mfa_register_doc,
         mfa_setup_doc,
         mfa_activate_doc,
         mfa_disable_doc,
@@ -62,19 +89,34 @@ use utoipa::{
         attendance_status_doc,
         my_attendance_doc,
         my_attendance_summary_doc,
+        attendance_breaks_doc,
         export_attendance_doc,
+        create_attendance_correction_doc,
+        list_my_attendance_corrections_doc,
+        get_my_attendance_correction_doc,
+        update_my_attendance_correction_doc,
+        cancel_my_attendance_correction_doc,
         create_leave_doc,
         create_overtime_doc,
         my_requests_doc,
+        update_request_doc,
+        cancel_request_doc,
         record_consent_doc,
         list_my_consents_doc,
         create_subject_request_doc,
         list_my_subject_requests_doc,
         cancel_subject_request_doc,
+        list_holidays_doc,
+        check_holiday_doc,
+        list_month_holidays_doc,
         admin_list_requests_doc,
         admin_request_detail_doc,
         admin_approve_request_doc,
         admin_reject_request_doc,
+        admin_list_attendance_correction_requests_doc,
+        admin_get_attendance_correction_request_doc,
+        admin_approve_attendance_correction_request_doc,
+        admin_reject_attendance_correction_request_doc,
         admin_list_subject_requests_doc,
         admin_approve_subject_request_doc,
         admin_reject_subject_request_doc,
@@ -82,17 +124,28 @@ use utoipa::{
         admin_create_user_doc,
         admin_list_user_sessions_doc,
         admin_revoke_session_doc,
+        admin_get_attendance_doc,
         admin_list_holidays_doc,
         admin_create_holiday_doc,
         admin_delete_holiday_doc,
+        admin_google_holidays_doc,
         admin_list_weekly_holidays_doc,
         admin_create_weekly_holiday_doc,
+        admin_delete_weekly_holiday_doc,
         admin_export_doc,
         admin_list_audit_logs_doc,
         admin_get_audit_log_doc,
         admin_export_audit_logs_doc,
+        system_admin_upsert_attendance_doc,
+        system_admin_force_end_break_doc,
+        system_admin_list_active_breaks_doc,
         system_admin_reset_mfa_doc,
+        system_admin_update_user_doc,
+        system_admin_delete_user_doc,
         system_admin_unlock_user_doc,
+        system_admin_list_archived_users_doc,
+        system_admin_delete_archived_user_doc,
+        system_admin_restore_archived_user_doc,
         admin_create_holiday_exception_doc,
         admin_list_holiday_exceptions_doc,
         admin_delete_holiday_exception_doc
@@ -102,15 +155,20 @@ use utoipa::{
             // auth
             LoginRequest,
             LoginResponse,
+            RequestPasswordResetPayload,
+            ResetPasswordPayload,
             ChangePasswordRequest,
             MfaCodeRequest,
             MfaSetupResponse,
             MfaStatusResponse,
             SessionResponse,
+            UpdateProfile,
+            TimeZoneResponse,
             // users
             CreateUser,
             UpdateUser,
             UserResponse,
+            ArchivedUserResponse,
             // attendance & breaks
             ClockInRequest,
             ClockOutRequest,
@@ -120,8 +178,16 @@ use utoipa::{
             AttendanceSummary,
             AttendanceStatusResponse,
             BreakRecordResponse,
+            ActiveBreakResponse,
             AttendanceQuery,
             AttendanceExportQuery,
+            PaginationQuery,
+            CreateAttendanceCorrectionRequest,
+            UpdateAttendanceCorrectionRequest,
+            AttendanceCorrectionResponse,
+            AttendanceCorrectionSnapshot,
+            CorrectionBreakItem,
+            AttendanceCorrectionDecisionPayload,
             // requests
             CreateLeaveRequest,
             LeaveRequestResponse,
@@ -139,12 +205,17 @@ use utoipa::{
             AdminRequestListPageInfo,
             SubjectRequestListQuery,
             SubjectRequestListResponse,
+            RequestMutationMessageResponse,
+            RequestCancellationResponse,
             DecisionPayload,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
             CreateWeeklyHolidayPayload,
             WeeklyHolidayResponse,
+            GoogleHolidayCandidate,
+            HolidayCheckResponse,
+            HolidayMonthEntry,
             CreateHolidayExceptionPayload,
             HolidayExceptionResponse,
             // admin-specific payloads
@@ -168,6 +239,7 @@ use utoipa::{
     tags(
         (name = "Auth", description = "認証・MFA・パスワード関連"),
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
+        (name = "Config", description = "システム設定・構成参照 API"),
         (name = "Requests", description = "申請 API (休暇/残業)"),
         (name = "Compliance", description = "同意・法令対応 API"),
         (name = "Admin", description = "管理者向け API")
@@ -213,6 +285,35 @@ fn login_doc() {}
 fn refresh_doc() {}
 
 #[utoipa::path(
+    post,
+    path = "/api/auth/request-password-reset",
+    request_body = RequestPasswordResetPayload,
+    responses((status = 200, description = "パスワードリセットメール送信受付", body = serde_json::Value)),
+    tag = "Auth",
+    security(())
+)]
+fn request_password_reset_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/reset-password",
+    request_body = ResetPasswordPayload,
+    responses((status = 200, description = "パスワードリセット完了", body = serde_json::Value)),
+    tag = "Auth",
+    security(())
+)]
+fn reset_password_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/config/timezone",
+    responses((status = 200, description = "システムタイムゾーン", body = TimeZoneResponse)),
+    tag = "Config",
+    security(())
+)]
+fn timezone_doc() {}
+
+#[utoipa::path(
     get,
     path = "/api/auth/me",
     responses((status = 200, description = "ログイン中のユーザー", body = UserResponse)),
@@ -221,12 +322,29 @@ fn refresh_doc() {}
 fn me_doc() {}
 
 #[utoipa::path(
+    put,
+    path = "/api/auth/me",
+    request_body = UpdateProfile,
+    responses((status = 200, description = "プロフィール更新", body = UserResponse)),
+    tag = "Auth"
+)]
+fn update_profile_doc() {}
+
+#[utoipa::path(
     get,
     path = "/api/auth/mfa",
     responses((status = 200, body = MfaStatusResponse)),
     tag = "Auth"
 )]
 fn mfa_status_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/mfa/register",
+    responses((status = 200, body = MfaSetupResponse)),
+    tag = "Auth"
+)]
+fn mfa_register_doc() {}
 
 #[utoipa::path(
     post,
@@ -356,12 +474,66 @@ fn my_attendance_summary_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/attendance/{id}/breaks",
+    params(("id" = String, Path, description = "Attendance ID")),
+    responses((status = 200, body = [BreakRecordResponse])),
+    tag = "Attendance"
+)]
+fn attendance_breaks_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/attendance/export",
     params(AttendanceExportQuery),
     responses((status = 200, description = "CSV データを含む JSON", body = serde_json::Value)),
     tag = "Attendance"
 )]
 fn export_attendance_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/attendance-corrections",
+    request_body = CreateAttendanceCorrectionRequest,
+    responses((status = 200, body = AttendanceCorrectionResponse)),
+    tag = "Attendance"
+)]
+fn create_attendance_correction_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/attendance-corrections/me",
+    responses((status = 200, body = [AttendanceCorrectionResponse])),
+    tag = "Attendance"
+)]
+fn list_my_attendance_corrections_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/attendance-corrections/{id}",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    responses((status = 200, body = AttendanceCorrectionResponse)),
+    tag = "Attendance"
+)]
+fn get_my_attendance_correction_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/attendance-corrections/{id}",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    request_body = UpdateAttendanceCorrectionRequest,
+    responses((status = 200, body = AttendanceCorrectionResponse)),
+    tag = "Attendance"
+)]
+fn update_my_attendance_correction_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/attendance-corrections/{id}",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Attendance"
+)]
+fn cancel_my_attendance_correction_doc() {}
 
 #[utoipa::path(
     post,
@@ -388,6 +560,29 @@ fn create_overtime_doc() {}
     tag = "Requests"
 )]
 fn my_requests_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/requests/{id}",
+    params(("id" = String, Path, description = "Request ID")),
+    request_body = serde_json::Value,
+    responses((
+        status = 200,
+        description = "Returns {\"message\":\"Leave request updated\"}, {\"message\":\"Overtime request updated\"}, or {\"message\":\"Attendance correction request updated\"}",
+        body = RequestMutationMessageResponse
+    )),
+    tag = "Requests"
+)]
+fn update_request_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/requests/{id}",
+    params(("id" = String, Path, description = "Request ID")),
+    responses((status = 200, body = RequestCancellationResponse)),
+    tag = "Requests"
+)]
+fn cancel_request_doc() {}
 
 #[utoipa::path(
     post,
@@ -434,6 +629,35 @@ fn cancel_subject_request_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/holidays",
+    responses((status = 200, body = [HolidayResponse])),
+    tag = "Attendance"
+)]
+fn list_holidays_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/holidays/check",
+    params(("date" = String, Query, description = "対象日 YYYY-MM-DD")),
+    responses((status = 200, body = HolidayCheckResponse)),
+    tag = "Attendance"
+)]
+fn check_holiday_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/holidays/month",
+    params(
+        ("year" = i32, Query, description = "対象年"),
+        ("month" = u32, Query, description = "対象月")
+    ),
+    responses((status = 200, body = [HolidayMonthEntry])),
+    tag = "Attendance"
+)]
+fn list_month_holidays_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/requests",
     params(RequestListQuery),
     responses((status = 200, body = AdminRequestListResponse)),
@@ -469,6 +693,49 @@ fn admin_approve_request_doc() {}
     tag = "Admin"
 )]
 fn admin_reject_request_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/attendance-corrections",
+    params(
+        ("status" = Option<String>, Query, description = "ステータス"),
+        ("user_id" = Option<String>, Query, description = "対象ユーザーID"),
+        ("page" = Option<i64>, Query, description = "ページ番号"),
+        ("per_page" = Option<i64>, Query, description = "1ページ件数")
+    ),
+    responses((status = 200, body = [AttendanceCorrectionResponse])),
+    tag = "Admin"
+)]
+fn admin_list_attendance_correction_requests_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/attendance-corrections/{id}",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    responses((status = 200, body = AttendanceCorrectionResponse)),
+    tag = "Admin"
+)]
+fn admin_get_attendance_correction_request_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/attendance-corrections/{id}/approve",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    request_body = AttendanceCorrectionDecisionPayload,
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_approve_attendance_correction_request_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/attendance-corrections/{id}/reject",
+    params(("id" = String, Path, description = "Attendance correction request ID")),
+    request_body = AttendanceCorrectionDecisionPayload,
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_reject_attendance_correction_request_doc() {}
 
 #[utoipa::path(
     get,
@@ -536,6 +803,15 @@ fn admin_revoke_session_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/admin/attendance",
+    params(PaginationQuery),
+    responses((status = 200, body = crate::models::PaginatedResponse<AttendanceResponse>)),
+    tag = "Admin"
+)]
+fn admin_get_attendance_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/holidays",
     params(AdminHolidayListQuery),
     responses((status = 200, body = AdminHolidayListResponse)),
@@ -563,6 +839,15 @@ fn admin_delete_holiday_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/admin/holidays/google",
+    params(("year" = Option<i32>, Query, description = "対象年")),
+    responses((status = 200, body = [GoogleHolidayCandidate])),
+    tag = "Admin"
+)]
+fn admin_google_holidays_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/holidays/weekly",
     responses((status = 200, body = [WeeklyHolidayResponse])),
     tag = "Admin"
@@ -577,6 +862,15 @@ fn admin_list_weekly_holidays_doc() {}
     tag = "Admin"
 )]
 fn admin_create_weekly_holiday_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/holidays/weekly/{id}",
+    params(("id" = String, Path, description = "週次休日ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn admin_delete_weekly_holiday_doc() {}
 
 #[utoipa::path(
     get,
@@ -615,6 +909,32 @@ fn admin_get_audit_log_doc() {}
 fn admin_export_audit_logs_doc() {}
 
 #[utoipa::path(
+    put,
+    path = "/api/admin/attendance",
+    request_body = AdminAttendanceUpsert,
+    responses((status = 200, body = AttendanceResponse)),
+    tag = "Admin"
+)]
+fn system_admin_upsert_attendance_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/breaks/{id}/force-end",
+    params(("id" = String, Path, description = "Break record ID")),
+    responses((status = 200, body = BreakRecordResponse)),
+    tag = "Admin"
+)]
+fn system_admin_force_end_break_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/breaks/active",
+    responses((status = 200, body = [ActiveBreakResponse])),
+    tag = "Admin"
+)]
+fn system_admin_list_active_breaks_doc() {}
+
+#[utoipa::path(
     post,
     path = "/api/admin/users/{id}/reset-mfa",
     params(("id" = String, Path, description = "User ID")),
@@ -624,6 +944,28 @@ fn admin_export_audit_logs_doc() {}
 fn system_admin_reset_mfa_doc() {}
 
 #[utoipa::path(
+    put,
+    path = "/api/admin/users/{id}",
+    params(("id" = String, Path, description = "User ID")),
+    request_body = UpdateUser,
+    responses((status = 200, body = UserResponse)),
+    tag = "Admin"
+)]
+fn system_admin_update_user_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/users/{id}",
+    params(
+        ("id" = String, Path, description = "User ID"),
+        ("hard" = Option<bool>, Query, description = "true の場合は完全削除")
+    ),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn system_admin_delete_user_doc() {}
+
+#[utoipa::path(
     post,
     path = "/api/admin/users/{id}/unlock",
     params(("id" = String, Path, description = "User ID")),
@@ -631,6 +973,32 @@ fn system_admin_reset_mfa_doc() {}
     tag = "Admin"
 )]
 fn system_admin_unlock_user_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/archived-users",
+    responses((status = 200, body = [ArchivedUserResponse])),
+    tag = "Admin"
+)]
+fn system_admin_list_archived_users_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/archived-users/{id}",
+    params(("id" = String, Path, description = "Archived user ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn system_admin_delete_archived_user_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/archived-users/{id}/restore",
+    params(("id" = String, Path, description = "Archived user ID")),
+    responses((status = 200, body = serde_json::Value)),
+    tag = "Admin"
+)]
+fn system_admin_restore_archived_user_doc() {}
 
 #[utoipa::path(
     post,
@@ -665,7 +1033,7 @@ fn admin_list_holiday_exceptions_doc() {}
         ("user_id" = String, Path, description = "対象ユーザーID"),
         ("id" = String, Path, description = "例外ID")
     ),
-    responses((status = 200, body = serde_json::Value)),
+    responses((status = 204, description = "削除成功")),
     tag = "Admin"
 )]
 fn admin_delete_holiday_exception_doc() {}
@@ -704,7 +1072,10 @@ mod tests {
             .and_then(|value| value.as_object())
             .expect("paths object");
         assert!(paths.contains_key("/api/auth/login"));
+        assert!(paths.contains_key("/api/config/timezone"));
         assert!(paths.contains_key("/api/attendance/me"));
+        assert!(paths.contains_key("/api/attendance-corrections/{id}"));
+        assert!(paths.contains_key("/api/admin/users/{id}"));
         assert!(paths.contains_key("/api/admin/users/{user_id}/holiday-exceptions/{id}"));
 
         let tags = json
@@ -720,8 +1091,13 @@ mod tests {
         let docs: Vec<fn()> = vec![
             login_doc,
             refresh_doc,
+            request_password_reset_doc,
+            reset_password_doc,
+            timezone_doc,
             me_doc,
+            update_profile_doc,
             mfa_status_doc,
+            mfa_register_doc,
             mfa_setup_doc,
             mfa_activate_doc,
             mfa_disable_doc,
@@ -736,19 +1112,34 @@ mod tests {
             attendance_status_doc,
             my_attendance_doc,
             my_attendance_summary_doc,
+            attendance_breaks_doc,
             export_attendance_doc,
+            create_attendance_correction_doc,
+            list_my_attendance_corrections_doc,
+            get_my_attendance_correction_doc,
+            update_my_attendance_correction_doc,
+            cancel_my_attendance_correction_doc,
             create_leave_doc,
             create_overtime_doc,
             my_requests_doc,
+            update_request_doc,
+            cancel_request_doc,
             record_consent_doc,
             list_my_consents_doc,
             create_subject_request_doc,
             list_my_subject_requests_doc,
             cancel_subject_request_doc,
+            list_holidays_doc,
+            check_holiday_doc,
+            list_month_holidays_doc,
             admin_list_requests_doc,
             admin_request_detail_doc,
             admin_approve_request_doc,
             admin_reject_request_doc,
+            admin_list_attendance_correction_requests_doc,
+            admin_get_attendance_correction_request_doc,
+            admin_approve_attendance_correction_request_doc,
+            admin_reject_attendance_correction_request_doc,
             admin_list_subject_requests_doc,
             admin_approve_subject_request_doc,
             admin_reject_subject_request_doc,
@@ -756,17 +1147,28 @@ mod tests {
             admin_create_user_doc,
             admin_list_user_sessions_doc,
             admin_revoke_session_doc,
+            admin_get_attendance_doc,
             admin_list_holidays_doc,
             admin_create_holiday_doc,
             admin_delete_holiday_doc,
+            admin_google_holidays_doc,
             admin_list_weekly_holidays_doc,
             admin_create_weekly_holiday_doc,
+            admin_delete_weekly_holiday_doc,
             admin_export_doc,
             admin_list_audit_logs_doc,
             admin_get_audit_log_doc,
             admin_export_audit_logs_doc,
+            system_admin_upsert_attendance_doc,
+            system_admin_force_end_break_doc,
+            system_admin_list_active_breaks_doc,
             system_admin_reset_mfa_doc,
+            system_admin_update_user_doc,
+            system_admin_delete_user_doc,
             system_admin_unlock_user_doc,
+            system_admin_list_archived_users_doc,
+            system_admin_delete_archived_user_doc,
+            system_admin_restore_archived_user_doc,
             admin_create_holiday_exception_doc,
             admin_list_holiday_exceptions_doc,
             admin_delete_holiday_exception_doc,

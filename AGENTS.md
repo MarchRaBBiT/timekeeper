@@ -23,6 +23,7 @@
 - 実装制約と作業順序: この `AGENTS.md`
 - 長時間・複数レイヤー作業の進捗: `ExecPlan`
 - 実行可能な検証入口: `scripts/harness.sh`
+- 現行 backend API 契約一覧: `docs/design-docs/backend-api-catalog.md`
 - 各レイヤーの詳細規約:
   - [backend/AGENTS.md](./backend/AGENTS.md)
   - [frontend/AGENTS.md](./frontend/AGENTS.md)
@@ -110,6 +111,7 @@ bash scripts/harness.sh full
 - SQLx migration は既存ファイル編集でなく新規追加
 - 重い DB ロジックを handler に溜めない
 - ユーザー許可なく仕様を簡略化しない
+- backend API の route / method / request / response / error / 認可要件を変更した場合は、同じ変更内で `docs/design-docs/backend-api-catalog.md` を更新する
 
 ## Command Quick Reference
 
