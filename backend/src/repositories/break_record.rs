@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use crate::error::AppError;
-use crate::models::break_record::BreakRecord;
+use crate::models::break_record::{ActiveBreakResponse, BreakRecord};
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, BreakRecordId};
 use sqlx::postgres::PgTransaction;
@@ -14,6 +14,7 @@ use sqlx::{PgPool, Row};
 const TABLE_NAME: &str = "break_records";
 const SELECT_COLUMNS: &str =
     "id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at";
+const ACTIVE_BREAKS_LIST_LIMIT: i64 = 500;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BreakRecordRepository;
@@ -74,6 +75,31 @@ impl BreakRecordRepository {
             .fetch_optional(db)
             .await?;
         Ok(row)
+    }
+
+    pub async fn list_active_breaks(
+        &self,
+        db: &PgPool,
+    ) -> Result<Vec<ActiveBreakResponse>, AppError> {
+        let rows = sqlx::query_as::<_, ActiveBreakResponse>(
+            "SELECT
+                br.id AS break_id,
+                br.attendance_id,
+                att.user_id,
+                users.username,
+                NULLIF(users.full_name_enc, '') AS full_name,
+                br.break_start_time
+             FROM break_records br
+             INNER JOIN attendance att ON att.id = br.attendance_id
+             INNER JOIN users ON users.id = att.user_id
+             WHERE br.break_end_time IS NULL
+             ORDER BY br.break_start_time DESC, users.username ASC
+             LIMIT $1",
+        )
+        .bind(ACTIVE_BREAKS_LIST_LIMIT)
+        .fetch_all(db)
+        .await?;
+        Ok(rows)
     }
 
     pub async fn get_total_duration(
