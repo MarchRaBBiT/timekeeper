@@ -36,7 +36,7 @@
 ## Git Checkpoint Log
 - [x] `git status --short`
 - [x] admin MFA reset focused tests pass
-- [ ] `git commit -m "fix(security): revoke active sessions on admin mfa reset"`
+- [x] `git commit -m "fix(security): revoke active sessions on admin mfa reset"`
 
 ## Progress Notes
 - 2026-03-14: `security_best_practices_report.md` の admin MFA reset finding から個別 ExecPlan を作成。
@@ -44,3 +44,4 @@
 - 2026-03-14: `test_system_admin_reset_mfa_revokes_existing_access_tokens_and_sessions` を追加し、現状コードで `active_access_tokens` が残る失敗を確認した。
 - 2026-03-14: admin MFA reset を transaction 内で `active_sessions` / `active_access_tokens` / `refresh_tokens` 全失効へ拡張し、handler 側で token cache invalidate と API catalog 更新を反映した。
 - 2026-03-14: `bash scripts/harness.sh fmt-check`、`cargo test -p timekeeper-backend --test admin_users_api -- --nocapture`、`cargo test -p timekeeper-backend --test user_repository -- --nocapture`、`cargo clippy -p timekeeper-backend --all-targets -- -D warnings` を green 確認。
+- 2026-03-14: commit `08a586c` を push し、PR #449 `fix: revoke active sessions on admin MFA reset` を作成。ExecPlan を `done` へ移動した。
