@@ -314,9 +314,6 @@ impl ApiClient {
                 .json()
                 .await
                 .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
-        } else if status == reqwest::StatusCode::NOT_FOUND {
-            // The backend uses 404 when there are no active breaks to force-end.
-            Ok(Vec::new())
         } else {
             let error: ApiError = response
                 .json()

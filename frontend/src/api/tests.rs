@@ -909,23 +909,40 @@ async fn api_client_get_me_masks_parse_error_details() {
 }
 
 #[tokio::test]
-async fn api_client_admin_list_active_breaks_returns_empty_list_on_not_found() {
+async fn api_client_admin_list_active_breaks_returns_empty_list_on_ok() {
     let server = MockServer::start_async().await;
 
     server.mock(|when, then| {
         when.method(GET).path("/api/admin/breaks/active");
-        then.status(404).json_body(serde_json::json!({
-            "error": "進行中の休憩はありません",
-            "code": "NOT_FOUND"
-        }));
+        then.status(200).json_body(serde_json::json!([]));
     });
 
     let client = api_client(&server);
     let active_breaks = client
         .admin_list_active_breaks()
         .await
-        .expect("404 active breaks should be treated as empty");
+        .expect("200 empty active breaks should be treated as empty");
     assert!(active_breaks.is_empty());
+}
+
+#[tokio::test]
+async fn api_client_admin_list_active_breaks_returns_not_found_error() {
+    let server = MockServer::start_async().await;
+
+    server.mock(|when, then| {
+        when.method(GET).path("/api/admin/breaks/active");
+        then.status(404).json_body(serde_json::json!({
+            "error": "Not Found",
+            "code": "NOT_FOUND"
+        }));
+    });
+
+    let client = api_client(&server);
+    let err = client
+        .admin_list_active_breaks()
+        .await
+        .expect_err("404 active breaks should surface as an error");
+    assert_eq!(err.code, "NOT_FOUND");
 }
 
 #[tokio::test]
