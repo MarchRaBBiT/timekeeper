@@ -222,6 +222,10 @@ pub async fn reset_user_mfa(
         return Err(AppError::NotFound("User not found".into()));
     }
 
+    if let Some(cache) = &state.token_cache {
+        let _ = cache.invalidate_user_tokens(parsed_user_id).await;
+    }
+
     if let Some(Extension(audit_log_service)) = audit_log_service {
         let entry = AuditLogEntry {
             occurred_at: Utc::now(),
@@ -245,7 +249,7 @@ pub async fn reset_user_mfa(
     }
 
     Ok(Json(json!({
-        "message": "MFA reset and refresh tokens revoked",
+        "message": "MFA reset and active sessions revoked",
         "user_id": user_id
     })))
 }

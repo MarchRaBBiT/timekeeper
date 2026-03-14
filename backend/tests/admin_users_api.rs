@@ -1,6 +1,7 @@
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
+    middleware as axum_middleware,
     routing::get,
     Extension, Router,
 };
@@ -8,17 +9,23 @@ use chrono::{Duration, Utc};
 use serde_json::json;
 use sqlx::PgPool;
 use timekeeper_backend::{
-    handlers::admin::users,
+    handlers::{admin::users, auth},
+    middleware,
     models::user::{CreateUser, UpdateUser, User, UserRole},
+    repositories::auth::{self as auth_repo, ActiveAccessToken},
     state::AppState,
     types::UserId,
-    utils::encryption::{encrypt_pii, hash_email},
+    utils::{
+        encryption::{encrypt_pii, hash_email},
+        jwt::{create_access_token, Claims},
+        mfa::protect_totp_secret,
+    },
 };
 use tower::ServiceExt;
 
 mod support;
 
-use support::{create_test_token, seed_user, test_config, test_pool};
+use support::{create_test_token, seed_active_session, seed_user, test_config, test_pool};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -90,6 +97,53 @@ async fn get_users_payload(pool: &PgPool, user: &User) -> (String, serde_json::V
         .expect("read response body");
     let payload = serde_json::from_slice(&body).expect("parse json");
     (masked_header, payload)
+}
+
+async fn create_registered_token(pool: &PgPool, user: &User) -> (String, Claims) {
+    let (token, claims) = create_access_token(
+        user.id.to_string(),
+        user.username.clone(),
+        format!("{:?}", user.role),
+        &test_config().jwt_secret,
+        1,
+    )
+    .expect("create access token");
+    let expires_at =
+        chrono::DateTime::<Utc>::from_timestamp(claims.exp, 0).expect("claims exp timestamp");
+    let active = ActiveAccessToken {
+        jti: &claims.jti,
+        user_id: user.id,
+        expires_at,
+        context: Some("test"),
+    };
+    auth_repo::insert_active_access_token(pool, &active)
+        .await
+        .expect("insert active access token");
+    (token, claims)
+}
+
+async fn count_refresh_tokens(pool: &PgPool, user_id: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("count refresh tokens")
+}
+
+async fn count_active_access_tokens(pool: &PgPool, user_id: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_access_tokens WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("count active access tokens")
+}
+
+async fn count_active_sessions(pool: &PgPool, user_id: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM active_sessions WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .expect("count active sessions")
 }
 
 #[tokio::test]
@@ -566,6 +620,99 @@ async fn test_system_admin_can_reset_mfa_and_revoke_refresh_tokens() {
             .await
             .expect("count refresh tokens");
     assert_eq!(remaining_refresh_tokens, 0);
+}
+
+#[tokio::test]
+async fn test_system_admin_reset_mfa_revokes_existing_access_tokens_and_sessions() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let target = seed_user(&pool, UserRole::Employee, false).await;
+    let protected_secret =
+        protect_totp_secret("JBSWY3DPEHPK3PXP", &test_config()).expect("protect mfa secret");
+    sqlx::query(
+        "UPDATE users SET mfa_secret_enc = $1, mfa_enabled_at = NOW(), updated_at = NOW() WHERE id = $2",
+    )
+    .bind(protected_secret)
+    .bind(target.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("seed mfa state");
+
+    let refresh_id = uuid::Uuid::new_v4().to_string();
+    let (sysadmin_token, _sysadmin_claims) = create_registered_token(&pool, &sysadmin).await;
+    let (target_token, target_claims) = create_registered_token(&pool, &target).await;
+    seed_active_session(&pool, target.id, &refresh_id, Some(&target_claims.jti)).await;
+
+    assert_eq!(count_refresh_tokens(&pool, &target.id.to_string()).await, 1);
+    assert_eq!(
+        count_active_access_tokens(&pool, &target.id.to_string()).await,
+        1
+    );
+    assert_eq!(
+        count_active_sessions(&pool, &target.id.to_string()).await,
+        1
+    );
+
+    let state = AppState::new(pool.clone(), None, None, None, test_config());
+    let protected_routes = Router::new()
+        .route("/api/auth/me", get(auth::me))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth,
+        ));
+    let admin_routes = Router::new()
+        .route(
+            "/api/admin/users/{id}/reset-mfa",
+            axum::routing::post(users::reset_user_mfa),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth_system_admin,
+        ));
+    let app = protected_routes.merge(admin_routes).with_state(state);
+
+    let before_request = Request::builder()
+        .method("GET")
+        .uri("/api/auth/me")
+        .header("Authorization", format!("Bearer {}", target_token))
+        .body(Body::empty())
+        .unwrap();
+    let before_response = app.clone().oneshot(before_request).await.unwrap();
+    assert_eq!(before_response.status(), StatusCode::OK);
+
+    let reset_request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/admin/users/{}/reset-mfa", target.id))
+        .header("Authorization", format!("Bearer {}", sysadmin_token))
+        .body(Body::empty())
+        .unwrap();
+    let reset_response = app.clone().oneshot(reset_request).await.unwrap();
+    assert_eq!(reset_response.status(), StatusCode::OK);
+
+    assert_eq!(count_refresh_tokens(&pool, &target.id.to_string()).await, 0);
+    assert_eq!(
+        count_active_access_tokens(&pool, &target.id.to_string()).await,
+        0
+    );
+    assert_eq!(
+        count_active_sessions(&pool, &target.id.to_string()).await,
+        0
+    );
+
+    let after_request = Request::builder()
+        .method("GET")
+        .uri("/api/auth/me")
+        .header("Authorization", format!("Bearer {}", target_token))
+        .body(Body::empty())
+        .unwrap();
+    let after_response = app.oneshot(after_request).await.unwrap();
+    assert_eq!(after_response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

@@ -122,7 +122,7 @@ pub async fn reset_mfa(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error
     Ok(result.rows_affected() > 0)
 }
 
-/// Resets MFA and revokes refresh tokens for a user atomically.
+/// Resets MFA and revokes active sessions, access tokens, and refresh tokens atomically.
 pub async fn reset_mfa_and_revoke_refresh_tokens(
     pool: &PgPool,
     user_id: crate::types::UserId,
@@ -140,6 +140,18 @@ pub async fn reset_mfa_and_revoke_refresh_tokens(
     if result.rows_affected() == 0 {
         return Ok(false);
     }
+
+    sqlx::query("DELETE FROM active_sessions WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
+
+    sqlx::query("DELETE FROM active_access_tokens WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServerError(e.into()))?;
 
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(user_id)
