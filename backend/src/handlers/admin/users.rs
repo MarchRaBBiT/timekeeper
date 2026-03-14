@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 use crate::{
@@ -371,7 +371,7 @@ pub async fn delete_user(
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ArchivedUserResponse {
     pub id: String,
     pub username: String,

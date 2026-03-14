@@ -5,11 +5,13 @@ use crate::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayListQuery, AdminHolidayListResponse,
             AdminRequestListPageInfo, AdminRequestListResponse, AdminSessionResponse,
-            ApprovePayload, AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse,
-            AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload, RequestListQuery,
-            SubjectRequestListQuery, SubjectRequestListResponse,
+            ApprovePayload, ArchivedUserResponse, AuditLogExportQuery, AuditLogListQuery,
+            AuditLogListResponse, AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload,
+            RequestListQuery, SubjectRequestListQuery, SubjectRequestListResponse,
         },
         attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
+        config::TimeZoneResponse,
+        holidays::{HolidayCheckResponse, HolidayMonthEntry},
         sessions::SessionResponse,
     },
     models::{
@@ -17,11 +19,18 @@ use crate::{
             AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest,
             ClockInRequest, ClockOutRequest,
         },
+        attendance_correction_request::{
+            AttendanceCorrectionResponse, AttendanceCorrectionSnapshot, CorrectionBreakItem,
+            CreateAttendanceCorrectionRequest,
+            DecisionPayload as AttendanceCorrectionDecisionPayload,
+            UpdateAttendanceCorrectionRequest,
+        },
         break_record::{ActiveBreakResponse, BreakRecordResponse},
         consent_log::{ConsentLogResponse, RecordConsentPayload},
         holiday::{
             AdminHolidayKind, AdminHolidayListItem, CreateHolidayPayload,
-            CreateWeeklyHolidayPayload, HolidayResponse, WeeklyHolidayResponse,
+            CreateWeeklyHolidayPayload, GoogleHolidayCandidate, HolidayResponse,
+            WeeklyHolidayResponse,
         },
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         leave_request::{CreateLeaveRequest, LeaveRequestResponse, LeaveType},
@@ -44,86 +53,14 @@ use utoipa::{
 };
 
 #[derive(ToSchema)]
-struct TimeZoneDocResponse {
-    time_zone: String,
+struct RequestMutationMessageResponse {
+    message: String,
 }
 
 #[derive(ToSchema)]
-struct HolidayCheckDocResponse {
-    is_holiday: bool,
-    reason: Option<String>,
-}
-
-#[derive(ToSchema)]
-struct HolidayMonthEntryDoc {
-    date: String,
-    reason: String,
-}
-
-#[derive(ToSchema)]
-struct ArchivedUserDocResponse {
+struct RequestCancellationResponse {
     id: String,
-    username: String,
-    full_name: String,
-    role: String,
-    is_system_admin: bool,
-    archived_at: String,
-    archived_by: Option<String>,
-}
-
-#[derive(ToSchema)]
-struct CorrectionBreakItemDoc {
-    break_start_time: String,
-    break_end_time: Option<String>,
-}
-
-#[derive(ToSchema)]
-struct AttendanceCorrectionSnapshotDoc {
-    clock_in_time: Option<String>,
-    clock_out_time: Option<String>,
-    breaks: Vec<CorrectionBreakItemDoc>,
-}
-
-#[derive(ToSchema)]
-struct CreateAttendanceCorrectionRequestDoc {
-    date: String,
-    clock_in_time: Option<String>,
-    clock_out_time: Option<String>,
-    breaks: Option<Vec<CorrectionBreakItemDoc>>,
-    reason: String,
-}
-
-#[derive(ToSchema)]
-struct UpdateAttendanceCorrectionRequestDoc {
-    clock_in_time: Option<String>,
-    clock_out_time: Option<String>,
-    breaks: Option<Vec<CorrectionBreakItemDoc>>,
-    reason: String,
-}
-
-#[derive(ToSchema)]
-struct AttendanceCorrectionDecisionPayloadDoc {
-    comment: String,
-}
-
-#[derive(ToSchema)]
-struct AttendanceCorrectionResponseDoc {
-    id: String,
-    user_id: String,
-    attendance_id: String,
-    date: String,
     status: String,
-    reason: String,
-    original_snapshot: AttendanceCorrectionSnapshotDoc,
-    proposed_values: AttendanceCorrectionSnapshotDoc,
-    decision_comment: Option<String>,
-    approved_by: Option<String>,
-    approved_at: Option<String>,
-    rejected_by: Option<String>,
-    rejected_at: Option<String>,
-    cancelled_at: Option<String>,
-    created_at: String,
-    updated_at: String,
 }
 
 #[derive(OpenApi)]
@@ -226,12 +163,12 @@ struct AttendanceCorrectionResponseDoc {
             MfaStatusResponse,
             SessionResponse,
             UpdateProfile,
-            TimeZoneDocResponse,
+            TimeZoneResponse,
             // users
             CreateUser,
             UpdateUser,
             UserResponse,
-            ArchivedUserDocResponse,
+            ArchivedUserResponse,
             // attendance & breaks
             ClockInRequest,
             ClockOutRequest,
@@ -245,12 +182,12 @@ struct AttendanceCorrectionResponseDoc {
             AttendanceQuery,
             AttendanceExportQuery,
             PaginationQuery,
-            CreateAttendanceCorrectionRequestDoc,
-            UpdateAttendanceCorrectionRequestDoc,
-            AttendanceCorrectionResponseDoc,
-            AttendanceCorrectionSnapshotDoc,
-            CorrectionBreakItemDoc,
-            AttendanceCorrectionDecisionPayloadDoc,
+            CreateAttendanceCorrectionRequest,
+            UpdateAttendanceCorrectionRequest,
+            AttendanceCorrectionResponse,
+            AttendanceCorrectionSnapshot,
+            CorrectionBreakItem,
+            AttendanceCorrectionDecisionPayload,
             // requests
             CreateLeaveRequest,
             LeaveRequestResponse,
@@ -268,14 +205,17 @@ struct AttendanceCorrectionResponseDoc {
             AdminRequestListPageInfo,
             SubjectRequestListQuery,
             SubjectRequestListResponse,
+            RequestMutationMessageResponse,
+            RequestCancellationResponse,
             DecisionPayload,
             // holidays
             CreateHolidayPayload,
             HolidayResponse,
             CreateWeeklyHolidayPayload,
             WeeklyHolidayResponse,
-            HolidayCheckDocResponse,
-            HolidayMonthEntryDoc,
+            GoogleHolidayCandidate,
+            HolidayCheckResponse,
+            HolidayMonthEntry,
             CreateHolidayExceptionPayload,
             HolidayExceptionResponse,
             // admin-specific payloads
@@ -299,6 +239,7 @@ struct AttendanceCorrectionResponseDoc {
     tags(
         (name = "Auth", description = "認証・MFA・パスワード関連"),
         (name = "Attendance", description = "勤怠・休憩・サマリー API"),
+        (name = "Config", description = "システム設定・構成参照 API"),
         (name = "Requests", description = "申請 API (休暇/残業)"),
         (name = "Compliance", description = "同意・法令対応 API"),
         (name = "Admin", description = "管理者向け API")
@@ -366,8 +307,8 @@ fn reset_password_doc() {}
 #[utoipa::path(
     get,
     path = "/api/config/timezone",
-    responses((status = 200, description = "システムタイムゾーン", body = TimeZoneDocResponse)),
-    tag = "Attendance",
+    responses((status = 200, description = "システムタイムゾーン", body = TimeZoneResponse)),
+    tag = "Config",
     security(())
 )]
 fn timezone_doc() {}
@@ -552,8 +493,8 @@ fn export_attendance_doc() {}
 #[utoipa::path(
     post,
     path = "/api/attendance-corrections",
-    request_body = CreateAttendanceCorrectionRequestDoc,
-    responses((status = 200, body = AttendanceCorrectionResponseDoc)),
+    request_body = CreateAttendanceCorrectionRequest,
+    responses((status = 200, body = AttendanceCorrectionResponse)),
     tag = "Attendance"
 )]
 fn create_attendance_correction_doc() {}
@@ -561,7 +502,7 @@ fn create_attendance_correction_doc() {}
 #[utoipa::path(
     get,
     path = "/api/attendance-corrections/me",
-    responses((status = 200, body = [AttendanceCorrectionResponseDoc])),
+    responses((status = 200, body = [AttendanceCorrectionResponse])),
     tag = "Attendance"
 )]
 fn list_my_attendance_corrections_doc() {}
@@ -570,7 +511,7 @@ fn list_my_attendance_corrections_doc() {}
     get,
     path = "/api/attendance-corrections/{id}",
     params(("id" = String, Path, description = "Attendance correction request ID")),
-    responses((status = 200, body = AttendanceCorrectionResponseDoc)),
+    responses((status = 200, body = AttendanceCorrectionResponse)),
     tag = "Attendance"
 )]
 fn get_my_attendance_correction_doc() {}
@@ -579,8 +520,8 @@ fn get_my_attendance_correction_doc() {}
     put,
     path = "/api/attendance-corrections/{id}",
     params(("id" = String, Path, description = "Attendance correction request ID")),
-    request_body = UpdateAttendanceCorrectionRequestDoc,
-    responses((status = 200, body = AttendanceCorrectionResponseDoc)),
+    request_body = UpdateAttendanceCorrectionRequest,
+    responses((status = 200, body = AttendanceCorrectionResponse)),
     tag = "Attendance"
 )]
 fn update_my_attendance_correction_doc() {}
@@ -625,7 +566,11 @@ fn my_requests_doc() {}
     path = "/api/requests/{id}",
     params(("id" = String, Path, description = "Request ID")),
     request_body = serde_json::Value,
-    responses((status = 200, body = serde_json::Value)),
+    responses((
+        status = 200,
+        description = "Returns {\"message\":\"Leave request updated\"}, {\"message\":\"Overtime request updated\"}, or {\"message\":\"Attendance correction request updated\"}",
+        body = RequestMutationMessageResponse
+    )),
     tag = "Requests"
 )]
 fn update_request_doc() {}
@@ -634,7 +579,7 @@ fn update_request_doc() {}
     delete,
     path = "/api/requests/{id}",
     params(("id" = String, Path, description = "Request ID")),
-    responses((status = 200, body = serde_json::Value)),
+    responses((status = 200, body = RequestCancellationResponse)),
     tag = "Requests"
 )]
 fn cancel_request_doc() {}
@@ -694,7 +639,7 @@ fn list_holidays_doc() {}
     get,
     path = "/api/holidays/check",
     params(("date" = String, Query, description = "対象日 YYYY-MM-DD")),
-    responses((status = 200, body = HolidayCheckDocResponse)),
+    responses((status = 200, body = HolidayCheckResponse)),
     tag = "Attendance"
 )]
 fn check_holiday_doc() {}
@@ -706,7 +651,7 @@ fn check_holiday_doc() {}
         ("year" = i32, Query, description = "対象年"),
         ("month" = u32, Query, description = "対象月")
     ),
-    responses((status = 200, body = [HolidayMonthEntryDoc])),
+    responses((status = 200, body = [HolidayMonthEntry])),
     tag = "Attendance"
 )]
 fn list_month_holidays_doc() {}
@@ -758,7 +703,7 @@ fn admin_reject_request_doc() {}
         ("page" = Option<i64>, Query, description = "ページ番号"),
         ("per_page" = Option<i64>, Query, description = "1ページ件数")
     ),
-    responses((status = 200, body = [AttendanceCorrectionResponseDoc])),
+    responses((status = 200, body = [AttendanceCorrectionResponse])),
     tag = "Admin"
 )]
 fn admin_list_attendance_correction_requests_doc() {}
@@ -767,7 +712,7 @@ fn admin_list_attendance_correction_requests_doc() {}
     get,
     path = "/api/admin/attendance-corrections/{id}",
     params(("id" = String, Path, description = "Attendance correction request ID")),
-    responses((status = 200, body = AttendanceCorrectionResponseDoc)),
+    responses((status = 200, body = AttendanceCorrectionResponse)),
     tag = "Admin"
 )]
 fn admin_get_attendance_correction_request_doc() {}
@@ -776,7 +721,7 @@ fn admin_get_attendance_correction_request_doc() {}
     put,
     path = "/api/admin/attendance-corrections/{id}/approve",
     params(("id" = String, Path, description = "Attendance correction request ID")),
-    request_body = AttendanceCorrectionDecisionPayloadDoc,
+    request_body = AttendanceCorrectionDecisionPayload,
     responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]
@@ -786,7 +731,7 @@ fn admin_approve_attendance_correction_request_doc() {}
     put,
     path = "/api/admin/attendance-corrections/{id}/reject",
     params(("id" = String, Path, description = "Attendance correction request ID")),
-    request_body = AttendanceCorrectionDecisionPayloadDoc,
+    request_body = AttendanceCorrectionDecisionPayload,
     responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]
@@ -896,7 +841,7 @@ fn admin_delete_holiday_doc() {}
     get,
     path = "/api/admin/holidays/google",
     params(("year" = Option<i32>, Query, description = "対象年")),
-    responses((status = 200, body = [CreateHolidayPayload])),
+    responses((status = 200, body = [GoogleHolidayCandidate])),
     tag = "Admin"
 )]
 fn admin_google_holidays_doc() {}
@@ -1032,7 +977,7 @@ fn system_admin_unlock_user_doc() {}
 #[utoipa::path(
     get,
     path = "/api/admin/archived-users",
-    responses((status = 200, body = [ArchivedUserDocResponse])),
+    responses((status = 200, body = [ArchivedUserResponse])),
     tag = "Admin"
 )]
 fn system_admin_list_archived_users_doc() {}

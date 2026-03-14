@@ -6,11 +6,12 @@ use chrono::{Datelike, NaiveDate};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
     models::{
-        holiday::{CreateHolidayPayload, HolidayResponse},
+        holiday::{GoogleHolidayCandidate, HolidayResponse},
         user::User,
     },
     repositories::holiday::{HolidayRepository, HolidayRepositoryTrait},
@@ -53,13 +54,13 @@ pub struct HolidayMonthQuery {
     pub month: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HolidayCheckResponse {
     pub is_holiday: bool,
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HolidayMonthEntry {
     pub date: NaiveDate,
     pub reason: String,
@@ -69,7 +70,7 @@ pub async fn fetch_google_holidays(
     State(_state): State<AppState>,
     Extension(user): Extension<User>,
     Query(params): Query<GoogleHolidayQuery>,
-) -> Result<Json<Vec<CreateHolidayPayload>>, AppError> {
+) -> Result<Json<Vec<GoogleHolidayCandidate>>, AppError> {
     if !user.is_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
@@ -153,7 +154,10 @@ pub async fn list_month_holidays(
     Ok(Json(response))
 }
 
-fn parse_google_calendar_ics(content: &str, year_filter: Option<i32>) -> Vec<CreateHolidayPayload> {
+fn parse_google_calendar_ics(
+    content: &str,
+    year_filter: Option<i32>,
+) -> Vec<GoogleHolidayCandidate> {
     let mut unfolded: Vec<String> = Vec::new();
     for line in content.lines() {
         if let Some(last) = unfolded.last_mut() {
@@ -204,7 +208,7 @@ fn parse_google_calendar_ics(content: &str, year_filter: Option<i32>) -> Vec<Cre
                         .unwrap_or(false);
 
                     if is_public_holiday {
-                        events.push(CreateHolidayPayload {
+                        events.push(GoogleHolidayCandidate {
                             holiday_date: date,
                             name: name.trim().to_string(),
                             description: normalized_description,

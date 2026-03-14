@@ -24,9 +24,12 @@ fn openapi_includes_login_path_and_bearer_scheme() {
         .and_then(|v| v.as_object())
         .expect("paths object");
     assert!(paths.contains_key("/api/auth/login"));
+    assert!(paths.contains_key("/api/auth/request-password-reset"));
     assert!(paths.contains_key("/api/config/timezone"));
     assert!(paths.contains_key("/api/attendance-corrections/{id}"));
+    assert!(paths.contains_key("/api/admin/attendance-corrections/{id}"));
     assert!(paths.contains_key("/api/admin/users/{id}"));
+    assert!(paths.contains_key("/api/admin/archived-users/{id}"));
 
     let bearer = json
         .pointer("/components/securitySchemes/BearerAuth")

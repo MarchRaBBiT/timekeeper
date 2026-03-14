@@ -7,7 +7,7 @@
 
 - `/api/**` の route、HTTP method、認可要件、request body、query/path parameter、response、error 仕様を変更した場合は、この文書を同じ PR / commit で必ず更新すること。
 - endpoint の存在確認は `backend/src/main.rs` を最優先の source of truth とし、契約の詳細は `backend/src/handlers/**`、`backend/src/models/**`、`backend/tests/*_api.rs` を参照すること。
-- `backend/src/docs.rs` の OpenAPI stub は補助資料です。2026-03-14 時点ではこの文書の方が現行実装に近く、OpenAPI 未反映 endpoint が残っています。
+- `backend/src/docs.rs` の OpenAPI stub は補助資料です。この文書と差分が出た場合は、同じ変更内で同期を取り直すこと。
 - frontend 側の新規改修では「推測した endpoint」を増やさず、この文書か実装を確認してから利用すること。
 
 ## Common Rules
@@ -116,7 +116,7 @@
 | `/api/admin/holidays/weekly` | `GET` / `POST` | Admin | `GET`: なし; `POST`: Body `CreateWeeklyHolidayPayload { weekday, starts_on, ends_on? }` | `GET 200 [WeeklyHolidayResponse]`; `POST 200 WeeklyHolidayResponse` | `400` weekday/date range/start date rule, `403` forbidden, `500` persistence failure | 週次休日一覧取得 / 作成 |
 | `/api/admin/holidays/weekly/{id}` | `DELETE` | Admin | Path `id` | `200 {"message":"Weekly holiday deleted","id":id}` | `400` invalid id, `403` forbidden, `404` not found, `500` delete failure | 週次休日削除 |
 | `/api/admin/holidays/{id}` | `DELETE` | Admin | Path `id` | `200 {"message":"Holiday deleted","id":id}` | `400` invalid id, `403` forbidden, `404` not found, `500` delete failure | 公休日削除 |
-| `/api/admin/holidays/google` | `GET` | Admin | Query `year?` | `200 [CreateHolidayPayload]` | `403` forbidden, `500` Google Calendar fetch/parse failure | Google 祝日カレンダーから import 候補を取得する |
+| `/api/admin/holidays/google` | `GET` | Admin | Query `year?` | `200 [GoogleHolidayCandidate { holiday_date, name, description? }]` | `403` forbidden, `500` Google Calendar fetch/parse failure | Google 祝日カレンダーから import 候補を取得する |
 | `/api/admin/users/{user_id}/holiday-exceptions` | `GET` / `POST` | Admin | `GET`: Path `user_id` + Query `from?`, `to?`; `POST`: Path `user_id` + Body `CreateHolidayExceptionPayload { exception_date, reason? }` | `GET 200 [HolidayExceptionResponse]`; `POST 201 HolidayExceptionResponse` | `400` invalid user/date, `403` forbidden, `404` user not found, `409` duplicate exception, `500` service failure | 特定ユーザー向け休日例外の一覧取得 / 作成 |
 | `/api/admin/users/{user_id}/holiday-exceptions/{id}` | `DELETE` | Admin | Path `user_id`, `id` | `204 No Content` | `400` invalid id, `403` forbidden, `404` not found, `500` service failure | 特定ユーザー向け休日例外削除 |
 | `/api/admin/export` | `GET` | Admin | Query `ExportQuery { username?, from?, to? }` | `200 {"csv_data":string,"filename":string}` + header `X-PII-Masked` | `400` invalid date range, `403` forbidden, `500` export failure | 勤怠データの管理者向け CSV export |

@@ -1,9 +1,10 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::state::AppState;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct TimeZoneResponse {
     pub time_zone: String,
 }
