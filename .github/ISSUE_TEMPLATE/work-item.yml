@@ -1,0 +1,71 @@
+name: Work Item
+description: 不具合、機能改善、リファクタリングの作業起票テンプレート
+title: "[Bug/Feature/Refactor] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        issue のタイトルは、種別が一目で分かるように次の形式で記載してください。
+
+        形式:
+        `[Bug] 概要`
+        `[Feature] 概要`
+        `[Refactor] 概要`
+
+        例:
+        `[Bug] 休憩終了後に勤怠一覧が更新されない`
+        `[Feature] 申請一覧にステータス絞り込みを追加する`
+        `[Refactor] 認証ハンドラの責務を分離する`
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: 種別
+      description: issue の種別を選択してください
+      options:
+        - Bug
+        - Feature
+        - Refactor
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_state
+    attributes:
+      label: 現状の説明
+      description: いま何が起きているか、どこに困りごとがあるかを記載してください
+      placeholder: |
+        - 現在の挙動
+        - 問題になっている背景
+        - 必要なら再現手順や対象画面/API
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_state
+    attributes:
+      label: 修正後に期待される状態
+      description: 修正後にどうなっていてほしいかを記載してください
+      placeholder: |
+        - 期待する挙動
+        - 利用者にとっての改善点
+        - 影響範囲があればその補足
+    validations:
+      required: true
+
+  - type: textarea
+    id: goals
+    attributes:
+      label: ゴール
+      description: 完了条件が明確になるよう、チェックリスト形式で記載してください
+      value: |
+        - [ ] 完了条件1
+        - [ ] 完了条件2
+        - [ ] 必要なテストまたは確認が完了している
+      placeholder: |
+        - [ ] 完了条件1
+        - [ ] 完了条件2
+        - [ ] 完了条件3
+    validations:
+      required: true
