@@ -47,7 +47,8 @@ RUN npm run build:css
 FROM nginx:alpine
 ARG FRONTEND_CSP_CONNECT_SRC="'self'"
 WORKDIR /usr/share/nginx/html
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl \
+    && mkdir -p /etc/nginx/snippets
 
 # Place WASM pkg under /pkg to match index.html import path
 COPY --from=builder /app/frontend/pkg/ ./pkg/
@@ -55,14 +56,16 @@ COPY --from=tailwind /app/frontend/assets/ ./assets/
 
 # Static entry
 COPY frontend/index.html.template ./index.html.template
+COPY frontend/nginx.conf ./nginx.conf.template
+COPY frontend/nginx-security-headers.conf ./nginx-security-headers.conf.template
 COPY frontend/env.js ./env.js
 COPY frontend/config.json ./config.json
 RUN escaped=$(printf '%s\n' "$FRONTEND_CSP_CONNECT_SRC" | sed -e 's/[\/&]/\\&/g') \
     && sed "s/__CSP_CONNECT_SRC__/$escaped/g" ./index.html.template > ./index.html \
-    && rm ./index.html.template
+    && sed "s/__CSP_CONNECT_SRC__/$escaped/g" ./nginx.conf.template > /etc/nginx/conf.d/default.conf \
+    && sed "s/__CSP_CONNECT_SRC__/$escaped/g" ./nginx-security-headers.conf.template > /etc/nginx/snippets/security-headers.conf \
+    && rm ./index.html.template ./nginx.conf.template ./nginx-security-headers.conf.template
 
-# Nginx config with SPA fallback
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY frontend/docker-entrypoint.sh /docker-entrypoint.d/40-timekeeper-env.sh
 RUN chmod +x /docker-entrypoint.d/40-timekeeper-env.sh
 
