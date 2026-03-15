@@ -1047,6 +1047,7 @@ async fn refresh_rotates_tokens_and_revokes_previous_access_token() {
                 .method("POST")
                 .uri("/api/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
+                .header("Origin", "http://localhost:8000")
                 .header(
                     header::COOKIE,
                     format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
@@ -1133,6 +1134,7 @@ async fn refresh_enforces_session_limit() {
                 .method("POST")
                 .uri("/api/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
+                .header("Origin", "http://localhost:8000")
                 .header(
                     header::COOKIE,
                     format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
@@ -1182,6 +1184,7 @@ async fn refresh_rejects_missing_or_malformed_token() {
                 .method("POST")
                 .uri("/api/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
+                .header("Origin", "http://localhost:8000")
                 .header(header::COOKIE, format!("{REFRESH_COOKIE_NAME}=not-a-token"))
                 .body(Body::from("{}"))
                 .expect("build refresh request"),
@@ -1229,6 +1232,7 @@ async fn refresh_with_same_token_concurrently_allows_only_one_success() {
         .method("POST")
         .uri("/api/auth/refresh")
         .header(header::CONTENT_TYPE, "application/json")
+        .header("Origin", "http://localhost:8000")
         .header(
             header::COOKIE,
             format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),
@@ -1239,6 +1243,7 @@ async fn refresh_with_same_token_concurrently_allows_only_one_success() {
         .method("POST")
         .uri("/api/auth/refresh")
         .header(header::CONTENT_TYPE, "application/json")
+        .header("Origin", "http://localhost:8000")
         .header(
             header::COOKIE,
             format!("{REFRESH_COOKIE_NAME}={old_refresh_token}"),

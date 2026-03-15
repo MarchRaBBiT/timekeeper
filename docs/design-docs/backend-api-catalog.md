@@ -1,6 +1,6 @@
 # Backend API Catalog
 
-**Updated:** 2026-03-14  
+**Updated:** 2026-03-16
 **Purpose:** frontend が「存在しない backend endpoint」を前提に実装しないための、実装起点の API 契約一覧です。
 
 ## Maintenance Directive
@@ -30,13 +30,18 @@
 - PII マスキング用 header
   - 一部の管理 endpoint は `X-PII-Masked: true|false` を返します。
   - 監査ログ export は `X-Truncated: true|false` も返します。
+- CSRF 保護
+  - `User` / `Admin` / `System Admin` 認可レベルの全 mutation endpoint (POST / PUT / DELETE / PATCH) は、cookie 認証クライアントに対して `Origin` または `Referer` ヘッダーを要求します。
+  - ヘッダーが欠落または設定済み allowed origin と不一致の場合は `403 Forbidden` を返します。
+  - `Authorization: Bearer ...` ヘッダーを持つリクエストはプログラマティッククライアントとみなし、CSRF チェックをスキップします。
+  - `POST /api/auth/refresh` は cookie 経由で refresh token が届く場合のみ上記と同様の CSRF チェックを行います。JSON body で `refresh_token` を渡すプログラマティッククライアントはチェックの対象外です。
 
 ## Public
 
 | Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
 | `/api/auth/login` | `POST` | Public | Body `LoginRequest { username, password, totp_code?, device_label? }` | `200 LoginResponse { user: UserResponse }` + `access_token` / `refresh_token` cookie | `400` validation, `401` invalid credentials or invalid MFA, `500` DB/token issue | ログインし、現在ユーザー情報と session cookie を発行する |
-| `/api/auth/refresh` | `POST` | Public | Body JSON `refresh_token?`; cookie の `refresh_token` でも可 | `200 LoginResponse { user }` + rotated auth cookie | `400` refresh token missing, `401` invalid / expired / rotated refresh token, `500` token rotation failure | refresh token を使って access / refresh token を再発行する |
+| `/api/auth/refresh` | `POST` | Public | Body JSON `refresh_token?`; cookie の `refresh_token` でも可 | `200 LoginResponse { user }` + rotated auth cookie | `400` refresh token missing, `401` invalid / expired / rotated refresh token, `403` origin 不正 (cookie 経由のみ), `500` token rotation failure | refresh token を使って access / refresh token を再発行する |
 | `/api/auth/request-password-reset` | `POST` | Public | Body `RequestPasswordResetPayload { email }` | `200 {"message":"If the email exists, a password reset link has been sent"}` | `400` invalid email, `500` DB or mail setup issue | パスワードリセットメール送信を要求する。存在しない email でも成功メッセージを返す |
 | `/api/auth/reset-password` | `POST` | Public | Body `ResetPasswordPayload { token, new_password }` | `200 {"message":"Password has been reset successfully"}` | `400` invalid / expired / already-used token, password policy violation, `500` DB/update failure | reset token を消費して新しい password に更新し、既存 session を失効させる |
 | `/api/config/timezone` | `GET` | Public | なし | `200 TimeZoneResponse { time_zone }` | なし | backend の標準 timezone を返す |
@@ -49,11 +54,11 @@
 | `/api/auth/mfa/register` | `POST` | User | header の origin 検証あり; body なし | `200 MfaSetupResponse { secret, otpauth_url }` | `403/400` origin 不正, `500` setup failure | MFA enrollment を開始する。`/api/auth/mfa/setup` と同等 |
 | `/api/auth/mfa/setup` | `POST` | User | header の origin 検証あり; body なし | `200 MfaSetupResponse { secret, otpauth_url }` | `403/400` origin 不正, `500` setup failure | MFA enrollment を開始する |
 | `/api/auth/mfa/activate` | `POST` | User | header の origin 検証あり; Body `MfaCodeRequest { code }` | `200 {"message":"MFA enabled"}` | `400` setup 未開始, `401` invalid MFA code, `500` enable failure | MFA を有効化し、既存 token を失効させる |
-| `/api/auth/me` | `GET` / `PUT` | User | `GET`: なし; `PUT`: Body `UpdateProfile { full_name?, email?, current_password? }` | `GET 200 UserResponse`; `PUT 200 UserResponse` | `400` validation, email conflict, current_password missing, `401` current password incorrect, `500` encrypt/update failure | 自分の profile 取得 / 更新 |
+| `/api/auth/me` | `GET` / `PUT` | User | `GET`: なし; `PUT`: Body `UpdateProfile { full_name?, email?, current_password? }` | `GET 200 UserResponse`; `PUT 200 UserResponse` | `400` validation, email conflict, current_password missing, `401` current password incorrect, `403` origin 不正 (PUT / cookie auth), `500` encrypt/update failure | 自分の profile 取得 / 更新 |
 | `/api/auth/sessions` | `GET` | User | なし | `200 [SessionResponse]` | `500` session lookup failure | 自分の active session 一覧取得 |
 | `/api/auth/sessions/{id}` | `DELETE` | User | Path `id` | `200 {"message":"Session revoked","session_id":id}` | `400` empty id or current session revoke, `403` own session 以外, `404` not found, `500` revoke failure | 自分の別 session を revoke する |
 | `/api/auth/change-password` | `PUT` | User | header の origin 検証あり; Body `ChangePasswordRequest { current_password, new_password }` | `200 {"message":"Password changed successfully"}` | `400` validation, policy violation, same password, `401` current password incorrect, `500` update failure | password を変更し、既存 session を全失効させる |
-| `/api/auth/logout` | `POST` | User | Body `{ all?: boolean, refresh_token?: string }`; cookie の refresh token でも可 | `200 {"message":"Logged out"}` or `{"message":"Logged out from all devices"}` + cookie clear | `500` revoke failure | 現在 session または全 session を logout する |
+| `/api/auth/logout` | `POST` | User | Body `{ all?: boolean, refresh_token?: string }`; cookie の refresh token でも可 | `200 {"message":"Logged out"}` or `{"message":"Logged out from all devices"}` + cookie clear | `403` origin 不正 (cookie auth), `500` revoke failure | 現在 session または全 session を logout する |
 
 ## User Attendance
 
