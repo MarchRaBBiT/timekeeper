@@ -180,6 +180,16 @@ pub async fn list_requests(
         _ => (true, true),
     };
 
+    let allowed_user_ids = if user.is_manager() && !user.is_system_admin() {
+        let ids =
+            crate::repositories::department::list_subordinate_user_ids(state.read_pool(), user.id)
+                .await
+                .map_err(|e| AppError::InternalServerError(e.into()))?;
+        Some(ids)
+    } else {
+        None
+    };
+
     let filters = RequestListFilters {
         status: q.status,
         user_id: q.user_id,
@@ -191,6 +201,7 @@ pub async fn list_requests(
             .to
             .as_deref()
             .and_then(|value| parse_filter_datetime(value, true)),
+        allowed_user_ids,
     };
 
     let request_repo = RequestRepository::new();
@@ -252,6 +263,13 @@ pub async fn get_request_detail(
 ) -> Result<Json<Value>, AppError> {
     if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    // For managers (non-system-admin), verify read access is scoped to their departments.
+    if user.is_manager() && !user.is_system_admin() {
+        if let Ok(applicant_id) = get_request_applicant_id(&state, &request_id).await {
+            check_approval_authorization(state.read_pool(), &user, applicant_id).await?;
+        }
     }
 
     // Try as leave request

@@ -113,6 +113,24 @@ pub async fn update_department(
         None => None,          // not provided → don't change
     };
 
+    // Prevent cycles: check if the new parent is the department itself or a descendant.
+    if let Some(Some(new_parent)) = parent_id_update {
+        if new_parent == id.as_str() {
+            return Err(AppError::BadRequest(
+                "A department cannot be its own parent".into(),
+            ));
+        }
+        let creates_cycle =
+            crate::repositories::department::would_create_cycle(&state.write_pool, &id, new_parent)
+                .await
+                .map_err(|e| AppError::InternalServerError(e.into()))?;
+        if creates_cycle {
+            return Err(AppError::BadRequest(
+                "Setting this parent would create a cycle in the department hierarchy".into(),
+            ));
+        }
+    }
+
     let dept = department::update_department(&state.write_pool, &id, name, parent_id_update)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?

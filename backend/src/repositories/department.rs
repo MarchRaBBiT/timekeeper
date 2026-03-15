@@ -197,6 +197,59 @@ pub async fn can_manager_approve(
     Ok(result.0)
 }
 
+/// Returns the user IDs of all users belonging to the manager's direct or subordinate departments.
+pub async fn list_subordinate_user_ids(
+    pool: &PgPool,
+    manager_id: UserId,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        WITH RECURSIVE subordinate_depts AS (
+            SELECT dm.department_id
+            FROM department_managers dm
+            WHERE dm.user_id = $1
+            UNION ALL
+            SELECT d.id
+            FROM departments d
+            INNER JOIN subordinate_depts sd ON d.parent_id = sd.department_id
+        )
+        SELECT u.id
+        FROM users u
+        WHERE u.department_id IN (SELECT department_id FROM subordinate_depts)
+        "#,
+    )
+    .bind(manager_id.to_string())
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Returns true if setting `dept_id.parent_id = new_parent_id` would create a cycle.
+///
+/// A cycle occurs when `new_parent_id` equals `dept_id` or is already a descendant of `dept_id`.
+pub async fn would_create_cycle(
+    pool: &PgPool,
+    dept_id: &str,
+    new_parent_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let result: (bool,) = sqlx::query_as(
+        r#"
+        WITH RECURSIVE descendants AS (
+            SELECT id FROM departments WHERE id = $1
+            UNION ALL
+            SELECT d.id FROM departments d
+            INNER JOIN descendants desc ON d.parent_id = desc.id
+        )
+        SELECT EXISTS (SELECT 1 FROM descendants WHERE id = $2) AS creates_cycle
+        "#,
+    )
+    .bind(dept_id)
+    .bind(new_parent_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(result.0)
+}
+
 #[cfg(test)]
 mod tests {
     // Unit-testable logic lives in integration tests.

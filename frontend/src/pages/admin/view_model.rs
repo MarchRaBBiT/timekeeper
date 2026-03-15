@@ -189,7 +189,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
     let subject_requests_resource = create_resource(
         move || {
             (
-                admin_allowed.get(),
+                system_admin_allowed.get(),
                 subject_snapshot.get(),
                 reload_subject_requests.get(),
             )

@@ -64,6 +64,16 @@ pub async fn export_data(
         }
     }
 
+    let manager_user_ids: Option<Vec<String>> = if user.is_manager() && !user.is_system_admin() {
+        let ids =
+            crate::repositories::department::list_subordinate_user_ids(state.read_pool(), user.id)
+                .await
+                .map_err(|e| AppError::InternalServerError(e.into()))?;
+        Some(ids)
+    } else {
+        None
+    };
+
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT u.username, COALESCE(u.full_name_enc, '') as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
          FROM attendance a JOIN users u ON a.user_id = u.id",
@@ -72,6 +82,13 @@ pub async fn export_data(
     if let Some(ref u_name) = q.username {
         push_clause(&mut builder, &mut has_clause);
         builder.push("u.username = ").push_bind(u_name);
+    }
+    if let Some(ref uids) = manager_user_ids {
+        push_clause(&mut builder, &mut has_clause);
+        builder
+            .push("u.id = ANY(")
+            .push_bind(uids.clone())
+            .push(")");
     }
     if let Some(from) = parsed_from {
         push_clause(&mut builder, &mut has_clause);

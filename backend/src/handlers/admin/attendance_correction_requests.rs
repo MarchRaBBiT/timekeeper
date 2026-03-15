@@ -40,12 +40,23 @@ pub async fn list_attendance_correction_requests(
         None => None,
     };
 
+    let allowed_user_ids = if user.is_manager() && !user.is_system_admin() {
+        let ids =
+            crate::repositories::department::list_subordinate_user_ids(state.read_pool(), user.id)
+                .await
+                .map_err(|e| AppError::InternalServerError(e.into()))?;
+        Some(ids)
+    } else {
+        None
+    };
+
     let repo = AttendanceCorrectionRequestRepository::new();
     let list = repo
         .list_paginated(
             state.read_pool(),
             query.status.as_deref(),
             user_filter,
+            allowed_user_ids,
             page,
             per_page,
         )
@@ -70,6 +81,9 @@ pub async fn get_attendance_correction_request_detail(
 
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(state.read_pool(), &id).await?;
+    if user.is_manager() && !user.is_system_admin() {
+        check_approval_authorization(state.read_pool(), &user, request.user_id).await?;
+    }
 
     Ok(Json(
         request

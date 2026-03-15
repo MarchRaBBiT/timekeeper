@@ -25,6 +25,9 @@ pub struct RequestListFilters {
     pub from: Option<DateTime<Utc>>,
     /// Filter requests created until this timestamp (inclusive)
     pub to: Option<DateTime<Utc>>,
+    /// Restrict results to requests from these user IDs (used for manager department scope).
+    /// When `None`, no restriction applies.
+    pub allowed_user_ids: Option<Vec<String>>,
 }
 
 /// Result container for leave and overtime request lists.
@@ -350,6 +353,13 @@ fn apply_request_filters<'a>(
         push_clause(builder, &mut has_clause);
         builder.push("created_at <= ").push_bind(*to);
     }
+    if let Some(ref uids) = filters.allowed_user_ids {
+        push_clause(builder, &mut has_clause);
+        builder
+            .push("user_id = ANY(")
+            .push_bind(uids.clone())
+            .push(")");
+    }
 }
 
 #[cfg(test)]
@@ -374,6 +384,7 @@ mod tests {
             status: Some("pending".to_string()),
             from: Some(now - Duration::days(1)),
             to: Some(now),
+            allowed_user_ids: None,
         };
         apply_request_filters(&mut builder, &filters);
     }
