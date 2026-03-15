@@ -255,6 +255,17 @@ pub async fn refresh(
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
+    // refresh uses a cookie-based refresh token; verify origin to prevent CSRF.
+    // Skip when a Bearer access token is present (programmatic client).
+    let has_bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.len() >= 7 && v[..7].eq_ignore_ascii_case("bearer "))
+        .unwrap_or(false);
+    if !has_bearer {
+        crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    }
+
     let cookie_header = cookie_header_value(&headers);
     let refresh_token_str =
         extract_cookie_value(cookie_header.unwrap_or_default(), REFRESH_COOKIE_NAME)
