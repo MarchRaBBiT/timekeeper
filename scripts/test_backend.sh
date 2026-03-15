@@ -83,6 +83,9 @@ for key in path:
         continue
     if isinstance(data, dict):
         data = data.get(key)
+    elif isinstance(data, list) and key.isdigit():
+        index = int(key)
+        data = data[index] if 0 <= index < len(data) else None
     else:
         data = None
         break
@@ -109,6 +112,9 @@ for key in path:
         continue
     if isinstance(data, dict):
         data = data.get(key)
+    elif isinstance(data, list) and key.isdigit():
+        index = int(key)
+        data = data[index] if 0 <= index < len(data) else None
     else:
         data = None
         break

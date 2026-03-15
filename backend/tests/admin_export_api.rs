@@ -37,6 +37,31 @@ async fn reset_attendance_tables(pool: &PgPool) {
     .expect("truncate attendance tables");
 }
 
+async fn setup_manager_scope(pool: &PgPool, manager_id: &str, employee_id: &str) {
+    let dept_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&dept_id)
+        .bind("Export Test Dept")
+        .execute(pool)
+        .await
+        .expect("insert department");
+    sqlx::query(
+        "INSERT INTO department_managers (department_id, user_id) VALUES ($1, $2) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(&dept_id)
+    .bind(manager_id)
+    .execute(pool)
+    .await
+    .expect("assign manager");
+    sqlx::query("UPDATE users SET department_id = $1 WHERE id = $2")
+        .bind(&dept_id)
+        .bind(employee_id)
+        .execute(pool)
+        .await
+        .expect("set employee department");
+}
+
 #[tokio::test]
 async fn admin_export_includes_date_strings() {
     let _guard = integration_guard().await;
@@ -49,6 +74,7 @@ async fn admin_export_includes_date_strings() {
 
     let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let employee = support::seed_user(&pool, UserRole::Employee, false).await;
+    setup_manager_scope(&pool, &admin.id.to_string(), &employee.id.to_string()).await;
 
     let date = NaiveDate::from_ymd_opt(2026, 1, 15).expect("valid date");
     let now = Utc::now();
@@ -99,6 +125,7 @@ async fn admin_export_masks_full_name_for_non_system_admin() {
 
     let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let employee = support::seed_user(&pool, UserRole::Employee, false).await;
+    setup_manager_scope(&pool, &admin.id.to_string(), &employee.id.to_string()).await;
 
     let date = NaiveDate::from_ymd_opt(2026, 1, 16).expect("valid date");
     let now = Utc::now();
