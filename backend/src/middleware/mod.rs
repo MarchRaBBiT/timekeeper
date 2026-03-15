@@ -1,5 +1,6 @@
 pub mod audit_log;
 pub mod auth;
+pub mod csrf;
 pub mod logging;
 
 pub mod rate_limit;
@@ -7,5 +8,6 @@ pub mod request_id;
 
 pub use audit_log::*;
 pub use auth::*;
+pub use csrf::*;
 pub use logging::*;
 pub use request_id::*;

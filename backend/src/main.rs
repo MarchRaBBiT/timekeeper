@@ -291,6 +291,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
         ))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
+            middleware::csrf_check,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
             middleware::auth,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -415,6 +419,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         ))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
+            middleware::csrf_check,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
             middleware::auth_admin,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
@@ -482,6 +490,10 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::csrf_check,
         ))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),

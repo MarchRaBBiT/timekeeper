@@ -255,16 +255,22 @@ pub async fn refresh(
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> HandlerResult<impl axum::response::IntoResponse> {
+    // CSRF: only required when the refresh token arrives via cookie (browser flow).
+    // Programmatic clients that supply refresh_token in the JSON body are not
+    // susceptible to cookie-based CSRF; the browser cannot inject a body payload.
     let cookie_header = cookie_header_value(&headers);
-    let refresh_token_str =
-        extract_cookie_value(cookie_header.unwrap_or_default(), REFRESH_COOKIE_NAME)
-            .or_else(|| {
-                payload
-                    .get("refresh_token")
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string())
-            })
-            .ok_or_else(|| bad_request("Refresh token is required"))?;
+    let cookie_refresh = cookie_header.and_then(|v| extract_cookie_value(v, REFRESH_COOKIE_NAME));
+    if cookie_refresh.is_some() {
+        crate::utils::security::verify_request_origin(&headers, &state.config)?;
+    }
+    let refresh_token_str = cookie_refresh
+        .or_else(|| {
+            payload
+                .get("refresh_token")
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string())
+        })
+        .ok_or_else(|| bad_request("Refresh token is required"))?;
 
     let (token_id, secret) = decode_refresh_token(&refresh_token_str)
         .map_err(|_| unauthorized("Invalid refresh token format"))?;
