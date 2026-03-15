@@ -156,9 +156,9 @@ impl ApiClient {
 
     pub(super) async fn resolved_base_url(&self) -> String {
         if let Some(base) = &self.base_url {
-            base.clone()
+            config::resolve_api_base_url(base)
         } else {
-            config::await_api_base_url().await
+            config::resolve_api_base_url(&config::await_api_base_url().await)
         }
     }
 

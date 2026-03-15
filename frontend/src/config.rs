@@ -121,6 +121,10 @@ fn cache_base_url(value: &str) -> String {
     value
 }
 
+pub(crate) fn resolve_api_base_url(value: &str) -> String {
+    normalize_api_base_url(value)
+}
+
 #[cfg(target_arch = "wasm32")]
 fn normalize_api_base_url(value: &str) -> String {
     let trimmed = value.trim();
@@ -220,7 +224,8 @@ fn write_window_config(cfg: &RuntimeConfig) {
 }
 
 async fn fetch_runtime_config() -> Option<RuntimeConfig> {
-    let resp = reqwest::get("./config.json").await.ok()?;
+    let config_url = resolve_runtime_asset_url("./config.json");
+    let resp = reqwest::get(&config_url).await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
@@ -243,6 +248,12 @@ pub async fn await_api_base_url() -> String {
     cache_base_url(&default_api_base_url())
 }
 
+#[cfg(target_arch = "wasm32")]
+fn default_api_base_url() -> String {
+    normalize_api_base_url_with_base("/api", current_window_href().as_deref())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn default_api_base_url() -> String {
     if cfg!(debug_assertions) {
         "http://localhost:3000/api".to_string()
@@ -251,6 +262,16 @@ fn default_api_base_url() -> String {
             "API base URL is not configured. Set window.__TIMEKEEPER_ENV.API_BASE_URL or provide config.json."
         );
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn resolve_runtime_asset_url(path: &str) -> String {
+    normalize_api_base_url_with_base(path, current_window_href().as_deref())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_runtime_asset_url(path: &str) -> String {
+    path.to_string()
 }
 
 fn parse_time_zone(value: &str) -> Tz {
@@ -419,6 +440,13 @@ mod wasm_tests {
 
         let resolved = await_api_base_url().await;
         assert_eq!(resolved, "https://example.test/api");
+    }
+
+    #[wasm_bindgen_test]
+    fn resolve_api_base_url_normalizes_relative_paths() {
+        let resolved = resolve_api_base_url("/api");
+        assert!(resolved.ends_with("/api"));
+        assert!(resolved.starts_with("http://") || resolved.starts_with("https://"));
     }
 
     #[wasm_bindgen_test]
