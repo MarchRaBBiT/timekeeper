@@ -67,14 +67,16 @@ pub fn AdminPanel() -> impl IntoView {
                     users=vm.users_resource
                 />
             </div>
-            <AdminSubjectRequestsSection
-                users=vm.users_resource
-                filter=vm.subject_request_filter
-                resource=vm.subject_requests_resource
-                action=vm.subject_request_action
-                action_error=vm.subject_request_action_error
-                reload=vm.reload_subject_requests
-            />
+            <Show when=move || system_admin_allowed.get()>
+                <AdminSubjectRequestsSection
+                    users=vm.users_resource
+                    filter=vm.subject_request_filter
+                    resource=vm.subject_requests_resource
+                    action=vm.subject_request_action
+                    action_error=vm.subject_request_action_error
+                    reload=vm.reload_subject_requests
+                />
+            </Show>
             <HolidayManagementSection
                 repository=vm.repository.clone()
                 admin_allowed=admin_allowed

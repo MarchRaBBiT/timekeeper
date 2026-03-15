@@ -97,6 +97,7 @@ impl AttendanceCorrectionRequestRepository {
         db: &PgPool,
         status: Option<&str>,
         user_id: Option<UserId>,
+        allowed_user_ids: Option<Vec<String>>,
         page: i64,
         per_page: i64,
     ) -> Result<Vec<AttendanceCorrectionRequest>, AppError> {
@@ -108,12 +109,14 @@ impl AttendanceCorrectionRequestRepository {
             FROM attendance_correction_requests
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::uuid IS NULL OR user_id = $2)
+              AND ($3::text[] IS NULL OR user_id::text = ANY($3))
             ORDER BY created_at DESC
-            LIMIT $3 OFFSET $4";
+            LIMIT $4 OFFSET $5";
 
         Ok(sqlx::query_as::<_, AttendanceCorrectionRequest>(query)
             .bind(status)
             .bind(user_id)
+            .bind(allowed_user_ids)
             .bind(per_page)
             .bind(offset)
             .fetch_all(db)

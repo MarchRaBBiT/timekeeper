@@ -107,7 +107,7 @@ pub async fn create_user(
         .map_err(|_| AppError::InternalServerError(anyhow::anyhow!("Failed to encrypt email")))?;
     let email_hash = hash_email(&payload.email, &state.config);
 
-    let user = User::new(
+    let mut user = User::new(
         payload.username,
         password_hash,
         encrypted_full_name,
@@ -115,6 +115,11 @@ pub async fn create_user(
         payload.role,
         payload.is_system_admin,
     );
+    if let Some(ref dept_id_str) = payload.department_id {
+        if !dept_id_str.is_empty() {
+            user.department_id = dept_id_str.parse().ok();
+        }
+    }
 
     let mut created = user_repo::create_user(&state.write_pool, &user, &email_hash)
         .await
