@@ -122,7 +122,7 @@ pub fn InviteForm(
                         on:change=move |ev| form_state.role.set(event_target_value(&ev))
                     >
                         <option value="employee">{localized_role_label("employee")}</option>
-                        <option value="admin">{localized_role_label("admin")}</option>
+                        <option value="manager">{localized_role_label("manager")}</option>
                     </select>
                 </div>
                 <div class="flex items-center space-x-2 h-full pt-6">

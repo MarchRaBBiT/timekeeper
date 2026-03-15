@@ -839,6 +839,178 @@ impl ApiClient {
         }
     }
 
+    // ─── Department API ───────────────────────────────────────────────────────
+
+    pub async fn admin_list_departments(&self) -> Result<Vec<DepartmentResponse>, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| Ok(self.client.get(format!("{}/admin/departments", base_url))))
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_create_department(
+        &self,
+        payload: &CreateDepartmentRequest,
+    ) -> Result<DepartmentResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!("{}/admin/departments", base_url))
+                    .json(payload))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn admin_update_department(
+        &self,
+        id: &str,
+        payload: &UpdateDepartmentRequest,
+    ) -> Result<DepartmentResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .put(format!("{}/admin/departments/{}", base_url, encoded_id))
+                    .json(payload))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_delete_department(&self, id: &str) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_id = encode_path_segment(id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .delete(format!("{}/admin/departments/{}", base_url, encoded_id)))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn admin_assign_manager(
+        &self,
+        department_id: &str,
+        user_id: &str,
+    ) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_dept = encode_path_segment(department_id);
+        let payload = AssignManagerRequest {
+            user_id: user_id.to_string(),
+        };
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!(
+                        "{}/admin/departments/{}/managers",
+                        base_url, encoded_dept
+                    ))
+                    .json(&payload))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn admin_remove_manager(
+        &self,
+        department_id: &str,
+        user_id: &str,
+    ) -> Result<(), ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let encoded_dept = encode_path_segment(department_id);
+        let encoded_user = encode_path_segment(user_id);
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self.client.delete(format!(
+                    "{}/admin/departments/{}/managers/{}",
+                    base_url, encoded_dept, encoded_user
+                )))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            Ok(())
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
     pub async fn reset_password(
         &self,
         token: String,

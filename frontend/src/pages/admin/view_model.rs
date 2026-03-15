@@ -14,8 +14,12 @@ use crate::utils::time::today_in_app_tz;
 use leptos::*;
 
 fn is_admin_user(user: Option<&UserResponse>) -> bool {
-    user.map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
-        .unwrap_or(false)
+    user.map(|user| {
+        user.is_system_admin
+            || user.role.eq_ignore_ascii_case("manager")
+            || user.role.eq_ignore_ascii_case("admin")
+    })
+    .unwrap_or(false)
 }
 
 fn is_system_admin_user(user: Option<&UserResponse>) -> bool {

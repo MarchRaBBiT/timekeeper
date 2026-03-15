@@ -86,7 +86,11 @@ pub fn Header() -> impl IntoView {
         auth.get()
             .user
             .as_ref()
-            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .map(|user| {
+                user.is_system_admin
+                    || user.role.eq_ignore_ascii_case("manager")
+                    || user.role.eq_ignore_ascii_case("admin")
+            })
             .unwrap_or(false)
     };
     let can_manage_users = move || {

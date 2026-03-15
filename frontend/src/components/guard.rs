@@ -76,8 +76,12 @@ pub fn RequireAdmin(children: ChildrenFn) -> impl IntoView {
 }
 
 fn is_admin_user(user: Option<&UserResponse>) -> bool {
-    user.map(|u| u.is_system_admin || u.role.eq_ignore_ascii_case("admin"))
-        .unwrap_or(false)
+    user.map(|u| {
+        u.is_system_admin
+            || u.role.eq_ignore_ascii_case("manager")
+            || u.role.eq_ignore_ascii_case("admin")
+    })
+    .unwrap_or(false)
 }
 
 fn should_render_admin_children(is_authenticated: bool, is_loading: bool, is_admin: bool) -> bool {

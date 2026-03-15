@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_audit_logs;
+pub mod admin_departments;
 pub mod admin_export;
 pub mod admin_users;
 pub mod attendance;

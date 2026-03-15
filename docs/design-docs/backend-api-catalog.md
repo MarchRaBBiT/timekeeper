@@ -121,6 +121,19 @@
 | `/api/admin/users/{user_id}/holiday-exceptions/{id}` | `DELETE` | Admin | Path `user_id`, `id` | `204 No Content` | `400` invalid id, `403` forbidden, `404` not found, `500` service failure | 特定ユーザー向け休日例外削除 |
 | `/api/admin/export` | `GET` | Admin | Query `ExportQuery { username?, from?, to? }` | `200 {"csv_data":string,"filename":string}` + header `X-PII-Masked` | `400` invalid date range, `403` forbidden, `500` export failure | 勤怠データの管理者向け CSV export |
 
+## Admin / Department Management
+
+| Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/api/admin/departments` | `GET` | Manager+ | なし | `200 [DepartmentResponse { id, name, parent_id?, created_at, updated_at }]` | `403` forbidden, `500` lookup failure | 部署一覧取得 |
+| `/api/admin/departments/{id}` | `GET` | Manager+ | Path `id` | `200 DepartmentResponse` | `403` forbidden, `404` not found, `500` lookup failure | 部署詳細取得 |
+| `/api/admin/departments` | `POST` | System Admin | Body `CreateDepartmentPayload { name, parent_id? }` | `200 DepartmentResponse` | `400` name empty, `403` forbidden, `404` parent not found, `500` create failure | 部署作成 |
+| `/api/admin/departments/{id}` | `PUT` | System Admin | Path `id`; Body `UpdateDepartmentPayload { name?, parent_id? }` | `200 DepartmentResponse` | `400` name empty, `403` forbidden, `404` not found, `500` update failure | 部署更新 |
+| `/api/admin/departments/{id}` | `DELETE` | System Admin | Path `id` | `200 {"message":"Department deleted","id":id}` | `403` forbidden, `404` not found, `409` has child departments, `500` delete failure | 部署削除（子部署あり → 409） |
+| `/api/admin/departments/{id}/managers` | `GET` | Manager+ | Path `id` | `200 [DepartmentManagerEntry { department_id, user_id, assigned_at }]` | `403` forbidden, `404` not found, `500` lookup failure | 部署のマネージャー一覧取得 |
+| `/api/admin/departments/{id}/managers` | `POST` | System Admin | Path `id`; Body `AssignManagerPayload { user_id }` | `200 DepartmentManagerEntry` | `400` user not found, `403` forbidden, `404` department not found, `409` already assigned, `500` assign failure | 部署にマネージャーを割り当てる |
+| `/api/admin/departments/{id}/managers/{uid}` | `DELETE` | System Admin | Path `id`, `uid` | `200 {"message":"Manager removed","department_id":id,"user_id":uid}` | `403` forbidden, `404` not found, `500` remove failure | 部署のマネージャーを解除する |
+
 ## Admin / System Admin User & Attendance Operations
 
 | Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |

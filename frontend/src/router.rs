@@ -4,7 +4,8 @@ use leptos_router::*;
 use crate::{
     components::guard::{RequireAdmin, RequireAuth},
     pages::{
-        admin::AdminPage, admin_audit_logs::AdminAuditLogsPage, admin_export::AdminExportPage,
+        admin::AdminPage, admin_audit_logs::AdminAuditLogsPage,
+        admin_departments::AdminDepartmentsPage, admin_export::AdminExportPage,
         admin_users::AdminUsersPage, attendance::AttendancePage, dashboard::DashboardPage,
         forgot_password::ForgotPasswordPage, home::HomePage, login::LoginPage,
         mfa::MfaRegisterPage, requests::RequestsPage, reset_password::ResetPasswordPage,
@@ -27,6 +28,7 @@ pub const ROUTE_PATHS: &[&str] = &[
     "/admin/users",
     "/admin/export",
     "/admin/audit-logs",
+    "/admin/departments",
 ];
 
 pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
@@ -39,6 +41,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/admin/users",
     "/admin/export",
     "/admin/audit-logs",
+    "/admin/departments",
 ];
 
 pub const PUBLIC_ROUTE_PATHS: &[&str] = &["/", "/login", "/forgot-password", "/reset-password"];
@@ -67,6 +70,7 @@ pub fn app_root() -> impl IntoView {
                         <Route path="/admin/users" view=ProtectedAdminUsers/>
                         <Route path="/admin/export" view=ProtectedAdminExport/>
                         <Route path="/admin/audit-logs" view=ProtectedAdminAuditLogs/>
+                        <Route path="/admin/departments" view=ProtectedAdminDepartments/>
                     </Routes>
                 </Router>
             </AuthProvider>
@@ -117,6 +121,11 @@ fn ProtectedAdminExport() -> impl IntoView {
 #[component]
 fn ProtectedAdminAuditLogs() -> impl IntoView {
     view! { <RequireAdmin><AdminAuditLogsPage/></RequireAdmin> }
+}
+
+#[component]
+fn ProtectedAdminDepartments() -> impl IntoView {
+    view! { <RequireAdmin><AdminDepartmentsPage/></RequireAdmin> }
 }
 
 #[cfg(test)]
@@ -215,6 +224,7 @@ mod host_tests {
                         <ProtectedAdminUsers />
                         <ProtectedAdminExport />
                         <ProtectedAdminAuditLogs />
+                        <ProtectedAdminDepartments />
                     </div>
                 </Router>
             }
