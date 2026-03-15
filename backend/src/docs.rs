@@ -1,7 +1,6 @@
 #![allow(dead_code)] // OpenAPI doc stubs are only referenced by utoipa macros.
 
 use crate::{
-    error::ErrorResponse,
     handlers::{
         admin::{
             AdminAttendanceUpsert, AdminBreakItem, AdminHolidayListQuery, AdminHolidayListResponse,
@@ -680,12 +679,7 @@ fn admin_request_detail_doc() {}
     path = "/api/admin/requests/{id}/approve",
     params(("id" = String, Path, description = "申請ID")),
     request_body = ApprovePayload,
-    responses(
-        (status = 200, body = serde_json::Value),
-        (status = 400, body = ErrorResponse, description = "コメント不正"),
-        (status = 403, body = ErrorResponse, description = "自己申請の承認禁止または承認権限なし"),
-        (status = 404, body = ErrorResponse, description = "申請が存在しない、またはすでに処理済み")
-    ),
+    responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]
 fn admin_approve_request_doc() {}
@@ -695,12 +689,7 @@ fn admin_approve_request_doc() {}
     path = "/api/admin/requests/{id}/reject",
     params(("id" = String, Path, description = "申請ID")),
     request_body = RejectPayload,
-    responses(
-        (status = 200, body = serde_json::Value),
-        (status = 400, body = ErrorResponse, description = "コメント不正"),
-        (status = 403, body = ErrorResponse, description = "自己申請の却下禁止または承認権限なし"),
-        (status = 404, body = ErrorResponse, description = "申請が存在しない、またはすでに処理済み")
-    ),
+    responses((status = 200, body = serde_json::Value)),
     tag = "Admin"
 )]
 fn admin_reject_request_doc() {}

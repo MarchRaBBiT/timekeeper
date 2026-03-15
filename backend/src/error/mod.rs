@@ -5,9 +5,8 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
     pub code: String,

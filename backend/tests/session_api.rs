@@ -316,7 +316,7 @@ async fn test_revoke_nonexistent_session_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_manager_without_dept_scope_cannot_list_user_sessions() {
+async fn test_admin_can_list_user_sessions() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
     sqlx::migrate!("./migrations")
@@ -324,41 +324,7 @@ async fn test_manager_without_dept_scope_cannot_list_user_sessions() {
         .await
         .expect("run migrations");
 
-    // Manager has no department assignment → no scope over the employee
     let admin = seed_user(&pool, UserRole::Manager, false).await;
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let refresh_token_id = uuid::Uuid::new_v4().to_string();
-    let access_jti = uuid::Uuid::new_v4().to_string();
-    let _session_id =
-        seed_active_session(&pool, employee.id, &refresh_token_id, Some(&access_jti)).await;
-
-    let current_jti = uuid::Uuid::new_v4().to_string();
-    let claims = create_test_claims(admin.id, &current_jti);
-    let app = test_router_admin_sessions(pool.clone(), admin.clone(), claims);
-
-    let request = Request::builder()
-        .uri(format!("/api/admin/users/{}/sessions", employee.id))
-        .header(
-            "Authorization",
-            format!("Bearer {}", create_test_token(admin.id, admin.role.clone())),
-        )
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn test_system_admin_can_list_any_user_sessions() {
-    let _guard = integration_guard().await;
-    let pool = test_pool().await;
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("run migrations");
-
-    let admin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let refresh_token_id = uuid::Uuid::new_v4().to_string();
     let access_jti = uuid::Uuid::new_v4().to_string();
@@ -389,7 +355,7 @@ async fn test_system_admin_can_list_any_user_sessions() {
 }
 
 #[tokio::test]
-async fn test_manager_without_dept_scope_cannot_revoke_session() {
+async fn test_admin_can_revoke_any_session() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
     sqlx::migrate!("./migrations")
@@ -397,42 +363,7 @@ async fn test_manager_without_dept_scope_cannot_revoke_session() {
         .await
         .expect("run migrations");
 
-    // Manager has no department assignment → no scope over the employee's session
     let admin = seed_user(&pool, UserRole::Manager, false).await;
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let refresh_token_id = uuid::Uuid::new_v4().to_string();
-    let access_jti = uuid::Uuid::new_v4().to_string();
-    let session_id =
-        seed_active_session(&pool, employee.id, &refresh_token_id, Some(&access_jti)).await;
-
-    let current_jti = uuid::Uuid::new_v4().to_string();
-    let claims = create_test_claims(admin.id, &current_jti);
-    let app = test_router_admin_sessions(pool.clone(), admin.clone(), claims);
-
-    let request = Request::builder()
-        .method("DELETE")
-        .uri(format!("/api/admin/sessions/{}", session_id))
-        .header(
-            "Authorization",
-            format!("Bearer {}", create_test_token(admin.id, admin.role.clone())),
-        )
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn test_system_admin_can_revoke_any_session() {
-    let _guard = integration_guard().await;
-    let pool = test_pool().await;
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("run migrations");
-
-    let admin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let refresh_token_id = uuid::Uuid::new_v4().to_string();
     let access_jti = uuid::Uuid::new_v4().to_string();
