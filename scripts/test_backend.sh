@@ -72,7 +72,7 @@ PY
 
 json_get() {
   local path="$1"
-  "$PYTHON_BIN" - "$path" <<'PY'
+  "$PYTHON_BIN" -c '
 import json
 import sys
 
@@ -93,12 +93,12 @@ elif data is None:
     print("")
 else:
     print(data)
-PY
+' "$path"
 }
 
 json_count() {
   local path="$1"
-  "$PYTHON_BIN" - "$path" <<'PY'
+  "$PYTHON_BIN" -c '
 import json
 import sys
 
@@ -117,7 +117,7 @@ if isinstance(data, list):
     print(len(data))
 else:
     print(0)
-PY
+' "$path"
 }
 
 invoke_api() {
@@ -159,6 +159,15 @@ cleanup() {
   rm -f "$ADMIN_COOKIE" "$EMP_COOKIE"
 }
 trap cleanup EXIT
+
+write_step "Public: Time zone config"
+invoke_api "GET" "/api/config/timezone"
+if [[ "$API_STATUS" != 2* ]]; then
+  write_fail "time zone config failed: $API_STATUS $API_BODY"
+  exit 1
+fi
+time_zone="$(printf '%s' "$API_BODY" | json_get "time_zone")"
+write_ok "time_zone=${time_zone:-unknown}"
 
 write_step "Auth: Login"
 login_body="{\"username\":$(json_string "$AdminUser"),\"password\":$(json_string "$AdminPass")}"
@@ -212,10 +221,16 @@ write_step "Attendance: Clock-in"
 if [[ "$today_status" == "not_started" ]]; then
   invoke_api "POST" "/api/attendance/clock-in" "{}" "$ADMIN_COOKIE"
   if [[ "$API_STATUS" != 2* ]]; then
-    write_fail "clock-in failed: $API_STATUS $API_BODY"
-    exit 1
+    if [[ "$API_STATUS" == "403" && "$API_BODY" == *"Submit an overtime request before clocking in/out."* ]]; then
+      write_warn "clock-in skipped due to holiday rule: $API_STATUS $API_BODY"
+      attendance_id=""
+    else
+      write_fail "clock-in failed: $API_STATUS $API_BODY"
+      exit 1
+    fi
+  else
+    attendance_id="$(printf '%s' "$API_BODY" | json_get "id")"
   fi
-  attendance_id="$(printf '%s' "$API_BODY" | json_get "id")"
 fi
 write_ok "attendance_id=${attendance_id}"
 

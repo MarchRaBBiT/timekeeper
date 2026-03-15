@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_BASE_URL="${BACKEND_BASE_URL:-http://localhost:3000}"
 FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-https://localhost:8080}"
+BACKEND_READINESS_PATH="${BACKEND_READINESS_PATH:-/api/config/timezone}"
 
 log() {
   printf '[harness] %s\n' "$*"
@@ -32,6 +33,7 @@ Usage:
 
 Environment:
   BACKEND_BASE_URL   default: http://localhost:3000
+  BACKEND_READINESS_PATH default: /api/config/timezone
   FRONTEND_BASE_URL  default: https://localhost:8080
 EOF
 }
@@ -110,7 +112,7 @@ run_lint() {
 
 run_api_smoke() {
   log "stage=api-smoke"
-  check_url "$BACKEND_BASE_URL/health" || check_url "$BACKEND_BASE_URL" || die "backend not reachable at $BACKEND_BASE_URL"
+  check_url "${BACKEND_BASE_URL}${BACKEND_READINESS_PATH}" || die "backend readiness check failed at ${BACKEND_BASE_URL}${BACKEND_READINESS_PATH}"
   (cd "$ROOT_DIR" && bash scripts/test_backend.sh --base-url "$BACKEND_BASE_URL")
 }
 
