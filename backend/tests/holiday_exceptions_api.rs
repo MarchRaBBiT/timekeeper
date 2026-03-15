@@ -94,7 +94,7 @@ async fn test_admin_can_create_holiday_exception() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -125,7 +125,7 @@ async fn test_system_admin_can_create_holiday_exception() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -187,7 +187,7 @@ async fn test_admin_can_list_holiday_exceptions() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -212,7 +212,7 @@ async fn test_list_holiday_exceptions_with_date_range() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -237,7 +237,7 @@ async fn test_create_duplicate_holiday_exception_fails() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -284,7 +284,7 @@ async fn test_invalid_user_id_format_fails() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
@@ -311,7 +311,7 @@ async fn test_nonexistent_user_fails() {
     let _guard = integration_guard().await;
     let pool = setup_test_pool().await;
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());

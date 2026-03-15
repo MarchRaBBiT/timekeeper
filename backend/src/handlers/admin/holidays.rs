@@ -38,7 +38,7 @@ pub async fn list_holidays(
     Extension(user): Extension<User>,
     Query(q): Query<AdminHolidayListQuery>,
 ) -> Result<Json<AdminHolidayListResponse>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -69,7 +69,7 @@ pub async fn create_holiday(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateHolidayPayload>,
 ) -> Result<Json<HolidayResponse>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -108,7 +108,7 @@ pub async fn delete_holiday(
     Extension(user): Extension<User>,
     Path(holiday_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -125,7 +125,7 @@ pub async fn list_weekly_holidays(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<WeeklyHolidayResponse>>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -145,7 +145,7 @@ pub async fn create_weekly_holiday(
     Extension(user): Extension<User>,
     Json(payload): Json<CreateWeeklyHolidayPayload>,
 ) -> Result<Json<WeeklyHolidayResponse>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -180,7 +180,7 @@ pub async fn delete_weekly_holiday(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 

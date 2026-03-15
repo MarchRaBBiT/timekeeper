@@ -324,7 +324,7 @@ async fn test_admin_can_list_user_sessions() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let refresh_token_id = uuid::Uuid::new_v4().to_string();
     let access_jti = uuid::Uuid::new_v4().to_string();
@@ -363,7 +363,7 @@ async fn test_admin_can_revoke_any_session() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let refresh_token_id = uuid::Uuid::new_v4().to_string();
     let access_jti = uuid::Uuid::new_v4().to_string();

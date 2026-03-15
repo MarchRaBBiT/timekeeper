@@ -71,7 +71,7 @@ pub async fn fetch_google_holidays(
     Extension(user): Extension<User>,
     Query(params): Query<GoogleHolidayQuery>,
 ) -> Result<Json<Vec<GoogleHolidayCandidate>>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 

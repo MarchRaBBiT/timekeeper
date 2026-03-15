@@ -69,6 +69,7 @@ pub mod attendance_correction_request;
 pub mod audit_log;
 pub mod break_record;
 pub mod consent_log;
+pub mod department;
 pub mod holiday;
 pub mod holiday_exception;
 pub mod leave_request;

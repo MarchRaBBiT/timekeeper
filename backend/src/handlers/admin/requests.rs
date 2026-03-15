@@ -9,7 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
-    handlers::admin::common::parse_filter_datetime,
+    handlers::admin::common::{check_approval_authorization, parse_filter_datetime},
     models::{
         leave_request::LeaveRequestResponse, overtime_request::OvertimeRequestResponse, user::User,
     },
@@ -19,7 +19,7 @@ use crate::{
         request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
     },
     state::AppState,
-    types::{LeaveRequestId, OvertimeRequestId},
+    types::{LeaveRequestId, OvertimeRequestId, UserId},
     utils::time,
 };
 
@@ -36,10 +36,13 @@ pub async fn approve_request(
     Path(request_id): Path<String>,
     Json(body): Json<ApprovePayload>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+    let applicant_id = get_request_applicant_id(&state, &request_id).await?;
+    if applicant_id == user.id {
+        return Err(AppError::Forbidden(
+            "Managers cannot approve or reject their own requests".into(),
+        ));
     }
-    ensure_not_self_request(&state, &request_id, user.id).await?;
+    check_approval_authorization(&state.write_pool, &user, applicant_id).await?;
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
@@ -76,10 +79,13 @@ pub async fn reject_request(
     Path(request_id): Path<String>,
     Json(body): Json<RejectPayload>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
-        return Err(AppError::Forbidden("Forbidden".into()));
+    let applicant_id = get_request_applicant_id(&state, &request_id).await?;
+    if applicant_id == user.id {
+        return Err(AppError::Forbidden(
+            "Managers cannot approve or reject their own requests".into(),
+        ));
     }
-    ensure_not_self_request(&state, &request_id, user.id).await?;
+    check_approval_authorization(&state.write_pool, &user, applicant_id).await?;
     validate_decision_comment(&body.comment)?;
     let approver_id = user.id;
     let comment = body.comment;
@@ -105,23 +111,15 @@ pub async fn reject_request(
     ))
 }
 
-async fn ensure_not_self_request(
-    state: &AppState,
-    request_id: &str,
-    actor_id: crate::types::UserId,
-) -> Result<(), AppError> {
+/// Returns the user ID of the applicant who submitted the given request.
+async fn get_request_applicant_id(state: &AppState, request_id: &str) -> Result<UserId, AppError> {
     if let Ok(leave_request_id) = LeaveRequestId::from_str(request_id) {
         let leave_repo = LeaveRequestRepository::new();
         if let Ok(request) = leave_repo
             .find_by_id(&state.write_pool, leave_request_id)
             .await
         {
-            if request.user_id == actor_id {
-                return Err(AppError::Forbidden(
-                    "Admins cannot approve or reject their own requests".into(),
-                ));
-            }
-            return Ok(());
+            return Ok(request.user_id);
         }
     }
 
@@ -131,15 +129,11 @@ async fn ensure_not_self_request(
             .find_by_id(&state.write_pool, overtime_request_id)
             .await
         {
-            if request.user_id == actor_id {
-                return Err(AppError::Forbidden(
-                    "Admins cannot approve or reject their own requests".into(),
-                ));
-            }
+            return Ok(request.user_id);
         }
     }
 
-    Ok(())
+    Err(AppError::NotFound("Request not found".into()))
 }
 
 #[derive(Debug, Deserialize, Serialize, IntoParams, ToSchema)]
@@ -173,7 +167,7 @@ pub async fn list_requests(
     Extension(user): Extension<User>,
     Query(q): Query<RequestListQuery>,
 ) -> Result<Json<AdminRequestListResponse>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     let (page, per_page, offset) = paginate_requests(&q)?;
@@ -256,7 +250,7 @@ pub async fn get_request_detail(
     Extension(user): Extension<User>,
     Path(request_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 

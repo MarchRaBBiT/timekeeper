@@ -146,7 +146,7 @@ fn test_admin() -> User {
         "hash".into(),
         "Administrator".into(),
         "admin@example.com".into(),
-        UserRole::Admin,
+        UserRole::Manager,
         true,
     )
 }

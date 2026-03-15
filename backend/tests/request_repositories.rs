@@ -35,7 +35,7 @@ async fn leave_request_repository_approve_roundtrip() {
         .expect("truncate leave_requests");
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let start = NaiveDate::from_ymd_opt(2024, 5, 1).unwrap();
     let end = NaiveDate::from_ymd_opt(2024, 5, 2).unwrap();
     let request = LeaveRequest::new(user.id, LeaveType::Annual, start, end, Some("trip".into()));
@@ -83,7 +83,7 @@ async fn overtime_request_repository_reject_roundtrip() {
         .expect("truncate overtime_requests");
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let date = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap();
     let request = OvertimeRequest::new(user.id, date, 2.5, Some("release".into()));
 

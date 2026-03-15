@@ -31,7 +31,7 @@ pub async fn get_users(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<impl IntoResponse, AppError> {
-    if !(user.is_admin() || user.is_system_admin()) {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
@@ -178,6 +178,12 @@ pub async fn update_user(
     let is_system_admin = payload
         .is_system_admin
         .unwrap_or(existing_user.is_system_admin);
+    // None → don't change; Some("") → clear; Some(id) → set
+    let department_id_update: Option<Option<&str>> =
+        payload
+            .department_id
+            .as_deref()
+            .map(|s| if s.is_empty() { None } else { Some(s) });
 
     let updated_user = user_repo::update_user(
         &state.write_pool,
@@ -187,6 +193,7 @@ pub async fn update_user(
         &email_hash,
         role,
         is_system_admin,
+        department_id_update,
     )
     .await
     .map_err(|e| AppError::InternalServerError(e.into()))?;
@@ -615,8 +622,9 @@ mod tests {
             email: "admin@example.com".to_string(),
             full_name: "Admin User".to_string(),
             password_hash: "hash".to_string(),
-            role: UserRole::Admin,
+            role: UserRole::Manager,
             is_system_admin: false,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
@@ -627,7 +635,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        assert!(admin_user.is_admin());
+        assert!(admin_user.is_manager());
         assert!(!admin_user.is_system_admin());
     }
 
@@ -642,8 +650,9 @@ mod tests {
             email: "sysadmin@example.com".to_string(),
             full_name: "System Admin".to_string(),
             password_hash: "hash".to_string(),
-            role: UserRole::Admin,
+            role: UserRole::Manager,
             is_system_admin: true,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
@@ -654,7 +663,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        assert!(sys_admin_user.is_admin());
+        assert!(sys_admin_user.is_manager());
         assert!(sys_admin_user.is_system_admin());
     }
 
@@ -671,6 +680,7 @@ mod tests {
             password_hash: "hash".to_string(),
             role: UserRole::Employee,
             is_system_admin: false,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: Utc::now(),
@@ -681,7 +691,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        assert!(!employee_user.is_admin());
+        assert!(!employee_user.is_manager());
         assert!(!employee_user.is_system_admin());
     }
 }

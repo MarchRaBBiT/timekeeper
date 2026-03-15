@@ -41,7 +41,7 @@ async fn leave_request_repository_impl_covers_crud_and_state_changes() {
     reset_tables(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let repo = LeaveRequestRepository::new();
 
     let first_start = NaiveDate::from_ymd_opt(2026, 3, 1).expect("valid date");
@@ -224,7 +224,7 @@ async fn overtime_request_repository_impl_covers_crud_and_state_changes() {
     reset_tables(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let repo = OvertimeRequestRepository::new();
 
     let first = OvertimeRequest::new(

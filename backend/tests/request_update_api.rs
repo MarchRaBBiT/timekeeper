@@ -78,7 +78,7 @@ async fn update_leave_request_validates_pending_and_date_window() {
     migrate(&pool).await;
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let leave = seed_leave_request(
         &pool,
         employee.id,
@@ -251,7 +251,7 @@ async fn cancel_request_handles_invalid_and_not_cancellable_states() {
     migrate(&pool).await;
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let leave = seed_leave_request(
         &pool,
         employee.id,

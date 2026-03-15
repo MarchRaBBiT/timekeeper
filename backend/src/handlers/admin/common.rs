@@ -1,5 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use sqlx::{Postgres, QueryBuilder};
+use sqlx::{PgPool, Postgres, QueryBuilder};
+
+use crate::{error::AppError, models::user::User, types::UserId};
 
 pub fn parse_date_value(value: &str) -> Option<NaiveDate> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
@@ -66,6 +68,35 @@ pub fn parse_to_datetime(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, &'s
             .map(Some),
         None => Ok(None),
     }
+}
+
+/// Checks whether `actor` is authorized to approve/reject a request submitted by `applicant_id`.
+///
+/// Authorization rules:
+/// 1. `is_system_admin` → always authorized.
+/// 2. `is_manager` → authorized only if applicant is in actor's direct or subordinate departments.
+/// 3. Otherwise → 403 Forbidden.
+pub async fn check_approval_authorization(
+    pool: &PgPool,
+    actor: &User,
+    applicant_id: UserId,
+) -> Result<(), AppError> {
+    if actor.is_system_admin() {
+        return Ok(());
+    }
+    if actor.is_manager() {
+        let can_approve =
+            crate::repositories::department::can_manager_approve(pool, actor.id, applicant_id)
+                .await
+                .map_err(|e| AppError::InternalServerError(e.into()))?;
+        if can_approve {
+            return Ok(());
+        }
+        return Err(AppError::Forbidden(
+            "Manager does not have permission to approve this request".into(),
+        ));
+    }
+    Err(AppError::Forbidden("Forbidden".into()))
 }
 
 pub fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {

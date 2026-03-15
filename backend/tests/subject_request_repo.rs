@@ -150,7 +150,7 @@ async fn subject_request_approve_and_reject_updates_status() {
     reset_subject_requests(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let now = Utc::now();
 
     let mut approve_request = DataSubjectRequest::new(

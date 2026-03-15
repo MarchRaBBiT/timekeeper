@@ -27,7 +27,7 @@ async fn holiday_repository_roundtrip() {
         .await
         .expect("truncate holidays");
 
-    let _user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let _user = support::seed_user(&pool, UserRole::Manager, false).await;
     let date = NaiveDate::from_ymd_opt(2024, 12, 25).unwrap();
     let holiday = Holiday::new(date, "Holiday".into(), Some("seasonal".into()));
 

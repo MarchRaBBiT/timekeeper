@@ -171,7 +171,7 @@ async fn admin_approval_sets_request_status_and_effective_values() {
         .expect("run migrations");
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -244,7 +244,7 @@ async fn admin_cannot_approve_own_attendance_correction_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), admin.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let admin_token = create_test_token(admin.id, admin.role.clone());
@@ -294,7 +294,7 @@ async fn admin_cannot_reject_own_attendance_correction_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), admin.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let admin_token = create_test_token(admin.id, admin.role.clone());
@@ -345,7 +345,7 @@ async fn admin_approval_fails_with_conflict_when_attendance_changed() {
         .expect("run migrations");
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -457,7 +457,7 @@ async fn concurrent_approval_stress_allows_only_one_success() {
         .expect("run migrations");
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -565,7 +565,7 @@ async fn concurrent_reject_stress_allows_only_one_success() {
         .expect("run migrations");
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());

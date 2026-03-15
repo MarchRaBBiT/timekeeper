@@ -33,7 +33,7 @@ async fn weekly_holiday_repository_crud_roundtrip() {
         .expect("run migrations");
     reset_tables(&pool).await;
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let starts_on = NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date");
     let repo = WeeklyHolidayRepository::new();
     let created = repo
