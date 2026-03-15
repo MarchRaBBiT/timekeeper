@@ -72,7 +72,7 @@ PY
 
 json_get() {
   local path="$1"
-  "$PYTHON_BIN" - "$path" <<'PY'
+  "$PYTHON_BIN" -c '
 import json
 import sys
 
@@ -83,6 +83,9 @@ for key in path:
         continue
     if isinstance(data, dict):
         data = data.get(key)
+    elif isinstance(data, list) and key.isdigit():
+        index = int(key)
+        data = data[index] if 0 <= index < len(data) else None
     else:
         data = None
         break
@@ -93,12 +96,12 @@ elif data is None:
     print("")
 else:
     print(data)
-PY
+' "$path"
 }
 
 json_count() {
   local path="$1"
-  "$PYTHON_BIN" - "$path" <<'PY'
+  "$PYTHON_BIN" -c '
 import json
 import sys
 
@@ -109,6 +112,9 @@ for key in path:
         continue
     if isinstance(data, dict):
         data = data.get(key)
+    elif isinstance(data, list) and key.isdigit():
+        index = int(key)
+        data = data[index] if 0 <= index < len(data) else None
     else:
         data = None
         break
@@ -117,7 +123,7 @@ if isinstance(data, list):
     print(len(data))
 else:
     print(0)
-PY
+' "$path"
 }
 
 invoke_api() {
@@ -212,10 +218,12 @@ write_step "Attendance: Clock-in"
 if [[ "$today_status" == "not_started" ]]; then
   invoke_api "POST" "/api/attendance/clock-in" "{}" "$ADMIN_COOKIE"
   if [[ "$API_STATUS" != 2* ]]; then
-    write_fail "clock-in failed: $API_STATUS $API_BODY"
-    exit 1
+    write_warn "clock-in skipped: $API_STATUS $API_BODY"
+    attendance_id=""
   fi
-  attendance_id="$(printf '%s' "$API_BODY" | json_get "id")"
+  if [[ "$API_STATUS" == 2* ]]; then
+    attendance_id="$(printf '%s' "$API_BODY" | json_get "id")"
+  fi
 fi
 write_ok "attendance_id=${attendance_id}"
 

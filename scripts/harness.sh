@@ -110,7 +110,7 @@ run_lint() {
 
 run_api_smoke() {
   log "stage=api-smoke"
-  check_url "$BACKEND_BASE_URL/health" || check_url "$BACKEND_BASE_URL" || die "backend not reachable at $BACKEND_BASE_URL"
+  check_url "$BACKEND_BASE_URL/api/config/timezone" || die "backend not reachable at $BACKEND_BASE_URL"
   (cd "$ROOT_DIR" && bash scripts/test_backend.sh --base-url "$BACKEND_BASE_URL")
 }
 
