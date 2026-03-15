@@ -1,6 +1,6 @@
 # リポジトリ ガイドライン
 
-**Generated:** 2026-03-10  
+**Generated:** 2026-03-15  
 **Project:** Timekeeper - 勤怠管理システム
 
 ## Purpose
@@ -14,13 +14,15 @@
 
 詳細な運用は次を参照します。
 
+- コーディングエージェント共通規約: [docs/manual/CODING_AGENT.md](./docs/manual/CODING_AGENT.md)
 - ハーネス利用手順: [docs/manual/HARNESS.md](./docs/manual/HARNESS.md)
 - ハーネス設計意図: [docs/design-docs/harness-engineering.md](./docs/design-docs/harness-engineering.md)
 - 複雑タスク計画: [.agent/PLANS.md](./.agent/PLANS.md)
 
 ## Source Of Truth
 
-- 実装制約と作業順序: この `AGENTS.md`
+- ハーネス入口と完了判定: この `AGENTS.md`
+- コーディングエージェント共通規約: `docs/manual/CODING_AGENT.md`
 - 長時間・複数レイヤー作業の進捗: `ExecPlan`
 - 実行可能な検証入口: `scripts/harness.sh`
 - 現行 backend API 契約一覧: `docs/design-docs/backend-api-catalog.md`
@@ -33,7 +35,7 @@
 
 作業は必ず次の順で進めます。
 
-1. `AGENTS.md` と該当サブディレクトリの `AGENTS.md` を確認する
+1. `AGENTS.md`、`docs/manual/CODING_AGENT.md`、該当サブディレクトリの `AGENTS.md` を確認する
 2. 複雑タスクなら `ExecPlan` を作る
 3. 最小の再現/検証を先に作る
 4. 実装する
@@ -88,30 +90,6 @@ bash scripts/harness.sh full
 - `cargo clippy --all-targets -- -D warnings` が通る
 - 関連 issue / PR / ExecPlan に実測結果が残っている
 - 対応する `git` commit が作成されている
-
-## Task Routing
-
-### Backend
-
-- API / handler: `backend/src/handlers/`
-- repository / SQL: `backend/src/repositories/`
-- integration test: `backend/tests/`
-
-### Frontend
-
-- page / MVVM: `frontend/src/pages/`
-- API client: `frontend/src/api/`
-- shared component: `frontend/src/components/`
-
-## Non-Negotiables
-
-- ソースコード管理は `git` で行う
-- 変更前後で relevant test を必ず回す
-- 新規挙動は test 先行で固定する
-- SQLx migration は既存ファイル編集でなく新規追加
-- 重い DB ロジックを handler に溜めない
-- ユーザー許可なく仕様を簡略化しない
-- backend API の route / method / request / response / error / 認可要件を変更した場合は、同じ変更内で `docs/design-docs/backend-api-catalog.md` を更新する
 
 ## Command Quick Reference
 
