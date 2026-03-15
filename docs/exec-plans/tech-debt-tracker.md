@@ -331,120 +331,6 @@
 7. `AUDIT_EVENT_TYPES` については、`en` / `ja` の両 locale で `rust_i18n::t!(*key) != key` を確認する translation-resolution test を追加する
 8. review comment で指摘された hardcoded assertion は `rust_i18n::t!(...)` ベースへ寄せ、翻訳文面変更と UI 回帰を切り分けやすくする
 
----
-
-### 9. P2: 部署管理 UI の未完成（PR #456 由来）
-
-**発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
-
-**Symptoms**
-
-- `admin_update_department`、`admin_assign_manager`、`admin_remove_manager` の 3 メソッドが `frontend/src/api/client.rs` に `#[allow(dead_code)]` で存在する
-- 対応する `UpdateDepartmentRequest`、`AssignManagerRequest` 型も同様
-- バックエンド API は全エンドポイント実装済みだが、フロントエンド UI は一覧・作成・削除のみ
-- 管理画面から部署名の変更やマネージャーの割り当て・解除が操作できない
-
-**Evidence**
-
-- [frontend/src/api/client.rs](../../frontend/src/api/client.rs) — `admin_update_department`, `admin_assign_manager`, `admin_remove_manager`
-- [frontend/src/api/types.rs](../../frontend/src/api/types.rs) — `UpdateDepartmentRequest`, `AssignManagerRequest`, `DepartmentManagerEntry`
-- [docs/design-docs/department-hierarchy.md](../design-docs/department-hierarchy.md)
-
-**Impact**
-
-- system_admin が部署名の変更やマネージャー割り当てを行うには API を直接叩く必要がある
-- `#[allow(dead_code)]` が放置されると新規の dead_code 混入を見逃しやすくなる
-
-**Recommended Fix**
-
-1. `/admin/departments/:id` に部署編集フォーム（名前変更・親部署変更）を実装
-2. 部署詳細ページにマネージャー割り当て/解除 UI を実装
-3. `#[allow(dead_code)]` を除去
-
----
-
-### 10. P2: ユーザー管理 UI に department_id 選択が未実装（PR #456 由来）
-
-**発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
-
-**Symptoms**
-
-- バックエンドの `create_user` / `update_user` は `department_id` を受け入れるが、
-  フロントエンドの招待フォーム・ユーザー編集フォームに部署選択ドロップダウンが存在しない
-- 従業員の部署所属を変更するには API を直接叩く必要がある
-
-**Evidence**
-
-- [frontend/src/pages/admin_users/components/invite_form.rs](../../frontend/src/pages/admin_users/components/invite_form.rs)
-- [backend/src/handlers/admin/users.rs](../../backend/src/handlers/admin/users.rs)
-
-**Impact**
-
-- 部署階層の実用性が制限される。管理者が UI から従業員を部署に配属できない
-- 「承認スコープが効かない」というバグ報告が来た際に原因を特定しにくい（所属が設定されていないだけ）
-
-**Recommended Fix**
-
-1. 招待フォームに部署選択ドロップダウンを追加（`admin_list_departments` を利用）
-2. ユーザー編集フォームにも同様に追加
-
----
-
-### 11. P1: 最上位マネージャーの自己申請が永久 pending（PR #456 由来）
-
-**発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
-
-**Symptoms**
-
-- 最上位部署（`parent_id = NULL`）のマネージャーが有給・残業等を申請すると、
-  承認できる上位マネージャーが存在しないため申請が `pending` のまま残る
-- `is_system_admin` が手動で承認する運用が必要だが、その手順が runbook に記載されていない
-
-**Evidence**
-
-- [docs/design-docs/department-hierarchy.md](../design-docs/department-hierarchy.md) — 「既知の制約」セクション
-- [backend/src/handlers/admin/common.rs](../../backend/src/handlers/admin/common.rs) — `check_approval_authorization`
-
-**Impact**
-
-- 経営層・部門長など上位マネージャーの申請がシステム上処理できず、手動フローへの依存が生まれる
-- 申請が溜まると運用負債になる
-
-**Recommended Fix**
-
-1. `docs/manual/RUNBOOK.md` に「最上位マネージャーの申請承認手順」を追記
-2. 中長期的には「代理承認者の指定」または「system_admin への自動エスカレーション」を検討
-
----
-
-### 12. P2: `allowed_user_ids` によるハンドラ → リポジトリへの関心漏れ（PR #456 由来）
-
-**発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
-
-**Symptoms**
-
-- `RequestListFilters.allowed_user_ids` と `AttendanceCorrectionRequestRepository::list_paginated` の `allowed_user_ids` パラメータは、「誰がアクセスしているか」というハンドラ層の関心事をリポジトリ層に注入している
-- リポジトリが認可スコープを知ってしまうため、将来のリポジトリ単体テストで認可状態のモックが必要になる
-
-**Evidence**
-
-- [backend/src/repositories/request.rs](../../backend/src/repositories/request.rs) — `RequestListFilters`
-- [backend/src/repositories/attendance_correction_request.rs](../../backend/src/repositories/attendance_correction_request.rs) — `list_paginated`
-- [backend/src/handlers/admin/requests.rs](../../backend/src/handlers/admin/requests.rs)
-
-**Impact**
-
-- リポジトリと認可ロジックの境界が曖昧になる
-- サービス層が存在しないため、ハンドラが直接リポジトリの認可スコープを組み立てている
-- 「#3 P1: Repository / Handler Duplication」の症状と連動する
-
-**Recommended Fix**
-
-1. サービス層（`services/request_service.rs` など）を設け、認可スコープの組み立てをハンドラから移動する
-2. `RequestListFilters` から `allowed_user_ids` を除去し、サービス層で SQL を構築するか、専用クエリメソッドを用意する
-
----
-
 ## Suggested Execution Order
 
 1. P0 Build health debt
@@ -452,16 +338,11 @@
 3. P1 Frontend god modules
 4. P1 Repository / handler duplication
 5. P1 Test harness fragility
-6. **P1 最上位マネージャーの自己申請 pending（新: #11）**
-7. P2 Docs source-of-truth drift
-8. P2 Queue / worker operational debt
-9. P2 Frontend i18n follow-up debt
-10. **P2 部署管理 UI 未完成（新: #9）**
-11. **P2 ユーザー管理 UI に department_id 選択なし（新: #10）**
-12. **P2 allowed_user_ids のハンドラ→リポジトリ関心漏れ（新: #12）**
+6. P2 Docs source-of-truth drift
+7. P2 Queue / worker operational debt
+8. P2 Frontend i18n follow-up debt
 
 ## Notes
 
 - この tracker は「今すぐ全部直す」ためではなく、issue 化・分割計画の起点として使う
 - まずは P0 を返済しないと harness gate の信頼性が上がらない
-- **2026-03-15 追加**: PR #456（部署階層 & マネージャー承認）により items 9–12 を追加

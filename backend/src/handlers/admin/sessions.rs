@@ -12,7 +12,6 @@ use utoipa::ToSchema;
 
 use crate::{
     error::AppError,
-    handlers::admin::common::check_approval_authorization,
     middleware::request_id::RequestId,
     models::{active_session::ActiveSession, user::User},
     repositories::{active_session, auth as auth_repo},
@@ -66,8 +65,6 @@ pub async fn list_user_sessions(
     let user_id =
         UserId::from_str(&user_id).map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
 
-    check_approval_authorization(state.read_pool(), &user, user_id).await?;
-
     let sessions = active_session::list_active_sessions_for_user(state.read_pool(), user_id)
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
@@ -98,8 +95,6 @@ pub async fn revoke_session(
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?
         .ok_or_else(|| AppError::NotFound("Session not found".into()))?;
-
-    check_approval_authorization(state.read_pool(), &user, session.user_id).await?;
 
     revoke_session_tokens(&state.write_pool, state.token_cache.as_ref(), &session).await?;
 
