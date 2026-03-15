@@ -28,7 +28,7 @@ async fn consent_log_repo_deletes_logs_before_cutoff() {
         .await
         .expect("truncate consent logs");
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let now = Utc::now();
     let old_log = ConsentLog {
         id: Uuid::new_v4().to_string(),
@@ -92,7 +92,7 @@ async fn consent_log_repo_orders_by_consented_at_desc() {
         .await
         .expect("truncate consent logs");
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let now = Utc::now();
     let older = ConsentLog {
         id: Uuid::new_v4().to_string(),

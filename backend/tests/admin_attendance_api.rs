@@ -74,7 +74,7 @@ async fn test_system_admin_can_list_all_attendance() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let _employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -99,7 +99,7 @@ async fn test_regular_admin_cannot_list_all_attendance() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
@@ -147,7 +147,7 @@ async fn test_system_admin_can_upsert_attendance() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -187,7 +187,7 @@ async fn test_regular_admin_cannot_upsert_attendance() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -221,7 +221,7 @@ async fn test_upsert_attendance_with_invalid_date_format_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -254,7 +254,7 @@ async fn test_upsert_attendance_with_invalid_user_id_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
 
@@ -285,7 +285,7 @@ async fn test_upsert_attendance_with_invalid_clock_times_fail() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -332,7 +332,7 @@ async fn test_upsert_attendance_with_invalid_break_start_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -368,7 +368,7 @@ async fn test_system_admin_can_force_end_active_break() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let date = NaiveDate::from_ymd_opt(2024, 7, 15).expect("valid date");
     let clock_in = NaiveDateTime::parse_from_str("2024-07-15T09:00:00", "%Y-%m-%dT%H:%M:%S")
@@ -413,7 +413,7 @@ async fn test_system_admin_lists_empty_active_breaks_as_ok() {
         .expect("run migrations");
     reset_admin_attendance_test_tables(&pool).await;
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_upsert(pool.clone(), sysadmin.clone());
@@ -446,7 +446,7 @@ async fn test_system_admin_can_list_active_breaks() {
         .expect("run migrations");
     reset_admin_attendance_test_tables(&pool).await;
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let date = NaiveDate::from_ymd_opt(2024, 7, 15).expect("valid date");
     let clock_in = NaiveDateTime::parse_from_str("2024-07-15T09:00:00", "%Y-%m-%dT%H:%M:%S")
@@ -534,7 +534,7 @@ async fn test_force_end_break_rejects_invalid_or_already_ended_break() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let date = NaiveDate::from_ymd_opt(2024, 7, 15).expect("valid date");
     let clock_in = NaiveDateTime::parse_from_str("2024-07-15T09:00:00", "%Y-%m-%dT%H:%M:%S")
@@ -570,7 +570,7 @@ async fn test_force_end_break_rejects_invalid_or_already_ended_break() {
     let ended_response = app.clone().oneshot(ended_request).await.unwrap();
     assert_eq!(ended_response.status(), StatusCode::BAD_REQUEST);
 
-    let regular_admin = seed_user(&pool, UserRole::Admin, false).await;
+    let regular_admin = seed_user(&pool, UserRole::Manager, false).await;
     let regular_token = create_test_token(regular_admin.id, regular_admin.role.clone());
     let app_regular = test_router_with_upsert(pool.clone(), regular_admin.clone());
     let forbidden_request = Request::builder()

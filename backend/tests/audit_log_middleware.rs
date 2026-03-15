@@ -88,7 +88,7 @@ async fn audit_log_middleware_records_event() {
     config.audit_log_retention_forever = false;
     let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
@@ -151,7 +151,7 @@ async fn audit_log_middleware_skips_when_retention_is_zero() {
     config.audit_log_retention_forever = false;
     let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
@@ -199,7 +199,7 @@ async fn audit_log_middleware_records_failure_with_error_code() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()
@@ -497,7 +497,7 @@ async fn audit_log_middleware_records_approval_metadata() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config.clone());
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let audit_service: Arc<dyn AuditLogServiceTrait> = Arc::new(AuditLogService::new(pool.clone()));
 
     let app = Router::new()

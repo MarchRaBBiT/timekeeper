@@ -69,14 +69,14 @@ async fn user_repository_basic_crud_and_mfa_flags() {
             "hash-admin".to_string(),
             "Repo Admin".to_string(),
             "repo-admin@example.com".to_string(),
-            UserRole::Admin,
+            UserRole::Manager,
             true,
         ),
         &hash_email("repo-admin@example.com", &support::test_config()),
     )
     .await
     .expect("create admin user");
-    assert!(matches!(created_admin.role, UserRole::Admin));
+    assert!(matches!(created_admin.role, UserRole::Manager));
 
     let listed = user_repo::list_users(&pool).await.expect("list users");
     assert_eq!(listed.len(), 2);
@@ -108,7 +108,7 @@ async fn user_repository_basic_crud_and_mfa_flags() {
             .is_none()
     );
 
-    let other = support::seed_user(&pool, UserRole::Admin, false).await;
+    let other = support::seed_user(&pool, UserRole::Manager, false).await;
     assert!(!user_repo::email_exists_for_other_user(
         &pool,
         &hash_email("repo-user@example.com", &support::test_config()),
@@ -142,12 +142,13 @@ async fn user_repository_basic_crud_and_mfa_flags() {
         "Admin Name",
         "updated-admin@example.com",
         &hash_email("updated-admin@example.com", &support::test_config()),
-        UserRole::Admin,
+        UserRole::Manager,
         true,
+        None,
     )
     .await
     .expect("update user");
-    assert!(matches!(updated_user.role, UserRole::Admin));
+    assert!(matches!(updated_user.role, UserRole::Manager));
     assert!(updated_user.is_system_admin);
 
     let now = Utc::now();
@@ -209,7 +210,7 @@ async fn user_repository_soft_delete_archives_records_and_hard_delete_archived_r
     reset_tables(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let archiver = support::seed_user(&pool, UserRole::Admin, true).await;
+    let archiver = support::seed_user(&pool, UserRole::Manager, true).await;
 
     let date = NaiveDate::from_ymd_opt(2026, 2, 10).expect("valid date");
     let clock_in = date.and_hms_opt(9, 0, 0).expect("clock in");
@@ -452,7 +453,7 @@ async fn user_repository_soft_delete_restore_and_archive_cleanup() {
     reset_tables(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let archiver = support::seed_user(&pool, UserRole::Admin, true).await;
+    let archiver = support::seed_user(&pool, UserRole::Manager, true).await;
     let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("valid date");
     let clock_in = date.and_hms_opt(9, 0, 0).expect("clock in");
     let clock_out = date.and_hms_opt(18, 0, 0).expect("clock out");

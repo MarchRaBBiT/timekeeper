@@ -190,7 +190,7 @@ async fn test_admin_can_list_all_users() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let _regular = seed_user(&pool, UserRole::Employee, false).await;
 
     let status = get_users_list(&pool, &admin).await;
@@ -205,7 +205,7 @@ async fn test_non_system_admin_user_list_masks_pii() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let _regular = seed_user(&pool, UserRole::Employee, false).await;
 
     let (masked_header, payload) = get_users_payload(&pool, &admin).await;
@@ -249,7 +249,7 @@ async fn test_system_admin_can_create_user() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let new_user = CreateUser {
         username: "newemployee".to_string(),
@@ -258,6 +258,7 @@ async fn test_system_admin_can_create_user() {
         email: "new.employee@example.com".to_string(),
         role: UserRole::Employee,
         is_system_admin: false,
+        department_id: None,
     };
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -287,7 +288,7 @@ async fn test_regular_admin_cannot_create_user() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let new_user = CreateUser {
         username: "newemployee".to_string(),
@@ -296,6 +297,7 @@ async fn test_regular_admin_cannot_create_user() {
         email: "new.employee@example.com".to_string(),
         role: UserRole::Employee,
         is_system_admin: false,
+        department_id: None,
     };
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -326,7 +328,7 @@ async fn test_cannot_create_user_with_duplicate_username() {
         .await
         .expect("run migrations");
     let existing = seed_user(&pool, UserRole::Employee, false).await;
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let new_user = CreateUser {
         username: existing.username.clone(),
@@ -335,6 +337,7 @@ async fn test_cannot_create_user_with_duplicate_username() {
         email: "another@example.com".to_string(),
         role: UserRole::Employee,
         is_system_admin: false,
+        department_id: None,
     };
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -364,7 +367,7 @@ async fn test_system_admin_can_update_user() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
 
     let update = UpdateUser {
@@ -372,6 +375,7 @@ async fn test_system_admin_can_update_user() {
         email: None,
         role: None,
         is_system_admin: None,
+        department_id: None,
     };
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -404,7 +408,7 @@ async fn test_cannot_update_with_duplicate_email() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let user1 = seed_user(&pool, UserRole::Employee, false).await;
     let user2 = seed_user(&pool, UserRole::Employee, false).await;
 
@@ -413,6 +417,7 @@ async fn test_cannot_update_with_duplicate_email() {
         email: Some(user1.email.clone()),
         role: None,
         is_system_admin: None,
+        department_id: None,
     };
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
@@ -445,7 +450,7 @@ async fn test_cannot_delete_self() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let state = AppState::new(pool.clone(), None, None, None, test_config());
@@ -476,7 +481,7 @@ async fn test_regular_admin_cannot_reset_mfa() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let _target = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -509,7 +514,7 @@ async fn test_system_admin_reset_mfa_rejects_non_uuid_without_partial_update() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let state = AppState::new(pool.clone(), None, None, None, test_config());
     let app = Router::new()
@@ -599,7 +604,7 @@ async fn test_system_admin_can_reset_mfa_and_revoke_all_sessions() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
 
     sqlx::query(
@@ -667,7 +672,7 @@ async fn test_system_admin_reset_mfa_revokes_existing_access_tokens_and_sessions
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
     let protected_secret =
         protect_totp_secret("JBSWY3DPEHPK3PXP", &test_config()).expect("protect mfa secret");
@@ -774,7 +779,7 @@ async fn test_system_admin_can_unlock_user_account() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
 
     sqlx::query(
@@ -829,7 +834,7 @@ async fn test_regular_admin_cannot_unlock_user_account() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
@@ -860,7 +865,7 @@ async fn test_delete_user_rejects_invalid_id_and_missing_user() {
         .run(&pool)
         .await
         .expect("run migrations");
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = Router::new()
@@ -903,8 +908,8 @@ async fn test_archived_user_endpoints_cover_not_found_conflict_and_forbidden() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
-    let regular_admin = seed_user(&pool, UserRole::Admin, false).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
+    let regular_admin = seed_user(&pool, UserRole::Manager, false).await;
     let target = seed_user(&pool, UserRole::Employee, false).await;
     let email_conflict_target = seed_user(&pool, UserRole::Employee, false).await;
 

@@ -397,6 +397,18 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             delete(handlers::holiday_exceptions::delete_holiday_exception),
         )
         .route("/api/admin/export", get(handlers::admin::export_data))
+        .route(
+            "/api/admin/departments",
+            get(handlers::admin::list_departments),
+        )
+        .route(
+            "/api/admin/departments/{id}",
+            get(handlers::admin::get_department),
+        )
+        .route(
+            "/api/admin/departments/{id}/managers",
+            get(handlers::admin::list_department_managers_handler),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
@@ -450,6 +462,22 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/archived-users/{id}/restore",
             post(handlers::admin::restore_archived_user),
+        )
+        .route(
+            "/api/admin/departments",
+            post(handlers::admin::create_department),
+        )
+        .route(
+            "/api/admin/departments/{id}",
+            put(handlers::admin::update_department).delete(handlers::admin::delete_department),
+        )
+        .route(
+            "/api/admin/departments/{id}/managers",
+            post(handlers::admin::assign_manager_handler),
+        )
+        .route(
+            "/api/admin/departments/{id}/managers/{uid}",
+            delete(handlers::admin::remove_manager_handler),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),

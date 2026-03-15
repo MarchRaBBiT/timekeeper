@@ -13,7 +13,7 @@ pub async fn list_users(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
          COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
-         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at \
+         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at \
          FROM users ORDER BY created_at DESC",
     )
     .fetch_all(pool)
@@ -28,11 +28,11 @@ pub async fn create_user(
 ) -> Result<User, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
-         mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
+         mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) \
          RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
          COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
-         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at",
     )
     .bind(user.id.to_string())
     .bind(&user.username)
@@ -40,10 +40,7 @@ pub async fn create_user(
     .bind(&user.full_name)
     .bind(&user.email)
     .bind(email_hash)
-    .bind(match user.role {
-        UserRole::Employee => "employee",
-        UserRole::Admin => "admin",
-    })
+    .bind(user.role.as_str())
     .bind(user.is_system_admin)
     .bind(&user.mfa_secret)
     .bind(user.mfa_enabled_at)
@@ -52,6 +49,7 @@ pub async fn create_user(
     .bind(user.locked_until)
     .bind(&user.lock_reason)
     .bind(user.lockout_count)
+    .bind(user.department_id.map(|d| d.to_string()))
     .bind(user.created_at)
     .bind(user.updated_at)
     .fetch_one(pool)
@@ -59,6 +57,7 @@ pub async fn create_user(
 }
 
 /// Updates an existing user's profile.
+#[allow(clippy::too_many_arguments)]
 pub async fn update_user(
     pool: &PgPool,
     user_id: &str,
@@ -67,13 +66,32 @@ pub async fn update_user(
     email_hash: &str,
     role: UserRole,
     is_system_admin: bool,
+    department_id: Option<Option<&str>>,
 ) -> Result<User, sqlx::Error> {
+    if let Some(dept_id_opt) = department_id {
+        return sqlx::query_as::<_, User>(
+            "UPDATE users SET full_name_enc = $1, email_enc = $2, email_hash = $3, role = $4, is_system_admin = $5, department_id = $6, updated_at = NOW() \
+             WHERE id = $7 \
+             RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
+             COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
+             mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at",
+        )
+        .bind(full_name)
+        .bind(email)
+        .bind(email_hash)
+        .bind(role.as_str())
+        .bind(is_system_admin)
+        .bind(dept_id_opt)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await;
+    }
     sqlx::query_as::<_, User>(
         "UPDATE users SET full_name_enc = $1, email_enc = $2, email_hash = $3, role = $4, is_system_admin = $5, updated_at = NOW() \
          WHERE id = $6 \
          RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
          COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
-         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
@@ -185,7 +203,7 @@ pub async fn update_profile(
          WHERE id = $4 \
          RETURNING id, username, password_hash, COALESCE(full_name_enc, '') as full_name, \
          COALESCE(email_enc, '') as email, LOWER(role) as role, is_system_admin, \
-         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at",
+         mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at",
     )
     .bind(full_name)
     .bind(email)
@@ -787,18 +805,18 @@ mod tests {
     #[test]
     fn user_role_to_string_conversion() {
         let employee = UserRole::Employee;
-        let admin = UserRole::Admin;
+        let manager = UserRole::Manager;
 
         let emp_str = match employee {
             UserRole::Employee => "employee",
-            UserRole::Admin => "admin",
+            UserRole::Manager => "manager",
         };
-        let adm_str = match admin {
+        let mgr_str = match manager {
             UserRole::Employee => "employee",
-            UserRole::Admin => "admin",
+            UserRole::Manager => "manager",
         };
 
         assert_eq!(emp_str, "employee");
-        assert_eq!(adm_str, "admin");
+        assert_eq!(mgr_str, "manager");
     }
 }

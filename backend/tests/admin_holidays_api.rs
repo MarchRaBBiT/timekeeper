@@ -74,7 +74,7 @@ async fn test_admin_can_list_holidays() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let _holiday = seed_public_holiday(
         &pool,
         NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
@@ -112,7 +112,7 @@ async fn test_admin_can_create_public_holiday() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let payload = CreateHolidayPayload {
         holiday_date: NaiveDate::from_ymd_opt(2024, 12, 25).unwrap(),
@@ -152,7 +152,7 @@ async fn test_cannot_create_holiday_with_empty_name() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let payload = CreateHolidayPayload {
         holiday_date: NaiveDate::from_ymd_opt(2024, 12, 25).unwrap(),
@@ -192,7 +192,7 @@ async fn test_cannot_create_duplicate_holiday_date() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let existing = seed_public_holiday(
         &pool,
         NaiveDate::from_ymd_opt(2024, 7, 4).unwrap(),
@@ -238,7 +238,7 @@ async fn test_admin_can_delete_holiday() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let holiday = seed_public_holiday(
         &pool,
         NaiveDate::from_ymd_opt(2024, 12, 26).unwrap(),
@@ -277,7 +277,7 @@ async fn test_cannot_create_weekly_holiday_with_invalid_weekday() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let payload = CreateWeeklyHolidayPayload {
         weekday: 7,
@@ -317,7 +317,7 @@ async fn test_cannot_create_weekly_holiday_with_invalid_date_range() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let payload = CreateWeeklyHolidayPayload {
         weekday: 1,

@@ -5,6 +5,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::error::AppError;
+use crate::handlers::admin::common::check_approval_authorization;
 use crate::models::attendance_correction_request::{AttendanceCorrectionResponse, DecisionPayload};
 use crate::models::user::User;
 use crate::repositories::attendance_correction_request::{
@@ -25,7 +26,7 @@ pub async fn list_attendance_correction_requests(
     Extension(user): Extension<User>,
     Query(query): Query<AdminAttendanceCorrectionListQuery>,
 ) -> Result<Json<Vec<AttendanceCorrectionResponse>>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -63,7 +64,7 @@ pub async fn get_attendance_correction_request_detail(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -83,7 +84,7 @@ pub async fn approve_attendance_correction_request(
     Path(id): Path<String>,
     Json(payload): Json<DecisionPayload>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_comment(&payload.comment)?;
@@ -91,6 +92,7 @@ pub async fn approve_attendance_correction_request(
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(&state.write_pool, &id).await?;
     ensure_not_self_request(request.user_id, user.id)?;
+    check_approval_authorization(&state.write_pool, &user, request.user_id).await?;
 
     let original_snapshot = request
         .parse_original_snapshot()
@@ -122,7 +124,7 @@ pub async fn reject_attendance_correction_request(
     Path(id): Path<String>,
     Json(payload): Json<DecisionPayload>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_comment(&payload.comment)?;
@@ -130,6 +132,7 @@ pub async fn reject_attendance_correction_request(
     let repo = AttendanceCorrectionRequestRepository::new();
     let request = repo.find_by_id(&state.write_pool, &id).await?;
     ensure_not_self_request(request.user_id, user.id)?;
+    check_approval_authorization(&state.write_pool, &user, request.user_id).await?;
     repo.reject(&state.write_pool, &id, user.id, &payload.comment)
         .await?;
     Ok(Json(serde_json::json!({ "message": "Request rejected" })))

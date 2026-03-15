@@ -34,6 +34,7 @@ async fn test_admin_update_user_email() {
         email: Some(new_email.clone()),
         role: None,
         is_system_admin: None,
+        department_id: None,
     };
     let updated_email_hash = update_payload
         .email

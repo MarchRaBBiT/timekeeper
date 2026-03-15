@@ -6,7 +6,7 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 use validator::Validate;
 
-use crate::types::UserId;
+use crate::types::{DepartmentId, UserId};
 use crate::validation::rules;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
@@ -42,6 +42,8 @@ pub struct User {
     pub lock_reason: Option<String>,
     /// Number of times the account has been locked.
     pub lockout_count: i32,
+    /// Department this user belongs to (optional).
+    pub department_id: Option<DepartmentId>,
     /// Creation timestamp for auditing.
     pub created_at: DateTime<Utc>,
     /// Last update timestamp for auditing.
@@ -55,8 +57,8 @@ pub enum UserRole {
     /// Standard employee role with limited permissions.
     #[default]
     Employee,
-    /// Administrator role with elevated permissions.
-    Admin,
+    /// Manager role with elevated permissions over subordinate departments.
+    Manager,
 }
 
 impl UserRole {
@@ -64,7 +66,7 @@ impl UserRole {
     pub fn as_str(&self) -> &'static str {
         match self {
             UserRole::Employee => "employee",
-            UserRole::Admin => "admin",
+            UserRole::Manager => "manager",
         }
     }
 }
@@ -87,13 +89,16 @@ impl<'de> Deserialize<'de> for UserRole {
         match s.as_str() {
             // primary canonical values (snake_case)
             "employee" => Ok(UserRole::Employee),
-            "admin" => Ok(UserRole::Admin),
+            "manager" => Ok(UserRole::Manager),
+            // backward-compatible: legacy "admin" role maps to Manager
+            "admin" => Ok(UserRole::Manager),
             // tolerate common legacy casings
             "Employee" | "EMPLOYEE" => Ok(UserRole::Employee),
-            "Admin" | "ADMIN" => Ok(UserRole::Admin),
+            "Manager" | "MANAGER" => Ok(UserRole::Manager),
+            "Admin" | "ADMIN" => Ok(UserRole::Manager),
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["employee", "admin"],
+                &["employee", "manager"],
             )),
         }
     }
@@ -116,6 +121,8 @@ pub struct CreateUser {
     pub role: UserRole,
     #[serde(default)]
     pub is_system_admin: bool,
+    #[serde(default)]
+    pub department_id: Option<String>,
 }
 
 fn validate_username_format(username: &str) -> Result<(), validator::ValidationError> {
@@ -135,6 +142,7 @@ pub struct UpdateUser {
     pub email: Option<String>,
     pub role: Option<UserRole>,
     pub is_system_admin: Option<bool>,
+    pub department_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
@@ -221,6 +229,8 @@ pub struct UserResponse {
     pub failed_login_attempts: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password_expiry_warning_days: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub department_id: Option<String>,
 }
 
 impl From<User> for UserResponse {
@@ -243,6 +253,7 @@ impl From<User> for UserResponse {
             locked_until: user.locked_until,
             failed_login_attempts: user.failed_login_attempts,
             password_expiry_warning_days: None,
+            department_id: user.department_id.map(|d| d.to_string()),
         }
     }
 }
@@ -273,14 +284,15 @@ impl User {
             locked_until: None,
             lock_reason: None,
             lockout_count: 0,
+            department_id: None,
             created_at: now,
             updated_at: now,
         }
     }
 
-    /// Returns `true` when the user holds the `Admin` role.
-    pub fn is_admin(&self) -> bool {
-        matches!(self.role, UserRole::Admin)
+    /// Returns `true` when the user holds the `Manager` role.
+    pub fn is_manager(&self) -> bool {
+        matches!(self.role, UserRole::Manager)
     }
 
     /// Returns `true` when the user is flagged as a system administrator.
@@ -308,21 +320,27 @@ mod tests {
     fn user_role_serde_accepts_and_emits_snake_case() {
         // Accept snake_case
         let e: UserRole = serde_json::from_str("\"employee\"").unwrap();
-        let a: UserRole = serde_json::from_str("\"admin\"").unwrap();
+        let m: UserRole = serde_json::from_str("\"manager\"").unwrap();
         assert!(matches!(e, UserRole::Employee));
-        assert!(matches!(a, UserRole::Admin));
+        assert!(matches!(m, UserRole::Manager));
 
         // Tolerate legacy casings
         let e2: UserRole = serde_json::from_str("\"Employee\"").unwrap();
-        let a2: UserRole = serde_json::from_str("\"ADMIN\"").unwrap();
+        let m2: UserRole = serde_json::from_str("\"MANAGER\"").unwrap();
         assert!(matches!(e2, UserRole::Employee));
-        assert!(matches!(a2, UserRole::Admin));
+        assert!(matches!(m2, UserRole::Manager));
+
+        // Backward compat: "admin" maps to Manager
+        let admin_compat: UserRole = serde_json::from_str("\"admin\"").unwrap();
+        assert!(matches!(admin_compat, UserRole::Manager));
+        let admin_compat2: UserRole = serde_json::from_str("\"Admin\"").unwrap();
+        assert!(matches!(admin_compat2, UserRole::Manager));
 
         // Emit snake_case
         let se = serde_json::to_value(UserRole::Employee).unwrap();
-        let sa = serde_json::to_value(UserRole::Admin).unwrap();
+        let sm = serde_json::to_value(UserRole::Manager).unwrap();
         assert_eq!(se, Value::String("employee".into()));
-        assert_eq!(sa, Value::String("admin".into()));
+        assert_eq!(sm, Value::String("manager".into()));
     }
 
     #[test]
@@ -332,11 +350,11 @@ mod tests {
             "hash".to_string(),
             "Alice Example".to_string(),
             "alice@example.com".to_string(),
-            UserRole::Admin,
+            UserRole::Manager,
             true,
         );
         let resp: UserResponse = user.into();
-        assert_eq!(resp.role, "admin");
+        assert_eq!(resp.role, "manager");
         assert_eq!(resp.email, "alice@example.com");
         assert!(resp.is_system_admin);
         assert!(!resp.mfa_enabled);
@@ -347,12 +365,13 @@ mod tests {
         let update = UpdateUser {
             full_name: Some("Alice Example".into()),
             email: Some("alice@example.com".into()),
-            role: Some(UserRole::Admin),
+            role: Some(UserRole::Manager),
             is_system_admin: Some(true),
+            department_id: None,
         };
         assert_eq!(update.full_name.as_deref(), Some("Alice Example"));
         assert_eq!(update.email.as_deref(), Some("alice@example.com"));
-        assert!(matches!(update.role, Some(UserRole::Admin)));
+        assert!(matches!(update.role, Some(UserRole::Manager)));
         assert_eq!(update.is_system_admin, Some(true));
     }
 
@@ -363,7 +382,7 @@ mod tests {
             "sensitive-password-hash".to_string(),
             "Alice Example".to_string(),
             "alice@example.com".to_string(),
-            UserRole::Admin,
+            UserRole::Manager,
             true,
         );
         user.mfa_secret = Some("sensitive-mfa-secret".to_string());

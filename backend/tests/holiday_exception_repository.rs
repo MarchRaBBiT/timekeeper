@@ -33,7 +33,7 @@ async fn holiday_exception_repository_lists_with_range_and_deletes_by_owner() {
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let other = support::seed_user(&pool, UserRole::Employee, false).await;
-    let creator = support::seed_user(&pool, UserRole::Admin, false).await;
+    let creator = support::seed_user(&pool, UserRole::Manager, false).await;
 
     let old_date = NaiveDate::from_ymd_opt(2026, 1, 5).expect("valid date");
     let in_range_date = NaiveDate::from_ymd_opt(2026, 1, 20).expect("valid date");

@@ -40,7 +40,7 @@ pub async fn export_data(
     Extension(user): Extension<User>,
     Query(q): Query<ExportQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    if !user.is_admin() {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Build filtered SQL

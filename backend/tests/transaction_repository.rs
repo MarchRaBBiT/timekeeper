@@ -99,7 +99,7 @@ async fn transaction_rollback_discards_changes() {
     .bind(encrypt_pii("Tx Rollback User", &config).expect("encrypt full_name"))
     .bind(encrypt_pii(&email, &config).expect("encrypt email"))
     .bind(hash_email(&email, &config))
-    .bind(UserRole::Admin.as_str())
+    .bind(UserRole::Manager.as_str())
     .bind(true)
     .bind(now)
     .bind(now)

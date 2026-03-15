@@ -76,7 +76,7 @@ async fn test_admin_can_list_subject_requests() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_subject_request(&pool, employee.id, DataSubjectRequestType::Access).await;
 
@@ -132,7 +132,7 @@ async fn test_admin_can_approve_subject_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let request_id = seed_subject_request(&pool, employee.id, DataSubjectRequestType::Access).await;
 
@@ -164,7 +164,7 @@ async fn test_admin_can_reject_subject_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let request_id = seed_subject_request(&pool, employee.id, DataSubjectRequestType::Delete).await;
 
@@ -193,7 +193,7 @@ async fn test_approve_already_processed_request_fails() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let request_id = seed_subject_request(&pool, employee.id, DataSubjectRequestType::Access).await;
 
@@ -236,7 +236,7 @@ async fn test_list_subject_requests_with_status_filter() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_subject_request(&pool, employee.id, DataSubjectRequestType::Access).await;
 
@@ -268,7 +268,7 @@ async fn test_list_subject_requests_with_type_filter() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_subject_request(&pool, employee.id, DataSubjectRequestType::Access).await;
 
@@ -294,7 +294,7 @@ async fn test_list_subject_requests_with_invalid_status_fails() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());

@@ -58,7 +58,7 @@ pub async fn list_user_sessions(
     Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
 ) -> Result<Json<Vec<AdminSessionResponse>>, AppError> {
-    if !(user.is_admin() || user.is_system_admin()) {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -83,7 +83,7 @@ pub async fn revoke_session(
     headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    if !(user.is_admin() || user.is_system_admin()) {
+    if !(user.is_manager() || user.is_system_admin()) {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 

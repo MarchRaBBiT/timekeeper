@@ -67,7 +67,7 @@ async fn test_system_admin_can_list_audit_logs() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_audit_log(&pool, employee.id).await;
 
@@ -99,7 +99,7 @@ async fn test_regular_admin_cannot_list_audit_logs_without_permission() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
 
     let token = create_test_token(admin.id, admin.role.clone());
     let app = test_router_with_state(pool.clone(), admin.clone());
@@ -147,7 +147,7 @@ async fn test_system_admin_can_export_audit_logs() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_audit_log(&pool, employee.id).await;
 
@@ -180,7 +180,7 @@ async fn test_export_with_excessive_date_range_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_state(pool.clone(), sysadmin.clone());
@@ -204,7 +204,7 @@ async fn test_list_audit_logs_with_actor_filter() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_audit_log(&pool, employee.id).await;
 
@@ -230,7 +230,7 @@ async fn test_list_audit_logs_with_event_type_filter() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_audit_log(&pool, employee.id).await;
 
@@ -256,7 +256,7 @@ async fn test_list_audit_logs_with_result_filter() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     seed_audit_log(&pool, employee.id).await;
 
@@ -282,7 +282,7 @@ async fn test_invalid_result_filter_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_state(pool.clone(), sysadmin.clone());
@@ -306,7 +306,7 @@ async fn test_system_admin_can_get_audit_log_detail() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let log_id = seed_audit_log(&pool, employee.id).await;
 
@@ -332,7 +332,7 @@ async fn test_get_nonexistent_audit_log_fails() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = test_router_with_state(pool.clone(), sysadmin.clone());

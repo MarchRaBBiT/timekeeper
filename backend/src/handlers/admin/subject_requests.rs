@@ -55,7 +55,7 @@ pub async fn list_subject_requests(
     Extension(user): Extension<User>,
     Query(q): Query<SubjectRequestListQuery>,
 ) -> Result<Json<SubjectRequestListResponse>, AppError> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
 
@@ -83,7 +83,7 @@ pub async fn approve_subject_request(
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_decision_comment(&body.comment)?;
@@ -116,7 +116,7 @@ pub async fn reject_subject_request(
     Path(request_id): Path<String>,
     Json(body): Json<DecisionPayload>,
 ) -> Result<Json<Value>, AppError> {
-    if !user.is_admin() {
+    if !user.is_system_admin() {
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     validate_decision_comment(&body.comment)?;

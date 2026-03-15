@@ -106,7 +106,7 @@ fn holiday_exception_error_to_app_error(error: HolidayExceptionError) -> AppErro
 }
 
 fn ensure_admin_or_system(user: &User) -> Result<(), AppError> {
-    if user.is_admin() || user.is_system_admin() {
+    if user.is_manager() || user.is_system_admin() {
         Ok(())
     } else {
         Err(AppError::Forbidden("Forbidden".into()))
@@ -166,8 +166,9 @@ mod tests {
             password_hash: "hash".to_string(),
             full_name: "Admin".to_string(),
             email: "admin@example.com".to_string(),
-            role: UserRole::Admin,
+            role: UserRole::Manager,
             is_system_admin: false,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
@@ -194,6 +195,7 @@ mod tests {
             email: "sysadmin@example.com".to_string(),
             role: UserRole::Employee,
             is_system_admin: true,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,
@@ -220,6 +222,7 @@ mod tests {
             email: "user@example.com".to_string(),
             role: UserRole::Employee,
             is_system_admin: false,
+            department_id: None,
             mfa_secret: None,
             mfa_enabled_at: None,
             password_changed_at: now,

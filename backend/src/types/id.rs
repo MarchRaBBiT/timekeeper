@@ -165,6 +165,7 @@ typed_id!(
     "Unique identifier for a holiday exception."
 );
 typed_id!(AuditLogId, "Unique identifier for an audit log entry.");
+typed_id!(DepartmentId, "Unique identifier for a department.");
 
 #[cfg(test)]
 mod tests {

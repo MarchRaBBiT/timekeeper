@@ -64,7 +64,7 @@ async fn test_admin_can_list_all_requests() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
@@ -131,7 +131,7 @@ async fn test_admin_can_approve_leave_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
@@ -185,7 +185,7 @@ async fn test_admin_can_reject_leave_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
@@ -239,7 +239,7 @@ async fn test_admin_cannot_approve_own_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let admin_token = create_test_token(admin.id, admin.role.clone());
     let user_app = test_router_user(pool.clone(), admin.clone());
     let admin_app = test_router_admin(pool.clone(), admin.clone());
@@ -288,7 +288,7 @@ async fn test_admin_cannot_reject_own_request() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let admin_token = create_test_token(admin.id, admin.role.clone());
     let user_app = test_router_user(pool.clone(), admin.clone());
     let admin_app = test_router_admin(pool.clone(), admin.clone());
@@ -337,7 +337,7 @@ async fn test_approve_already_processed_request_fails() {
         .await
         .expect("run migrations");
 
-    let admin = seed_user(&pool, UserRole::Admin, false).await;
+    let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());

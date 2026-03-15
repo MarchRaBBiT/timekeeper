@@ -31,7 +31,7 @@ async fn audit_log_repo_inserts_and_fetches() {
         .await
         .expect("truncate audit logs");
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let metadata_value = json!({ "source": "test" });
     let log = AuditLog {
         id: AuditLogId::new(),
@@ -97,7 +97,7 @@ async fn audit_log_repo_deletes_logs_before_cutoff() {
         .await
         .expect("truncate audit logs");
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let now = Utc::now();
     let old_log = AuditLog {
         id: AuditLogId::new(),
@@ -176,7 +176,7 @@ async fn audit_log_export_reports_truncation_when_over_max_rows() {
         .await
         .expect("truncate audit logs");
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     for idx in 0..3 {
         let log = AuditLog {
             id: AuditLogId::new(),

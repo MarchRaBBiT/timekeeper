@@ -9,6 +9,7 @@ pub mod auth;
 pub mod break_record;
 pub mod common;
 pub mod consent_log;
+pub mod department;
 pub mod holiday;
 pub mod holiday_exception;
 pub mod holiday_repository;

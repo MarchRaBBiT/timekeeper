@@ -127,7 +127,7 @@ async fn handler_creates_and_lists_personal_workday_override() {
         .await
         .expect("run migrations");
     let config = support::test_config();
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let target = support::seed_user(&pool, UserRole::Employee, false).await;
 
     let exception_service: Arc<dyn HolidayExceptionServiceTrait> =

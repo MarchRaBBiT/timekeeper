@@ -47,7 +47,7 @@ async fn admin_export_includes_date_strings() {
         .expect("run migrations");
     reset_attendance_tables(&pool).await;
 
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let employee = support::seed_user(&pool, UserRole::Employee, false).await;
 
     let date = NaiveDate::from_ymd_opt(2026, 1, 15).expect("valid date");
@@ -97,7 +97,7 @@ async fn admin_export_masks_full_name_for_non_system_admin() {
         .expect("run migrations");
     reset_attendance_tables(&pool).await;
 
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     let employee = support::seed_user(&pool, UserRole::Employee, false).await;
 
     let date = NaiveDate::from_ymd_opt(2026, 1, 16).expect("valid date");

@@ -82,7 +82,7 @@ async fn audit_log_list_requires_permission() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let user = support::seed_user(&pool, UserRole::Manager, false).await;
     let app = Router::new()
         .route("/api/admin/audit-logs", get(list_audit_logs))
         .layer(Extension(user))
@@ -113,7 +113,7 @@ async fn audit_log_list_filters_and_paginates() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
     assert!(permissions::user_has_permission(
@@ -217,7 +217,7 @@ async fn audit_log_detail_returns_log() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
     assert!(permissions::user_has_permission(
@@ -276,7 +276,7 @@ async fn audit_log_list_masks_pii_for_non_system_admin() {
     reset_audit_logs(&pool).await;
     let state = AppState::new(pool.clone(), None, None, None, support::test_config());
 
-    let admin = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
     support::grant_permission(&pool, &admin.id.to_string(), permissions::AUDIT_LOG_READ).await;
 
     let log = AuditLog {
@@ -350,7 +350,7 @@ async fn audit_log_export_returns_json_file() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
     assert!(permissions::user_has_permission(
@@ -436,7 +436,7 @@ async fn audit_log_export_requires_from_and_to() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
 
@@ -473,7 +473,7 @@ async fn audit_log_export_rejects_period_exceeding_31_days() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
 
@@ -527,7 +527,7 @@ async fn audit_log_export_allows_exactly_31_days() {
     let config = support::test_config();
     let state = AppState::new(pool.clone(), None, None, None, config);
 
-    let permissioned_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let permissioned_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let permissioned_user_id = permissioned_user.id.to_string();
     support::grant_permission(&pool, &permissioned_user_id, permissions::AUDIT_LOG_READ).await;
 

@@ -2,6 +2,7 @@ pub mod attendance;
 pub mod attendance_correction_requests;
 pub mod audit_logs;
 pub mod common;
+pub mod departments;
 pub mod export;
 pub mod holidays;
 pub mod requests;
@@ -11,6 +12,7 @@ pub mod users;
 pub use attendance::*;
 pub use attendance_correction_requests::*;
 pub use audit_logs::*;
+pub use departments::*;
 // common is internal helpers, usually not re-exported fully, but let's see if docs.rs needs anything from it.
 // docs.rs needs structs. The structs are in their respective modules now.
 // We should re-export everything from the new modules to maintain backward compatibility for `use crate::handlers::admin::*;` if used.

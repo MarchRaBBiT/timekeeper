@@ -183,7 +183,7 @@ async fn admin_can_list_and_decide_subject_requests() {
     reset_subject_requests(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin_user = support::seed_user(&pool, UserRole::Admin, false).await;
+    let admin_user = support::seed_user(&pool, UserRole::Manager, false).await;
     let state = AppState::new(pool.clone(), None, None, None, support::test_config());
     let now = Utc::now();
 

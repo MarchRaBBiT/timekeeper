@@ -97,7 +97,7 @@ async fn test_invalid_uuid_format_returns_bad_request() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let state = AppState::new(pool, None, None, None, test_config());
@@ -130,7 +130,7 @@ async fn test_out_of_range_pagination_params() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = Router::new()
@@ -160,7 +160,7 @@ async fn test_invalid_date_format_returns_bad_request() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = Router::new()
@@ -190,7 +190,7 @@ async fn test_from_after_to_date_returns_bad_request() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = Router::new()
@@ -220,7 +220,7 @@ async fn test_invalid_enum_value_returns_bad_request() {
         .await
         .expect("run migrations");
 
-    let sysadmin = seed_user(&pool, UserRole::Admin, true).await;
+    let sysadmin = seed_user(&pool, UserRole::Manager, true).await;
 
     let token = create_test_token(sysadmin.id, sysadmin.role.clone());
     let app = Router::new()
