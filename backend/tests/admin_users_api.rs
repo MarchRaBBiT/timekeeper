@@ -206,7 +206,28 @@ async fn test_non_system_admin_user_list_masks_pii() {
         .await
         .expect("run migrations");
     let admin = seed_user(&pool, UserRole::Manager, false).await;
-    let _regular = seed_user(&pool, UserRole::Employee, false).await;
+    let regular = seed_user(&pool, UserRole::Employee, false).await;
+
+    // Set up department scope so the manager can see the employee
+    let dept_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&dept_id)
+        .bind("Test Dept")
+        .execute(&pool)
+        .await
+        .expect("insert department");
+    sqlx::query("INSERT INTO department_managers (department_id, user_id) VALUES ($1, $2)")
+        .bind(&dept_id)
+        .bind(admin.id.to_string())
+        .execute(&pool)
+        .await
+        .expect("assign manager");
+    sqlx::query("UPDATE users SET department_id = $1 WHERE id = $2")
+        .bind(&dept_id)
+        .bind(regular.id.to_string())
+        .execute(&pool)
+        .await
+        .expect("set employee department");
 
     let (masked_header, payload) = get_users_payload(&pool, &admin).await;
     let first = payload
