@@ -35,22 +35,9 @@ pub async fn get_users(
         return Err(AppError::Forbidden("Forbidden".into()));
     }
     // Normalize role to snake_case at read to be resilient to legacy rows
-    let all_users = user_repo::list_users(state.read_pool())
+    let users = user_repo::list_users(state.read_pool())
         .await
         .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    let users = if !user.is_system_admin() {
-        let allowed_ids =
-            crate::repositories::department::list_subordinate_user_ids(state.read_pool(), user.id)
-                .await
-                .map_err(|e| AppError::InternalServerError(e.into()))?;
-        all_users
-            .into_iter()
-            .filter(|u| allowed_ids.contains(&u.id.to_string()))
-            .collect()
-    } else {
-        all_users
-    };
 
     let responses: Vec<UserResponse> = users
         .into_iter()
@@ -130,11 +117,7 @@ pub async fn create_user(
     );
     if let Some(ref dept_id_str) = payload.department_id {
         if !dept_id_str.is_empty() {
-            user.department_id = Some(
-                dept_id_str
-                    .parse()
-                    .map_err(|_| AppError::BadRequest("Invalid department_id".into()))?,
-            );
+            user.department_id = dept_id_str.parse().ok();
         }
     }
 
