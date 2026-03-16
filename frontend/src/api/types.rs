@@ -660,6 +660,44 @@ mod host_tests {
     }
 
     #[test]
+    fn serialize_create_user_omits_department_id_when_none() {
+        let req = CreateUser {
+            username: "bob".into(),
+            password: "secret".into(),
+            full_name: "Bob".into(),
+            email: "bob@example.com".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            department_id: None,
+        };
+        let v = serde_json::to_value(&req).unwrap();
+        assert!(
+            v.get("department_id").is_none(),
+            "department_id should be omitted when None"
+        );
+        assert_eq!(v["username"], serde_json::json!("bob"));
+    }
+
+    #[test]
+    fn serialize_create_user_includes_department_id_when_some() {
+        let req = CreateUser {
+            username: "carol".into(),
+            password: "secret".into(),
+            full_name: "Carol".into(),
+            email: "carol@example.com".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            department_id: Some("dept-42".into()),
+        };
+        let v = serde_json::to_value(&req).unwrap();
+        assert_eq!(
+            v["department_id"],
+            serde_json::json!("dept-42"),
+            "department_id should be present with correct key when Some"
+        );
+    }
+
+    #[test]
     fn deserialize_attendance_status_and_break_record() {
         let status: AttendanceStatusResponse = serde_json::from_value(serde_json::json!({
             "status": "clocked_in",
