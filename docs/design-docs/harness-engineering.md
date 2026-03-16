@@ -56,6 +56,7 @@ DB / migration / repository を含む境界を確認する。
 ### `api-smoke`
 
 live backend の wiring を確認する。
+事前疎通確認には既存の public endpoint `GET /api/config/timezone` を使い、専用 `/health` endpoint は前提にしない。
 
 ### `frontend-login`
 

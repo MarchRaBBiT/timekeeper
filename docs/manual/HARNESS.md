@@ -66,7 +66,7 @@ cargo clippy -p timekeeper-frontend --all-targets -- -D warnings
 BACKEND_BASE_URL=http://localhost:3000 bash scripts/harness.sh api-smoke
 ```
 
-内部では [scripts/test_backend.sh](../../scripts/test_backend.sh) を使います。
+内部では先に `GET /api/config/timezone` で live backend の疎通を確認し、その後 [scripts/test_backend.sh](../../scripts/test_backend.sh) を実行します。`/health` や `/api/health` は前提にしません。
 
 ### `frontend-login`
 
