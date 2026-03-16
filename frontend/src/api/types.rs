@@ -41,6 +41,8 @@ pub struct UserResponse {
     pub failed_login_attempts: i32,
     #[serde(default)]
     pub password_expiry_warning_days: Option<i64>,
+    #[serde(default)]
+    pub department_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,6 +400,8 @@ pub struct CreateUser {
     pub role: String,
     #[serde(default)]
     pub is_system_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub department_id: Option<String>,
 }
 
 use leptos::*;
@@ -653,6 +657,44 @@ mod host_tests {
         }))
         .unwrap();
         assert_eq!(item.request_type, DataSubjectRequestType::Access);
+    }
+
+    #[test]
+    fn serialize_create_user_omits_department_id_when_none() {
+        let req = CreateUser {
+            username: "bob".into(),
+            password: "secret".into(),
+            full_name: "Bob".into(),
+            email: "bob@example.com".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            department_id: None,
+        };
+        let v = serde_json::to_value(&req).unwrap();
+        assert!(
+            v.get("department_id").is_none(),
+            "department_id should be omitted when None"
+        );
+        assert_eq!(v["username"], serde_json::json!("bob"));
+    }
+
+    #[test]
+    fn serialize_create_user_includes_department_id_when_some() {
+        let req = CreateUser {
+            username: "carol".into(),
+            password: "secret".into(),
+            full_name: "Carol".into(),
+            email: "carol@example.com".into(),
+            role: "member".into(),
+            is_system_admin: false,
+            department_id: Some("dept-42".into()),
+        };
+        let v = serde_json::to_value(&req).unwrap();
+        assert_eq!(
+            v["department_id"],
+            serde_json::json!("dept-42"),
+            "department_id should be present with correct key when Some"
+        );
     }
 
     #[test]

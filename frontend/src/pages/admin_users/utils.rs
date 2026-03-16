@@ -9,6 +9,7 @@ pub struct InviteFormState {
     pub password: RwSignal<String>,
     pub role: RwSignal<String>,
     pub is_system_admin: RwSignal<bool>,
+    pub department_id: RwSignal<String>,
 }
 
 impl Default for InviteFormState {
@@ -20,6 +21,7 @@ impl Default for InviteFormState {
             password: create_rw_signal(String::new()),
             role: create_rw_signal("employee".to_string()),
             is_system_admin: create_rw_signal(false),
+            department_id: create_rw_signal(String::new()),
         }
     }
 }
@@ -39,6 +41,7 @@ impl InviteFormState {
         self.password.set(String::new());
         self.role.set("employee".to_string());
         self.is_system_admin.set(false);
+        self.department_id.set(String::new());
     }
 
     pub fn to_request(self) -> CreateUser {
@@ -49,6 +52,14 @@ impl InviteFormState {
             email: self.email.get(),
             role: self.role.get(),
             is_system_admin: self.is_system_admin.get(),
+            department_id: {
+                let s = self.department_id.get();
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            },
         }
     }
 }
@@ -128,6 +139,7 @@ mod tests {
             assert_eq!(request.email, "admin@example.com");
             assert_eq!(request.role, "employee");
             assert!(!request.is_system_admin);
+            assert_eq!(request.department_id, None);
         });
     }
 
@@ -180,6 +192,26 @@ mod host_tests {
             assert_eq!(request.email, "admin@example.com");
             assert_eq!(request.role, "employee");
             assert!(!request.is_system_admin);
+            assert_eq!(request.department_id, None);
+        });
+    }
+
+    #[test]
+    fn invite_form_state_department_id_mapping() {
+        with_runtime(|| {
+            let state = InviteFormState::default();
+            state.username.set("alice".into());
+            state.full_name.set("Alice".into());
+            state.email.set("alice@example.com".into());
+            state.password.set("Password123!".into());
+
+            state.department_id.set("dept-1".into());
+            let req = state.to_request();
+            assert_eq!(req.department_id, Some("dept-1".into()));
+
+            let state2 = InviteFormState::default();
+            state2.reset();
+            assert!(state2.department_id.get().is_empty());
         });
     }
 

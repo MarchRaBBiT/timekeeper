@@ -4,7 +4,7 @@ use super::{
 };
 use crate::api::{
     AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
-    PiiProtectedResponse, UserResponse,
+    DepartmentResponse, PiiProtectedResponse, UserResponse,
 };
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -45,6 +45,7 @@ pub struct AdminUsersViewModel {
     /// Delete an archived user permanently
     pub delete_archived_action: Action<String, Result<(), ApiError>>,
     pub is_system_admin: Memo<bool>,
+    pub departments_resource: Resource<bool, Result<Vec<DepartmentResponse>, ApiError>>,
 }
 
 pub fn use_admin_users_view_model() -> AdminUsersViewModel {
@@ -172,6 +173,23 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         let user_id = user_id.clone();
         async move { repo.restore_archived_user(user_id).await }
     });
+
+    let repo_depts = repo.clone();
+    let departments_resource = create_resource(
+        move || is_system_admin.get(),
+        move |allowed| {
+            let repo = repo_depts.clone();
+            async move {
+                if !allowed {
+                    Err(ApiError::validation(
+                        rust_i18n::t!("pages.admin_users.errors.system_admin_only").to_string(),
+                    ))
+                } else {
+                    repo.fetch_departments().await
+                }
+            }
+        },
+    );
 
     let repo_delete_archived = repo.clone();
     let delete_archived_action = create_action(move |user_id: &String| {
@@ -324,6 +342,7 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         restore_archived_action,
         delete_archived_action,
         is_system_admin,
+        departments_resource,
     }
 }
 
@@ -350,6 +369,10 @@ mod host_tests {
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/archived-users");
+            then.status(200).json_body(serde_json::json!([]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/departments");
             then.status(200).json_body(serde_json::json!([]));
         });
         server.mock(|when, then| {
@@ -388,6 +411,10 @@ mod host_tests {
                 "is_system_admin": false,
                 "mfa_enabled": false
             }]));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/departments");
+            then.status(200).json_body(serde_json::json!([]));
         });
         server.mock(|when, then| {
             when.method(GET).path("/api/admin/archived-users");
@@ -464,6 +491,7 @@ mod host_tests {
                 email: "new@example.com".into(),
                 role: "member".into(),
                 is_system_admin: false,
+                department_id: None,
             });
             for _ in 0..10 {
                 if vm.invite_action.value().get().is_some() {
@@ -498,6 +526,7 @@ mod host_tests {
                 locked_until: None,
                 failed_login_attempts: 0,
                 password_expiry_warning_days: None,
+                department_id: None,
             }));
             vm.user_sessions_resource.refetch();
             for _ in 0..10 {

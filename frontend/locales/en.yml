@@ -553,6 +553,7 @@ pages:
         email: "Email"
         password: "Temporary Password"
         role: "Role"
+        department: "Department"
         system_admin: "Grant system administrator privileges"
       placeholders:
         username: "Enter a username"
@@ -772,6 +773,11 @@ admin_components:
     loading: "Loading users..."
     fetch_failed: "Failed to load users"
     empty: "No users found"
+  department_select:
+    placeholder: "Select a department (optional)"
+    loading: "Loading departments..."
+    fetch_failed: "Failed to load departments"
+    empty: "No departments found"
   weekly_holidays:
     fields:
       starts_on: "Effective Start Date"

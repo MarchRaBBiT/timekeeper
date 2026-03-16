@@ -553,6 +553,7 @@ pages:
         email: "メールアドレス"
         password: "初期パスワード"
         role: "ロール"
+        department: "部署"
         system_admin: "システム管理者権限を付与"
       placeholders:
         username: "ユーザー名を入力"
@@ -772,6 +773,11 @@ admin_components:
     loading: "ユーザーを読み込み中..."
     fetch_failed: "ユーザーの取得に失敗しました"
     empty: "ユーザーが0件です"
+  department_select:
+    placeholder: "部署を選択（任意）"
+    loading: "部署を読み込み中..."
+    fetch_failed: "部署の取得に失敗しました"
+    empty: "部署が0件です"
   weekly_holidays:
     fields:
       starts_on: "稼働開始日"

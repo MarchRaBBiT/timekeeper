@@ -1,6 +1,7 @@
 use crate::{
     api::{ApiError, CreateUser, UserResponse},
     components::{error::InlineErrorMessage, layout::SuccessMessage},
+    pages::admin::components::department_select::{AdminDepartmentSelect, DepartmentsResource},
     pages::admin_users::utils::{localized_role_label, InviteFormState, MessageState},
 };
 use leptos::{ev, *};
@@ -29,6 +30,7 @@ pub fn InviteForm(
     messages: MessageState,
     invite_action: Action<CreateUser, Result<UserResponse, ApiError>>,
     is_system_admin: Memo<bool>,
+    departments: DepartmentsResource,
 ) -> impl IntoView {
     let pending = invite_action.pending();
     let on_submit = {
@@ -125,6 +127,16 @@ pub fn InviteForm(
                         <option value="manager">{localized_role_label("manager")}</option>
                     </select>
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-fg-muted">
+                        {rust_i18n::t!("pages.admin_users.invite_form.fields.department")}
+                    </label>
+                    <AdminDepartmentSelect
+                        departments=departments
+                        selected=form_state.department_id
+                        disabled=pending
+                    />
+                </div>
                 <div class="flex items-center space-x-2 h-full pt-6">
                     <input
                         type="checkbox"
@@ -176,12 +188,14 @@ mod host_tests {
             let invite_action =
                 create_action(|_: &CreateUser| async move { Err(ApiError::validation("failed")) });
             let is_system_admin = create_memo(|_| true);
+            let departments = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             view! {
                 <InviteForm
                     form_state=form_state
                     messages=messages
                     invite_action=invite_action
                     is_system_admin=is_system_admin
+                    departments=departments
                 />
             }
         });

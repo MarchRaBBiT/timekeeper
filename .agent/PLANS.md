@@ -337,3 +337,44 @@
 ## Progress Notes
 - 2026-02-13: 計画作成
 - 2026-02-13: migration/handler/repository/frontend requests UI まで実装し、`cargo fmt --all`、`cargo test -p timekeeper-backend --lib`、`cargo test -p timekeeper-backend --test requests_api -- --nocapture`、`cargo test -p timekeeper-frontend requests:: -- --nocapture` を通過。
+
+# EP-20260316-frontend-invite-department
+
+## Goal
+- 新規ユーザー招待フォームに部署選択ドロップダウンを追加し、backend の `department_id` フィールドと整合させる
+
+## Scope
+- In: `frontend/src/api/types.rs`, `frontend/src/pages/admin/components/department_select.rs` (新規), `frontend/src/pages/admin/components/mod.rs`, `frontend/src/pages/admin_users/` (repository/utils/view_model/components/panel), `frontend/locales/ja.yml`, `frontend/locales/en.yml`
+- Out: backend 変更, ユーザー一覧での部署表示, ユーザー編集フォームの追加
+
+## Done Criteria (Observable)
+- [x] 招待フォームに部署ドロップダウンが表示される
+- [x] 部署を選択してユーザー招待すると `POST /admin/users` に `department_id` が送信される
+- [x] 部署未選択の場合は `department_id` がリクエストに含まれない（または `null`）
+- [x] `cargo clippy --all-targets -- -D warnings` が通る
+- [x] 関連 frontend テストが green
+
+## Constraints / Non-goals
+- ユーザー一覧・詳細画面への部署表示は今回のスコープ外
+- backend に変更なし
+- 部署階層のツリー表示は今回対象外（フラットリスト）
+
+## Task Breakdown
+1. [x] `api/types.rs` に `department_id` 追加 + struct literal 全箇所更新
+2. [x] `department_select.rs` 新規作成 + `mod.rs` 登録
+3. [x] `repository.rs` に `fetch_departments()` 追加
+4. [x] `utils.rs` の `InviteFormState` 更新
+5. [x] `view_model.rs` に `departments_resource` 追加
+6. [x] `invite_form.rs` に `AdminDepartmentSelect` 組み込み
+7. [x] `panel.rs` に prop 追加
+8. [x] locale ファイル更新
+9. [x] lint + frontend テスト green 確認
+
+## Validation Plan
+- [x] `bash scripts/harness.sh fmt-check`
+- [x] `cargo test -p timekeeper-frontend --lib admin_users`
+- [x] `cargo test -p timekeeper-frontend --lib department_select`
+- [x] `bash scripts/harness.sh lint`
+
+## Progress Notes
+- 2026-03-16: 計画作成・実装・全テスト green 確認

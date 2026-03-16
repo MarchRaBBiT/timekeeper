@@ -107,6 +107,7 @@ pub fn AdminUsersPage() -> impl IntoView {
                             messages=vm.invite_messages
                             invite_action=vm.invite_action
                             is_system_admin=vm.is_system_admin
+                            departments=vm.departments_resource
                         />
                         <UserList
                             users_resource=vm.users_resource
