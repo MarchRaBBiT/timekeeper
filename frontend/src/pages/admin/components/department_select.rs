@@ -1,34 +1,26 @@
 use crate::{
-    api::{ApiError, UserResponse},
+    api::{ApiError, DepartmentResponse},
     components::{error::InlineErrorMessage, layout::LoadingSpinner},
 };
 use leptos::{ev, *};
 
-pub type UsersResource = Resource<bool, Result<Vec<UserResponse>, ApiError>>;
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum UserSelectValue {
-    #[default]
-    Id,
-    Username,
-}
+pub type DepartmentsResource = Resource<bool, Result<Vec<DepartmentResponse>, ApiError>>;
 
 #[component]
-pub fn AdminUserSelect(
-    users: UsersResource,
+pub fn AdminDepartmentSelect(
+    departments: DepartmentsResource,
     selected: RwSignal<String>,
     #[prop(optional_no_strip)] label: Option<String>,
-    #[prop(default = rust_i18n::t!("admin_components.user_select.placeholder").into_owned())]
+    #[prop(default = rust_i18n::t!("admin_components.department_select.placeholder").into_owned())]
     placeholder: String,
-    #[prop(default = UserSelectValue::Id)] value_kind: UserSelectValue,
     #[prop(into, default = MaybeSignal::Static(false))] disabled: MaybeSignal<bool>,
 ) -> impl IntoView {
     let fetch_error = create_rw_signal(None::<ApiError>);
-    let loading = users.loading();
+    let loading = departments.loading();
 
     {
         create_effect(move |_| {
-            if let Some(result) = users.get() {
+            if let Some(result) = departments.get() {
                 match result {
                     Ok(_) => fetch_error.set(None),
                     Err(err) => fetch_error.set(Some(err)),
@@ -49,48 +41,36 @@ pub fn AdminUserSelect(
     let on_retry = {
         move |_| {
             fetch_error.set(None);
-            users.refetch();
+            departments.refetch();
         }
     };
 
     let options_view = move || {
         if loading.get() {
-            return view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.loading")}</option> }
+            return view! { <option value="" disabled>{rust_i18n::t!("admin_components.department_select.loading")}</option> }
                 .into_view();
         }
-        match users.get() {
+        match departments.get() {
             None => {
-                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.loading")}</option> }.into_view()
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.department_select.loading")}</option> }.into_view()
             }
             Some(Err(_)) => {
-                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.fetch_failed")}</option> }
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.department_select.fetch_failed")}</option> }
                     .into_view()
             }
             Some(Ok(list)) if list.is_empty() => {
-                view! { <option value="" disabled>{rust_i18n::t!("admin_components.user_select.empty")}</option> }.into_view()
+                view! { <option value="" disabled>{rust_i18n::t!("admin_components.department_select.empty")}</option> }.into_view()
             }
             Some(Ok(list)) => {
                 let mut sorted = list.clone();
-                sorted.sort_by(|left, right| {
-                    let name_cmp = left.full_name.cmp(&right.full_name);
-                    if name_cmp == std::cmp::Ordering::Equal {
-                        left.username.cmp(&right.username)
-                    } else {
-                        name_cmp
-                    }
-                });
+                sorted.sort_by(|a, b| a.name.cmp(&b.name));
                 view! {
                     <For
                         each=move || sorted.clone()
-                        key=|user| user.id.clone()
-                        children=move |user| {
-                            let label = format!("{} ({})", user.full_name, user.username);
-                            let value = match value_kind {
-                                UserSelectValue::Id => user.id.clone(),
-                                UserSelectValue::Username => user.username.clone(),
-                        };
-                        view! { <option value=value>{label}</option> }
-                    }
+                        key=|dept| dept.id.clone()
+                        children=move |dept| {
+                            view! { <option value=dept.id.clone()>{dept.name.clone()}</option> }
+                        }
                     />
                 }
                 .into_view()
@@ -136,61 +116,53 @@ pub fn AdminUserSelect(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
-    use crate::api::UserResponse;
+    use crate::api::DepartmentResponse;
     use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
+    use chrono::Utc;
 
-    fn user(id: &str, name: &str, username: &str) -> UserResponse {
-        UserResponse {
+    fn dept(id: &str, name: &str) -> DepartmentResponse {
+        DepartmentResponse {
             id: id.into(),
-            username: username.into(),
-            full_name: name.into(),
-            role: "admin".into(),
-            is_system_admin: false,
-            mfa_enabled: false,
-            is_locked: false,
-            locked_until: None,
-            failed_login_attempts: 0,
-            password_expiry_warning_days: None,
-            department_id: None,
+            name: name.into(),
+            parent_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         }
     }
 
     #[test]
-    fn user_select_renders_empty_state() {
+    fn department_select_renders_empty_state() {
         let _locale = set_test_locale("en");
         let html = render_to_string(move || {
-            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
-            users.set(Ok(Vec::new()));
+            let departments = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            departments.set(Ok(Vec::new()));
             let selected = create_rw_signal(String::new());
-            view! { <AdminUserSelect users=users selected=selected /> }
+            view! { <AdminDepartmentSelect departments=departments selected=selected /> }
         });
-        assert!(html.contains("No users found"));
+        assert!(html.contains("No departments found"));
     }
 
     #[test]
-    fn user_select_renders_error_state() {
+    fn department_select_renders_error_state() {
         let _locale = set_test_locale("en");
         let html = render_to_string(move || {
-            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
-            users.set(Err(ApiError::validation("fetch error")));
+            let departments = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            departments.set(Err(ApiError::validation("fetch error")));
             let selected = create_rw_signal(String::new());
-            view! { <AdminUserSelect users=users selected=selected /> }
+            view! { <AdminDepartmentSelect departments=departments selected=selected /> }
         });
-        assert!(html.contains("Failed to load users"));
+        assert!(html.contains("Failed to load departments"));
     }
 
     #[test]
-    fn user_select_renders_options() {
+    fn department_select_renders_options() {
         let html = render_to_string(move || {
-            let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
-            users.set(Ok(vec![
-                user("u1", "Alice", "alice"),
-                user("u2", "Bob", "bob"),
-            ]));
+            let departments = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
+            departments.set(Ok(vec![dept("d1", "Engineering"), dept("d2", "Sales")]));
             let selected = create_rw_signal(String::new());
-            view! { <AdminUserSelect users=users selected=selected /> }
+            view! { <AdminDepartmentSelect departments=departments selected=selected /> }
         });
-        assert!(html.contains("Alice"));
-        assert!(html.contains("Bob"));
+        assert!(html.contains("Engineering"));
+        assert!(html.contains("Sales"));
     }
 }

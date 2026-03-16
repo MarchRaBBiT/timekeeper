@@ -1,6 +1,6 @@
 use crate::api::{
     AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
-    PiiProtectedResponse, UserResponse,
+    DepartmentResponse, PiiProtectedResponse, UserResponse,
 };
 use std::rc::Rc;
 
@@ -72,6 +72,10 @@ impl AdminUsersRepository {
 
     pub async fn delete_archived_user(&self, user_id: String) -> Result<(), ApiError> {
         self.client.admin_delete_archived_user(&user_id).await
+    }
+
+    pub async fn fetch_departments(&self) -> Result<Vec<DepartmentResponse>, ApiError> {
+        self.client.admin_list_departments().await
     }
 }
 
@@ -184,6 +188,7 @@ mod host_tests {
                 email: "new@example.com".into(),
                 role: "member".into(),
                 is_system_admin: false,
+                department_id: None,
             })
             .await
             .unwrap();
@@ -199,6 +204,26 @@ mod host_tests {
         assert_eq!(archived.len(), 1);
         repo.restore_archived_user("a1".into()).await.unwrap();
         repo.delete_archived_user("a1".into()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn admin_users_repository_fetches_departments() {
+        let server = MockServer::start_async().await;
+        server.mock(|when, then| {
+            when.method(GET).path("/api/admin/departments");
+            then.status(200).json_body(serde_json::json!([{
+                "id": "dept-1",
+                "name": "Engineering",
+                "parent_id": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            }]));
+        });
+
+        let repo = repository(&server);
+        let depts = repo.fetch_departments().await.unwrap();
+        assert_eq!(depts.len(), 1);
+        assert_eq!(depts[0].id, "dept-1");
     }
 
     #[tokio::test]
@@ -221,6 +246,7 @@ mod host_tests {
                 email: "dup@example.com".into(),
                 role: "member".into(),
                 is_system_admin: false,
+                department_id: None,
             })
             .await
             .expect_err("should return conflict");

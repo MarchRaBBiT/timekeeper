@@ -445,6 +445,58 @@
 
 ---
 
+### 13. P2: `CreateUser` の serde 属性非対称性（招待フォーム部署選択追加由来）
+
+**発生時期:** 2026-03-16（EP-20260316-frontend-invite-department）
+
+**Symptoms**
+
+- `CreateUser` struct 内で `is_system_admin` と `department_id` の serde シリアライズ戦略が異なる
+  - `is_system_admin`: `#[serde(default)]` — `false` でも JSON に含まれる (`"is_system_admin": false`)
+  - `department_id`: `#[serde(skip_serializing_if = "Option::is_none")]` — `None` の場合 JSON から省略される
+- 同一 struct 内でフィールドによってシリアライズ挙動が異なることは、将来の API 呼び出しデバッグを難しくする
+
+**Evidence**
+
+- [frontend/src/api/types.rs](../../frontend/src/api/types.rs) — `CreateUser` struct
+
+**Impact**
+
+- 機能上のバグは現時点ではないが、backend が `serde(default)` を持たないフィールドを追加した場合に差異が顕在化する
+- struct の serde 戦略を把握するためにフィールドごとに属性を追跡する必要がある
+
+**Recommended Fix**
+
+1. `CreateUser` の `is_system_admin` に `#[serde(skip_serializing_if)]` を追加して `department_id` と統一する、または
+2. 方針を「必須フィールドは常に送る、オプショナルフィールドは None 省略」として `CODING_AGENT.md` に明記する
+
+---
+
+### 14. P2: `departments_resource` に手動リフレッシュ機構がない（招待フォーム部署選択追加由来）
+
+**発生時期:** 2026-03-16（EP-20260316-frontend-invite-department）
+
+**Symptoms**
+
+- `departments_resource` のキーが `bool` 単体のため、他リソースのような手動リフレッシュ（タプルの第2要素を変化させる）ができない
+- 他のリソース (`users_resource`, `archived_users_resource`) は `(is_system_admin.get(), 0u32)` で手動 refetch トリガーを持つ
+
+**Evidence**
+
+- [frontend/src/pages/admin_users/view_model.rs](../../frontend/src/pages/admin_users/view_model.rs) — `departments_resource` vs `users_resource`
+
+**Impact**
+
+- 別タブで部署を追加・削除した後に招待フォームへ戻っても部署一覧がキャッシュされたまま
+- 現状の招待フォームユースケースでは操作頻度が低く実害は軽微だが、部署管理 UI が拡充されると問題が顕在化しやすい
+
+**Recommended Fix**
+
+1. `departments_resource` のキーを `(is_system_admin.get(), 0u32)` 形式へ変更し、他リソースと統一する
+2. ViewModel に `reload_departments()` 相当のメソッドを追加することを検討する
+
+---
+
 ## Suggested Execution Order
 
 1. P0 Build health debt
@@ -459,9 +511,12 @@
 10. **P2 部署管理 UI 未完成（新: #9）**
 11. **P2 ユーザー管理 UI に department_id 選択なし（新: #10）**
 12. **P2 allowed_user_ids のハンドラ→リポジトリ関心漏れ（新: #12）**
+13. **P2 CreateUser serde 属性非対称性（新: #13）**
+14. **P2 departments_resource 手動リフレッシュ不可（新: #14）**
 
 ## Notes
 
 - この tracker は「今すぐ全部直す」ためではなく、issue 化・分割計画の起点として使う
 - まずは P0 を返済しないと harness gate の信頼性が上がらない
 - **2026-03-15 追加**: PR #456（部署階層 & マネージャー承認）により items 9–12 を追加
+- **2026-03-16 追加**: EP-20260316-frontend-invite-department レビューにより items 13–14 を追加

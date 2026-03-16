@@ -41,6 +41,8 @@ pub struct UserResponse {
     pub failed_login_attempts: i32,
     #[serde(default)]
     pub password_expiry_warning_days: Option<i64>,
+    #[serde(default)]
+    pub department_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,6 +400,8 @@ pub struct CreateUser {
     pub role: String,
     #[serde(default)]
     pub is_system_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub department_id: Option<String>,
 }
 
 use leptos::*;

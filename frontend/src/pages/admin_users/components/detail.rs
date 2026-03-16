@@ -375,6 +375,7 @@ mod host_tests {
             locked_until: None,
             failed_login_attempts: 0,
             password_expiry_warning_days: None,
+            department_id: None,
         }
     }
 

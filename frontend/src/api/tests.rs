@@ -316,6 +316,7 @@ async fn api_client_admin_and_auth_endpoints_succeed() {
                 email: "bob@example.com".into(),
                 role: "member".into(),
                 is_system_admin: false,
+                department_id: None,
             })
             .await
             .unwrap()
@@ -785,6 +786,7 @@ async fn api_client_auth_login_and_refresh_use_test_overrides() {
                 locked_until: None,
                 failed_login_attempts: 0,
                 password_expiry_warning_days: None,
+                department_id: None,
             },
         }),
     );
@@ -825,6 +827,7 @@ async fn api_client_handles_unauthorized_with_refresh_override() {
                 locked_until: None,
                 failed_login_attempts: 0,
                 password_expiry_warning_days: None,
+                department_id: None,
             },
         }),
     );

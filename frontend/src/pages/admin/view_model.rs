@@ -347,6 +347,7 @@ mod host_tests {
             locked_until: None,
             failed_login_attempts: 0,
             password_expiry_warning_days: None,
+            department_id: None,
         };
         let role_admin = UserResponse {
             id: "u2".into(),
@@ -359,6 +360,7 @@ mod host_tests {
             locked_until: None,
             failed_login_attempts: 0,
             password_expiry_warning_days: None,
+            department_id: None,
         };
         let role_admin_upper = UserResponse {
             role: "ADMIN".into(),
@@ -375,6 +377,7 @@ mod host_tests {
             locked_until: None,
             failed_login_attempts: 0,
             password_expiry_warning_days: None,
+            department_id: None,
         };
 
         assert!(is_admin_user(Some(&system_admin)));

@@ -1,4 +1,5 @@
 pub mod attendance;
+pub mod department_select;
 pub mod departments;
 pub mod holidays;
 pub mod requests;
