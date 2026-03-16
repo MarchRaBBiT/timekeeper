@@ -26,6 +26,11 @@ fn is_system_admin_user(user: Option<&UserResponse>) -> bool {
     user.map(|user| user.is_system_admin).unwrap_or(false)
 }
 
+fn is_manager_only(user: Option<&UserResponse>) -> bool {
+    user.map(|u| !u.is_system_admin && u.role.eq_ignore_ascii_case("manager"))
+        .unwrap_or(false)
+}
+
 fn validate_action_id(id: &str) -> Result<(), ApiError> {
     if id.trim().is_empty() {
         Err(ApiError::validation(rust_i18n::t!(
@@ -64,6 +69,7 @@ pub struct AdminViewModel {
     pub subject_request_action: Action<SubjectRequestActionPayload, Result<(), ApiError>>,
     pub subject_request_action_error: RwSignal<Option<ApiError>>,
     pub reload_subject_requests: RwSignal<u32>,
+    pub manager_only: Memo<bool>,
     pub repository: AdminRepository,
     // Add other section states here as needed
 }
@@ -79,6 +85,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
     let admin_allowed = create_memo(move |_| is_admin_user(auth.get().user.as_ref()));
 
     let system_admin_allowed = create_memo(move |_| is_system_admin_user(auth.get().user.as_ref()));
+    let manager_only = create_memo(move |_| is_manager_only(auth.get().user.as_ref()));
 
     // Resources
     let repo_users = repo.clone();
@@ -106,7 +113,12 @@ pub fn use_admin_view_model() -> AdminViewModel {
     let reload_weekly = create_rw_signal(0u32);
     let repo_weekly = repo.clone();
     let weekly_holidays_resource = create_resource(
-        move || (admin_allowed.get(), reload_weekly.get()),
+        move || {
+            (
+                admin_allowed.get() && !manager_only.get(),
+                reload_weekly.get(),
+            )
+        },
         move |(allowed, _)| {
             let repo = repo_weekly.clone();
             async move {
@@ -255,6 +267,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
         subject_request_action,
         subject_request_action_error,
         reload_subject_requests,
+        manager_only,
         repository: repo,
     }
 }
@@ -388,6 +401,29 @@ mod host_tests {
         assert!(!is_admin_user(Some(&normal_user)));
         assert!(!is_admin_user(None));
         assert!(!is_system_admin_user(None));
+
+        let manager = UserResponse {
+            id: "u4".into(),
+            username: "mgr".into(),
+            full_name: "Manager".into(),
+            role: "manager".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        };
+        let manager_sysadmin = UserResponse {
+            is_system_admin: true,
+            ..manager.clone()
+        };
+        assert!(is_manager_only(Some(&manager)));
+        assert!(!is_manager_only(Some(&manager_sysadmin)));
+        assert!(!is_manager_only(Some(&role_admin)));
+        assert!(!is_manager_only(Some(&system_admin)));
+        assert!(!is_manager_only(None));
 
         assert!(validate_action_id("req-1").is_ok());
         assert!(validate_action_id("  req-2 ").is_ok());
