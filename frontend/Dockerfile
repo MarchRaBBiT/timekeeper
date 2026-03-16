@@ -18,7 +18,8 @@ RUN apt-get update \
 RUN rustup target add wasm32-unknown-unknown
 COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 COPY --from=chef /app/recipe.json recipe.json
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
+RUN --mount=type=cache,target=/usr/local/cargo/registry/cache \
+    --mount=type=cache,target=/usr/local/cargo/registry/index \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo chef cook --release --recipe-path recipe.json --target wasm32-unknown-unknown --bin timekeeper-frontend
 
@@ -33,7 +34,8 @@ WORKDIR /app/frontend
 ENV RUST_MIN_STACK=33554432 \
     CARGO_BUILD_JOBS=1 \
     RUSTFLAGS="-C codegen-units=1"
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
+RUN --mount=type=cache,target=/usr/local/cargo/registry/cache \
+    --mount=type=cache,target=/usr/local/cargo/registry/index \
     --mount=type=cache,target=/usr/local/cargo/git \
     wasm-pack build --target web --out-dir pkg --release
 
