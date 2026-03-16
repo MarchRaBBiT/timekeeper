@@ -344,3 +344,380 @@ pub fn DatePicker(
         </div>
     }
 }
+
+// ──────────────────────────────────────────────────────────
+// Generic form field primitives
+// ──────────────────────────────────────────────────────────
+
+/// Common classes shared by every text-like field in its base state.
+fn field_base_classes(has_error: bool) -> &'static str {
+    if has_error {
+        "border-status-error-border focus:border-status-error-border focus:ring-status-error-border/20"
+    } else {
+        "border-form-control-border focus:border-action-primary-border focus:ring-action-primary-focus/20"
+    }
+}
+
+/// Inline validation message rendered below a field.
+fn field_error_view(msg: String) -> impl IntoView {
+    view! {
+        <p class="flex items-center gap-1 text-xs text-status-error-text animate-fade-in">
+            <i class="fas fa-exclamation-circle" style="font-size: 10px;"></i>
+            {msg}
+        </p>
+    }
+}
+
+// ──────────────────────────────────────────────────────────
+// TextInput
+// ──────────────────────────────────────────────────────────
+
+/// A single-line text field.
+///
+/// `label` is an i18n translation key (e.g. `"pages.foo.fields.name"`).
+/// `input_type` defaults to `"text"`; pass `Some("email")` etc. as needed.
+#[component]
+pub fn TextInput(
+    #[prop(into)] value: RwSignal<String>,
+    #[prop(optional)] label: Option<&'static str>,
+    #[prop(optional, into)] placeholder: String,
+    #[prop(optional)] input_type: Option<&'static str>,
+    #[prop(optional)] error: MaybeSignal<Option<String>>,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+) -> impl IntoView {
+    // Derive a Copy signal so the value can be captured by multiple closures.
+    let error = Signal::derive(move || error.get());
+    let has_error = move || error.get().is_some();
+    let ty = input_type.unwrap_or("text");
+
+    view! {
+        <div class="flex flex-col gap-1.5 w-full">
+            {label.map(|key| view! {
+                <label class="text-sm font-medium text-fg-muted">{rust_i18n::t!(key)}</label>
+            })}
+            <input
+                type=ty
+                class=move || format!(
+                    "w-full rounded-lg border px-3 py-2 text-sm bg-form-control-bg \
+                     text-form-control-text placeholder:text-form-control-placeholder \
+                     transition-all duration-150 outline-none \
+                     focus:ring-2 focus:ring-offset-0 \
+                     disabled:opacity-50 disabled:cursor-not-allowed \
+                     disabled:bg-state-disabled-bg disabled:border-state-disabled-border {}",
+                    field_base_classes(has_error())
+                )
+                placeholder=placeholder
+                prop:value=move || value.get()
+                on:input=move |ev| value.set(event_target_value(&ev))
+                disabled=move || disabled.get()
+            />
+            {move || error.get().map(field_error_view)}
+        </div>
+    }
+}
+
+// ──────────────────────────────────────────────────────────
+// PasswordInput
+// ──────────────────────────────────────────────────────────
+
+/// A password field with a show/hide toggle button.
+///
+/// `label` is an i18n translation key.
+#[component]
+pub fn PasswordInput(
+    #[prop(into)] value: RwSignal<String>,
+    #[prop(optional)] label: Option<&'static str>,
+    #[prop(optional, into)] placeholder: String,
+    #[prop(optional)] error: MaybeSignal<Option<String>>,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+) -> impl IntoView {
+    let show = create_rw_signal(false);
+    let error = Signal::derive(move || error.get());
+    let has_error = move || error.get().is_some();
+
+    view! {
+        <div class="flex flex-col gap-1.5 w-full">
+            {label.map(|key| view! {
+                <label class="text-sm font-medium text-fg-muted">{rust_i18n::t!(key)}</label>
+            })}
+            <div class="relative">
+                <input
+                    attr:type=move || if show.get() { "text" } else { "password" }
+                    class=move || format!(
+                        "w-full rounded-lg border px-3 py-2 pr-10 text-sm bg-form-control-bg \
+                         text-form-control-text placeholder:text-form-control-placeholder \
+                         transition-all duration-150 outline-none \
+                         focus:ring-2 focus:ring-offset-0 \
+                         disabled:opacity-50 disabled:cursor-not-allowed \
+                         disabled:bg-state-disabled-bg disabled:border-state-disabled-border {}",
+                        field_base_classes(has_error())
+                    )
+                    placeholder=placeholder
+                    prop:value=move || value.get()
+                    on:input=move |ev| value.set(event_target_value(&ev))
+                    disabled=move || disabled.get()
+                />
+                <button
+                    type="button"
+                    class="absolute inset-y-0 right-0 flex items-center px-3 text-fg-muted \
+                           hover:text-fg transition-colors duration-150 focus-visible:outline-none"
+                    on:click=move |_| show.update(|v| *v = !*v)
+                    aria-label=move || {
+                        if show.get() {
+                            rust_i18n::t!("components.forms.password_input.hide").into_owned()
+                        } else {
+                            rust_i18n::t!("components.forms.password_input.show").into_owned()
+                        }
+                    }
+                >
+                    <i class=move || if show.get() {
+                        "far fa-eye-slash text-sm"
+                    } else {
+                        "far fa-eye text-sm"
+                    }></i>
+                </button>
+            </div>
+            {move || error.get().map(field_error_view)}
+        </div>
+    }
+}
+
+// ──────────────────────────────────────────────────────────
+// SelectField
+// ──────────────────────────────────────────────────────────
+
+/// A styled `<select>` dropdown.
+///
+/// Pass `<option>` elements as children.
+/// `label` is an i18n translation key.
+#[component]
+pub fn SelectField(
+    #[prop(into)] value: RwSignal<String>,
+    #[prop(optional)] label: Option<&'static str>,
+    #[prop(optional)] error: MaybeSignal<Option<String>>,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+    children: Children,
+) -> impl IntoView {
+    let error = Signal::derive(move || error.get());
+    let has_error = move || error.get().is_some();
+
+    view! {
+        <div class="flex flex-col gap-1.5 w-full">
+            {label.map(|key| view! {
+                <label class="text-sm font-medium text-fg-muted">{rust_i18n::t!(key)}</label>
+            })}
+            <div class="relative">
+                <select
+                    class=move || format!(
+                        "w-full appearance-none rounded-lg border px-3 py-2 pr-8 text-sm \
+                         bg-form-control-bg text-form-control-text \
+                         transition-all duration-150 outline-none \
+                         focus:ring-2 focus:ring-offset-0 \
+                         disabled:opacity-50 disabled:cursor-not-allowed \
+                         disabled:bg-state-disabled-bg disabled:border-state-disabled-border {}",
+                        field_base_classes(has_error())
+                    )
+                    prop:value=move || value.get()
+                    on:change=move |ev| value.set(event_target_value(&ev))
+                    disabled=move || disabled.get()
+                >
+                    {children()}
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5">
+                    <i class="fas fa-chevron-down text-xs text-fg-muted"></i>
+                </div>
+            </div>
+            {move || error.get().map(field_error_view)}
+        </div>
+    }
+}
+
+// ──────────────────────────────────────────────────────────
+// CheckboxField
+// ──────────────────────────────────────────────────────────
+
+/// A checkbox with a visible label.
+///
+/// `label` is an i18n translation key.
+#[component]
+pub fn CheckboxField(
+    #[prop(into)] checked: RwSignal<bool>,
+    label: &'static str,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+) -> impl IntoView {
+    view! {
+        <label
+            class=move || format!(
+                "inline-flex items-center gap-2.5 select-none {}",
+                if disabled.get() { "opacity-50 cursor-not-allowed" } else { "cursor-pointer group" }
+            )
+        >
+            <div
+                class=move || format!(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 \
+                     transition-all duration-150 {}",
+                    if checked.get() {
+                        "bg-action-primary-bg border-action-primary-border"
+                    } else {
+                        "bg-form-control-bg border-form-control-border group-hover:border-action-primary-border-hover"
+                    }
+                )
+            >
+                <Show when=move || checked.get()>
+                    <i class="fas fa-check text-action-primary-text" style="font-size: 8px;"></i>
+                </Show>
+            </div>
+            <input
+                type="checkbox"
+                class="sr-only"
+                prop:checked=move || checked.get()
+                on:change=move |ev| {
+                    if let Some(target) = ev
+                        .target()
+                        .and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
+                    {
+                        checked.set(target.checked());
+                    }
+                }
+                disabled=move || disabled.get()
+            />
+            <span class="text-sm text-fg">{rust_i18n::t!(label)}</span>
+        </label>
+    }
+}
+
+// ──────────────────────────────────────────────────────────
+// TextArea
+// ──────────────────────────────────────────────────────────
+
+/// A multi-line text field.
+///
+/// `label` is an i18n translation key. `rows` defaults to 3.
+#[component]
+pub fn TextArea(
+    #[prop(into)] value: RwSignal<String>,
+    #[prop(optional)] label: Option<&'static str>,
+    #[prop(optional, into)] placeholder: String,
+    #[prop(optional)] rows: Option<u32>,
+    #[prop(optional)] error: MaybeSignal<Option<String>>,
+    #[prop(optional)] disabled: MaybeSignal<bool>,
+) -> impl IntoView {
+    let error = Signal::derive(move || error.get());
+    let has_error = move || error.get().is_some();
+    let row_count = rows.unwrap_or(3).to_string();
+
+    view! {
+        <div class="flex flex-col gap-1.5 w-full">
+            {label.map(|key| view! {
+                <label class="text-sm font-medium text-fg-muted">{rust_i18n::t!(key)}</label>
+            })}
+            <textarea
+                rows=row_count
+                class=move || format!(
+                    "w-full rounded-lg border px-3 py-2 text-sm bg-form-control-bg \
+                     text-form-control-text placeholder:text-form-control-placeholder \
+                     resize-y transition-all duration-150 outline-none \
+                     focus:ring-2 focus:ring-offset-0 \
+                     disabled:opacity-50 disabled:cursor-not-allowed \
+                     disabled:bg-state-disabled-bg disabled:border-state-disabled-border {}",
+                    field_base_classes(has_error())
+                )
+                placeholder=placeholder
+                prop:value=move || value.get()
+                on:input=move |ev| value.set(event_target_value(&ev))
+                disabled=move || disabled.get()
+            ></textarea>
+            {move || error.get().map(field_error_view)}
+        </div>
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod form_field_tests {
+    use super::*;
+    use crate::test_support::{helpers::set_test_locale, ssr::render_to_string};
+
+    #[test]
+    fn text_input_renders_label_from_key() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal(String::new());
+            view! { <TextInput value=value label="pages.attendance.filters.from" /> }
+        });
+        assert!(html.contains("From"), "label key should resolve");
+        assert!(html.contains("<input"), "should render an input element");
+    }
+
+    #[test]
+    fn text_input_renders_without_label() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal(String::new());
+            view! { <TextInput value=value /> }
+        });
+        assert!(html.contains("<input"), "should render an input element");
+        assert!(!html.contains("<label"), "should not render a label element");
+    }
+
+    #[test]
+    fn text_input_shows_error_message() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal(String::new());
+            let error: MaybeSignal<Option<String>> =
+                MaybeSignal::Static(Some("Field is required".into()));
+            view! { <TextInput value=value error=error /> }
+        });
+        assert!(html.contains("Field is required"), "error message should be visible");
+    }
+
+    #[test]
+    fn password_input_renders() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal(String::new());
+            view! { <PasswordInput value=value label="pages.attendance.filters.from" /> }
+        });
+        assert!(html.contains("From"), "label should resolve");
+        assert!(html.contains("password"), "should contain a password input");
+    }
+
+    #[test]
+    fn select_field_renders_children() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal("a".to_string());
+            view! {
+                <SelectField value=value label="pages.attendance.filters.from">
+                    <option value="a">{"Option A"}</option>
+                    <option value="b">{"Option B"}</option>
+                </SelectField>
+            }
+        });
+        assert!(html.contains("Option A"), "first option should render");
+        assert!(html.contains("Option B"), "second option should render");
+        assert!(html.contains("<select"), "should render a select element");
+    }
+
+    #[test]
+    fn checkbox_field_renders_label() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let checked = create_rw_signal(false);
+            view! { <CheckboxField checked=checked label="common.states.loading" /> }
+        });
+        assert!(html.contains("Loading"), "label key should resolve");
+        assert!(html.contains(r#"type="checkbox"#), "should render a checkbox input");
+    }
+
+    #[test]
+    fn text_area_renders_with_label() {
+        let _locale = set_test_locale("en");
+        let html = render_to_string(move || {
+            let value = create_rw_signal(String::new());
+            view! { <TextArea value=value label="pages.attendance.filters.from" /> }
+        });
+        assert!(html.contains("From"), "label key should resolve");
+        assert!(html.contains("<textarea"), "should render a textarea element");
+    }
+}

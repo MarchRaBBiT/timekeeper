@@ -112,6 +112,9 @@ components:
       clocked_out: "Clocked Out"
     date_picker:
       placeholder: "Select a date"
+    password_input:
+      show: "Show password"
+      hide: "Hide password"
   guard: {}
 
 pages:
