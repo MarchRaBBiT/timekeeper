@@ -1,3 +1,4 @@
+ARG NPM_REGISTRY=https://registry.npmjs.org
 ARG RUST_VERSION=1.93
 ARG CARGO_CHEF_VERSION=0.1.73
 ARG WASM_PACK_VERSION=0.13.1
@@ -40,10 +41,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry/cache \
     wasm-pack build --target web --out-dir pkg --release
 
 FROM node:20-alpine as tailwind
+ARG NPM_REGISTRY
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/tailwind.config.js frontend/tailwind.input.css ./
 COPY frontend/src ./src
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --registry=${NPM_REGISTRY}
 RUN npm run build:css
 
 FROM nginx:alpine
