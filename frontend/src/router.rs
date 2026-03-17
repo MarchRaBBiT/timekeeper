@@ -6,10 +6,10 @@ use crate::{
     pages::{
         admin::AdminPage, admin_audit_logs::AdminAuditLogsPage,
         admin_departments::AdminDepartmentsPage, admin_export::AdminExportPage,
-        admin_users::AdminUsersPage, attendance::AttendancePage, dashboard::DashboardPage,
-        forgot_password::ForgotPasswordPage, home::HomePage, login::LoginPage,
-        mfa::MfaRegisterPage, requests::RequestsPage, reset_password::ResetPasswordPage,
-        settings::SettingsPage,
+        admin_settings::AdminSettingsPage, admin_users::AdminUsersPage, attendance::AttendancePage,
+        dashboard::DashboardPage, forgot_password::ForgotPasswordPage, home::HomePage,
+        login::LoginPage, mfa::MfaRegisterPage, requests::RequestsPage,
+        reset_password::ResetPasswordPage, settings::SettingsPage,
     },
     state::{auth::AuthProvider, locale::LocaleProvider},
 };
@@ -25,6 +25,7 @@ pub const ROUTE_PATHS: &[&str] = &[
     "/mfa/register",
     "/settings",
     "/admin",
+    "/admin/settings",
     "/admin/users",
     "/admin/export",
     "/admin/audit-logs",
@@ -38,6 +39,7 @@ pub const PROTECTED_ROUTE_PATHS: &[&str] = &[
     "/mfa/register",
     "/settings",
     "/admin",
+    "/admin/settings",
     "/admin/users",
     "/admin/export",
     "/admin/audit-logs",
@@ -67,6 +69,7 @@ pub fn app_root() -> impl IntoView {
                         <Route path="/mfa/register" view=ProtectedMfaRegister/>
                         <Route path="/settings" view=ProtectedSettings/>
                         <Route path="/admin" view=ProtectedAdmin/>
+                        <Route path="/admin/settings" view=ProtectedAdminSettings/>
                         <Route path="/admin/users" view=ProtectedAdminUsers/>
                         <Route path="/admin/export" view=ProtectedAdminExport/>
                         <Route path="/admin/audit-logs" view=ProtectedAdminAuditLogs/>
@@ -109,6 +112,11 @@ fn ProtectedAdmin() -> impl IntoView {
 }
 
 #[component]
+fn ProtectedAdminSettings() -> impl IntoView {
+    view! { <RequireAdmin><AdminSettingsPage/></RequireAdmin> }
+}
+
+#[component]
 fn ProtectedAdminUsers() -> impl IntoView {
     view! { <RequireAdmin><AdminUsersPage/></RequireAdmin> }
 }
@@ -137,6 +145,7 @@ mod tests {
     fn route_paths_include_admin_routes() {
         assert!(ROUTE_PATHS.contains(&"/admin/users"));
         assert!(ROUTE_PATHS.contains(&"/admin/export"));
+        assert!(ROUTE_PATHS.contains(&"/admin/settings"));
     }
 
     #[test]
@@ -221,6 +230,7 @@ mod host_tests {
                         <ProtectedMfaRegister />
                         <ProtectedSettings />
                         <ProtectedAdmin />
+                        <ProtectedAdminSettings />
                         <ProtectedAdminUsers />
                         <ProtectedAdminExport />
                         <ProtectedAdminAuditLogs />

@@ -36,6 +36,22 @@ pub mod helpers {
         }
     }
 
+    pub fn manager_user() -> UserResponse {
+        UserResponse {
+            id: "u-manager".into(),
+            username: "manager".into(),
+            full_name: "Manager User".into(),
+            role: "manager".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }
+    }
+
     pub fn regular_user() -> UserResponse {
         UserResponse {
             id: "u-regular".into(),

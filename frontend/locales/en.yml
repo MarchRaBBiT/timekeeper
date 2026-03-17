@@ -61,6 +61,7 @@ common:
     admin: "Admin"
     admin_export: "Data Export"
     admin_audit_logs: "Audit Logs"
+    admin_settings: "System Settings"
     admin_users: "User Provisioning"
 
 components:
@@ -515,9 +516,15 @@ pages:
           created_at: "Created"
           actions: "Actions"
   admin:
-    title: "Admin Tools"
-    description: "Manage weekly holidays, requests, attendance, MFA, and holidays from one place."
+    title: "Request Approvals"
+    description: "Approve or reject leave and overtime requests."
     unauthorized: "This page requires administrator privileges."
+    validation:
+      request_id_missing: "Could not retrieve the request ID."
+  admin_settings:
+    title: "System Settings"
+    description: "Manage weekly holidays, attendance, MFA, and public holidays."
+    unauthorized: "This page requires administrator (admin) or higher privileges."
     validation:
       request_id_missing: "The request ID could not be resolved."
   admin_users:
