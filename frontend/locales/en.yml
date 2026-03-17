@@ -519,7 +519,7 @@ pages:
     validation:
       request_id_missing: "Could not retrieve the request ID."
   admin_settings:
-    title: "Admin Settings"
+    title: "System Settings"
     description: "Manage weekly holidays, attendance, MFA, and public holidays."
     unauthorized: "This page requires administrator (admin) or higher privileges."
     validation:

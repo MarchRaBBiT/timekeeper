@@ -519,7 +519,7 @@ pages:
     validation:
       request_id_missing: "リクエストIDを取得できませんでした。"
   admin_settings:
-    title: "管理者設定"
+    title: "システム設定"
     description: "週次休日、勤怠、MFA、祝日管理を行います。"
     unauthorized: "このページは管理者（admin）以上の権限が必要です。"
     validation:

@@ -73,7 +73,7 @@ mod host_tests {
                 </AdminSettingsFrame>
             }
         });
-        assert!(html.contains("Admin Settings"));
+        assert!(html.contains("System Settings"));
         assert!(html.contains("child"));
     }
 
@@ -88,7 +88,7 @@ mod host_tests {
                 </AdminSettingsScaffold>
             }
         });
-        assert!(allowed_html.contains("Admin Settings"));
+        assert!(allowed_html.contains("System Settings"));
         assert!(allowed_html.contains("allowed"));
 
         let denied_html = render_with_router_to_string("http://localhost/", move || {
