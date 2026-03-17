@@ -112,6 +112,9 @@ components:
       clocked_out: "退勤済み"
     date_picker:
       placeholder: "日付を選択"
+    password_input:
+      show: "パスワードを表示"
+      hide: "パスワードを非表示"
   guard: {}
 
 pages:
