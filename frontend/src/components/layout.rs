@@ -93,6 +93,13 @@ pub fn Header() -> impl IntoView {
             })
             .unwrap_or(false)
     };
+    let can_access_settings = move || {
+        auth.get()
+            .user
+            .as_ref()
+            .map(|user| user.is_system_admin || user.role.eq_ignore_ascii_case("admin"))
+            .unwrap_or(false)
+    };
     let can_manage_users = move || {
         auth.get()
             .user
@@ -154,6 +161,11 @@ pub fn Header() -> impl IntoView {
                                 </A>
                                 <A href="/admin/audit-logs" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
                                     {rust_i18n::t!("common.navigation.admin_audit_logs")}
+                                </A>
+                            </Show>
+                            <Show when=move || can_access_settings()>
+                                <A href="/admin/settings" exact=true class="text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover" active_class="text-fg bg-action-ghost-bg-hover">
+                                    {rust_i18n::t!("common.navigation.admin_settings")}
                                 </A>
                             </Show>
                             <Show when=move || can_manage_users()>
@@ -282,6 +294,17 @@ pub fn Header() -> impl IntoView {
                                     on:click=move |_| set_menu_open.set(false)
                                 >
                                     {rust_i18n::t!("common.navigation.admin_audit_logs")}
+                                </A>
+                            </Show>
+                            <Show when=move || can_access_settings()>
+                                <A
+                                    href="/admin/settings"
+                                    exact=true
+                                    class="block text-fg-muted hover:text-fg px-3 py-2 rounded-md text-sm font-medium hover:bg-action-ghost-bg-hover"
+                                    active_class="text-fg bg-action-ghost-bg-hover"
+                                    on:click=move |_| set_menu_open.set(false)
+                                >
+                                    {rust_i18n::t!("common.navigation.admin_settings")}
                                 </A>
                             </Show>
                             <Show when=move || can_manage_users()>
@@ -469,6 +492,7 @@ mod host_tests {
             view! { <Header /> }
         });
         assert!(html.contains("href=\"/admin\""));
+        assert!(html.contains("href=\"/admin/settings\""));
         assert!(html.contains("href=\"/admin/users\""));
     }
 

@@ -7,7 +7,7 @@ pub fn UnauthorizedMessage() -> impl IntoView {
         <div class="space-y-6">
             <div class="bg-surface-elevated shadow rounded-lg p-6">
                 <p class="text-sm text-fg">
-                    {rust_i18n::t!("pages.admin.unauthorized")}
+                    {rust_i18n::t!("pages.admin_settings.unauthorized")}
                 </p>
             </div>
         </div>
@@ -15,13 +15,15 @@ pub fn UnauthorizedMessage() -> impl IntoView {
 }
 
 #[component]
-pub fn AdminDashboardFrame(children: Children) -> impl IntoView {
+pub fn AdminSettingsFrame(children: Children) -> impl IntoView {
     view! {
         <div class="space-y-6">
             <div>
-                <h1 class="text-2xl font-bold text-fg">{rust_i18n::t!("pages.admin.title")}</h1>
+                <h1 class="text-2xl font-bold text-fg">
+                    {rust_i18n::t!("pages.admin_settings.title")}
+                </h1>
                 <p class="mt-1 text-sm text-fg-muted">
-                    {rust_i18n::t!("pages.admin.description")}
+                    {rust_i18n::t!("pages.admin_settings.description")}
                 </p>
             </div>
             {children()}
@@ -30,7 +32,7 @@ pub fn AdminDashboardFrame(children: Children) -> impl IntoView {
 }
 
 #[component]
-pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> impl IntoView {
+pub fn AdminSettingsScaffold(admin_allowed: Memo<bool>, children: Children) -> impl IntoView {
     let content = store_value(children());
     view! {
         <Layout>
@@ -38,9 +40,9 @@ pub fn AdminDashboardScaffold(admin_allowed: Memo<bool>, children: Children) -> 
                 when=move || admin_allowed.get()
                 fallback=move || view! { <UnauthorizedMessage /> }.into_view()
             >
-                <AdminDashboardFrame>
+                <AdminSettingsFrame>
                     {content.get_value().clone()}
-                </AdminDashboardFrame>
+                </AdminSettingsFrame>
             </Show>
         </Layout>
     }
@@ -58,45 +60,45 @@ mod host_tests {
     fn unauthorized_message_renders_copy() {
         let _locale = set_test_locale("en");
         let html = render_to_string(move || view! { <UnauthorizedMessage /> });
-        assert!(html.contains("administrator privileges"));
+        assert!(html.contains("administrator (admin)"));
     }
 
     #[test]
-    fn admin_dashboard_frame_renders_header() {
+    fn admin_settings_frame_renders_header() {
         let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             view! {
-                <AdminDashboardFrame>
+                <AdminSettingsFrame>
                     <div>{"child"}</div>
-                </AdminDashboardFrame>
+                </AdminSettingsFrame>
             }
         });
-        assert!(html.contains("Request Approvals"));
+        assert!(html.contains("Admin Settings"));
         assert!(html.contains("child"));
     }
 
     #[test]
-    fn admin_dashboard_scaffold_switches_content() {
+    fn admin_settings_scaffold_switches_content() {
         let _locale = set_test_locale("en");
         let allowed_html = render_with_router_to_string("http://localhost/", move || {
             let allowed = create_memo(|_| true);
             view! {
-                <AdminDashboardScaffold admin_allowed=allowed>
+                <AdminSettingsScaffold admin_allowed=allowed>
                     <div>{"allowed"}</div>
-                </AdminDashboardScaffold>
+                </AdminSettingsScaffold>
             }
         });
-        assert!(allowed_html.contains("Request Approvals"));
+        assert!(allowed_html.contains("Admin Settings"));
         assert!(allowed_html.contains("allowed"));
 
         let denied_html = render_with_router_to_string("http://localhost/", move || {
             let allowed = create_memo(|_| false);
             view! {
-                <AdminDashboardScaffold admin_allowed=allowed>
+                <AdminSettingsScaffold admin_allowed=allowed>
                     <div>{"denied"}</div>
-                </AdminDashboardScaffold>
+                </AdminSettingsScaffold>
             }
         });
-        assert!(denied_html.contains("administrator privileges"));
+        assert!(denied_html.contains("administrator (admin)"));
     }
 }

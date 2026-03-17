@@ -272,6 +272,7 @@ pub fn WeeklyHolidaySection(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
 
     fn sample_item() -> WeeklyHolidayResponse {
@@ -320,6 +321,7 @@ mod host_tests {
 
     #[test]
     fn weekly_holiday_section_renders_empty_state() {
+        let _locale = set_test_locale("ja");
         let html = render_with_resource(Vec::new(), true, false);
         assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
         assert!(html.contains("登録済みの週次休日はありません。"));
@@ -327,6 +329,7 @@ mod host_tests {
 
     #[test]
     fn weekly_holiday_section_renders_table() {
+        let _locale = set_test_locale("ja");
         let html = render_with_resource(vec![sample_item()], true, true);
         assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
         assert!(html.contains("月"));
