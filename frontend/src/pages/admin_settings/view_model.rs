@@ -5,8 +5,8 @@ use crate::api::{
 use crate::pages::admin::{
     repository::AdminRepository,
     utils::{
-        next_allowed_weekly_start, SubjectRequestFilterSnapshot, SubjectRequestFilterState,
-        WeeklyHolidayFormState,
+        next_allowed_weekly_start, validate_action_id, SubjectRequestFilterSnapshot,
+        SubjectRequestFilterState, WeeklyHolidayFormState,
     },
     view_model::SubjectRequestActionPayload,
 };
@@ -21,16 +21,6 @@ fn is_strict_admin(user: Option<&UserResponse>) -> bool {
 
 fn is_system_admin(user: Option<&UserResponse>) -> bool {
     user.map(|u| u.is_system_admin).unwrap_or(false)
-}
-
-fn validate_action_id(id: &str) -> Result<(), ApiError> {
-    if id.trim().is_empty() {
-        Err(ApiError::validation(rust_i18n::t!(
-            "pages.admin.validation.request_id_missing"
-        )))
-    } else {
-        Ok(())
-    }
 }
 
 #[derive(Clone)]
@@ -123,7 +113,7 @@ pub fn use_admin_settings_view_model() -> AdminSettingsViewModel {
     // Subject Requests
     let subject_request_filter = SubjectRequestFilterState::new();
     let subject_filter_state = subject_request_filter;
-    let subject_snapshot = Signal::derive(move || subject_filter_state.snapshot());
+    let subject_snapshot = create_memo(move |_| subject_filter_state.snapshot());
 
     let repo_for_subject = repo.clone();
     let reload_subject_requests = create_rw_signal(0u32);

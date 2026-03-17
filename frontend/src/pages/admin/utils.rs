@@ -2,6 +2,16 @@ use crate::api::{ApiError, CreateWeeklyHolidayRequest};
 use chrono::NaiveDate;
 use leptos::*;
 
+pub(crate) fn validate_action_id(id: &str) -> Result<(), ApiError> {
+    if id.trim().is_empty() {
+        Err(ApiError::validation(rust_i18n::t!(
+            "pages.admin.validation.request_id_missing"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct WeeklyHolidayFormState {
     weekday: RwSignal<String>,

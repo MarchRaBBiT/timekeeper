@@ -604,7 +604,6 @@ pub fn TextArea(
 ) -> impl IntoView {
     let error = Signal::derive(move || error.get());
     let has_error = move || error.get().is_some();
-    let row_count = rows.unwrap_or(3).to_string();
 
     view! {
         <div class="flex flex-col gap-1.5 w-full">
@@ -612,7 +611,7 @@ pub fn TextArea(
                 <label class="text-sm font-medium text-fg-muted">{rust_i18n::t!(key)}</label>
             })}
             <textarea
-                rows=row_count
+                rows=rows.unwrap_or(3)
                 class=move || format!(
                     "w-full rounded-lg border px-3 py-2 text-sm bg-form-control-bg \
                      text-form-control-text placeholder:text-form-control-placeholder \

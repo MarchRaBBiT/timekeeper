@@ -1,4 +1,4 @@
-use super::{repository::AdminRepository, utils::RequestFilterState};
+use super::{repository::AdminRepository, utils::{validate_action_id, RequestFilterState}};
 use crate::api::{ApiClient, ApiError, UserResponse};
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -10,16 +10,6 @@ fn is_admin_user(user: Option<&UserResponse>) -> bool {
             || user.role.eq_ignore_ascii_case("admin")
     })
     .unwrap_or(false)
-}
-
-fn validate_action_id(id: &str) -> Result<(), ApiError> {
-    if id.trim().is_empty() {
-        Err(ApiError::validation(rust_i18n::t!(
-            "pages.admin.validation.request_id_missing"
-        )))
-    } else {
-        Ok(())
-    }
 }
 
 #[derive(Clone)]
@@ -59,7 +49,7 @@ pub fn use_admin_view_model() -> AdminViewModel {
 
     let requests_filter = RequestFilterState::new();
     let filter_state_for_snapshot = requests_filter;
-    let snapshot = Signal::derive(move || filter_state_for_snapshot.snapshot());
+    let snapshot = create_memo(move |_| filter_state_for_snapshot.snapshot());
 
     let repo_for_requests = repo.clone();
     let reload_requests = create_rw_signal(0u32);
@@ -116,13 +106,8 @@ pub struct RequestActionPayload {
     pub approve: bool,
 }
 
-// Kept here for backward compatibility: subject_requests component imports this type.
-#[derive(Clone)]
-pub struct SubjectRequestActionPayload {
-    pub id: String,
-    pub comment: String,
-    pub approve: bool,
-}
+// Type alias kept for backward compatibility: subject_requests component imports this type.
+pub type SubjectRequestActionPayload = RequestActionPayload;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
