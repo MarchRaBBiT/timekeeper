@@ -659,6 +659,12 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "admin", "mfa", "reset"]) => {
             Some(event("admin_mfa_reset", "user", None))
         }
+        (&Method::POST, ["api", "admin", "bulk-import", "departments"]) => {
+            Some(event("admin_bulk_import_departments", "department", None))
+        }
+        (&Method::POST, ["api", "admin", "bulk-import", "users"]) => {
+            Some(event("admin_bulk_import_users", "user", None))
+        }
         _ => None,
     }
 }

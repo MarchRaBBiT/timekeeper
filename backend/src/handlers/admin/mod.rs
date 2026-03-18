@@ -25,6 +25,9 @@ pub use users::*;
 pub mod subject_requests;
 pub use subject_requests::*;
 
+pub mod bulk_import;
+pub use bulk_import::*;
+
 #[cfg(any(test, feature = "test-utils"))]
 #[allow(dead_code)]
 mod query_validation {
