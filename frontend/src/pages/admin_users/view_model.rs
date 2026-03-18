@@ -3,8 +3,8 @@ use super::{
     utils::{InviteFormState, MessageState},
 };
 use crate::api::{
-    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
-    DepartmentResponse, PiiProtectedResponse, UserResponse,
+    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, BulkImportResponse,
+    CreateUser, DepartmentResponse, PiiProtectedResponse, UserResponse,
 };
 use crate::state::auth::use_auth;
 use leptos::*;
@@ -46,6 +46,8 @@ pub struct AdminUsersViewModel {
     pub delete_archived_action: Action<String, Result<(), ApiError>>,
     pub is_system_admin: Memo<bool>,
     pub departments_resource: Resource<bool, Result<Vec<DepartmentResponse>, ApiError>>,
+    pub import_action: Action<String, Result<BulkImportResponse, ApiError>>,
+    pub import_messages: MessageState,
 }
 
 pub fn use_admin_users_view_model() -> AdminUsersViewModel {
@@ -198,6 +200,14 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         async move { repo.delete_archived_user(user_id).await }
     });
 
+    let import_messages = MessageState::default();
+    let repo_import = repo.clone();
+    let import_action = create_action(move |csv: &String| {
+        let repo = repo_import.clone();
+        let csv = csv.clone();
+        async move { repo.bulk_import_users(csv).await }
+    });
+
     // Effects for action success
     create_effect(move |_| {
         if let Some(result) = invite_action.value().get() {
@@ -323,6 +333,26 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         }
     });
 
+    create_effect(move |_| {
+        if let Some(result) = import_action.value().get() {
+            match result {
+                Ok(resp) => {
+                    if resp.imported > 0 {
+                        users_resource.refetch();
+                        import_messages
+                            .set_success(format!("{} 件インポートしました。", resp.imported));
+                    } else {
+                        // Validation errors — the BulkImportResponse is passed through to the UI
+                        // via import_action.value(), so no additional message is needed here.
+                    }
+                }
+                Err(err) => {
+                    import_messages.set_error(err);
+                }
+            }
+        }
+    });
+
     AdminUsersViewModel {
         invite_form,
         invite_messages,
@@ -343,6 +373,8 @@ pub fn use_admin_users_view_model() -> AdminUsersViewModel {
         delete_archived_action,
         is_system_admin,
         departments_resource,
+        import_action,
+        import_messages,
     }
 }
 
