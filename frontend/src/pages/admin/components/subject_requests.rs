@@ -11,6 +11,7 @@ use leptos::*;
 
 use crate::api::{
     ApiError, DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse,
+    UserResponse,
 };
 
 fn build_subject_action_payload(
@@ -30,6 +31,14 @@ fn build_subject_action_payload(
     })
 }
 
+fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
+    users
+        .iter()
+        .find(|u| u.id == user_id)
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| user_id.to_string())
+}
+
 fn subject_status_display(status: &str) -> String {
     match status {
         "pending" => "承認待ち".to_string(),
@@ -42,10 +51,10 @@ fn subject_status_display(status: &str) -> String {
 
 fn subject_request_detail_rows(
     request: &DataSubjectRequestResponse,
+    users: &[UserResponse],
 ) -> Vec<(&'static str, String)> {
     let mut rows: Vec<(&'static str, String)> = vec![
-        ("ID", request.id.clone()),
-        ("ユーザー ID", request.user_id.clone()),
+        ("ユーザー名", lookup_username(users, &request.user_id)),
         ("申請種別", type_label(&request.request_type).to_string()),
         (
             "ステータス",
@@ -399,10 +408,12 @@ pub fn AdminSubjectRequestsSection(
                         <h3 class="text-lg font-medium text-fg mb-2">{"本人対応申請の詳細"}</h3>
                         <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
                             {move || {
+                                let user_list =
+                                    users.get().and_then(|r| r.ok()).unwrap_or_default();
                                 modal_request
                                     .get()
                                     .map(|r| {
-                                        subject_request_detail_rows(&r)
+                                        subject_request_detail_rows(&r, &user_list)
                                             .into_iter()
                                             .map(|(label, value)| {
                                                 view! {
@@ -585,7 +596,14 @@ mod host_tests {
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
             .expect("valid datetime")
             .with_timezone(&chrono::Utc);
-        assert_eq!(format_datetime(dt), "2026-01-16 12:34");
+        // ローカル時刻変換のため値はシステム TZ に依存するが、フォーマットは固定
+        let formatted = format_datetime(dt);
+        assert_eq!(formatted.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
+        assert_eq!(&formatted[4..5], "/");
+        assert_eq!(&formatted[7..8], "/");
+        assert_eq!(&formatted[10..11], " ");
+        assert_eq!(&formatted[13..14], ":");
+        assert_eq!(&formatted[16..17], ":");
     }
 
     #[test]
@@ -609,10 +627,10 @@ mod host_tests {
     #[test]
     fn helper_subject_request_detail_rows_basic_fields() {
         let request = sample_request();
-        let rows = subject_request_detail_rows(&request);
+        let rows = subject_request_detail_rows(&request, &[]);
         let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
-        assert!(labels.contains(&"ID"));
-        assert!(labels.contains(&"ユーザー ID"));
+        assert!(!labels.contains(&"ID"), "ID は非表示");
+        assert!(labels.contains(&"ユーザー名"));
         assert!(labels.contains(&"申請種別"));
         assert!(labels.contains(&"ステータス"));
         assert!(labels.contains(&"申請日時"));
@@ -621,8 +639,36 @@ mod host_tests {
         assert_eq!(status_row.1, "承認待ち");
         let type_row = rows.iter().find(|(l, _)| *l == "申請種別").unwrap();
         assert_eq!(type_row.1, "開示");
-        let id_row = rows.iter().find(|(l, _)| *l == "ID").unwrap();
-        assert_eq!(id_row.1, "sr-1");
+        // users=[] なのでフォールバックとして user_id が表示される
+        let user_row = rows.iter().find(|(l, _)| *l == "ユーザー名").unwrap();
+        assert_eq!(user_row.1, "u1");
+        // 申請日時は YYYY/MM/DD HH:MM:SS 形式
+        let created_row = rows.iter().find(|(l, _)| *l == "申請日時").unwrap();
+        assert_eq!(created_row.1.len(), 19);
+        assert_eq!(&created_row.1[4..5], "/");
+        assert_eq!(&created_row.1[7..8], "/");
+        assert_eq!(&created_row.1[16..17], ":");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_resolves_username() {
+        use crate::api::UserResponse;
+        let users = vec![UserResponse {
+            id: "u1".into(),
+            username: "hanako".into(),
+            full_name: "Hanako".into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }];
+        let rows = subject_request_detail_rows(&sample_request(), &users);
+        let user_row = rows.iter().find(|(l, _)| *l == "ユーザー名").unwrap();
+        assert_eq!(user_row.1, "hanako");
     }
 
     #[test]
@@ -632,7 +678,7 @@ mod host_tests {
             decision_comment: Some("確認しました".to_string()),
             ..sample_request()
         };
-        let rows = subject_request_detail_rows(&request);
+        let rows = subject_request_detail_rows(&request, &[]);
         let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
         assert!(labels.contains(&"詳細"));
         assert!(labels.contains(&"決定コメント"));
@@ -643,7 +689,7 @@ mod host_tests {
     #[test]
     fn helper_subject_request_detail_rows_excludes_none_optional_fields() {
         let request = sample_request();
-        let rows = subject_request_detail_rows(&request);
+        let rows = subject_request_detail_rows(&request, &[]);
         let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
         assert!(!labels.contains(&"詳細"));
         assert!(!labels.contains(&"承認者"));
@@ -891,5 +937,8 @@ fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
 }
 
 fn format_datetime(value: DateTime<chrono::Utc>) -> String {
-    value.format("%Y-%m-%d %H:%M").to_string()
+    value
+        .with_timezone(&chrono::Local)
+        .format("%Y/%m/%d %H:%M:%S")
+        .to_string()
 }

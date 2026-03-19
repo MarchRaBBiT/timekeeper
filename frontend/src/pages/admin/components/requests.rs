@@ -1,5 +1,5 @@
 use crate::{
-    api::ApiError,
+    api::{ApiError, UserResponse},
     components::{empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
@@ -96,8 +96,7 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
 
 fn field_label(key: &str) -> &str {
     match key {
-        "id" => "ID",
-        "user_id" => "ユーザー ID",
+        "user_id" => "ユーザー名",
         "leave_type" => "休暇種別",
         "start_date" => "開始日",
         "end_date" => "終了日",
@@ -126,6 +125,36 @@ fn status_display(status: &str) -> String {
     }
 }
 
+fn is_datetime_str_field(key: &str) -> bool {
+    matches!(
+        key,
+        "approved_at" | "rejected_at" | "cancelled_at" | "created_at"
+    )
+}
+
+fn is_date_str_field(key: &str) -> bool {
+    matches!(key, "start_date" | "end_date" | "date")
+}
+
+fn format_iso_datetime(s: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| {
+            dt.with_timezone(&chrono::Local)
+                .format("%Y/%m/%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|| s.to_string())
+}
+
+fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
+    users
+        .iter()
+        .find(|u| u.id == user_id)
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| user_id.to_string())
+}
+
 fn format_field_value(key: &str, value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
@@ -133,6 +162,10 @@ fn format_field_value(key: &str, value: &Value) -> Option<String> {
         Value::String(s) => {
             if key == "status" {
                 Some(status_display(s))
+            } else if is_datetime_str_field(key) {
+                Some(format_iso_datetime(s))
+            } else if is_date_str_field(key) {
+                Some(s.replace('-', "/"))
             } else if key == "planned_hours" {
                 Some(format!("{} 時間", s))
             } else {
@@ -152,7 +185,6 @@ fn format_field_value(key: &str, value: &Value) -> Option<String> {
 }
 
 const FIELD_ORDER: &[&str] = &[
-    "id",
     "user_id",
     "leave_type",
     "start_date",
@@ -170,7 +202,7 @@ const FIELD_ORDER: &[&str] = &[
     "created_at",
 ];
 
-fn request_detail_rows(data: &Value) -> Vec<(String, String)> {
+fn request_detail_rows(data: &Value, users: &[UserResponse]) -> Vec<(String, String)> {
     let Some(obj) = data.as_object() else {
         return vec![];
     };
@@ -178,7 +210,14 @@ fn request_detail_rows(data: &Value) -> Vec<(String, String)> {
         .iter()
         .filter_map(|&key| {
             let value = obj.get(key)?;
-            let formatted = format_field_value(key, value)?;
+            let formatted = if key == "user_id" {
+                value
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(|id| lookup_username(users, id))?
+            } else {
+                format_field_value(key, value)?
+            };
             Some((field_label(key).to_string(), formatted))
         })
         .collect()
@@ -377,7 +416,9 @@ pub fn AdminRequestsSection(
                         <h3 class="text-lg font-medium text-fg mb-2">{"申請詳細"}</h3>
                         <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
                             {move || {
-                                request_detail_rows(&modal_data.get())
+                                let user_list =
+                                    users.get().and_then(|r| r.ok()).unwrap_or_default();
+                                request_detail_rows(&modal_data.get(), &user_list)
                                     .into_iter()
                                     .map(|(label, value)| {
                                         view! {
@@ -507,6 +548,7 @@ mod host_tests {
 
     #[test]
     fn helper_field_label_maps_known_and_unknown_keys() {
+        assert_eq!(field_label("user_id"), "ユーザー名");
         assert_eq!(field_label("start_date"), "開始日");
         assert_eq!(field_label("planned_hours"), "予定時間");
         assert_eq!(field_label("status"), "ステータス");
@@ -543,43 +585,95 @@ mod host_tests {
         );
         assert_eq!(format_field_value("reason", &json!(null)), None);
         assert_eq!(format_field_value("reason", &json!("")), None);
+        // date fields use slash separator
+        assert_eq!(
+            format_field_value("start_date", &json!("2025-04-01")),
+            Some("2025/04/01".to_string())
+        );
+        // datetime fields are reformatted (check format, not exact local time)
+        let dt_result = format_field_value("created_at", &json!("2025-04-01T12:30:00Z"));
+        assert!(dt_result.is_some());
+        let dt_str = dt_result.unwrap();
+        assert_eq!(dt_str.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
+        assert_eq!(&dt_str[4..5], "/");
+        assert_eq!(&dt_str[7..8], "/");
+        assert_eq!(&dt_str[10..11], " ");
+        assert_eq!(&dt_str[13..14], ":");
+        assert_eq!(&dt_str[16..17], ":");
+    }
+
+    #[test]
+    fn helper_lookup_username_resolves_or_falls_back() {
+        let users = vec![crate::api::UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice".into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }];
+        assert_eq!(lookup_username(&users, "u1"), "alice");
+        assert_eq!(lookup_username(&users, "unknown"), "unknown");
+        assert_eq!(lookup_username(&[], "u1"), "u1");
     }
 
     #[test]
     fn helper_request_detail_rows_leave() {
-        let rows = request_detail_rows(&json!({
-            "id": "req-1",
-            "user_id": "u1",
-            "leave_type": "annual",
-            "start_date": "2025-04-01",
-            "end_date": "2025-04-02",
-            "reason": null,
-            "status": "pending",
-            "created_at": "2025-03-01T10:00:00Z"
-        }));
+        let rows = request_detail_rows(
+            &json!({
+                "id": "req-1",
+                "user_id": "u1",
+                "leave_type": "annual",
+                "start_date": "2025-04-01",
+                "end_date": "2025-04-02",
+                "reason": null,
+                "status": "pending",
+                "created_at": "2025-03-01T10:00:00Z"
+            }),
+            &[],
+        );
         let labels: Vec<&str> = rows.iter().map(|(l, _)| l.as_str()).collect();
-        assert!(labels.contains(&"ID"));
+        assert!(!labels.contains(&"ID"), "ID は非表示");
+        assert!(labels.contains(&"ユーザー名"));
         assert!(labels.contains(&"開始日"));
         assert!(labels.contains(&"ステータス"));
-        assert!(!labels.contains(&"理由"), "null フィールドは除外される");
+        assert!(!labels.contains(&"理由"), "null フィールドは除外");
         let status_row = rows.iter().find(|(l, _)| l == "ステータス").unwrap();
         assert_eq!(status_row.1, "承認待ち");
+        // 日付はスラッシュ形式
+        let start_row = rows.iter().find(|(l, _)| l == "開始日").unwrap();
+        assert_eq!(start_row.1, "2025/04/01");
+        // datetime はローカル時刻 YYYY/MM/DD HH:MM:SS
+        let created_row = rows.iter().find(|(l, _)| l == "申請日時").unwrap();
+        assert_eq!(created_row.1.len(), 19);
+        assert_eq!(&created_row.1[4..5], "/");
     }
 
     #[test]
     fn helper_request_detail_rows_overtime() {
-        let rows = request_detail_rows(&json!({
-            "id": "ot-1",
-            "user_id": "u2",
-            "date": "2025-04-01",
-            "planned_hours": 3.0,
-            "status": "approved"
-        }));
+        let rows = request_detail_rows(
+            &json!({
+                "id": "ot-1",
+                "user_id": "u2",
+                "date": "2025-04-01",
+                "planned_hours": 3.0,
+                "status": "approved"
+            }),
+            &[],
+        );
         let planned = rows.iter().find(|(l, _)| l == "予定時間").unwrap();
         assert!(
             planned.1.ends_with(" 時間"),
             "予定時間は '時間' で終わること"
         );
+        // 対象日もスラッシュ形式
+        let date_row = rows.iter().find(|(l, _)| l == "対象日").unwrap();
+        assert_eq!(date_row.1, "2025/04/01");
     }
 
     #[test]
