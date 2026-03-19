@@ -8,7 +8,6 @@ use crate::{
 };
 use chrono::DateTime;
 use leptos::*;
-use serde_json::to_string_pretty;
 
 use crate::api::{
     ApiError, DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse,
@@ -31,10 +30,52 @@ fn build_subject_action_payload(
     })
 }
 
-fn modal_detail_json(request: Option<&DataSubjectRequestResponse>) -> String {
-    request
-        .and_then(|request| to_string_pretty(request).ok())
-        .unwrap_or_default()
+fn subject_status_display(status: &str) -> String {
+    match status {
+        "pending" => "承認待ち".to_string(),
+        "approved" => "承認済み".to_string(),
+        "rejected" => "却下".to_string(),
+        "cancelled" => "取消".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn subject_request_detail_rows(
+    request: &DataSubjectRequestResponse,
+) -> Vec<(&'static str, String)> {
+    let mut rows: Vec<(&'static str, String)> = vec![
+        ("ID", request.id.clone()),
+        ("ユーザー ID", request.user_id.clone()),
+        ("申請種別", type_label(&request.request_type).to_string()),
+        (
+            "ステータス",
+            subject_status_display(&request.status).to_string(),
+        ),
+    ];
+    if let Some(details) = &request.details {
+        rows.push(("詳細", details.clone()));
+    }
+    rows.push(("申請日時", format_datetime(request.created_at)));
+    rows.push(("更新日時", format_datetime(request.updated_at)));
+    if let Some(by) = &request.approved_by {
+        rows.push(("承認者", by.clone()));
+    }
+    if let Some(at) = request.approved_at {
+        rows.push(("承認日時", format_datetime(at)));
+    }
+    if let Some(by) = &request.rejected_by {
+        rows.push(("却下者", by.clone()));
+    }
+    if let Some(at) = request.rejected_at {
+        rows.push(("却下日時", format_datetime(at)));
+    }
+    if let Some(at) = request.cancelled_at {
+        rows.push(("取消日時", format_datetime(at)));
+    }
+    if let Some(comment) = &request.decision_comment {
+        rows.push(("決定コメント", comment.clone()));
+    }
+    rows
 }
 
 fn is_pending_request(request: Option<&DataSubjectRequestResponse>) -> bool {
@@ -227,8 +268,6 @@ pub fn AdminSubjectRequestsSection(
     let modal_request = create_rw_signal(None::<DataSubjectRequestResponse>);
     let modal_comment = create_rw_signal(String::new());
 
-    let modal_detail = Signal::derive(move || modal_detail_json(modal_request.get().as_ref()));
-
     let loading = resource.loading();
     let data = Signal::derive(move || resource.get().and_then(|result| result.ok()));
     let error = Signal::derive(move || resource.get().and_then(|result| result.err()));
@@ -358,7 +397,30 @@ pub fn AdminSubjectRequestsSection(
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
                         <h3 class="text-lg font-medium text-fg mb-2">{"本人対応申請の詳細"}</h3>
-                        <pre class="text-xs bg-surface-muted text-fg p-2 rounded overflow-auto max-h-64 whitespace-pre-wrap">{move || modal_detail.get()}</pre>
+                        <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
+                            {move || {
+                                modal_request
+                                    .get()
+                                    .map(|r| {
+                                        subject_request_detail_rows(&r)
+                                            .into_iter()
+                                            .map(|(label, value)| {
+                                                view! {
+                                                    <div class="flex gap-3 py-1.5 text-sm">
+                                                        <span class="text-fg-muted font-medium w-28 shrink-0">
+                                                            {label}
+                                                        </span>
+                                                        <span class="text-fg break-words min-w-0">
+                                                            {value}
+                                                        </span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default()
+                            }}
+                        </div>
                         <div class="mt-3">
                             <label class="block text-sm font-medium text-fg-muted">{"コメント"}</label>
                             <textarea
@@ -545,13 +607,57 @@ mod host_tests {
     }
 
     #[test]
-    fn helper_modal_detail_json_handles_none_and_some() {
-        assert_eq!(modal_detail_json(None), "");
-
+    fn helper_subject_request_detail_rows_basic_fields() {
         let request = sample_request();
-        let rendered = modal_detail_json(Some(&request));
-        assert!(rendered.contains("\"id\": \"sr-1\""));
-        assert!(rendered.contains("\"status\": \"pending\""));
+        let rows = subject_request_detail_rows(&request);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(labels.contains(&"ID"));
+        assert!(labels.contains(&"ユーザー ID"));
+        assert!(labels.contains(&"申請種別"));
+        assert!(labels.contains(&"ステータス"));
+        assert!(labels.contains(&"申請日時"));
+        assert!(labels.contains(&"更新日時"));
+        let status_row = rows.iter().find(|(l, _)| *l == "ステータス").unwrap();
+        assert_eq!(status_row.1, "承認待ち");
+        let type_row = rows.iter().find(|(l, _)| *l == "申請種別").unwrap();
+        assert_eq!(type_row.1, "開示");
+        let id_row = rows.iter().find(|(l, _)| *l == "ID").unwrap();
+        assert_eq!(id_row.1, "sr-1");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_optional_fields() {
+        let request = DataSubjectRequestResponse {
+            details: Some("修正希望".to_string()),
+            decision_comment: Some("確認しました".to_string()),
+            ..sample_request()
+        };
+        let rows = subject_request_detail_rows(&request);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(labels.contains(&"詳細"));
+        assert!(labels.contains(&"決定コメント"));
+        let details_row = rows.iter().find(|(l, _)| *l == "詳細").unwrap();
+        assert_eq!(details_row.1, "修正希望");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_excludes_none_optional_fields() {
+        let request = sample_request();
+        let rows = subject_request_detail_rows(&request);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(!labels.contains(&"詳細"));
+        assert!(!labels.contains(&"承認者"));
+        assert!(!labels.contains(&"却下者"));
+        assert!(!labels.contains(&"決定コメント"));
+    }
+
+    #[test]
+    fn helper_subject_status_display_translates_statuses() {
+        assert_eq!(subject_status_display("pending"), "承認待ち".to_string());
+        assert_eq!(subject_status_display("approved"), "承認済み".to_string());
+        assert_eq!(subject_status_display("rejected"), "却下".to_string());
+        assert_eq!(subject_status_display("cancelled"), "取消".to_string());
+        assert_eq!(subject_status_display("unknown"), "unknown".to_string());
     }
 
     #[test]

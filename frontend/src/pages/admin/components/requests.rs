@@ -94,6 +94,96 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
     rows
 }
 
+fn field_label(key: &str) -> &str {
+    match key {
+        "id" => "ID",
+        "user_id" => "ユーザー ID",
+        "leave_type" => "休暇種別",
+        "start_date" => "開始日",
+        "end_date" => "終了日",
+        "date" => "対象日",
+        "planned_hours" => "予定時間",
+        "reason" => "理由",
+        "status" => "ステータス",
+        "approved_by" => "承認者",
+        "approved_at" => "承認日時",
+        "rejected_by" => "却下者",
+        "rejected_at" => "却下日時",
+        "cancelled_at" => "取消日時",
+        "decision_comment" => "決定コメント",
+        "created_at" => "申請日時",
+        other => other,
+    }
+}
+
+fn status_display(status: &str) -> String {
+    match status {
+        "pending" => "承認待ち".to_string(),
+        "approved" => "承認済み".to_string(),
+        "rejected" => "却下".to_string(),
+        "cancelled" => "取消".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn format_field_value(key: &str, value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(s) if s.is_empty() => None,
+        Value::String(s) => {
+            if key == "status" {
+                Some(status_display(s))
+            } else if key == "planned_hours" {
+                Some(format!("{} 時間", s))
+            } else {
+                Some(s.clone())
+            }
+        }
+        Value::Number(n) => {
+            if key == "planned_hours" {
+                Some(format!("{} 時間", n))
+            } else {
+                Some(n.to_string())
+            }
+        }
+        Value::Bool(b) => Some(if *b { "はい" } else { "いいえ" }.to_string()),
+        _ => None,
+    }
+}
+
+const FIELD_ORDER: &[&str] = &[
+    "id",
+    "user_id",
+    "leave_type",
+    "start_date",
+    "end_date",
+    "date",
+    "planned_hours",
+    "reason",
+    "status",
+    "approved_by",
+    "approved_at",
+    "rejected_by",
+    "rejected_at",
+    "cancelled_at",
+    "decision_comment",
+    "created_at",
+];
+
+fn request_detail_rows(data: &Value) -> Vec<(String, String)> {
+    let Some(obj) = data.as_object() else {
+        return vec![];
+    };
+    FIELD_ORDER
+        .iter()
+        .filter_map(|&key| {
+            let value = obj.get(key)?;
+            let formatted = format_field_value(key, value)?;
+            Some((field_label(key).to_string(), formatted))
+        })
+        .collect()
+}
+
 fn build_request_action_payload(
     modal_data: &Value,
     comment: String,
@@ -285,7 +375,23 @@ pub fn AdminRequestsSection(
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
                         <h3 class="text-lg font-medium text-fg mb-2">{"申請詳細"}</h3>
-                        <pre class="text-xs bg-surface-muted text-fg p-2 rounded overflow-auto max-h-64">{format!("{}", modal_data.get())}</pre>
+                        <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
+                            {move || {
+                                request_detail_rows(&modal_data.get())
+                                    .into_iter()
+                                    .map(|(label, value)| {
+                                        view! {
+                                            <div class="flex gap-3 py-1.5 text-sm">
+                                                <span class="text-fg-muted font-medium w-28 shrink-0">
+                                                    {label}
+                                                </span>
+                                                <span class="text-fg break-words min-w-0">{value}</span>
+                                            </div>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                            }}
+                        </div>
                         <div class="mt-3">
                             <label class="block text-sm font-medium text-fg-muted">{"コメント（任意）"}</label>
                             <textarea
@@ -397,6 +503,83 @@ mod host_tests {
         assert_eq!(rows[0].target, "2025-01-01 - 2025-01-02");
         assert_eq!(rows[1].kind_label, "残業");
         assert_eq!(rows[1].target, "2025-01-03");
+    }
+
+    #[test]
+    fn helper_field_label_maps_known_and_unknown_keys() {
+        assert_eq!(field_label("start_date"), "開始日");
+        assert_eq!(field_label("planned_hours"), "予定時間");
+        assert_eq!(field_label("status"), "ステータス");
+        assert_eq!(field_label("decision_comment"), "決定コメント");
+        assert_eq!(field_label("unknown_key"), "unknown_key");
+    }
+
+    #[test]
+    fn helper_status_display_translates_known_values() {
+        assert_eq!(status_display("pending"), "承認待ち".to_string());
+        assert_eq!(status_display("approved"), "承認済み".to_string());
+        assert_eq!(status_display("rejected"), "却下".to_string());
+        assert_eq!(status_display("cancelled"), "取消".to_string());
+        assert_eq!(status_display("other"), "other".to_string());
+    }
+
+    #[test]
+    fn helper_format_field_value_handles_types() {
+        assert_eq!(
+            format_field_value("status", &json!("pending")),
+            Some("承認待ち".to_string())
+        );
+        assert_eq!(
+            format_field_value("reason", &json!("体調不良")),
+            Some("体調不良".to_string())
+        );
+        assert_eq!(
+            format_field_value("planned_hours", &json!(2.5)),
+            Some("2.5 時間".to_string())
+        );
+        assert_eq!(
+            format_field_value("flag", &json!(true)),
+            Some("はい".to_string())
+        );
+        assert_eq!(format_field_value("reason", &json!(null)), None);
+        assert_eq!(format_field_value("reason", &json!("")), None);
+    }
+
+    #[test]
+    fn helper_request_detail_rows_leave() {
+        let rows = request_detail_rows(&json!({
+            "id": "req-1",
+            "user_id": "u1",
+            "leave_type": "annual",
+            "start_date": "2025-04-01",
+            "end_date": "2025-04-02",
+            "reason": null,
+            "status": "pending",
+            "created_at": "2025-03-01T10:00:00Z"
+        }));
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| l.as_str()).collect();
+        assert!(labels.contains(&"ID"));
+        assert!(labels.contains(&"開始日"));
+        assert!(labels.contains(&"ステータス"));
+        assert!(!labels.contains(&"理由"), "null フィールドは除外される");
+        let status_row = rows.iter().find(|(l, _)| l == "ステータス").unwrap();
+        assert_eq!(status_row.1, "承認待ち");
+    }
+
+    #[test]
+    fn helper_request_detail_rows_overtime() {
+        let rows = request_detail_rows(&json!({
+            "id": "ot-1",
+            "user_id": "u2",
+            "date": "2025-04-01",
+            "planned_hours": 3.0,
+            "status": "approved"
+        }));
+        let planned = rows.iter().find(|(l, _)| l == "予定時間").unwrap();
+        assert!(
+            planned.1.ends_with(" 時間"),
+            "予定時間は '時間' で終わること"
+        );
     }
 
     #[test]
