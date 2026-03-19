@@ -224,6 +224,19 @@ pub async fn list_subordinate_user_ids(
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
+/// Finds all departments that share the exact name.
+pub async fn find_departments_by_name(
+    pool: &PgPool,
+    name: &str,
+) -> Result<Vec<Department>, sqlx::Error> {
+    sqlx::query_as::<_, Department>(
+        "SELECT id, name, parent_id, created_at, updated_at FROM departments WHERE name = $1",
+    )
+    .bind(name)
+    .fetch_all(pool)
+    .await
+}
+
 /// Returns true if setting `dept_id.parent_id = new_parent_id` would create a cycle.
 ///
 /// A cycle occurs when `new_parent_id` equals `dept_id` or is already a descendant of `dept_id`.

@@ -155,6 +155,8 @@
 | `/api/admin/attendance` | `GET` / `PUT` | System Admin | `GET`: Query `PaginationQuery { limit, offset }`; `PUT`: Body `AdminAttendanceUpsert { user_id, date, clock_in_time, clock_out_time?, breaks? }` | `GET 200 PaginatedResponse<AttendanceResponse>`; `PUT 200 AttendanceResponse` | `400` invalid pagination/date/time/user_id, `403` forbidden, `500` lookup/upsert failure | 全従業員勤怠の一覧取得 / 指定日の勤怠を作成・置換 |
 | `/api/admin/breaks/active` | `GET` | System Admin | なし | `200 [ActiveBreakResponse]` | `403` forbidden, `500` lookup failure | 稼働中の休憩一覧取得 |
 | `/api/admin/breaks/{id}/force-end` | `PUT` | System Admin | Path `id` | `200 BreakRecordResponse` | `400` invalid id or already ended, `403` forbidden, `404` break not found, `500` update failure | 管理者が休憩を強制終了する |
+| `/api/admin/bulk-import/departments` | `POST` | System Admin | Body `BulkImportRequest { csv_data: string }` | `200 BulkImportResponse { imported, failed, errors: [{row, message}] }` | `400` invalid headers/CSV, `403` forbidden, `500` db failure | 部署 CSV 一括インポート（全-or-なし） |
+| `/api/admin/bulk-import/users` | `POST` | System Admin | Body `BulkImportRequest { csv_data: string }` | `200 BulkImportResponse { imported, failed, errors: [{row, message}] }` | `400` invalid headers/CSV, `403` forbidden, `500` db failure | ユーザー CSV 一括インポート（全-or-なし） |
 
 ## Notes For Future Changes
 

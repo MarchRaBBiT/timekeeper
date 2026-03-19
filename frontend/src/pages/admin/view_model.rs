@@ -1,4 +1,7 @@
-use super::{repository::AdminRepository, utils::{validate_action_id, RequestFilterState}};
+use super::{
+    repository::AdminRepository,
+    utils::{validate_action_id, RequestFilterState},
+};
 use crate::api::{ApiClient, ApiError, UserResponse};
 use crate::state::auth::use_auth;
 use leptos::*;

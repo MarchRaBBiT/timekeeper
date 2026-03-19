@@ -1011,6 +1011,68 @@ impl ApiClient {
         }
     }
 
+    // ─── Bulk Import API ──────────────────────────────────────────────────────
+
+    pub async fn admin_bulk_import_departments(
+        &self,
+        csv_data: String,
+    ) -> Result<BulkImportResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let payload = BulkImportRequest { csv_data };
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!("{}/admin/bulk-import/departments", base_url))
+                    .json(&payload))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
+    pub async fn admin_bulk_import_users(
+        &self,
+        csv_data: String,
+    ) -> Result<BulkImportResponse, ApiError> {
+        let base_url = self.resolved_base_url().await;
+        let payload = BulkImportRequest { csv_data };
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .post(format!("{}/admin/bulk-import/users", base_url))
+                    .json(&payload))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|e| ApiError::unknown(format!("Failed to parse response: {}", e)))
+        } else {
+            let error: ApiError = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
     pub async fn reset_password(
         &self,
         token: String,

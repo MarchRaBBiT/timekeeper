@@ -1,6 +1,6 @@
 use crate::api::{
-    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, CreateUser,
-    DepartmentResponse, PiiProtectedResponse, UserResponse,
+    AdminSessionResponse, ApiClient, ApiError, ArchivedUserResponse, BulkImportResponse,
+    CreateUser, DepartmentResponse, PiiProtectedResponse, UserResponse,
 };
 use std::rc::Rc;
 
@@ -76,6 +76,13 @@ impl AdminUsersRepository {
 
     pub async fn fetch_departments(&self) -> Result<Vec<DepartmentResponse>, ApiError> {
         self.client.admin_list_departments().await
+    }
+
+    pub async fn bulk_import_users(
+        &self,
+        csv_data: String,
+    ) -> Result<BulkImportResponse, ApiError> {
+        self.client.admin_bulk_import_users(csv_data).await
     }
 }
 

@@ -487,6 +487,14 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             "/api/admin/departments/{id}/managers/{uid}",
             delete(handlers::admin::remove_manager_handler),
         )
+        .route(
+            "/api/admin/bulk-import/departments",
+            post(handlers::admin::import_departments),
+        )
+        .route(
+            "/api/admin/bulk-import/users",
+            post(handlers::admin::import_users),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,

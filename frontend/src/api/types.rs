@@ -517,6 +517,24 @@ pub struct MessageResponse {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkImportRequest {
+    pub csv_data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportRowError {
+    pub row: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkImportResponse {
+    pub imported: usize,
+    pub failed: usize,
+    pub errors: Vec<ImportRowError>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

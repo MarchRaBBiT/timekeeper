@@ -8,7 +8,8 @@ use leptos::*;
 use super::{
     components::{
         archived_detail::ArchivedUserDetailDrawer, archived_list::ArchivedUserList,
-        detail::UserDetailDrawer, invite_form::InviteForm, list::UserList,
+        detail::UserDetailDrawer, import_form::UserImportSection, invite_form::InviteForm,
+        list::UserList,
     },
     layout::{AdminUsersFrame, UnauthorizedAdminUsersMessage},
     view_model::UserTab,
@@ -108,6 +109,10 @@ pub fn AdminUsersPage() -> impl IntoView {
                             invite_action=vm.invite_action
                             is_system_admin=vm.is_system_admin
                             departments=vm.departments_resource
+                        />
+                        <UserImportSection
+                            import_action=vm.import_action
+                            messages=vm.import_messages
                         />
                         <UserList
                             users_resource=vm.users_resource
