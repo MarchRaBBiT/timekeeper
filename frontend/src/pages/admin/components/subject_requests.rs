@@ -219,6 +219,7 @@ fn modal_action_disabled_for_request(
 
 fn render_subject_request_rows(
     payload: Option<SubjectRequestListResponse>,
+    users: &[UserResponse],
     open_modal: Callback<DataSubjectRequestResponse>,
 ) -> Vec<View> {
     payload
@@ -231,6 +232,7 @@ fn render_subject_request_rows(
                     let created_label = format_datetime(item.created_at);
                     let type_label = type_label(&item.request_type);
                     let id = item.id.clone();
+                    let user_label = lookup_username(users, &item.user_id);
                     let open = {
                         let item = item.clone();
                         move |_| open_modal.call(item.clone())
@@ -238,7 +240,7 @@ fn render_subject_request_rows(
                     view! {
                         <tr>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{type_label}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{item.user_id}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{user_label}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-neutral-bg text-status-neutral-text">
                                     {status_label}
@@ -398,7 +400,11 @@ pub fn AdminSubjectRequestsSection(
                     </thead>
                     <tbody class="bg-surface-elevated divide-y divide-border">
                         <Show when=move || data.get().is_some()>
-                                {move || render_subject_request_rows(data.get(), open_modal)}
+                                {move || {
+                                    let user_list =
+                                        users.get().and_then(|r| r.ok()).unwrap_or_default();
+                                    render_subject_request_rows(data.get(), &user_list, open_modal)
+                                }}
                         </Show>
                     </tbody>
                 </table>
@@ -510,7 +516,10 @@ mod host_tests {
         }
     }
 
-    fn render_with_items(items: Vec<DataSubjectRequestResponse>) -> String {
+    fn render_with_items(
+        items: Vec<DataSubjectRequestResponse>,
+        users_data: Vec<UserResponse>,
+    ) -> String {
         render_to_string(move || {
             let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             let filter = SubjectRequestFilterState::new();
@@ -532,6 +541,7 @@ mod host_tests {
                 total,
                 items,
             }));
+            users.set(Ok(users_data));
             let action = create_action(|_: &SubjectRequestActionPayload| async move { Ok(()) });
             let action_error = create_rw_signal(None::<ApiError>);
             let reload = create_rw_signal(0u32);
@@ -550,29 +560,46 @@ mod host_tests {
 
     #[test]
     fn subject_requests_renders_empty() {
-        let html = render_with_items(Vec::new());
+        let html = render_with_items(Vec::new(), Vec::new());
         assert!(html.contains("本人対応申請"));
     }
 
     #[test]
     fn subject_requests_renders_row() {
-        let html = render_with_items(vec![DataSubjectRequestResponse {
-            id: "sr-1".into(),
-            user_id: "u1".into(),
-            request_type: DataSubjectRequestType::Access,
-            status: "pending".into(),
-            details: None,
-            approved_by: None,
-            approved_at: None,
-            rejected_by: None,
-            rejected_at: None,
-            cancelled_at: None,
-            decision_comment: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }]);
+        let html = render_with_items(
+            vec![DataSubjectRequestResponse {
+                id: "sr-1".into(),
+                user_id: "u1".into(),
+                request_type: DataSubjectRequestType::Access,
+                status: "pending".into(),
+                details: None,
+                approved_by: None,
+                approved_at: None,
+                rejected_by: None,
+                rejected_at: None,
+                cancelled_at: None,
+                decision_comment: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            }],
+            vec![UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice Example".into(),
+                role: "employee".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            }],
+        );
         assert!(html.contains("開示"));
         assert!(html.contains("pending"));
+        assert!(html.contains("alice"));
+        assert!(!html.contains(">u1<"));
     }
 
     #[test]
@@ -653,7 +680,6 @@ mod host_tests {
 
     #[test]
     fn helper_subject_request_detail_rows_resolves_username() {
-        use crate::api::UserResponse;
         let users = vec![UserResponse {
             id: "u1".into(),
             username: "hanako".into(),
@@ -909,6 +935,7 @@ mod host_tests {
                     total: 1,
                     items: vec![sample_request()],
                 }),
+                &[],
                 Callback::new(|_: DataSubjectRequestResponse| {}),
             );
             assert_eq!(rows.len(), 1);
@@ -919,6 +946,7 @@ mod host_tests {
             assert!(html.contains("sr-1"));
             assert!(render_subject_request_rows(
                 None,
+                &[],
                 Callback::new(|_: DataSubjectRequestResponse| {})
             )
             .is_empty());

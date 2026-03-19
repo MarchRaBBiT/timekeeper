@@ -95,6 +95,14 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
     rows
 }
 
+fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
+    users
+        .iter()
+        .find(|u| u.id == user_id)
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| user_id.to_string())
+}
+
 fn field_label(key: &str) -> &str {
     match key {
         "user_id" => "ユーザー名",
@@ -142,14 +150,6 @@ fn format_iso_datetime(s: &str) -> String {
         .ok()
         .map(|dt| format_in_app_tz(dt.with_timezone(&chrono::Utc)))
         .unwrap_or_else(|| s.to_string())
-}
-
-fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
-    users
-        .iter()
-        .find(|u| u.id == user_id)
-        .map(|u| u.username.clone())
-        .unwrap_or_else(|| user_id.to_string())
 }
 
 fn format_user_field_value(users: &[UserResponse], value: &Value) -> Option<String> {
@@ -367,6 +367,7 @@ pub fn AdminRequestsSection(
                         <Show when=move || requests_data.get().is_object()>
                             {let data = requests_data.get();
                                 let rows = flatten_request_rows(&data);
+                                let user_list = users.get().and_then(|r| r.ok()).unwrap_or_default();
                                 if rows.is_empty() {
                                     view! {
                                         <tr>
@@ -384,6 +385,7 @@ pub fn AdminRequestsSection(
                                         let data = row.data.clone();
                                         let statusv = row.status.clone();
                                         let user = row.user_id.clone();
+                                        let user_label = lookup_username(&user_list, &user);
                                         let target = row.target.clone();
                                         let open = {
                                             let data = data.clone();
@@ -394,7 +396,7 @@ pub fn AdminRequestsSection(
                                             <tr>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{kind_label}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{target.clone()}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{user.clone()}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{user_label}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-neutral-bg text-status-neutral-text">
                                                         {statusv.clone()}
@@ -475,7 +477,23 @@ mod host_tests {
     use super::*;
     use crate::test_support::ssr::render_to_string;
 
-    fn render_with_data(data: Value) -> String {
+    fn sample_user(id: &str, username: &str, full_name: &str) -> UserResponse {
+        UserResponse {
+            id: id.into(),
+            username: username.into(),
+            full_name: full_name.into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }
+    }
+
+    fn render_with_data(data: Value, users_data: Vec<UserResponse>) -> String {
         render_to_string(move || {
             let users = Resource::new(|| true, |_| async move { Ok(Vec::new()) });
             let filter = RequestFilterState::new();
@@ -484,6 +502,7 @@ mod host_tests {
                 |_| async move { Ok(Value::Null) },
             );
             resource.set(Ok(data.clone()));
+            users.set(Ok(users_data));
             let action = create_action(|_: &RequestActionPayload| async move { Ok(()) });
             let action_error = create_rw_signal(None::<ApiError>);
             let reload = create_rw_signal(0u32);
@@ -502,27 +521,35 @@ mod host_tests {
 
     #[test]
     fn admin_requests_section_renders_empty_state() {
-        let html = render_with_data(json!({
-            "leave_requests": [],
-            "overtime_requests": []
-        }));
+        let html = render_with_data(
+            json!({
+                "leave_requests": [],
+                "overtime_requests": []
+            }),
+            Vec::new(),
+        );
         assert!(html.contains("申請がありません"));
     }
 
     #[test]
     fn admin_requests_section_renders_rows() {
-        let html = render_with_data(json!({
-            "leave_requests": [{
-                "id": "req-1",
-                "user_id": "u1",
-                "status": "pending",
-                "start_date": "2025-01-01",
-                "end_date": "2025-01-02"
-            }],
-            "overtime_requests": []
-        }));
+        let html = render_with_data(
+            json!({
+                "leave_requests": [{
+                    "id": "req-1",
+                    "user_id": "u1",
+                    "status": "pending",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-02"
+                }],
+                "overtime_requests": []
+            }),
+            vec![sample_user("u1", "alice", "Alice Example")],
+        );
         assert!(html.contains("休暇"));
         assert!(html.contains("pending"));
+        assert!(html.contains("alice"));
+        assert!(!html.contains(">u1<"));
     }
 
     #[test]
