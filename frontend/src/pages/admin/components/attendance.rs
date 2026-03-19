@@ -10,7 +10,7 @@ use crate::{
         repository::AdminRepository,
     },
 };
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use leptos::{ev, *};
 
 type ActiveBreaksResource = Resource<u64, Result<Vec<ActiveBreakResponse>, ApiError>>;
@@ -23,17 +23,25 @@ fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
     }
 }
 
-fn build_break_items(raw_breaks: Vec<(String, String)>) -> Vec<AdminBreakItem> {
+fn parse_time_local(input: &str) -> Option<NaiveTime> {
+    if input.len() == 5 {
+        NaiveTime::parse_from_str(input, "%H:%M").ok()
+    } else {
+        NaiveTime::parse_from_str(input, "%H:%M:%S").ok()
+    }
+}
+
+fn build_break_items(date: NaiveDate, raw_breaks: Vec<(String, String)>) -> Vec<AdminBreakItem> {
     let mut break_items: Vec<AdminBreakItem> = vec![];
     for (start, end) in raw_breaks {
         if start.trim().is_empty() {
             continue;
         }
-        let start_dt = parse_dt_local(&start);
+        let start_dt = parse_time_local(start.trim()).map(|time| date.and_time(time));
         let end_dt = if end.trim().is_empty() {
             None
         } else {
-            parse_dt_local(&end)
+            parse_time_local(end.trim()).map(|time| date.and_time(time))
         };
         if let Some(start_dt) = start_dt {
             break_items.push(AdminBreakItem {
@@ -67,7 +75,7 @@ fn build_attendance_payload(
     } else {
         parse_dt_local(clock_out_raw.trim())
     };
-    let break_items = build_break_items(raw_breaks);
+    let break_items = build_break_items(date, raw_breaks);
     Ok(AdminAttendanceUpsert {
         user_id: user_id.to_string(),
         date,
@@ -121,6 +129,12 @@ fn append_empty_break_row(rows: &mut Vec<(String, String)>) {
     rows.push((String::new(), String::new()));
 }
 
+fn remove_break_row(rows: &mut Vec<(String, String)>, idx: usize) {
+    if idx < rows.len() {
+        rows.remove(idx);
+    }
+}
+
 fn break_start_value(rows: &[(String, String)], idx: usize) -> String {
     rows.get(idx).map(|item| item.0.clone()).unwrap_or_default()
 }
@@ -169,6 +183,10 @@ fn prepare_force_break_submission(
 
 fn add_break_row_signal(breaks: RwSignal<Vec<(String, String)>>) {
     breaks.update(append_empty_break_row);
+}
+
+fn remove_break_row_signal(breaks: RwSignal<Vec<(String, String)>>, idx: usize) {
+    breaks.update(|list| remove_break_row(list, idx));
 }
 
 async fn upsert_attendance_with_repo(
@@ -428,10 +446,9 @@ pub fn AdminAttendanceToolsSection(
                     />
                     <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_in, event_target_value(&ev)) />
                     <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_out, event_target_value(&ev)) />
-                    <div>
-                        <div class="flex items-center justify-between mb-1">
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
                             <span class="text-sm text-fg-muted">{"休憩（任意）"}</span>
-                            <button type="button" class="text-link hover:text-link-hover text-sm" on:click=add_break>{"行を追加"}</button>
                         </div>
                         <For
                             each=move || breaks.get().into_iter().enumerate()
@@ -457,14 +474,50 @@ pub fn AdminAttendanceToolsSection(
                                         update_break_end_signal(breaks, idx, event_target_value(&ev));
                                     }
                                 };
+                                let on_remove = {
+                                    let breaks = breaks;
+                                    move |_| remove_break_row_signal(breaks, idx)
+                                };
                                 view! {
-                                    <div class="flex space-x-2 mb-2">
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=start_value on:input=on_start />
-                                        <input type="datetime-local" class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 w-full" prop:value=end_value on:input=on_end />
+                                    <div class="grid grid-cols-1 gap-2 rounded-xl border border-border bg-surface-muted p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                                        <label class="space-y-1">
+                                            <span class="block text-xs font-medium text-fg-muted">{"休憩開始"}</span>
+                                            <input
+                                                type="time"
+                                                step="60"
+                                                class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-2"
+                                                prop:value=start_value
+                                                on:input=on_start
+                                            />
+                                        </label>
+                                        <label class="space-y-1">
+                                            <span class="block text-xs font-medium text-fg-muted">{"休憩終了"}</span>
+                                            <input
+                                                type="time"
+                                                step="60"
+                                                class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-2"
+                                                prop:value=end_value
+                                                on:input=on_end
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            class="justify-self-start rounded border border-form-control-border px-3 py-2 text-sm text-fg hover:bg-action-ghost-bg-hover sm:justify-self-end"
+                                            on:click=on_remove
+                                        >
+                                            {"削除"}
+                                        </button>
                                     </div>
                                 }
                             }
                         />
+                        <button
+                            type="button"
+                            class="inline-flex items-center gap-2 rounded border border-form-control-border px-3 py-2 text-sm text-link hover:text-link-hover hover:bg-action-ghost-bg-hover"
+                            on:click=add_break
+                        >
+                            {"休憩追加"}
+                        </button>
                     </div>
                     <button
                         type="submit"
@@ -584,15 +637,26 @@ mod host_tests {
 
     #[test]
     fn helper_build_break_items_skips_blank_and_invalid_rows() {
-        let items = build_break_items(vec![
-            ("".into(), "2025-01-01T13:00".into()),
-            ("invalid".into(), "".into()),
-            ("2025-01-01T12:00".into(), "invalid".into()),
-            ("2025-01-01T15:00".into(), "2025-01-01T15:30".into()),
-        ]);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("date");
+        let items = build_break_items(
+            date,
+            vec![
+                ("".into(), "13:00".into()),
+                ("invalid".into(), "".into()),
+                ("12:00".into(), "invalid".into()),
+                ("15:00".into(), "15:30".into()),
+            ],
+        );
         assert_eq!(items.len(), 2);
         assert!(items[0].break_end_time.is_none());
         assert!(items[1].break_end_time.is_some());
+        assert_eq!(
+            items[1].break_start_time,
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+                .expect("date")
+                .and_hms_opt(15, 0, 0)
+                .expect("time")
+        );
     }
 
     #[test]
@@ -614,7 +678,7 @@ mod host_tests {
             "2025-01-01T09:00",
             "2025-01-01T18:00",
             vec![
-                ("2025-01-01T12:00".into(), "2025-01-01T13:00".into()),
+                ("12:00".into(), "13:00".into()),
                 ("".into(), "".into()),
                 ("invalid".into(), "".into()),
             ],
@@ -623,6 +687,27 @@ mod host_tests {
         assert_eq!(payload.user_id, "u1");
         assert_eq!(payload.date.to_string(), "2025-01-01");
         assert_eq!(payload.breaks.as_ref().map(|v| v.len()), Some(1));
+        let break_item = payload
+            .breaks
+            .as_ref()
+            .and_then(|v| v.first())
+            .expect("break");
+        assert_eq!(
+            break_item.break_start_time,
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+                .expect("date")
+                .and_hms_opt(12, 0, 0)
+                .expect("time")
+        );
+        assert_eq!(
+            break_item.break_end_time,
+            Some(
+                NaiveDate::from_ymd_opt(2025, 1, 1)
+                    .expect("date")
+                    .and_hms_opt(13, 0, 0)
+                    .expect("time")
+            )
+        );
     }
 
     #[test]
@@ -717,21 +802,25 @@ mod host_tests {
 
     #[test]
     fn helper_break_row_access_and_update_cover_paths() {
-        let mut rows = vec![(
-            "2025-01-01T12:00".to_string(),
-            "2025-01-01T13:00".to_string(),
-        )];
+        let mut rows = vec![("12:00".to_string(), "13:00".to_string())];
         append_empty_break_row(&mut rows);
         assert_eq!(rows.len(), 2);
-        assert_eq!(break_start_value(&rows, 0), "2025-01-01T12:00");
-        assert_eq!(break_end_value(&rows, 0), "2025-01-01T13:00");
+        assert_eq!(break_start_value(&rows, 0), "12:00");
+        assert_eq!(break_end_value(&rows, 0), "13:00");
         assert_eq!(break_start_value(&rows, 9), "");
         assert_eq!(break_end_value(&rows, 9), "");
 
-        update_break_start(&mut rows, 1, "2025-01-01T14:00".to_string());
-        update_break_end(&mut rows, 1, "2025-01-01T14:30".to_string());
-        assert_eq!(rows[1].0, "2025-01-01T14:00");
-        assert_eq!(rows[1].1, "2025-01-01T14:30");
+        update_break_start(&mut rows, 1, "14:00".to_string());
+        update_break_end(&mut rows, 1, "14:30".to_string());
+        assert_eq!(rows[1].0, "14:00");
+        assert_eq!(rows[1].1, "14:30");
+
+        remove_break_row(&mut rows, 0);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "14:00");
+        assert_eq!(rows[0].1, "14:30");
+        remove_break_row(&mut rows, 99);
+        assert_eq!(rows.len(), 1);
     }
 
     #[test]
@@ -777,17 +866,17 @@ mod host_tests {
             add_break_row_signal(breaks_signal);
             assert_eq!(breaks_signal.get().len(), 1);
 
-            update_break_start_signal(breaks_signal, 0, "2025-01-01T12:00".to_string());
-            update_break_end_signal(breaks_signal, 0, "2025-01-01T12:30".to_string());
-            assert_eq!(
-                break_start_value(&breaks_signal.get(), 0),
-                "2025-01-01T12:00"
-            );
-            assert_eq!(break_end_value(&breaks_signal.get(), 0), "2025-01-01T12:30");
+            update_break_start_signal(breaks_signal, 0, "12:00".to_string());
+            update_break_end_signal(breaks_signal, 0, "12:30".to_string());
+            assert_eq!(break_start_value(&breaks_signal.get(), 0), "12:00");
+            assert_eq!(break_end_value(&breaks_signal.get(), 0), "12:30");
 
             update_break_start_signal(breaks_signal, 99, "ignored".to_string());
             update_break_end_signal(breaks_signal, 99, "ignored".to_string());
             assert_eq!(breaks_signal.get().len(), 1);
+
+            remove_break_row_signal(breaks_signal, 0);
+            assert_eq!(breaks_signal.get().len(), 0);
 
             let text_signal = create_rw_signal(String::new());
             set_input_signal(text_signal, "updated".to_string());
@@ -969,6 +1058,7 @@ mod host_tests {
             view! { <AdminAttendanceToolsSection repository=repo system_admin_allowed=allowed users=users /> }
         });
         assert!(html.contains("勤怠ツール"));
+        assert!(html.contains("休憩追加"));
     }
 
     #[test]
