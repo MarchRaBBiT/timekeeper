@@ -9,7 +9,11 @@ use timekeeper_backend::{
     handlers::admin::bulk_import::{import_departments, import_users},
     models::user::{User, UserRole},
     state::AppState,
-    types::DepartmentId,
+    types::{DepartmentId, UserId},
+    utils::{
+        encryption::{encrypt_pii, hash_email},
+        password::hash_password,
+    },
 };
 use tower::ServiceExt;
 
@@ -105,7 +109,7 @@ async fn import_departments_unknown_parent() {
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
     let sysadmin = seed_user(&pool, UserRole::Employee, true).await;
-    let app = import_router(pool, sysadmin);
+    let app = import_router(pool.clone(), sysadmin);
 
     let csv = "name,parent_name\nOrphanDept,NonExistentParent\n";
     let (status, json) = post_json(
@@ -124,6 +128,51 @@ async fn import_departments_unknown_parent() {
         .as_str()
         .unwrap()
         .contains("NonExistentParent"));
+}
+
+#[tokio::test]
+async fn import_departments_ambiguous_parent_name() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let parent1 = DepartmentId::new().to_string();
+    let parent2 = DepartmentId::new().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&parent1)
+        .bind("SharedParent")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&parent2)
+        .bind("SharedParent")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let sysadmin = seed_user(&pool, UserRole::Employee, true).await;
+    let app = import_router(pool.clone(), sysadmin);
+
+    let csv = "name,parent_name\nChildDept,SharedParent\n";
+    let (status, json) = post_json(
+        app,
+        "/api/admin/bulk-import/departments",
+        serde_json::json!({ "csv_data": csv }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["imported"], 0);
+    let errors = json["errors"].as_array().unwrap();
+    assert!(errors
+        .iter()
+        .any(|e| e["message"].as_str().unwrap().contains("ambiguous")));
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM departments WHERE name = 'ChildDept'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 0);
 }
 
 #[tokio::test]
@@ -273,19 +322,82 @@ async fn import_users_invalid_role() {
 }
 
 #[tokio::test]
+async fn import_users_reuses_create_user_validation() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+    let sysadmin = seed_user(&pool, UserRole::Employee, true).await;
+    let app = import_router(pool.clone(), sysadmin);
+
+    let csv = concat!(
+        "username,password,full_name,email,role,is_system_admin,department_name\n",
+        "bad username,SecurePass1!,Bad Username,bad@@example.com,employee,false,\n",
+    );
+    let (status, json) = post_json(
+        app,
+        "/api/admin/bulk-import/users",
+        serde_json::json!({ "csv_data": csv }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["imported"], 0);
+    let errors = json["errors"].as_array().unwrap();
+    assert!(errors
+        .iter()
+        .any(|e| e["message"].as_str().unwrap().contains("username:")));
+    assert!(errors
+        .iter()
+        .any(|e| e["message"].as_str().unwrap().contains("email:")));
+
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM users WHERE username = 'bad username'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count.0, 0);
+}
+
+#[tokio::test]
 async fn import_users_existing_username() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
-    let existing = seed_user(&pool, UserRole::Employee, false).await;
+    let existing_username = "existing_user".to_string();
+    let existing_email = "existing_user@example.com".to_string();
+    let existing_password_hash = hash_password("SecurePass1!").unwrap();
+    let config = test_config();
+    let full_name_enc = encrypt_pii("Existing User", &config).unwrap();
+    let email_enc = encrypt_pii(&existing_email, &config).unwrap();
+    let email_hash = hash_email(&existing_email, &config);
+    let existing_id = UserId::new().to_string();
+    sqlx::query(
+        "INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin, \
+         mfa_secret_enc, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, \
+         lockout_count, department_id, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NOW(), 0, NULL, NULL, 0, NULL, NOW(), NOW())",
+    )
+    .bind(&existing_id)
+    .bind(&existing_username)
+    .bind(&existing_password_hash)
+    .bind(&full_name_enc)
+    .bind(&email_enc)
+    .bind(&email_hash)
+    .bind("employee")
+    .bind(false)
+    .execute(&pool)
+    .await
+    .unwrap();
+
     let sysadmin = seed_user(&pool, UserRole::Employee, true).await;
     let app = import_router(pool, sysadmin);
 
     let csv = format!(
         "username,password,full_name,email,role,is_system_admin,department_name\n\
          {},SecurePass1!,Dup User,dupimport@example.com,employee,false,\n",
-        existing.username
+        existing_username
     );
     let (status, json) = post_json(
         app,
@@ -298,11 +410,11 @@ async fn import_users_existing_username() {
     assert_eq!(json["imported"], 0);
     assert!(json["failed"].as_i64().unwrap() > 0);
     let errors = json["errors"].as_array().unwrap();
-    assert!(errors[0]["message"]
+    assert!(errors.iter().any(|e| e["message"]
         .as_str()
         .unwrap()
         .to_lowercase()
-        .contains("already exists"));
+        .contains("already exists")));
 }
 
 #[tokio::test]

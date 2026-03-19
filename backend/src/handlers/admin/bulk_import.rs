@@ -4,10 +4,11 @@ use axum::{extract::State, Extension, Json};
 use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use validator::Validate;
 
 use crate::{
     error::AppError,
-    models::user::{User, UserRole},
+    models::user::{CreateUser, User, UserRole},
     repositories::{department as dept_repo, user as user_repo},
     state::AppState,
     types::{DepartmentId, UserId},
@@ -33,6 +34,18 @@ pub struct BulkImportResponse {
     pub imported: usize,
     pub failed: usize,
     pub errors: Vec<ImportRowError>,
+}
+
+fn validation_errors_to_messages(errors: validator::ValidationErrors) -> Vec<String> {
+    errors
+        .field_errors()
+        .into_iter()
+        .flat_map(|(field, field_errors)| {
+            field_errors
+                .iter()
+                .map(move |error| format!("{}: {}", field, error.code.as_ref()))
+        })
+        .collect()
 }
 
 pub async fn import_departments(
@@ -82,6 +95,7 @@ pub async fn import_departments(
 
     let mut errors: Vec<ImportRowError> = Vec::new();
     let mut csv_names: HashSet<String> = HashSet::new();
+    let mut resolved_parent_ids: HashMap<String, String> = HashMap::new();
 
     // Phase 1: name validation and CSV duplicate check
     for (i, (name, _)) in raw_rows.iter().enumerate() {
@@ -106,17 +120,29 @@ pub async fn import_departments(
             continue;
         }
         if !parent_name.is_empty() && !csv_names.contains(parent_name.as_str()) {
-            let found = dept_repo::find_department_by_name(&state.write_pool, parent_name)
-                .await
-                .map_err(|e| AppError::InternalServerError(e.into()))?;
-            if found.is_none() {
-                errors.push(ImportRowError {
-                    row: row_num,
-                    message: format!(
-                        "Parent department '{}' not found in CSV or database",
-                        parent_name
-                    ),
-                });
+            if !resolved_parent_ids.contains_key(parent_name) {
+                let matches = dept_repo::find_departments_by_name(&state.write_pool, parent_name)
+                    .await
+                    .map_err(|e| AppError::InternalServerError(e.into()))?;
+                match matches.as_slice() {
+                    [] => errors.push(ImportRowError {
+                        row: row_num,
+                        message: format!(
+                            "Parent department '{}' not found in CSV or database",
+                            parent_name
+                        ),
+                    }),
+                    [dept] => {
+                        resolved_parent_ids.insert(parent_name.clone(), dept.id.to_string());
+                    }
+                    _ => errors.push(ImportRowError {
+                        row: row_num,
+                        message: format!(
+                            "Parent department '{}' is ambiguous; multiple departments match",
+                            parent_name
+                        ),
+                    }),
+                }
             }
         }
     }
@@ -189,25 +215,10 @@ pub async fn import_departments(
         }));
     }
 
-    // Pre-fetch DB parent IDs to avoid holding a pool connection inside the transaction
     let rows_map: HashMap<String, String> = raw_rows
         .iter()
         .map(|(name, parent)| (name.clone(), parent.clone()))
         .collect();
-    let mut db_parent_ids: HashMap<String, String> = HashMap::new();
-    for parent_name in rows_map.values() {
-        if !parent_name.is_empty()
-            && !csv_names.contains(parent_name.as_str())
-            && !db_parent_ids.contains_key(parent_name)
-        {
-            let dept = dept_repo::find_department_by_name(&state.write_pool, parent_name)
-                .await
-                .map_err(|e| AppError::InternalServerError(e.into()))?;
-            if let Some(d) = dept {
-                db_parent_ids.insert(parent_name.clone(), d.id.to_string());
-            }
-        }
-    }
 
     // Phase 4: Insert in topological order within a transaction
     let mut tx = state
@@ -224,7 +235,7 @@ pub async fn import_departments(
         } else if let Some(id) = inserted_ids.get(parent_name) {
             Some(id.clone())
         } else {
-            db_parent_ids.get(parent_name).cloned()
+            resolved_parent_ids.get(parent_name).cloned()
         };
 
         let new_id = DepartmentId::new().to_string();
@@ -340,6 +351,7 @@ pub async fn import_users(
     let mut errors: Vec<ImportRowError> = Vec::new();
     let mut csv_usernames: HashSet<String> = HashSet::new();
     let mut csv_emails: HashSet<String> = HashSet::new();
+    let mut resolved_department_ids: HashMap<String, String> = HashMap::new();
     let mut validated: Vec<Option<ValidRow>> = Vec::with_capacity(raw_rows.len());
 
     for (i, row) in raw_rows.iter().enumerate() {
@@ -423,12 +435,37 @@ pub async fn import_users(
                 message: "password must not be empty".into(),
             });
             row_ok = false;
-        } else if let Err(e) = validate_password_complexity(&row.password, &state.config) {
-            errors.push(ImportRowError {
-                row: row_num,
-                message: format!("Password policy violation: {}", e),
-            });
-            row_ok = false;
+        }
+
+        if row_ok {
+            let create_user_payload = CreateUser {
+                username: row.username.clone(),
+                password: row.password.clone(),
+                full_name: row.full_name.clone(),
+                email: row.email.clone(),
+                role: role.clone(),
+                is_system_admin,
+                department_id: None,
+            };
+            if let Err(validation_errors) = create_user_payload.validate() {
+                for message in validation_errors_to_messages(validation_errors) {
+                    errors.push(ImportRowError {
+                        row: row_num,
+                        message,
+                    });
+                }
+                row_ok = false;
+            }
+        }
+
+        if row_ok {
+            if let Err(e) = validate_password_complexity(&row.password, &state.config) {
+                errors.push(ImportRowError {
+                    row: row_num,
+                    message: format!("Password policy violation: {}", e),
+                });
+                row_ok = false;
+            }
         }
 
         if row_ok {
@@ -481,22 +518,45 @@ pub async fn import_users(
         }
 
         if !row.department_name.is_empty() {
-            match dept_repo::find_department_by_name(&state.write_pool, &row.department_name).await
+            let department_id = if let Some(id) =
+                resolved_department_ids.get(&row.department_name).cloned()
             {
-                Ok(Some(dept)) => {
-                    if let Some(ref mut v) = validated[i] {
-                        v.department_id = Some(dept.id.to_string());
+                Some(id)
+            } else {
+                let matches =
+                    dept_repo::find_departments_by_name(&state.write_pool, &row.department_name)
+                        .await
+                        .map_err(|e| AppError::InternalServerError(e.into()))?;
+                match matches.as_slice() {
+                    [] => {
+                        errors.push(ImportRowError {
+                            row: row_num,
+                            message: format!("Department '{}' not found", row.department_name),
+                        });
+                        validated[i] = None;
+                        continue;
+                    }
+                    [dept] => {
+                        let id = dept.id.to_string();
+                        resolved_department_ids.insert(row.department_name.clone(), id.clone());
+                        Some(id)
+                    }
+                    _ => {
+                        errors.push(ImportRowError {
+                            row: row_num,
+                            message: format!(
+                                "Department '{}' is ambiguous; multiple departments match",
+                                row.department_name
+                            ),
+                        });
+                        validated[i] = None;
+                        continue;
                     }
                 }
-                Ok(None) => {
-                    errors.push(ImportRowError {
-                        row: row_num,
-                        message: format!("Department '{}' not found", row.department_name),
-                    });
-                    validated[i] = None;
-                    continue;
-                }
-                Err(e) => return Err(AppError::InternalServerError(e.into())),
+            };
+
+            if let Some(ref mut v) = validated[i] {
+                v.department_id = department_id;
             }
         }
     }
