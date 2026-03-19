@@ -67,13 +67,13 @@ fn subject_request_detail_rows(
     rows.push(("申請日時", format_datetime(request.created_at)));
     rows.push(("更新日時", format_datetime(request.updated_at)));
     if let Some(by) = &request.approved_by {
-        rows.push(("承認者", by.clone()));
+        rows.push(("承認者", lookup_username(users, by)));
     }
     if let Some(at) = request.approved_at {
         rows.push(("承認日時", format_datetime(at)));
     }
     if let Some(by) = &request.rejected_by {
-        rows.push(("却下者", by.clone()));
+        rows.push(("却下者", lookup_username(users, by)));
     }
     if let Some(at) = request.rejected_at {
         rows.push(("却下日時", format_datetime(at)));
@@ -596,7 +596,7 @@ mod host_tests {
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
             .expect("valid datetime")
             .with_timezone(&chrono::Utc);
-        // ローカル時刻変換のため値はシステム TZ に依存するが、フォーマットは固定
+        // UTC 固定のため値は安定し、フォーマットは固定
         let formatted = format_datetime(dt);
         assert_eq!(formatted.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
         assert_eq!(&formatted[4..5], "/");
@@ -674,16 +674,52 @@ mod host_tests {
     #[test]
     fn helper_subject_request_detail_rows_optional_fields() {
         let request = DataSubjectRequestResponse {
+            approved_by: Some("u1".to_string()),
+            rejected_by: Some("u2".to_string()),
             details: Some("修正希望".to_string()),
             decision_comment: Some("確認しました".to_string()),
             ..sample_request()
         };
-        let rows = subject_request_detail_rows(&request, &[]);
+        let users = vec![
+            UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice".into(),
+                role: "employee".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+            UserResponse {
+                id: "u2".into(),
+                username: "bob".into(),
+                full_name: "Bob".into(),
+                role: "manager".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+        ];
+        let rows = subject_request_detail_rows(&request, &users);
         let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
         assert!(labels.contains(&"詳細"));
         assert!(labels.contains(&"決定コメント"));
+        assert!(labels.contains(&"承認者"));
+        assert!(labels.contains(&"却下者"));
         let details_row = rows.iter().find(|(l, _)| *l == "詳細").unwrap();
         assert_eq!(details_row.1, "修正希望");
+        let approved_row = rows.iter().find(|(l, _)| *l == "承認者").unwrap();
+        let rejected_row = rows.iter().find(|(l, _)| *l == "却下者").unwrap();
+        assert_eq!(approved_row.1, "alice");
+        assert_eq!(rejected_row.1, "bob");
     }
 
     #[test]
@@ -938,7 +974,7 @@ fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
 
 fn format_datetime(value: DateTime<chrono::Utc>) -> String {
     value
-        .with_timezone(&chrono::Local)
+        .with_timezone(&chrono::Utc)
         .format("%Y/%m/%d %H:%M:%S")
         .to_string()
 }

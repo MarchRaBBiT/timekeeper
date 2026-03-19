@@ -140,7 +140,7 @@ fn format_iso_datetime(s: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| {
-            dt.with_timezone(&chrono::Local)
+            dt.with_timezone(&chrono::Utc)
                 .format("%Y/%m/%d %H:%M:%S")
                 .to_string()
         })
@@ -153,6 +153,13 @@ fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
         .find(|u| u.id == user_id)
         .map(|u| u.username.clone())
         .unwrap_or_else(|| user_id.to_string())
+}
+
+fn format_user_field_value(users: &[UserResponse], value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|user_id| lookup_username(users, user_id))
 }
 
 fn format_field_value(key: &str, value: &Value) -> Option<String> {
@@ -211,10 +218,9 @@ fn request_detail_rows(data: &Value, users: &[UserResponse]) -> Vec<(String, Str
         .filter_map(|&key| {
             let value = obj.get(key)?;
             let formatted = if key == "user_id" {
-                value
-                    .as_str()
-                    .filter(|s| !s.is_empty())
-                    .map(|id| lookup_username(users, id))?
+                format_user_field_value(users, value)?
+            } else if key == "approved_by" || key == "rejected_by" {
+                format_user_field_value(users, value)?
             } else {
                 format_field_value(key, value)?
             };
@@ -623,6 +629,56 @@ mod host_tests {
     }
 
     #[test]
+    fn helper_request_detail_rows_resolves_user_fields() {
+        let users = vec![
+            crate::api::UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice".into(),
+                role: "employee".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+            crate::api::UserResponse {
+                id: "u2".into(),
+                username: "bob".into(),
+                full_name: "Bob".into(),
+                role: "manager".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+        ];
+        let rows = request_detail_rows(
+            &json!({
+                "id": "req-1",
+                "user_id": "u1",
+                "leave_type": "annual",
+                "start_date": "2025-04-01",
+                "end_date": "2025-04-02",
+                "approved_by": "u2",
+                "rejected_by": "u1",
+                "status": "pending",
+                "created_at": "2025-03-01T10:00:00Z"
+            }),
+            &users,
+        );
+        let approved_by = rows.iter().find(|(l, _)| l == "承認者").unwrap();
+        let rejected_by = rows.iter().find(|(l, _)| l == "却下者").unwrap();
+        assert_eq!(approved_by.1, "bob");
+        assert_eq!(rejected_by.1, "alice");
+    }
+
+    #[test]
     fn helper_request_detail_rows_leave() {
         let rows = request_detail_rows(
             &json!({
@@ -648,7 +704,7 @@ mod host_tests {
         // 日付はスラッシュ形式
         let start_row = rows.iter().find(|(l, _)| l == "開始日").unwrap();
         assert_eq!(start_row.1, "2025/04/01");
-        // datetime はローカル時刻 YYYY/MM/DD HH:MM:SS
+        // datetime は UTC で YYYY/MM/DD HH:MM:SS
         let created_row = rows.iter().find(|(l, _)| l == "申請日時").unwrap();
         assert_eq!(created_row.1.len(), 19);
         assert_eq!(&created_row.1[4..5], "/");
