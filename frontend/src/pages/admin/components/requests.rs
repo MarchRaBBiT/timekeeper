@@ -6,6 +6,7 @@ use crate::{
         utils::RequestFilterState,
         view_model::RequestActionPayload,
     },
+    utils::time::format_in_app_tz,
 };
 use leptos::*;
 use serde_json::{json, Value};
@@ -139,11 +140,7 @@ fn is_date_str_field(key: &str) -> bool {
 fn format_iso_datetime(s: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
-        .map(|dt| {
-            dt.with_timezone(&chrono::Utc)
-                .format("%Y/%m/%d %H:%M:%S")
-                .to_string()
-        })
+        .map(|dt| format_in_app_tz(dt.with_timezone(&chrono::Utc)))
         .unwrap_or_else(|| s.to_string())
 }
 

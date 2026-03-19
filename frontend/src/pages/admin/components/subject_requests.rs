@@ -5,6 +5,7 @@ use crate::{
         utils::SubjectRequestFilterState,
         view_model::SubjectRequestActionPayload,
     },
+    utils::time::format_in_app_tz,
 };
 use chrono::DateTime;
 use leptos::*;
@@ -596,7 +597,7 @@ mod host_tests {
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
             .expect("valid datetime")
             .with_timezone(&chrono::Utc);
-        // UTC 固定のため値は安定し、フォーマットは固定
+        // アプリのタイムゾーンで整形されるため、フォーマットは固定
         let formatted = format_datetime(dt);
         assert_eq!(formatted.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
         assert_eq!(&formatted[4..5], "/");
@@ -973,8 +974,5 @@ fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
 }
 
 fn format_datetime(value: DateTime<chrono::Utc>) -> String {
-    value
-        .with_timezone(&chrono::Utc)
-        .format("%Y/%m/%d %H:%M:%S")
-        .to_string()
+    format_in_app_tz(value)
 }
