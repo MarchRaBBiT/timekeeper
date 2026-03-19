@@ -53,6 +53,7 @@ pub fn AttendanceCorrectionRequestForm(
     let clock_out_signal = state.clock_out_signal();
     let break_rows_signal = state.break_rows_signal();
     let reason_signal = state.reason_signal();
+    let add_break_row = move |_| state.add_break_row();
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
             <div>
@@ -102,17 +103,92 @@ pub fn AttendanceCorrectionRequestForm(
                         />
                     </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-fg-muted">
-                        {rust_i18n::t!("pages.requests.correction_form.breaks_label")}
-                    </label>
-                    <textarea
-                        rows=4
-                        class="mt-1 block w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1 font-mono text-sm"
-                        placeholder={rust_i18n::t!("pages.requests.correction_form.breaks_placeholder").into_owned()}
-                        prop:value=move || break_rows_signal.get()
-                        on:input=move |ev| break_rows_signal.set(event_target_value(&ev))
-                    ></textarea>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="block text-sm font-medium text-fg-muted">
+                            {rust_i18n::t!("pages.requests.correction_form.breaks_label")}
+                        </label>
+                    </div>
+                    <Show when=move || !break_rows_signal.get().is_empty()>
+                        <div class="space-y-3">
+                            <For
+                                each=move || break_rows_signal.get().into_iter().enumerate()
+                                key=|(idx, _)| *idx
+                                children=move |(idx, _)| {
+                                    let start_value = {
+                                        let break_rows_signal = break_rows_signal;
+                                        move || {
+                                            break_rows_signal.with(|rows| {
+                                                rows.get(idx)
+                                                    .map(|item| item.0.clone())
+                                                    .unwrap_or_default()
+                                            })
+                                        }
+                                    };
+                                    let end_value = {
+                                        let break_rows_signal = break_rows_signal;
+                                        move || {
+                                            break_rows_signal.with(|rows| {
+                                                rows.get(idx)
+                                                    .map(|item| item.1.clone())
+                                                    .unwrap_or_default()
+                                            })
+                                        }
+                                    };
+                                    let on_start = {
+                                        let state = state;
+                                        move |ev| state.update_break_start(idx, event_target_value(&ev))
+                                    };
+                                    let on_end = {
+                                        let state = state;
+                                        move |ev| state.update_break_end(idx, event_target_value(&ev))
+                                    };
+                                    let on_remove = {
+                                        let state = state;
+                                        move |_| state.remove_break_row(idx)
+                                    };
+                                    view! {
+                                        <div class="grid grid-cols-1 gap-2 rounded-xl border border-border bg-surface-muted p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                                            <label class="space-y-1">
+                                                <span class="block text-xs font-medium text-fg-muted">{"休憩開始"}</span>
+                                                <input
+                                                    type="time"
+                                                    step="60"
+                                                    class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-2"
+                                                    prop:value=start_value
+                                                    on:input=on_start
+                                                />
+                                            </label>
+                                            <label class="space-y-1">
+                                                <span class="block text-xs font-medium text-fg-muted">{"休憩終了"}</span>
+                                                <input
+                                                    type="time"
+                                                    step="60"
+                                                    class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-2"
+                                                    prop:value=end_value
+                                                    on:input=on_end
+                                                />
+                                            </label>
+                                            <button
+                                                type="button"
+                                                class="justify-self-start rounded border border-form-control-border px-3 py-2 text-sm text-fg hover:bg-action-ghost-bg-hover sm:justify-self-end"
+                                                on:click=on_remove
+                                            >
+                                                {"削除"}
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            />
+                        </div>
+                    </Show>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded border border-form-control-border px-3 py-2 text-sm text-link hover:text-link-hover hover:bg-action-ghost-bg-hover"
+                        on:click=add_break_row
+                    >
+                        {"休憩追加"}
+                    </button>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("pages.requests.correction_form.reason_label")}</label>
@@ -157,6 +233,18 @@ mod host_tests {
         let _locale = set_test_locale("en");
         let html = render_to_string(move || {
             let state = AttendanceCorrectionFormState::default();
+            state.load_from_value(&serde_json::json!({
+                "date": "2025-06-01",
+                "proposed_values": {
+                    "clock_in_time": "2025-06-01T09:00:00",
+                    "clock_out_time": "2025-06-01T18:00:00",
+                    "breaks": [{
+                        "break_start_time": "2025-06-01T12:00:00",
+                        "break_end_time": "2025-06-01T12:30:00"
+                    }]
+                },
+                "reason": "fix"
+            }));
             let message = create_rw_signal(MessageState::default());
             let action = create_action(|_| async move { Ok::<(), ApiError>(()) });
             let update_action = create_action(|_| async move { Ok::<(), ApiError>(()) });
@@ -178,5 +266,9 @@ mod host_tests {
         assert!(html.contains("Attendance Correction Request"));
         assert!(html.contains("Editing"));
         assert!(html.contains("Update Attendance Correction Request"));
+        assert!(html.contains("休憩追加"));
+        assert!(html.contains("休憩開始"));
+        assert!(html.contains("休憩終了"));
+        assert!(html.contains("削除"));
     }
 }

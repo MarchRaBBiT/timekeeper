@@ -2,7 +2,7 @@ use crate::api::{
     ApiError, CorrectionBreakItem, CreateAttendanceCorrectionRequest, CreateLeaveRequest,
     CreateOvertimeRequest, UpdateAttendanceCorrectionRequest,
 };
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use leptos::*;
 use serde_json::Value;
 
@@ -45,7 +45,7 @@ pub struct AttendanceCorrectionFormState {
     date: RwSignal<String>,
     clock_in_time: RwSignal<String>,
     clock_out_time: RwSignal<String>,
-    break_rows: RwSignal<String>,
+    break_rows: RwSignal<Vec<(String, String)>>,
     reason: RwSignal<String>,
 }
 
@@ -187,7 +187,7 @@ impl Default for AttendanceCorrectionFormState {
             date: create_rw_signal(String::new()),
             clock_in_time: create_rw_signal(String::new()),
             clock_out_time: create_rw_signal(String::new()),
-            break_rows: create_rw_signal(String::new()),
+            break_rows: create_rw_signal(Vec::new()),
             reason: create_rw_signal(String::new()),
         }
     }
@@ -206,8 +206,37 @@ impl AttendanceCorrectionFormState {
         self.clock_out_time
     }
 
-    pub fn break_rows_signal(&self) -> RwSignal<String> {
+    pub fn break_rows_signal(&self) -> RwSignal<Vec<(String, String)>> {
         self.break_rows
+    }
+
+    pub fn add_break_row(&self) {
+        self.break_rows
+            .update(|rows| rows.push((String::new(), String::new())));
+    }
+
+    pub fn remove_break_row(&self, idx: usize) {
+        self.break_rows.update(|rows| {
+            if idx < rows.len() {
+                rows.remove(idx);
+            }
+        });
+    }
+
+    pub fn update_break_start(&self, idx: usize, value: String) {
+        self.break_rows.update(|rows| {
+            if let Some(row) = rows.get_mut(idx) {
+                row.0 = value;
+            }
+        });
+    }
+
+    pub fn update_break_end(&self, idx: usize, value: String) {
+        self.break_rows.update(|rows| {
+            if let Some(row) = rows.get_mut(idx) {
+                row.1 = value;
+            }
+        });
     }
 
     pub fn reason_signal(&self) -> RwSignal<String> {
@@ -218,7 +247,7 @@ impl AttendanceCorrectionFormState {
         self.date.set(String::new());
         self.clock_in_time.set(String::new());
         self.clock_out_time.set(String::new());
-        self.break_rows.set(String::new());
+        self.break_rows.set(Vec::new());
         self.reason.set(String::new());
     }
 
@@ -234,22 +263,24 @@ impl AttendanceCorrectionFormState {
                 self.clock_out_time.set(clock_out.to_string());
             }
             if let Some(breaks) = proposed.get("breaks").and_then(|v| v.as_array()) {
-                let rows = breaks
-                    .iter()
-                    .map(|item| {
-                        let start = item
-                            .get("break_start_time")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default();
-                        let end = item
-                            .get("break_end_time")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default();
-                        format!("{start},{end}")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                self.break_rows.set(rows);
+                self.break_rows.set(
+                    breaks
+                        .iter()
+                        .map(|item| {
+                            let start = item
+                                .get("break_start_time")
+                                .and_then(|v| v.as_str())
+                                .map(format_time_input)
+                                .unwrap_or_default();
+                            let end = item
+                                .get("break_end_time")
+                                .and_then(|v| v.as_str())
+                                .map(format_time_input)
+                                .unwrap_or_default();
+                            (start, end)
+                        })
+                        .collect::<Vec<_>>(),
+                );
             }
         }
         if let Some(reason) = value.get("reason").and_then(|v| v.as_str()) {
@@ -270,7 +301,7 @@ impl AttendanceCorrectionFormState {
             &self.clock_out_time.get(),
             &rust_i18n::t!("pages.requests.validation.correction_clock_out"),
         )?;
-        let breaks = parse_break_rows(&self.break_rows.get())?;
+        let breaks = parse_break_rows(date, &self.break_rows.get())?;
         let reason = self.reason.get().trim().to_string();
         if reason.is_empty() {
             return Err(ApiError::validation(rust_i18n::t!(
@@ -287,6 +318,10 @@ impl AttendanceCorrectionFormState {
     }
 
     pub fn to_update_payload(self) -> Result<UpdateAttendanceCorrectionRequest, ApiError> {
+        let date = parse_date(
+            &self.date.get(),
+            &rust_i18n::t!("pages.requests.validation.correction_date"),
+        )?;
         let clock_in = parse_datetime_optional(
             &self.clock_in_time.get(),
             &rust_i18n::t!("pages.requests.validation.correction_clock_in"),
@@ -295,7 +330,7 @@ impl AttendanceCorrectionFormState {
             &self.clock_out_time.get(),
             &rust_i18n::t!("pages.requests.validation.correction_clock_out"),
         )?;
-        let breaks = parse_break_rows(&self.break_rows.get())?;
+        let breaks = parse_break_rows(date, &self.break_rows.get())?;
         let reason = self.reason.get().trim().to_string();
         if reason.is_empty() {
             return Err(ApiError::validation(rust_i18n::t!(
@@ -383,36 +418,56 @@ fn parse_datetime(input: &str, err: &str) -> Result<chrono::NaiveDateTime, ApiEr
         .map_err(|_| ApiError::validation(err.to_string()))
 }
 
-fn parse_break_rows(input: &str) -> Result<Vec<CorrectionBreakItem>, ApiError> {
+fn parse_time(input: &str, err: &str) -> Result<NaiveTime, ApiError> {
+    NaiveTime::parse_from_str(input, "%H:%M")
+        .or_else(|_| NaiveTime::parse_from_str(input, "%H:%M:%S"))
+        .map_err(|_| ApiError::validation(err.to_string()))
+}
+
+fn format_time_input(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Ok(value) = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M"))
+    {
+        return value.time().format("%H:%M").to_string();
+    }
+    if let Ok(value) = NaiveTime::parse_from_str(trimmed, "%H:%M")
+        .or_else(|_| NaiveTime::parse_from_str(trimmed, "%H:%M:%S"))
+    {
+        return value.format("%H:%M").to_string();
+    }
+    String::new()
+}
+
+fn parse_break_rows(
+    date: NaiveDate,
+    rows: &[(String, String)],
+) -> Result<Vec<CorrectionBreakItem>, ApiError> {
     let mut items = Vec::new();
-    for line in input.lines() {
-        let raw = line.trim();
-        if raw.is_empty() {
+    for (start_raw, end_raw) in rows {
+        let start_trimmed = start_raw.trim();
+        if start_trimmed.is_empty() {
             continue;
         }
-        let mut parts = raw.splitn(2, ',');
-        let start_raw = parts.next().unwrap_or_default().trim();
-        if start_raw.is_empty() {
-            return Err(ApiError::validation(rust_i18n::t!(
-                "pages.requests.validation.break_row_format"
-            )));
-        }
-        let end_raw = parts.next().map(|s| s.trim()).unwrap_or_default();
-        let start = parse_datetime(
-            start_raw,
+        let start = parse_time(
+            start_trimmed,
             &rust_i18n::t!("pages.requests.validation.break_start"),
         )?;
-        let end = if end_raw.is_empty() {
+        let end_trimmed = end_raw.trim();
+        let end = if end_trimmed.is_empty() {
             None
         } else {
-            Some(parse_datetime(
-                end_raw,
+            Some(parse_time(
+                end_trimmed,
                 &rust_i18n::t!("pages.requests.validation.break_end"),
             )?)
         };
         items.push(CorrectionBreakItem {
-            break_start_time: start,
-            break_end_time: end,
+            break_start_time: date.and_time(start),
+            break_end_time: end.map(|time| date.and_time(time)),
         });
     }
     Ok(items)
@@ -509,6 +564,80 @@ mod tests {
                 state.to_payload().expect_err("out of range").code,
                 "VALIDATION_ERROR"
             );
+        });
+    }
+
+    #[test]
+    fn attendance_correction_form_load_reset_and_row_editing() {
+        with_runtime(|| {
+            let state = AttendanceCorrectionFormState::default();
+            state.load_from_value(&serde_json::json!({
+                "date": "2025-06-01",
+                "proposed_values": {
+                    "clock_in_time": "2025-06-01T09:00:00",
+                    "clock_out_time": "2025-06-01T18:00:00",
+                    "breaks": [{
+                        "break_start_time": "2025-06-01T12:00:00",
+                        "break_end_time": "2025-06-01T12:30:00"
+                    }]
+                },
+                "reason": "fix"
+            }));
+
+            assert_eq!(state.date_signal().get(), "2025-06-01");
+            assert_eq!(state.clock_in_signal().get(), "2025-06-01T09:00:00");
+            assert_eq!(state.clock_out_signal().get(), "2025-06-01T18:00:00");
+            assert_eq!(state.reason_signal().get(), "fix");
+            assert_eq!(
+                state.break_rows_signal().get(),
+                vec![("12:00".to_string(), "12:30".to_string())]
+            );
+
+            state.add_break_row();
+            assert_eq!(state.break_rows_signal().get().len(), 2);
+            state.update_break_start(1, "14:00".to_string());
+            state.update_break_end(1, "14:30".to_string());
+            assert_eq!(
+                state.break_rows_signal().get()[1],
+                ("14:00".to_string(), "14:30".to_string())
+            );
+            state.remove_break_row(0);
+            assert_eq!(state.break_rows_signal().get().len(), 1);
+            assert_eq!(
+                state.break_rows_signal().get()[0],
+                ("14:00".to_string(), "14:30".to_string())
+            );
+
+            let payload = state.to_update_payload().expect("correction payload");
+            assert_eq!(
+                payload.clock_in_time.map(|v| v.to_string()),
+                Some("2025-06-01 09:00:00".to_string())
+            );
+            assert_eq!(
+                payload.clock_out_time.map(|v| v.to_string()),
+                Some("2025-06-01 18:00:00".to_string())
+            );
+            assert_eq!(payload.breaks.as_ref().map(|v| v.len()), Some(1));
+            let break_item = payload
+                .breaks
+                .as_ref()
+                .and_then(|items| items.first())
+                .expect("break item");
+            assert_eq!(
+                break_item.break_start_time.to_string(),
+                "2025-06-01 14:00:00"
+            );
+            assert_eq!(
+                break_item.break_end_time.map(|v| v.to_string()),
+                Some("2025-06-01 14:30:00".to_string())
+            );
+
+            state.reset();
+            assert!(state.date_signal().get().is_empty());
+            assert!(state.clock_in_signal().get().is_empty());
+            assert!(state.clock_out_signal().get().is_empty());
+            assert!(state.break_rows_signal().get().is_empty());
+            assert!(state.reason_signal().get().is_empty());
         });
     }
 
