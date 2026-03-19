@@ -655,7 +655,10 @@ mod form_field_tests {
             view! { <TextInput value=value /> }
         });
         assert!(html.contains("<input"), "should render an input element");
-        assert!(!html.contains("<label"), "should not render a label element");
+        assert!(
+            !html.contains("<label"),
+            "should not render a label element"
+        );
     }
 
     #[test]
@@ -667,7 +670,10 @@ mod form_field_tests {
                 MaybeSignal::Static(Some("Field is required".into()));
             view! { <TextInput value=value error=error /> }
         });
-        assert!(html.contains("Field is required"), "error message should be visible");
+        assert!(
+            html.contains("Field is required"),
+            "error message should be visible"
+        );
     }
 
     #[test]
@@ -706,7 +712,10 @@ mod form_field_tests {
             view! { <CheckboxField checked=checked label="common.states.loading" /> }
         });
         assert!(html.contains("Loading"), "label key should resolve");
-        assert!(html.contains(r#"type="checkbox"#), "should render a checkbox input");
+        assert!(
+            html.contains(r#"type="checkbox"#),
+            "should render a checkbox input"
+        );
     }
 
     #[test]
@@ -717,6 +726,9 @@ mod form_field_tests {
             view! { <TextArea value=value label="pages.attendance.filters.from" /> }
         });
         assert!(html.contains("From"), "label key should resolve");
-        assert!(html.contains("<textarea"), "should render a textarea element");
+        assert!(
+            html.contains("<textarea"),
+            "should render a textarea element"
+        );
     }
 }
