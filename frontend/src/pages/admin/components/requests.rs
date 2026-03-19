@@ -1,11 +1,12 @@
 use crate::{
-    api::ApiError,
+    api::{ApiError, UserResponse},
     components::{empty_state::EmptyState, error::InlineErrorMessage, layout::LoadingSpinner},
     pages::admin::{
         components::user_select::{AdminUserSelect, UsersResource},
         utils::RequestFilterState,
         view_model::RequestActionPayload,
     },
+    utils::time::format_in_app_tz,
 };
 use leptos::*;
 use serde_json::{json, Value};
@@ -92,6 +93,137 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
         }
     }
     rows
+}
+
+fn field_label(key: &str) -> &str {
+    match key {
+        "user_id" => "ユーザー名",
+        "leave_type" => "休暇種別",
+        "start_date" => "開始日",
+        "end_date" => "終了日",
+        "date" => "対象日",
+        "planned_hours" => "予定時間",
+        "reason" => "理由",
+        "status" => "ステータス",
+        "approved_by" => "承認者",
+        "approved_at" => "承認日時",
+        "rejected_by" => "却下者",
+        "rejected_at" => "却下日時",
+        "cancelled_at" => "取消日時",
+        "decision_comment" => "決定コメント",
+        "created_at" => "申請日時",
+        other => other,
+    }
+}
+
+fn status_display(status: &str) -> String {
+    match status {
+        "pending" => "承認待ち".to_string(),
+        "approved" => "承認済み".to_string(),
+        "rejected" => "却下".to_string(),
+        "cancelled" => "取消".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn is_datetime_str_field(key: &str) -> bool {
+    matches!(
+        key,
+        "approved_at" | "rejected_at" | "cancelled_at" | "created_at"
+    )
+}
+
+fn is_date_str_field(key: &str) -> bool {
+    matches!(key, "start_date" | "end_date" | "date")
+}
+
+fn format_iso_datetime(s: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| format_in_app_tz(dt.with_timezone(&chrono::Utc)))
+        .unwrap_or_else(|| s.to_string())
+}
+
+fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
+    users
+        .iter()
+        .find(|u| u.id == user_id)
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| user_id.to_string())
+}
+
+fn format_user_field_value(users: &[UserResponse], value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|user_id| lookup_username(users, user_id))
+}
+
+fn format_field_value(key: &str, value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(s) if s.is_empty() => None,
+        Value::String(s) => {
+            if key == "status" {
+                Some(status_display(s))
+            } else if is_datetime_str_field(key) {
+                Some(format_iso_datetime(s))
+            } else if is_date_str_field(key) {
+                Some(s.replace('-', "/"))
+            } else if key == "planned_hours" {
+                Some(format!("{} 時間", s))
+            } else {
+                Some(s.clone())
+            }
+        }
+        Value::Number(n) => {
+            if key == "planned_hours" {
+                Some(format!("{} 時間", n))
+            } else {
+                Some(n.to_string())
+            }
+        }
+        Value::Bool(b) => Some(if *b { "はい" } else { "いいえ" }.to_string()),
+        _ => None,
+    }
+}
+
+const FIELD_ORDER: &[&str] = &[
+    "user_id",
+    "leave_type",
+    "start_date",
+    "end_date",
+    "date",
+    "planned_hours",
+    "reason",
+    "status",
+    "approved_by",
+    "approved_at",
+    "rejected_by",
+    "rejected_at",
+    "cancelled_at",
+    "decision_comment",
+    "created_at",
+];
+
+fn request_detail_rows(data: &Value, users: &[UserResponse]) -> Vec<(String, String)> {
+    let Some(obj) = data.as_object() else {
+        return vec![];
+    };
+    FIELD_ORDER
+        .iter()
+        .filter_map(|&key| {
+            let value = obj.get(key)?;
+            let formatted = if key == "user_id" {
+                format_user_field_value(users, value)?
+            } else if key == "approved_by" || key == "rejected_by" {
+                format_user_field_value(users, value)?
+            } else {
+                format_field_value(key, value)?
+            };
+            Some((field_label(key).to_string(), formatted))
+        })
+        .collect()
 }
 
 fn build_request_action_payload(
@@ -285,7 +417,25 @@ pub fn AdminRequestsSection(
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
                         <h3 class="text-lg font-medium text-fg mb-2">{"申請詳細"}</h3>
-                        <pre class="text-xs bg-surface-muted text-fg p-2 rounded overflow-auto max-h-64">{format!("{}", modal_data.get())}</pre>
+                        <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
+                            {move || {
+                                let user_list =
+                                    users.get().and_then(|r| r.ok()).unwrap_or_default();
+                                request_detail_rows(&modal_data.get(), &user_list)
+                                    .into_iter()
+                                    .map(|(label, value)| {
+                                        view! {
+                                            <div class="flex gap-3 py-1.5 text-sm">
+                                                <span class="text-fg-muted font-medium w-28 shrink-0">
+                                                    {label}
+                                                </span>
+                                                <span class="text-fg break-words min-w-0">{value}</span>
+                                            </div>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                            }}
+                        </div>
                         <div class="mt-3">
                             <label class="block text-sm font-medium text-fg-muted">{"コメント（任意）"}</label>
                             <textarea
@@ -397,6 +547,186 @@ mod host_tests {
         assert_eq!(rows[0].target, "2025-01-01 - 2025-01-02");
         assert_eq!(rows[1].kind_label, "残業");
         assert_eq!(rows[1].target, "2025-01-03");
+    }
+
+    #[test]
+    fn helper_field_label_maps_known_and_unknown_keys() {
+        assert_eq!(field_label("user_id"), "ユーザー名");
+        assert_eq!(field_label("start_date"), "開始日");
+        assert_eq!(field_label("planned_hours"), "予定時間");
+        assert_eq!(field_label("status"), "ステータス");
+        assert_eq!(field_label("decision_comment"), "決定コメント");
+        assert_eq!(field_label("unknown_key"), "unknown_key");
+    }
+
+    #[test]
+    fn helper_status_display_translates_known_values() {
+        assert_eq!(status_display("pending"), "承認待ち".to_string());
+        assert_eq!(status_display("approved"), "承認済み".to_string());
+        assert_eq!(status_display("rejected"), "却下".to_string());
+        assert_eq!(status_display("cancelled"), "取消".to_string());
+        assert_eq!(status_display("other"), "other".to_string());
+    }
+
+    #[test]
+    fn helper_format_field_value_handles_types() {
+        assert_eq!(
+            format_field_value("status", &json!("pending")),
+            Some("承認待ち".to_string())
+        );
+        assert_eq!(
+            format_field_value("reason", &json!("体調不良")),
+            Some("体調不良".to_string())
+        );
+        assert_eq!(
+            format_field_value("planned_hours", &json!(2.5)),
+            Some("2.5 時間".to_string())
+        );
+        assert_eq!(
+            format_field_value("flag", &json!(true)),
+            Some("はい".to_string())
+        );
+        assert_eq!(format_field_value("reason", &json!(null)), None);
+        assert_eq!(format_field_value("reason", &json!("")), None);
+        // date fields use slash separator
+        assert_eq!(
+            format_field_value("start_date", &json!("2025-04-01")),
+            Some("2025/04/01".to_string())
+        );
+        // datetime fields are reformatted (check format, not exact local time)
+        let dt_result = format_field_value("created_at", &json!("2025-04-01T12:30:00Z"));
+        assert!(dt_result.is_some());
+        let dt_str = dt_result.unwrap();
+        assert_eq!(dt_str.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
+        assert_eq!(&dt_str[4..5], "/");
+        assert_eq!(&dt_str[7..8], "/");
+        assert_eq!(&dt_str[10..11], " ");
+        assert_eq!(&dt_str[13..14], ":");
+        assert_eq!(&dt_str[16..17], ":");
+    }
+
+    #[test]
+    fn helper_lookup_username_resolves_or_falls_back() {
+        let users = vec![crate::api::UserResponse {
+            id: "u1".into(),
+            username: "alice".into(),
+            full_name: "Alice".into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }];
+        assert_eq!(lookup_username(&users, "u1"), "alice");
+        assert_eq!(lookup_username(&users, "unknown"), "unknown");
+        assert_eq!(lookup_username(&[], "u1"), "u1");
+    }
+
+    #[test]
+    fn helper_request_detail_rows_resolves_user_fields() {
+        let users = vec![
+            crate::api::UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice".into(),
+                role: "employee".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+            crate::api::UserResponse {
+                id: "u2".into(),
+                username: "bob".into(),
+                full_name: "Bob".into(),
+                role: "manager".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+        ];
+        let rows = request_detail_rows(
+            &json!({
+                "id": "req-1",
+                "user_id": "u1",
+                "leave_type": "annual",
+                "start_date": "2025-04-01",
+                "end_date": "2025-04-02",
+                "approved_by": "u2",
+                "rejected_by": "u1",
+                "status": "pending",
+                "created_at": "2025-03-01T10:00:00Z"
+            }),
+            &users,
+        );
+        let approved_by = rows.iter().find(|(l, _)| l == "承認者").unwrap();
+        let rejected_by = rows.iter().find(|(l, _)| l == "却下者").unwrap();
+        assert_eq!(approved_by.1, "bob");
+        assert_eq!(rejected_by.1, "alice");
+    }
+
+    #[test]
+    fn helper_request_detail_rows_leave() {
+        let rows = request_detail_rows(
+            &json!({
+                "id": "req-1",
+                "user_id": "u1",
+                "leave_type": "annual",
+                "start_date": "2025-04-01",
+                "end_date": "2025-04-02",
+                "reason": null,
+                "status": "pending",
+                "created_at": "2025-03-01T10:00:00Z"
+            }),
+            &[],
+        );
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| l.as_str()).collect();
+        assert!(!labels.contains(&"ID"), "ID は非表示");
+        assert!(labels.contains(&"ユーザー名"));
+        assert!(labels.contains(&"開始日"));
+        assert!(labels.contains(&"ステータス"));
+        assert!(!labels.contains(&"理由"), "null フィールドは除外");
+        let status_row = rows.iter().find(|(l, _)| l == "ステータス").unwrap();
+        assert_eq!(status_row.1, "承認待ち");
+        // 日付はスラッシュ形式
+        let start_row = rows.iter().find(|(l, _)| l == "開始日").unwrap();
+        assert_eq!(start_row.1, "2025/04/01");
+        // datetime は UTC で YYYY/MM/DD HH:MM:SS
+        let created_row = rows.iter().find(|(l, _)| l == "申請日時").unwrap();
+        assert_eq!(created_row.1.len(), 19);
+        assert_eq!(&created_row.1[4..5], "/");
+    }
+
+    #[test]
+    fn helper_request_detail_rows_overtime() {
+        let rows = request_detail_rows(
+            &json!({
+                "id": "ot-1",
+                "user_id": "u2",
+                "date": "2025-04-01",
+                "planned_hours": 3.0,
+                "status": "approved"
+            }),
+            &[],
+        );
+        let planned = rows.iter().find(|(l, _)| l == "予定時間").unwrap();
+        assert!(
+            planned.1.ends_with(" 時間"),
+            "予定時間は '時間' で終わること"
+        );
+        // 対象日もスラッシュ形式
+        let date_row = rows.iter().find(|(l, _)| l == "対象日").unwrap();
+        assert_eq!(date_row.1, "2025/04/01");
     }
 
     #[test]

@@ -5,13 +5,14 @@ use crate::{
         utils::SubjectRequestFilterState,
         view_model::SubjectRequestActionPayload,
     },
+    utils::time::format_in_app_tz,
 };
 use chrono::DateTime;
 use leptos::*;
-use serde_json::to_string_pretty;
 
 use crate::api::{
     ApiError, DataSubjectRequestResponse, DataSubjectRequestType, SubjectRequestListResponse,
+    UserResponse,
 };
 
 fn build_subject_action_payload(
@@ -31,10 +32,60 @@ fn build_subject_action_payload(
     })
 }
 
-fn modal_detail_json(request: Option<&DataSubjectRequestResponse>) -> String {
-    request
-        .and_then(|request| to_string_pretty(request).ok())
-        .unwrap_or_default()
+fn lookup_username(users: &[UserResponse], user_id: &str) -> String {
+    users
+        .iter()
+        .find(|u| u.id == user_id)
+        .map(|u| u.username.clone())
+        .unwrap_or_else(|| user_id.to_string())
+}
+
+fn subject_status_display(status: &str) -> String {
+    match status {
+        "pending" => "承認待ち".to_string(),
+        "approved" => "承認済み".to_string(),
+        "rejected" => "却下".to_string(),
+        "cancelled" => "取消".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn subject_request_detail_rows(
+    request: &DataSubjectRequestResponse,
+    users: &[UserResponse],
+) -> Vec<(&'static str, String)> {
+    let mut rows: Vec<(&'static str, String)> = vec![
+        ("ユーザー名", lookup_username(users, &request.user_id)),
+        ("申請種別", type_label(&request.request_type).to_string()),
+        (
+            "ステータス",
+            subject_status_display(&request.status).to_string(),
+        ),
+    ];
+    if let Some(details) = &request.details {
+        rows.push(("詳細", details.clone()));
+    }
+    rows.push(("申請日時", format_datetime(request.created_at)));
+    rows.push(("更新日時", format_datetime(request.updated_at)));
+    if let Some(by) = &request.approved_by {
+        rows.push(("承認者", lookup_username(users, by)));
+    }
+    if let Some(at) = request.approved_at {
+        rows.push(("承認日時", format_datetime(at)));
+    }
+    if let Some(by) = &request.rejected_by {
+        rows.push(("却下者", lookup_username(users, by)));
+    }
+    if let Some(at) = request.rejected_at {
+        rows.push(("却下日時", format_datetime(at)));
+    }
+    if let Some(at) = request.cancelled_at {
+        rows.push(("取消日時", format_datetime(at)));
+    }
+    if let Some(comment) = &request.decision_comment {
+        rows.push(("決定コメント", comment.clone()));
+    }
+    rows
 }
 
 fn is_pending_request(request: Option<&DataSubjectRequestResponse>) -> bool {
@@ -227,8 +278,6 @@ pub fn AdminSubjectRequestsSection(
     let modal_request = create_rw_signal(None::<DataSubjectRequestResponse>);
     let modal_comment = create_rw_signal(String::new());
 
-    let modal_detail = Signal::derive(move || modal_detail_json(modal_request.get().as_ref()));
-
     let loading = resource.loading();
     let data = Signal::derive(move || resource.get().and_then(|result| result.ok()));
     let error = Signal::derive(move || resource.get().and_then(|result| result.err()));
@@ -358,7 +407,32 @@ pub fn AdminSubjectRequestsSection(
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
                         <h3 class="text-lg font-medium text-fg mb-2">{"本人対応申請の詳細"}</h3>
-                        <pre class="text-xs bg-surface-muted text-fg p-2 rounded overflow-auto max-h-64 whitespace-pre-wrap">{move || modal_detail.get()}</pre>
+                        <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
+                            {move || {
+                                let user_list =
+                                    users.get().and_then(|r| r.ok()).unwrap_or_default();
+                                modal_request
+                                    .get()
+                                    .map(|r| {
+                                        subject_request_detail_rows(&r, &user_list)
+                                            .into_iter()
+                                            .map(|(label, value)| {
+                                                view! {
+                                                    <div class="flex gap-3 py-1.5 text-sm">
+                                                        <span class="text-fg-muted font-medium w-28 shrink-0">
+                                                            {label}
+                                                        </span>
+                                                        <span class="text-fg break-words min-w-0">
+                                                            {value}
+                                                        </span>
+                                                    </div>
+                                                }
+                                            })
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .unwrap_or_default()
+                            }}
+                        </div>
                         <div class="mt-3">
                             <label class="block text-sm font-medium text-fg-muted">{"コメント"}</label>
                             <textarea
@@ -523,7 +597,14 @@ mod host_tests {
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
             .expect("valid datetime")
             .with_timezone(&chrono::Utc);
-        assert_eq!(format_datetime(dt), "2026-01-16 12:34");
+        // アプリのタイムゾーンで整形されるため、フォーマットは固定
+        let formatted = format_datetime(dt);
+        assert_eq!(formatted.len(), 19, "YYYY/MM/DD HH:MM:SS = 19 chars");
+        assert_eq!(&formatted[4..5], "/");
+        assert_eq!(&formatted[7..8], "/");
+        assert_eq!(&formatted[10..11], " ");
+        assert_eq!(&formatted[13..14], ":");
+        assert_eq!(&formatted[16..17], ":");
     }
 
     #[test]
@@ -545,13 +626,121 @@ mod host_tests {
     }
 
     #[test]
-    fn helper_modal_detail_json_handles_none_and_some() {
-        assert_eq!(modal_detail_json(None), "");
-
+    fn helper_subject_request_detail_rows_basic_fields() {
         let request = sample_request();
-        let rendered = modal_detail_json(Some(&request));
-        assert!(rendered.contains("\"id\": \"sr-1\""));
-        assert!(rendered.contains("\"status\": \"pending\""));
+        let rows = subject_request_detail_rows(&request, &[]);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(!labels.contains(&"ID"), "ID は非表示");
+        assert!(labels.contains(&"ユーザー名"));
+        assert!(labels.contains(&"申請種別"));
+        assert!(labels.contains(&"ステータス"));
+        assert!(labels.contains(&"申請日時"));
+        assert!(labels.contains(&"更新日時"));
+        let status_row = rows.iter().find(|(l, _)| *l == "ステータス").unwrap();
+        assert_eq!(status_row.1, "承認待ち");
+        let type_row = rows.iter().find(|(l, _)| *l == "申請種別").unwrap();
+        assert_eq!(type_row.1, "開示");
+        // users=[] なのでフォールバックとして user_id が表示される
+        let user_row = rows.iter().find(|(l, _)| *l == "ユーザー名").unwrap();
+        assert_eq!(user_row.1, "u1");
+        // 申請日時は YYYY/MM/DD HH:MM:SS 形式
+        let created_row = rows.iter().find(|(l, _)| *l == "申請日時").unwrap();
+        assert_eq!(created_row.1.len(), 19);
+        assert_eq!(&created_row.1[4..5], "/");
+        assert_eq!(&created_row.1[7..8], "/");
+        assert_eq!(&created_row.1[16..17], ":");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_resolves_username() {
+        use crate::api::UserResponse;
+        let users = vec![UserResponse {
+            id: "u1".into(),
+            username: "hanako".into(),
+            full_name: "Hanako".into(),
+            role: "employee".into(),
+            is_system_admin: false,
+            mfa_enabled: false,
+            is_locked: false,
+            locked_until: None,
+            failed_login_attempts: 0,
+            password_expiry_warning_days: None,
+            department_id: None,
+        }];
+        let rows = subject_request_detail_rows(&sample_request(), &users);
+        let user_row = rows.iter().find(|(l, _)| *l == "ユーザー名").unwrap();
+        assert_eq!(user_row.1, "hanako");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_optional_fields() {
+        let request = DataSubjectRequestResponse {
+            approved_by: Some("u1".to_string()),
+            rejected_by: Some("u2".to_string()),
+            details: Some("修正希望".to_string()),
+            decision_comment: Some("確認しました".to_string()),
+            ..sample_request()
+        };
+        let users = vec![
+            UserResponse {
+                id: "u1".into(),
+                username: "alice".into(),
+                full_name: "Alice".into(),
+                role: "employee".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+            UserResponse {
+                id: "u2".into(),
+                username: "bob".into(),
+                full_name: "Bob".into(),
+                role: "manager".into(),
+                is_system_admin: false,
+                mfa_enabled: false,
+                is_locked: false,
+                locked_until: None,
+                failed_login_attempts: 0,
+                password_expiry_warning_days: None,
+                department_id: None,
+            },
+        ];
+        let rows = subject_request_detail_rows(&request, &users);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(labels.contains(&"詳細"));
+        assert!(labels.contains(&"決定コメント"));
+        assert!(labels.contains(&"承認者"));
+        assert!(labels.contains(&"却下者"));
+        let details_row = rows.iter().find(|(l, _)| *l == "詳細").unwrap();
+        assert_eq!(details_row.1, "修正希望");
+        let approved_row = rows.iter().find(|(l, _)| *l == "承認者").unwrap();
+        let rejected_row = rows.iter().find(|(l, _)| *l == "却下者").unwrap();
+        assert_eq!(approved_row.1, "alice");
+        assert_eq!(rejected_row.1, "bob");
+    }
+
+    #[test]
+    fn helper_subject_request_detail_rows_excludes_none_optional_fields() {
+        let request = sample_request();
+        let rows = subject_request_detail_rows(&request, &[]);
+        let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
+        assert!(!labels.contains(&"詳細"));
+        assert!(!labels.contains(&"承認者"));
+        assert!(!labels.contains(&"却下者"));
+        assert!(!labels.contains(&"決定コメント"));
+    }
+
+    #[test]
+    fn helper_subject_status_display_translates_statuses() {
+        assert_eq!(subject_status_display("pending"), "承認待ち".to_string());
+        assert_eq!(subject_status_display("approved"), "承認済み".to_string());
+        assert_eq!(subject_status_display("rejected"), "却下".to_string());
+        assert_eq!(subject_status_display("cancelled"), "取消".to_string());
+        assert_eq!(subject_status_display("unknown"), "unknown".to_string());
     }
 
     #[test]
@@ -785,5 +974,5 @@ fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
 }
 
 fn format_datetime(value: DateTime<chrono::Utc>) -> String {
-    value.format("%Y-%m-%d %H:%M").to_string()
+    format_in_app_tz(value)
 }
