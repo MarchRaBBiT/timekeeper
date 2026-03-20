@@ -78,7 +78,7 @@
 ## Task Breakdown
 1. [x] Go module と server/migration/OpenAPI scaffold を追加する
 2. [x] DB 接続プール、Redis、request id、logging、CORS、health/readiness を本番相当に仕上げる
-3. [ ] public auth, refresh, password reset, MFA, session 管理を移植する
+3. [x] public auth, refresh, password reset, MFA, session 管理を移植する
 4. [ ] attendance, attendance corrections, requests, consents, subject requests, holidays を移植する
 5. [ ] admin 系 endpoint（users, departments, attendance, breaks, audit logs, exports, holidays, sessions）を移植する
 6. [ ] Rust 既存テストと API catalog に対する parity テストを Go 側へ移す
@@ -102,6 +102,7 @@
 - 2026-03-20: backend 移植のチェックリストを `timekeeper-backend/docs/go-migration-roadmap.md` に整理した
 - 2026-03-20: そのチェックリストを ExecPlan 形式に合わせて `.agent/PLANS.md` へ反映した
 - 2026-03-20: Task Breakdown 2 を実装し、`DB 接続プール / Redis / request id / logging / CORS / health-readiness` を Go 側へ追加した
+- 2026-03-20: Task Breakdown 3 を実装し、`auth / refresh / password reset / MFA / sessions` を Go 側へ追加して `go test ./...` を green にした
 
 # EP-20260311-pr430-431-review-followup
 
