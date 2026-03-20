@@ -51,6 +51,57 @@
 - YYYY-MM-DD: <実施内容>
 ```
 
+# EP-20260320-timekeeper-backend-go-migration
+
+## Goal
+- `timekeeper-backend` を Rust/Axum から Go へ移行し、DB マイグレーション最終状態と API 仕様を 100% 満たす
+
+## Scope
+- In: `timekeeper-backend/cmd/timekeeper-backend`, `timekeeper-backend/internal/**`, `timekeeper-backend/docs/go-migration-roadmap.md`, `timekeeper-backend/migrations/**`
+- In: backend 互換確認のための Go テスト、PostgreSQL マイグレーション検証、API contract 検証
+- Out: frontend の実装変更、Rust frontend/backend の機能追加、DB スキーマの再設計
+
+## Done Criteria (Observable)
+- [x] Go の起動基盤、migration runner、route registry、OpenAPI scaffold が存在する
+- [ ] Rust 版 migration 001-042 を Go で順番どおり適用し、最終 schema が一致する
+- [ ] Rust router の全 endpoint が Go にあり、path/method/status/body/header が API catalog と一致する
+- [ ] auth / session / MFA / CSRF / rate limit / audit log の挙動が Rust と一致する
+- [ ] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
+- [ ] `go test ./...` と DB/API parity 検証が green になる
+
+## Constraints / Non-goals
+- Rust 版 migrations は canonical とし、原則として書き換えない
+- route path、HTTP method、response envelope、cookie/CSRF semantics は壊さない
+- 1 セクションずつ移植し、各節目で検証を通す
+- frontend の変更は最小化し、backend 互換を優先する
+
+## Task Breakdown
+1. [x] Go module と server/migration/OpenAPI scaffold を追加する
+2. [ ] DB 接続プール、Redis、request id、logging、CORS、health/readiness を本番相当に仕上げる
+3. [ ] public auth, refresh, password reset, MFA, session 管理を移植する
+4. [ ] attendance, attendance corrections, requests, consents, subject requests, holidays を移植する
+5. [ ] admin 系 endpoint（users, departments, attendance, breaks, audit logs, exports, holidays, sessions）を移植する
+6. [ ] Rust 既存テストと API catalog に対する parity テストを Go 側へ移す
+7. [ ] cutover 準備と Rust runtime path の整理を行う
+
+## Validation Plan
+- [x] `podman run --rm -v /home/mrabbit/Documents/timekeeper/timekeeper-backend:/work -w /work golang:1.23 go test ./...`
+- [ ] PostgreSQL コンテナを使った migration smoke test
+- [ ] Go backend の contract test / parity test
+- [ ] frontend の login / session smoke が Go backend で通ることを確認
+- [ ] 必要に応じて `go vet ./...` と追加の integration test を実行
+
+## JJ Snapshot Log
+- [x] `git status`
+- [x] `go test ./...` pass
+- [x] `git commit -m "feat: scaffold go backend migration"`
+- [x] `git commit -m "docs: add go migration roadmap"`
+
+## Progress Notes
+- 2026-03-20: Go backend の scaffold を nested repo 側に追加し、`go test ./...` を container 上で green にした
+- 2026-03-20: backend 移植のチェックリストを `timekeeper-backend/docs/go-migration-roadmap.md` に整理した
+- 2026-03-20: そのチェックリストを ExecPlan 形式に合わせて `.agent/PLANS.md` へ反映した
+
 # EP-20260311-pr430-431-review-followup
 
 ## Goal
