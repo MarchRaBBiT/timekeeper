@@ -63,11 +63,30 @@
 
 ## Done Criteria (Observable)
 - [x] Go の起動基盤、migration runner、route registry、OpenAPI scaffold が存在する
+  - [x] `cmd/timekeeper-backend` が起動できる
+  - [x] migration runner がある
+  - [x] route registry と OpenAPI scaffold がある
 - [x] Rust 版 migration 001-042 を Go で順番どおり適用し、最終 schema が一致する
+  - [x] 001-042 を順番どおり適用できる
+  - [x] final schema と checksum が Rust 版と一致する
 - [x] Rust router の全 endpoint が Go にあり、path/method/status/body/header が API catalog と一致する
+  - [x] API catalog と route registry が一致する
+  - [x] path / method / status / body / header の parity が取れている
 - [ ] auth / session / MFA / CSRF / rate limit / audit log の挙動が Rust と一致する
+  - [x] auth / session の lifecycle が一致する
+  - [x] CSRF の cookie-auth mutation 挙動が一致する
+  - [ ] MFA の挙動が Rust と一致する
+  - [ ] rate limiting の window / burst が Rust と一致する
+  - [ ] audit log の write path と masking / admin trail が Rust と一致する
 - [x] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
+  - [x] attendance / attendance corrections
+  - [x] requests / consents / subject requests
+  - [x] holidays / admin workflows
 - [x] `go test ./...` と DB/API parity 検証が green になる
+  - [x] `go test ./...`
+  - [x] PostgreSQL migration smoke / idempotency / checksum mismatch 検証
+  - [x] frontend login/session smoke
+  - [x] `go vet ./...` と追加 integration smoke
 
 ## Constraints / Non-goals
 - Rust 版 migrations は canonical とし、原則として書き換えない
