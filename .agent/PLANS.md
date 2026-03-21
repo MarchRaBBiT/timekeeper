@@ -75,7 +75,7 @@
 - [ ] auth / session / MFA / CSRF / rate limit / audit log の挙動が Rust と一致する
   - [x] auth / session の lifecycle が一致する
   - [x] CSRF の cookie-auth mutation 挙動が一致する
-  - [ ] MFA の挙動が Rust と一致する
+  - [x] MFA の挙動が Rust と一致する
   - [ ] rate limiting の window / burst が Rust と一致する
   - [ ] audit log の write path と masking / admin trail が Rust と一致する
 - [x] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
