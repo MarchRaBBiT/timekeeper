@@ -132,7 +132,7 @@
 - 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
 - 2026-03-21: PostgreSQL container smoke test を実施し、fresh DB に 42 migrations を適用できることと `schema_migrations` の最終 version が 42 であることを確認した
 - 2026-03-21: frontend login/session smoke を Go backend で実施し、wasm frontend は `/dashboard`、timekeeper-frontend TS frontend は `/admin` へ遷移することを確認した
-- 2026-03-21: Go backend の live smoke で request-id echo/generation、auth/session/CSRF lifecycle、admin/user/system-admin boundary、409 conflict、download headers、PII masking を確認した。続けて PostgreSQL-backed smoke で `auth_login` / `session_create` / `mfa_reset` の audit log write を確認し、audit-log write path は完了した。rate limiting も Go 側で IP/user の window/burst parity と claims fallback、Redis fallback を unit test で確認した
+- 2026-03-21: Go backend の live smoke で request-id echo/generation、auth/session/CSRF lifecycle、admin/user/system-admin boundary、409 conflict、download headers、PII masking を確認した。続けて PostgreSQL-backed smoke で `auth_login` / `session_create` / `mfa_reset` の audit log write を確認し、audit-log write path は完了した。rate limiting も Go 側で IP/user の window/burst parity と claims fallback、Redis fallback を unit test で確認し、live smoke で same-IP 16 回目に `429` と `Retry-After` を確認した
 
 # EP-20260311-pr430-431-review-followup
 
