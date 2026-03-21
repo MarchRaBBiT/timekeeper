@@ -81,13 +81,13 @@
 3. [x] public auth, refresh, password reset, MFA, session 管理を移植する
 4. [x] attendance, attendance corrections, requests, consents, subject requests, holidays を移植する
 5. [x] admin 系 endpoint（users, departments, attendance, breaks, audit logs, exports, holidays, sessions）を移植する
-6. [ ] Rust 既存テストと API catalog に対する parity テストを Go 側へ移す
+6. [x] Rust 既存テストと API catalog に対する parity テストを Go 側へ移す
 7. [ ] cutover 準備と Rust runtime path の整理を行う
 
 ## Validation Plan
 - [x] `podman run --rm -v /home/mrabbit/Documents/timekeeper/timekeeper-backend:/work -w /work golang:1.23 go test ./...`
 - [ ] PostgreSQL コンテナを使った migration smoke test
-- [ ] Go backend の contract test / parity test
+- [x] Go backend の contract test / parity test
 - [ ] frontend の login / session smoke が Go backend で通ることを確認
 - [ ] 必要に応じて `go vet ./...` と追加の integration test を実行
 
@@ -96,6 +96,7 @@
 - [x] `go test ./...` pass
 - [x] `git commit -m "feat: scaffold go backend migration"`
 - [x] `git commit -m "docs: add go migration roadmap"`
+- [x] parity test と OpenAPI presence check を追加して `go test ./...` を green にした
 
 ## Progress Notes
 - 2026-03-20: Go backend の scaffold を nested repo 側に追加し、`go test ./...` を container 上で green にした
@@ -105,6 +106,7 @@
 - 2026-03-20: Task Breakdown 3 を実装し、`auth / refresh / password reset / MFA / sessions` を Go 側へ追加して `go test ./...` を green にした
 - 2026-03-20: Task Breakdown 4 を実装し、`attendance / attendance corrections / requests / consents / subject requests / holidays` を Go 側へ追加して `go test ./...` を green にした
 - 2026-03-20: Task Breakdown 5 を実装し、`admin users / departments / attendance / breaks / audit logs / export / holidays / sessions` の不足 helper と route parity を埋めて `go test ./...` を green にした
+- 2026-03-21: Task Breakdown 6 を実装し、API catalog parity test と OpenAPI presence check を追加して `go test ./...` を green にした
 
 # EP-20260311-pr430-431-review-followup
 
