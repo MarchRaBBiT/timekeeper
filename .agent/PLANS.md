@@ -89,7 +89,7 @@
 - [x] PostgreSQL コンテナを使った migration smoke test
 - [x] Go backend の contract test / parity test
 - [x] frontend の login / session smoke が Go backend で通ることを確認
-- [ ] 必要に応じて `go vet ./...` と追加の integration test を実行
+- [x] 必要に応じて `go vet ./...` と追加の integration test を実行
 - [x] Go runtime container build via `podman build -t timekeeper-backend-cutover:test ...`
 
 ## JJ Snapshot Log
@@ -108,6 +108,7 @@
 - 2026-03-20: Task Breakdown 4 を実装し、`attendance / attendance corrections / requests / consents / subject requests / holidays` を Go 側へ追加して `go test ./...` を green にした
 - 2026-03-20: Task Breakdown 5 を実装し、`admin users / departments / attendance / breaks / audit logs / export / holidays / sessions` の不足 helper と route parity を埋めて `go test ./...` を green にした
 - 2026-03-21: Task Breakdown 6 を実装し、API catalog parity test と OpenAPI presence check を追加して `go test ./...` を green にした
+- 2026-03-21: `go vet ./...` を Podman の Go 1.23 container で green 確認し、PostgreSQL 直結の migration smoke も `go run ./cmd/timekeeper-backend --migrate-only` で green 確認した
 - 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
 - 2026-03-21: PostgreSQL container smoke test を実施し、fresh DB に 42 migrations を適用できることと `schema_migrations` の最終 version が 42 であることを確認した
 - 2026-03-21: frontend login/session smoke を Go backend で実施し、wasm frontend は `/dashboard`、timekeeper-frontend TS frontend は `/admin` へ遷移することを確認した
