@@ -86,7 +86,7 @@
 
 ## Validation Plan
 - [x] `podman run --rm -v /home/mrabbit/Documents/timekeeper/timekeeper-backend:/work -w /work golang:1.23 go test ./...`
-- [ ] PostgreSQL コンテナを使った migration smoke test
+- [x] PostgreSQL コンテナを使った migration smoke test
 - [x] Go backend の contract test / parity test
 - [ ] frontend の login / session smoke が Go backend で通ることを確認
 - [ ] 必要に応じて `go vet ./...` と追加の integration test を実行
@@ -109,6 +109,7 @@
 - 2026-03-20: Task Breakdown 5 を実装し、`admin users / departments / attendance / breaks / audit logs / export / holidays / sessions` の不足 helper と route parity を埋めて `go test ./...` を green にした
 - 2026-03-21: Task Breakdown 6 を実装し、API catalog parity test と OpenAPI presence check を追加して `go test ./...` を green にした
 - 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
+- 2026-03-21: PostgreSQL container smoke test を実施し、fresh DB に 42 migrations を適用できることと `schema_migrations` の最終 version が 42 であることを確認した
 
 # EP-20260311-pr430-431-review-followup
 
