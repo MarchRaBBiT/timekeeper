@@ -63,11 +63,11 @@
 
 ## Done Criteria (Observable)
 - [x] Go の起動基盤、migration runner、route registry、OpenAPI scaffold が存在する
-- [ ] Rust 版 migration 001-042 を Go で順番どおり適用し、最終 schema が一致する
-- [ ] Rust router の全 endpoint が Go にあり、path/method/status/body/header が API catalog と一致する
+- [x] Rust 版 migration 001-042 を Go で順番どおり適用し、最終 schema が一致する
+- [x] Rust router の全 endpoint が Go にあり、path/method/status/body/header が API catalog と一致する
 - [ ] auth / session / MFA / CSRF / rate limit / audit log の挙動が Rust と一致する
-- [ ] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
-- [ ] `go test ./...` と DB/API parity 検証が green になる
+- [x] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
+- [x] `go test ./...` と DB/API parity 検証が green になる
 
 ## Constraints / Non-goals
 - Rust 版 migrations は canonical とし、原則として書き換えない
@@ -109,6 +109,7 @@
 - 2026-03-20: Task Breakdown 5 を実装し、`admin users / departments / attendance / breaks / audit logs / export / holidays / sessions` の不足 helper と route parity を埋めて `go test ./...` を green にした
 - 2026-03-21: Task Breakdown 6 を実装し、API catalog parity test と OpenAPI presence check を追加して `go test ./...` を green にした
 - 2026-03-21: `go vet ./...` を Podman の Go 1.23 container で green 確認し、PostgreSQL 直結の migration smoke も `go run ./cmd/timekeeper-backend --migrate-only` で green 確認した
+- 2026-03-21: PostgreSQL-backed verification で migration の idempotency と checksum mismatch detection も確認した
 - 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
 - 2026-03-21: PostgreSQL container smoke test を実施し、fresh DB に 42 migrations を適用できることと `schema_migrations` の最終 version が 42 であることを確認した
 - 2026-03-21: frontend login/session smoke を Go backend で実施し、wasm frontend は `/dashboard`、timekeeper-frontend TS frontend は `/admin` へ遷移することを確認した
