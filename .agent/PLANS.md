@@ -82,7 +82,7 @@
 4. [x] attendance, attendance corrections, requests, consents, subject requests, holidays を移植する
 5. [x] admin 系 endpoint（users, departments, attendance, breaks, audit logs, exports, holidays, sessions）を移植する
 6. [x] Rust 既存テストと API catalog に対する parity テストを Go 側へ移す
-7. [ ] cutover 準備と Rust runtime path の整理を行う
+7. [x] cutover 準備と Rust runtime path の整理を行う
 
 ## Validation Plan
 - [x] `podman run --rm -v /home/mrabbit/Documents/timekeeper/timekeeper-backend:/work -w /work golang:1.23 go test ./...`
@@ -90,6 +90,7 @@
 - [x] Go backend の contract test / parity test
 - [ ] frontend の login / session smoke が Go backend で通ることを確認
 - [ ] 必要に応じて `go vet ./...` と追加の integration test を実行
+- [x] Go runtime container build via `podman build -t timekeeper-backend-cutover:test ...`
 
 ## JJ Snapshot Log
 - [x] `git status`
@@ -107,6 +108,7 @@
 - 2026-03-20: Task Breakdown 4 を実装し、`attendance / attendance corrections / requests / consents / subject requests / holidays` を Go 側へ追加して `go test ./...` を green にした
 - 2026-03-20: Task Breakdown 5 を実装し、`admin users / departments / attendance / breaks / audit logs / export / holidays / sessions` の不足 helper と route parity を埋めて `go test ./...` を green にした
 - 2026-03-21: Task Breakdown 6 を実装し、API catalog parity test と OpenAPI presence check を追加して `go test ./...` を green にした
+- 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
 
 # EP-20260311-pr430-431-review-followup
 
