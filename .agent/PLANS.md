@@ -77,7 +77,7 @@
   - [x] CSRF の cookie-auth mutation 挙動が一致する
   - [x] MFA の挙動が Rust と一致する
   - [ ] rate limiting の window / burst が Rust と一致する
-  - [ ] audit log の write path と masking / admin trail が Rust と一致する
+  - [x] audit log の write path と masking / admin trail が Rust と一致する
 - [x] attendance / requests / consents / subject requests / holidays / admin の主要機能が Go で動作する
   - [x] attendance / attendance corrections
   - [x] requests / consents / subject requests
@@ -132,7 +132,7 @@
 - 2026-03-21: Task Breakdown 7 を実装し、Go Dockerfile / README / ignore rules を追加して Rust runtime path を cutover 可能な状態にした。`podman build` で container image も確認した
 - 2026-03-21: PostgreSQL container smoke test を実施し、fresh DB に 42 migrations を適用できることと `schema_migrations` の最終 version が 42 であることを確認した
 - 2026-03-21: frontend login/session smoke を Go backend で実施し、wasm frontend は `/dashboard`、timekeeper-frontend TS frontend は `/admin` へ遷移することを確認した
-- 2026-03-21: Go backend の live smoke で request-id echo/generation、auth/session/CSRF lifecycle、admin/user/system-admin boundary、409 conflict、download headers、PII masking を確認した。rate limiting と audit-log write path は未確認のまま残している
+- 2026-03-21: Go backend の live smoke で request-id echo/generation、auth/session/CSRF lifecycle、admin/user/system-admin boundary、409 conflict、download headers、PII masking を確認した。続けて PostgreSQL-backed smoke で `auth_login` / `session_create` / `mfa_reset` の audit log write を確認し、audit-log write path は完了した。rate limiting は未確認のまま残している
 
 # EP-20260311-pr430-431-review-followup
 
