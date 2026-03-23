@@ -214,9 +214,7 @@ fn request_detail_rows(data: &Value, users: &[UserResponse]) -> Vec<(String, Str
         .iter()
         .filter_map(|&key| {
             let value = obj.get(key)?;
-            let formatted = if key == "user_id" {
-                format_user_field_value(users, value)?
-            } else if key == "approved_by" || key == "rejected_by" {
+            let formatted = if key == "user_id" || key == "approved_by" || key == "rejected_by" {
                 format_user_field_value(users, value)?
             } else {
                 format_field_value(key, value)?
