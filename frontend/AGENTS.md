@@ -6,6 +6,15 @@
 ## OVERVIEW
 Leptos CSR-only WASM フロントエンド + TailwindCSS。MVVM パターン、集中 API クライアント、グローバル状態管理。
 
+## REBUILD MODE NOTE
+通常の保守作業ではこの文書の現行構造を source of truth にする。
+`1から作り直す` / `再設計` / `rebuild` 系の作業では、先に `docs/design-docs/rebuild-architecture.md` を読み、次の target boundary へ寄せる。
+
+- `apps/web`: Leptos app shell
+- `apps/web/src/features/<feature>/`: page, view model, repository/client, feature-local components
+- `crates/contract`: API DTO と OpenAPI schema
+- global API client の肥大化を避け、feature client または contract-generated client に分ける
+
 ## STRUCTURE
 ```
 frontend/src/
@@ -80,6 +89,7 @@ pages/attendance/
 - 生 DOM 操作禁止（Leptos リアクティブシステム利用）
 - プロパティドリーリング回避（Context 利用推奨）
 - 未実装 TODO コメント禁止（15+ 件存在：リファクタ後判定予定）
+- rebuild work で巨大 panel / view_model / global API client を移植先にも再作成することは禁止。feature boundary へ分ける
 
 ## COMPLEXITY HOTSPOTS (要リファクタ)
 - `api/client.rs` (692 lines): ドメイン分割（AuthClient/AttendanceClient 等）予定

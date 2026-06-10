@@ -7,7 +7,26 @@
 - 複数レイヤー横断（`backend` + `frontend` + `e2e` など）の変更は原則 `ExecPlan` を作成する
 - 完了条件は「確認可能な挙動」で定義する（例: APIレスポンス、画面表示、テスト成功）
 - 実装中はチェックボックスを更新し、未完了の作業を残す
-- テスト成功の節目ごとに `jj` スナップショットを残す
+- テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
+
+# EP-20260610-rebuild-architecture-harness
+
+## Goal
+- Timekeeper を 1 から作り直す前提の採用パッケージ・基本アーキテクチャ・移行順序を source of truth 化し、`AGENTS.md` 等のハーネス入口をその方針に合わせて再構築する。
+
+## Source Of Truth
+- 詳細計画: `docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`
+- 再構築アーキテクチャ: `docs/design-docs/rebuild-architecture.md`
+
+## Done Criteria (Observable)
+- [x] 再構築アーキテクチャ doc が追加されている
+- [x] root `AGENTS.md` / manual / harness engineering が rebuild 方針を参照している
+- [x] `scripts/harness.sh docs-check` が追加され成功する
+- [x] `git diff --check` が成功する
+
+## Progress Notes
+- 2026-06-10: 現行 harness を確認し、docs-first の再構築計画として開始。
+- 2026-06-10: 再構築 architecture doc と docs-check stage を追加。`bash scripts/harness.sh docs-check` / `git diff --check` pass。
 
 ## テンプレート
 
@@ -42,10 +61,10 @@
 - [ ] `cd frontend; wasm-pack test --headless --firefox`（必要時）
 - [ ] `cd e2e; node run.mjs`（必要時）
 
-## JJ Snapshot Log
-- [ ] `jj status`
+## Git Snapshot Log
+- [ ] `git status --short`
 - [ ] <対象テスト> pass
-- [ ] `jj commit -m "chore(test): snapshot after <test_target> pass"`
+- [ ] `git commit -m "<type>: <description>"`
 
 ## Progress Notes
 - YYYY-MM-DD: <実施内容>

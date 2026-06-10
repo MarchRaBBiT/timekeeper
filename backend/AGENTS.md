@@ -6,6 +6,16 @@
 ## OVERVIEW
 Axum + SQLx + PostgreSQL の API サーバー。JWT 認証、勤怠打刻、申請承認、管理者機能を提供。testcontainers を使用した統合テスト環境完備。
 
+## REBUILD MODE NOTE
+通常の保守作業ではこの文書の現行構造を source of truth にする。
+`1から作り直す` / `再設計` / `rebuild` 系の作業では、先に `docs/design-docs/rebuild-architecture.md` を読み、次の target boundary へ寄せる。
+
+- `apps/api`: Axum routing / middleware / HTTP adapter
+- `crates/app`: use case と transaction orchestration
+- `crates/domain`: business invariant と value object
+- `crates/contract`: API DTO と OpenAPI schema
+- `crates/infra-postgres`: SQLx repository 実装
+
 ## STRUCTURE
 ```
 backend/src/
@@ -68,6 +78,7 @@ tests/               # testcontainers 統合テスト（詳細: tests/AGENTS.md�
 - 祝日ロジックをハンドラーに直書き禁止（必ず `services::holiday` 経由）
 - 認証なしのエンドポイント追加禁止（public エンドポイントは `/auth/login` 等に限定）
 - SQLxマイグレーションの変更禁止（必ず新しいファイル追加でDB操作）
+- rebuild work で巨大 handler を移植先にも再作成することは禁止。use case / domain / infra 境界へ分ける
 
 ## COMPLEXITY HOTSPOTS (要リファクタ)
 - `middleware/audit_log.rs` (848 lines): 分類ロジックのモジュール化

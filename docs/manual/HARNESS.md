@@ -2,7 +2,7 @@
 
 ## Goal
 
-この repo のハーネスは、agent が「何を変えたか」ではなく「どの stage を通したか」で完了を判断するための実行面です。  
+この repo のハーネスは、agent が「何を変えたか」ではなく「どの stage を通したか」で完了を判断するための実行面です。
 入口は `scripts/harness.sh` に統一します。
 
 ## Principles
@@ -25,6 +25,25 @@
 - `curl`
 
 また、live smoke を回す場合に使う URL も表示します。
+
+### `docs-check`
+
+ハーネスと再構築 architecture の source of truth が揃っているかを確認します。
+
+確認内容:
+
+- root `AGENTS.md`
+- `docs/manual/CODING_AGENT.md`
+- `docs/manual/HARNESS.md`
+- `docs/design-docs/harness-engineering.md`
+- `docs/design-docs/rebuild-architecture.md`
+- `docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`
+- `.agent/PLANS.md`
+- 安定ハーネス文書に旧 VCS 前提が残っていないこと
+
+```bash
+bash scripts/harness.sh docs-check
+```
 
 ### `fmt-check`
 
@@ -82,10 +101,11 @@ FRONTEND_BASE_URL=https://localhost:8080 bash scripts/harness.sh frontend-login
 
 repo-wide の formatting / lint gate です。
 
-1. `fmt-check`
-2. `clippy-backend`
-3. `clippy-frontend`
-4. `cargo clippy --all-targets -- -D warnings`
+1. `docs-check`
+2. `fmt-check`
+3. `clippy-backend`
+4. `clippy-frontend`
+5. `cargo clippy --all-targets -- -D warnings`
 
 ### `smoke`
 
@@ -139,6 +159,13 @@ bash scripts/harness.sh frontend-login
 bash scripts/harness.sh full
 ```
 
+### Docs / harness / architecture 変更
+
+```bash
+bash scripts/harness.sh docs-check
+git diff --check
+```
+
 ## Reporting Format
 
 PR / issue / final response では、次の 3 点だけを残します。
@@ -151,6 +178,7 @@ PR / issue / final response では、次の 3 点だけを残します。
 
 ```text
 - `doctor`: pass
+- `docs-check`: pass
 - `fmt-check`: pass
 - `backend-unit`: pass
 - `backend-integration`: not run

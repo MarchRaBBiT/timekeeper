@@ -20,6 +20,7 @@ usage() {
 Usage:
   bash scripts/harness.sh --list
   bash scripts/harness.sh doctor
+  bash scripts/harness.sh docs-check
   bash scripts/harness.sh fmt-check
   bash scripts/harness.sh backend-unit
   bash scripts/harness.sh backend-integration
@@ -69,6 +70,43 @@ run_doctor() {
   log "FRONTEND_BASE_URL=$FRONTEND_BASE_URL"
 }
 
+run_docs_check() {
+  log "stage=docs-check"
+  local required_files=(
+    "AGENTS.md"
+    "docs/manual/CODING_AGENT.md"
+    "docs/manual/HARNESS.md"
+    "docs/design-docs/harness-engineering.md"
+    "docs/design-docs/rebuild-architecture.md"
+    "docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md"
+    ".agent/PLANS.md"
+  )
+
+  local file
+  for file in "${required_files[@]}"; do
+    [[ -f "$ROOT_DIR/$file" ]] || die "missing harness source file: $file"
+  done
+
+  grep -q "rebuild-architecture.md" "$ROOT_DIR/AGENTS.md" || die "AGENTS.md does not reference rebuild architecture"
+  grep -q "PostgreSQL" "$ROOT_DIR/docs/design-docs/rebuild-architecture.md" || die "rebuild architecture does not state database direction"
+  grep -q "docs-check" "$ROOT_DIR/docs/manual/HARNESS.md" || die "HARNESS.md does not document docs-check"
+  grep -q "docs-check" "$ROOT_DIR/scripts/harness.sh" || die "harness script does not expose docs-check"
+
+  local stable_docs=(
+    "AGENTS.md"
+    "docs/manual/CODING_AGENT.md"
+    "docs/manual/HARNESS.md"
+    "docs/design-docs/harness-engineering.md"
+    "docs/design-docs/rebuild-architecture.md"
+  )
+
+  for file in "${stable_docs[@]}"; do
+    if grep -Eq '(^|[^[:alnum:]_])jj([^[:alnum:]_]|$)' "$ROOT_DIR/$file"; then
+      die "stable harness doc still references jj workflow: $file"
+    fi
+  done
+}
+
 run_fmt_check() {
   log "stage=fmt-check"
   (cd "$ROOT_DIR" && cargo fmt --all --check)
@@ -104,6 +142,7 @@ run_clippy_frontend() {
 }
 
 run_lint() {
+  run_docs_check
   run_fmt_check
   (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
   log "stage=clippy-workspace"
@@ -147,6 +186,7 @@ case "$1" in
   --list)
     cat <<'EOF'
 doctor
+docs-check
 fmt-check
 backend-unit
 backend-integration
@@ -164,6 +204,9 @@ EOF
     ;;
   doctor)
     run_doctor
+    ;;
+  docs-check)
+    run_docs_check
     ;;
   fmt-check)
     run_fmt_check
