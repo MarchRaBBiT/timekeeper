@@ -4,8 +4,8 @@ use crate::types::{OvertimeRequestId, UserId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+pub use timekeeper_contract::requests::{CreateOvertimeRequest, OvertimeRequestResponse};
 use utoipa::ToSchema;
-use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
 
@@ -42,51 +42,23 @@ pub struct OvertimeRequest {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
-/// Payload used to create a new overtime request.
-pub struct CreateOvertimeRequest {
-    pub date: NaiveDate,
-    #[validate(range(min = 0.5, max = 24.0))]
-    pub planned_hours: f64,
-    #[validate(length(max = 500))]
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// API response returned for overtime requests.
-pub struct OvertimeRequestResponse {
-    pub id: OvertimeRequestId,
-    pub user_id: UserId,
-    pub date: NaiveDate,
-    pub planned_hours: f64,
-    pub reason: Option<String>,
-    pub status: RequestStatus,
-    pub approved_by: Option<UserId>,
-    pub approved_at: Option<DateTime<Utc>>,
-    pub rejected_by: Option<UserId>,
-    pub rejected_at: Option<DateTime<Utc>>,
-    pub cancelled_at: Option<DateTime<Utc>>,
-    pub decision_comment: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
 impl From<OvertimeRequest> for OvertimeRequestResponse {
     /// Converts a persisted overtime request into its response form.
     fn from(request: OvertimeRequest) -> Self {
         OvertimeRequestResponse {
-            id: request.id,
-            user_id: request.user_id,
+            id: request.id.to_string(),
+            user_id: request.user_id.to_string(),
             date: request.date,
             planned_hours: request.planned_hours,
             reason: request.reason,
-            status: request.status,
-            approved_by: request.approved_by,
-            approved_at: request.approved_at,
-            rejected_by: request.rejected_by,
-            rejected_at: request.rejected_at,
-            cancelled_at: request.cancelled_at,
+            status: request.status.db_value().to_string(),
+            approved_by: request.approved_by.map(|id| id.to_string()),
+            approved_at: request.approved_at.map(|timestamp| timestamp.to_rfc3339()),
+            rejected_by: request.rejected_by.map(|id| id.to_string()),
+            rejected_at: request.rejected_at.map(|timestamp| timestamp.to_rfc3339()),
+            cancelled_at: request.cancelled_at.map(|timestamp| timestamp.to_rfc3339()),
             decision_comment: request.decision_comment,
-            created_at: request.created_at,
+            created_at: request.created_at.to_rfc3339(),
         }
     }
 }

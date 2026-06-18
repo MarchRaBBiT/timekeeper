@@ -8,8 +8,7 @@ use crate::error::AppError;
 use crate::models::break_record::{ActiveBreakResponse, BreakRecord};
 use crate::repositories::repository::Repository;
 use crate::types::{AttendanceId, BreakRecordId};
-use sqlx::postgres::PgTransaction;
-use sqlx::{PgPool, Row};
+use sqlx::{FromRow, PgPool, Row};
 
 const TABLE_NAME: &str = "break_records";
 const SELECT_COLUMNS: &str =
@@ -18,6 +17,16 @@ const ACTIVE_BREAKS_LIST_LIMIT: i64 = 500;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BreakRecordRepository;
+
+#[derive(Debug, Clone, FromRow)]
+struct ActiveBreakRow {
+    break_id: String,
+    attendance_id: String,
+    user_id: String,
+    username: String,
+    full_name: Option<String>,
+    break_start_time: chrono::NaiveDateTime,
+}
 
 impl BreakRecordRepository {
     pub fn new() -> Self {
@@ -81,7 +90,7 @@ impl BreakRecordRepository {
         &self,
         db: &PgPool,
     ) -> Result<Vec<ActiveBreakResponse>, AppError> {
-        let rows = sqlx::query_as::<_, ActiveBreakResponse>(
+        let rows = sqlx::query_as::<_, ActiveBreakRow>(
             "SELECT
                 br.id AS break_id,
                 br.attendance_id,
@@ -99,7 +108,7 @@ impl BreakRecordRepository {
         .bind(ACTIVE_BREAKS_LIST_LIMIT)
         .fetch_all(db)
         .await?;
-        Ok(rows)
+        Ok(rows.into_iter().map(active_break_row_to_response).collect())
     }
 
     pub async fn get_total_duration(
@@ -118,32 +127,19 @@ impl BreakRecordRepository {
         Ok(minutes)
     }
 
-    pub async fn create_in_transaction(
-        &self,
-        tx: &mut PgTransaction<'_>,
-        item: &BreakRecord,
-    ) -> Result<BreakRecord, AppError> {
-        let query = format!(
-            "INSERT INTO {} (id, attendance_id, break_start_time, break_end_time, duration_minutes, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
-             RETURNING {}",
-            TABLE_NAME, SELECT_COLUMNS
-        );
-        let row = sqlx::query_as::<_, BreakRecord>(&query)
-            .bind(item.id)
-            .bind(item.attendance_id)
-            .bind(item.break_start_time)
-            .bind(item.break_end_time)
-            .bind(item.duration_minutes)
-            .bind(item.created_at)
-            .bind(item.updated_at)
-            .fetch_one(tx.as_mut())
-            .await?;
-        Ok(row)
-    }
-
     fn base_select_query() -> String {
         format!("SELECT {} FROM {}", SELECT_COLUMNS, TABLE_NAME)
+    }
+}
+
+fn active_break_row_to_response(row: ActiveBreakRow) -> ActiveBreakResponse {
+    ActiveBreakResponse {
+        break_id: row.break_id,
+        attendance_id: row.attendance_id,
+        user_id: row.user_id,
+        username: row.username,
+        full_name: row.full_name,
+        break_start_time: row.break_start_time,
     }
 }
 

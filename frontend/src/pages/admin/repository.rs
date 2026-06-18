@@ -385,11 +385,8 @@ mod host_tests {
         repo.reset_mfa("u1").await.unwrap();
         repo.upsert_attendance(AdminAttendanceUpsert {
             user_id: "u1".into(),
-            date: chrono::NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
-            clock_in_time: chrono::NaiveDate::from_ymd_opt(2025, 1, 2)
-                .unwrap()
-                .and_hms_opt(9, 0, 0)
-                .unwrap(),
+            date: "2025-01-02".into(),
+            clock_in_time: "2025-01-02T09:00:00".into(),
             clock_out_time: None,
             breaks: None,
         })

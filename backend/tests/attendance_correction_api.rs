@@ -90,6 +90,31 @@ async fn response_json(response: axum::response::Response) -> serde_json::Value 
     serde_json::from_slice(&body).expect("parse json body")
 }
 
+async fn authorize_manager_for_employee(pool: &PgPool, manager: &User, employee: &User) {
+    let department_id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&department_id)
+        .bind(format!("Correction Dept {department_id}"))
+        .execute(pool)
+        .await
+        .expect("insert correction department");
+    sqlx::query(
+        "INSERT INTO department_managers (department_id, user_id) VALUES ($1, $2) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(&department_id)
+    .bind(manager.id.to_string())
+    .execute(pool)
+    .await
+    .expect("assign correction manager");
+    sqlx::query("UPDATE users SET department_id = $1 WHERE id = $2")
+        .bind(&department_id)
+        .bind(employee.id.to_string())
+        .execute(pool)
+        .await
+        .expect("assign employee department");
+}
+
 #[tokio::test]
 async fn employee_can_create_update_and_cancel_attendance_correction() {
     let _guard = integration_guard().await;
@@ -172,6 +197,7 @@ async fn admin_approval_sets_request_status_and_effective_values() {
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let admin = seed_user(&pool, UserRole::Manager, false).await;
+    authorize_manager_for_employee(&pool, &admin, &employee).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -346,6 +372,7 @@ async fn admin_approval_fails_with_conflict_when_attendance_changed() {
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let admin = seed_user(&pool, UserRole::Manager, false).await;
+    authorize_manager_for_employee(&pool, &admin, &employee).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -458,6 +485,7 @@ async fn concurrent_approval_stress_allows_only_one_success() {
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let admin = seed_user(&pool, UserRole::Manager, false).await;
+    authorize_manager_for_employee(&pool, &admin, &employee).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());
@@ -566,6 +594,7 @@ async fn concurrent_reject_stress_allows_only_one_success() {
 
     let employee = seed_user(&pool, UserRole::Employee, false).await;
     let admin = seed_user(&pool, UserRole::Manager, false).await;
+    authorize_manager_for_employee(&pool, &admin, &employee).await;
     let user_app = user_router(pool.clone(), employee.clone());
     let admin_app = admin_router(pool.clone(), admin.clone());
     let user_token = create_test_token(employee.id, employee.role.clone());

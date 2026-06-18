@@ -3,6 +3,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+pub use timekeeper_contract::organization::{
+    AssignManagerRequest as AssignManagerPayload,
+    CreateDepartmentRequest as CreateDepartmentPayload, DepartmentResponse,
+    UpdateDepartmentRequest as UpdateDepartmentPayload,
+};
 use utoipa::ToSchema;
 
 use crate::types::{DepartmentId, UserId};
@@ -23,36 +28,6 @@ pub struct DepartmentManager {
     pub department_id: DepartmentId,
     pub user_id: UserId,
     pub assigned_at: DateTime<Utc>,
-}
-
-/// Payload to create a new department.
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct CreateDepartmentPayload {
-    pub name: String,
-    pub parent_id: Option<String>,
-}
-
-/// Payload to update an existing department.
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct UpdateDepartmentPayload {
-    pub name: Option<String>,
-    pub parent_id: Option<String>,
-}
-
-/// Payload to assign a manager to a department.
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct AssignManagerPayload {
-    pub user_id: String,
-}
-
-/// API response for a department.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct DepartmentResponse {
-    pub id: String,
-    pub name: String,
-    pub parent_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 impl From<Department> for DepartmentResponse {

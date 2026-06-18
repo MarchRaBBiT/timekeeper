@@ -1,6 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use timekeeper_contract::subject_requests as contract_subject_requests;
+pub use timekeeper_contract::subject_requests::{
+    CreateDataSubjectRequest, DataSubjectRequestResponse,
+};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -23,6 +27,28 @@ impl DataSubjectRequestType {
             DataSubjectRequestType::Rectify => "rectify",
             DataSubjectRequestType::Delete => "delete",
             DataSubjectRequestType::Stop => "stop",
+        }
+    }
+}
+
+impl From<contract_subject_requests::DataSubjectRequestType> for DataSubjectRequestType {
+    fn from(value: contract_subject_requests::DataSubjectRequestType) -> Self {
+        match value {
+            contract_subject_requests::DataSubjectRequestType::Access => Self::Access,
+            contract_subject_requests::DataSubjectRequestType::Rectify => Self::Rectify,
+            contract_subject_requests::DataSubjectRequestType::Delete => Self::Delete,
+            contract_subject_requests::DataSubjectRequestType::Stop => Self::Stop,
+        }
+    }
+}
+
+impl From<DataSubjectRequestType> for contract_subject_requests::DataSubjectRequestType {
+    fn from(value: DataSubjectRequestType) -> Self {
+        match value {
+            DataSubjectRequestType::Access => Self::Access,
+            DataSubjectRequestType::Rectify => Self::Rectify,
+            DataSubjectRequestType::Delete => Self::Delete,
+            DataSubjectRequestType::Stop => Self::Stop,
         }
     }
 }
@@ -69,36 +95,13 @@ impl DataSubjectRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateDataSubjectRequest {
-    pub request_type: DataSubjectRequestType,
-    pub details: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct DataSubjectRequestResponse {
-    pub id: String,
-    pub user_id: String,
-    pub request_type: DataSubjectRequestType,
-    pub status: RequestStatus,
-    pub details: Option<String>,
-    pub approved_by: Option<String>,
-    pub approved_at: Option<DateTime<Utc>>,
-    pub rejected_by: Option<String>,
-    pub rejected_at: Option<DateTime<Utc>>,
-    pub cancelled_at: Option<DateTime<Utc>>,
-    pub decision_comment: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
 impl From<DataSubjectRequest> for DataSubjectRequestResponse {
     fn from(request: DataSubjectRequest) -> Self {
         Self {
             id: request.id,
             user_id: request.user_id,
-            request_type: request.request_type,
-            status: request.status,
+            request_type: request.request_type.into(),
+            status: request.status.db_value().to_string(),
             details: request.details,
             approved_by: request.approved_by,
             approved_at: request.approved_at,

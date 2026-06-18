@@ -1,5 +1,8 @@
 use chrono::NaiveDate;
-use serde_json::{json, Value};
+use serde_json::Value;
+use timekeeper_contract::attendance::{
+    BreakEndRequest, BreakStartRequest, ClockInRequest, ClockOutRequest,
+};
 
 use super::{
     client::{encode_path_segment, ApiClient},
@@ -42,12 +45,13 @@ fn attendance_summary_params(year: Option<i32>, month: Option<u32>) -> Vec<(&'st
 impl ApiClient {
     pub async fn clock_in(&self) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let payload = ClockInRequest { date: None };
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/clock-in", base_url))
-                    .json(&json!({})))
+                    .json(&payload))
             })
             .await?;
 
@@ -69,12 +73,13 @@ impl ApiClient {
 
     pub async fn clock_out(&self) -> Result<AttendanceResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let payload = ClockOutRequest { date: None };
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/clock-out", base_url))
-                    .json(&json!({})))
+                    .json(&payload))
             })
             .await?;
 
@@ -96,12 +101,15 @@ impl ApiClient {
 
     pub async fn break_start(&self, attendance_id: &str) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let payload = BreakStartRequest {
+            attendance_id: attendance_id.to_string(),
+        };
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/break-start", base_url))
-                    .json(&json!({ "attendance_id": attendance_id })))
+                    .json(&payload))
             })
             .await?;
         let status = response.status();
@@ -122,12 +130,15 @@ impl ApiClient {
 
     pub async fn break_end(&self, break_record_id: &str) -> Result<BreakRecordResponse, ApiError> {
         let base_url = self.resolved_base_url().await;
+        let payload = BreakEndRequest {
+            break_record_id: break_record_id.to_string(),
+        };
         let response = self
             .send_with_refresh(|| {
                 Ok(self
                     .http_client()
                     .post(format!("{}/attendance/break-end", base_url))
-                    .json(&json!({ "break_record_id": break_record_id })))
+                    .json(&payload))
             })
             .await?;
         let status = response.status();

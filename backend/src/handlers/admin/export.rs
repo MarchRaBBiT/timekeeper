@@ -6,33 +6,33 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::{Postgres, QueryBuilder, Row};
+use timekeeper_app::attendance::{
+    ExportAdminAttendance as ExportAdminAttendanceUseCase,
+    ExportAdminAttendanceError as AppExportAdminAttendanceError,
+    ExportAdminAttendanceQuery as AppExportAdminAttendanceQuery,
+};
+use timekeeper_infra_postgres::attendance::AttendanceWorkflowRepository;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     error::AppError,
     models::user::User,
     state::AppState,
-    utils::{csv::append_csv_row, encryption::decrypt_pii, pii::mask_name, time},
+    utils::{
+        csv::{render_admin_attendance_export_csv, AdminAttendanceExportCsvRow},
+        encryption::decrypt_pii,
+        pii::mask_name,
+        time,
+    },
 };
 
-use super::common::{parse_date_value, push_clause};
+use super::common::parse_date_value;
 
 #[derive(Deserialize, ToSchema, IntoParams)]
 pub struct ExportQuery {
     pub username: Option<String>,
     pub from: Option<String>, // YYYY-MM-DD
     pub to: Option<String>,   // YYYY-MM-DD
-}
-
-struct ExportRow {
-    username: String,
-    full_name: String,
-    date: String,
-    clock_in: String,
-    clock_out: String,
-    total_hours: String,
-    status: String,
 }
 
 pub async fn export_data(
@@ -64,138 +64,57 @@ pub async fn export_data(
         }
     }
 
-    let manager_user_ids: Option<Vec<String>> = if user.is_manager() && !user.is_system_admin() {
-        let ids =
-            crate::repositories::department::list_subordinate_user_ids(state.read_pool(), user.id)
-                .await
-                .map_err(|e| AppError::InternalServerError(e.into()))?;
-        Some(ids)
-    } else {
-        None
-    };
-
-    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username, COALESCE(u.full_name_enc, '') as full_name, a.date, a.clock_in_time, a.clock_out_time, a.total_work_hours, a.status \
-         FROM attendance a JOIN users u ON a.user_id = u.id",
-    );
-    let mut has_clause = false;
-    if let Some(ref u_name) = q.username {
-        push_clause(&mut builder, &mut has_clause);
-        builder.push("u.username = ").push_bind(u_name);
-    }
-    if let Some(ref uids) = manager_user_ids {
-        push_clause(&mut builder, &mut has_clause);
-        builder
-            .push("u.id = ANY(")
-            .push_bind(uids.clone())
-            .push(")");
-    }
-    if let Some(from) = parsed_from {
-        push_clause(&mut builder, &mut has_clause);
-        builder.push("a.date >= ").push_bind(from);
-    }
-    if let Some(to) = parsed_to {
-        push_clause(&mut builder, &mut has_clause);
-        builder.push("a.date <= ").push_bind(to);
-    }
-    builder.push(" ORDER BY a.date DESC, u.username");
-    let data: Vec<sqlx::postgres::PgRow> = builder
-        .build()
-        .fetch_all(state.read_pool())
+    let use_case = ExportAdminAttendanceUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let export = use_case
+        .execute(AppExportAdminAttendanceQuery {
+            requester_id: user.id.to_string(),
+            requester_is_manager: user.is_manager(),
+            requester_is_system_admin: user.is_system_admin(),
+            username: q.username,
+            from: parsed_from,
+            to: parsed_to,
+        })
         .await
-        .map_err(|e| AppError::InternalServerError(e.into()))?;
-
-    let mask_pii = !user.is_system_admin();
-    let rows: Vec<ExportRow> = data
+        .map_err(export_admin_attendance_error_to_app_error)?;
+    let csv_rows = export
+        .rows
         .into_iter()
-        .map(|record| {
-            let username = record
-                .try_get::<String, &str>("username")
-                .unwrap_or_default();
-            let encrypted_full_name = record.try_get::<String, _>("full_name").unwrap_or_default();
-            let full_name = decrypt_pii(&encrypted_full_name, &state.config)
+        .map(|row| {
+            let full_name = decrypt_pii(&row.full_name_encrypted, &state.config)
                 .unwrap_or_else(|_| "***".to_string());
-            let full_name = if mask_pii {
+            let full_name = if export.pii_masked {
                 mask_name(&full_name)
             } else {
                 full_name
             };
-            let date = record
-                .try_get::<chrono::NaiveDate, _>("date")
-                .map(|value| value.format("%Y-%m-%d").to_string())
-                .unwrap_or_default();
-            let clock_in = record
-                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_in_time")
-                .ok()
-                .flatten()
-                .map(|t| t.format("%H:%M:%S").to_string())
-                .unwrap_or_default();
-            let clock_out = record
-                .try_get::<Option<chrono::NaiveDateTime>, _>("clock_out_time")
-                .ok()
-                .flatten()
-                .map(|t| t.format("%H:%M:%S").to_string())
-                .unwrap_or_default();
-            let total_hours = record
-                .try_get::<f64, _>("total_work_hours")
-                .map(|h| format!("{:.2}", h))
-                .unwrap_or_else(|_| "0.00".to_string());
-            let status = record.try_get::<String, _>("status").unwrap_or_default();
-
-            ExportRow {
-                username,
+            AdminAttendanceExportCsvRow {
+                username: row.username,
                 full_name,
-                date,
-                clock_in,
-                clock_out,
-                total_hours,
-                status,
+                date: row.date.format("%Y-%m-%d").to_string(),
+                clock_in: row
+                    .clock_in_time
+                    .map(|time| time.format("%H:%M:%S").to_string())
+                    .unwrap_or_default(),
+                clock_out: row
+                    .clock_out_time
+                    .map(|time| time.format("%H:%M:%S").to_string())
+                    .unwrap_or_default(),
+                total_hours: row
+                    .total_work_hours
+                    .map(|hours| format!("{hours:.2}"))
+                    .unwrap_or_else(|| "0.00".to_string()),
+                status: row.status,
             }
         })
-        .collect();
-
-    let csv_data = tokio::task::spawn_blocking(move || {
-        let mut csv = String::new();
-        append_csv_row(
-            &mut csv,
-            &[
-                "Username".to_string(),
-                "Full Name".to_string(),
-                "Date".to_string(),
-                "Clock In".to_string(),
-                "Clock Out".to_string(),
-                "Total Hours".to_string(),
-                "Status".to_string(),
-            ],
-        );
-
-        for row in rows {
-            append_csv_row(
-                &mut csv,
-                &[
-                    row.username,
-                    row.full_name,
-                    row.date,
-                    row.clock_in,
-                    row.clock_out,
-                    row.total_hours,
-                    row.status,
-                ],
-            );
-        }
-        csv
-    })
-    .await
-    .map_err(|e| AppError::InternalServerError(e.into()))?;
+        .collect::<Vec<_>>();
+    let csv_data = render_admin_attendance_export_csv(&csv_rows);
 
     let mut headers = HeaderMap::new();
     headers.insert(
         "X-PII-Masked",
-        HeaderValue::from_static(if user.is_system_admin() {
-            "false"
-        } else {
-            "true"
-        }),
+        HeaderValue::from_static(if export.pii_masked { "true" } else { "false" }),
     );
     Ok((
         headers,
@@ -207,4 +126,13 @@ pub async fn export_data(
             )
         })),
     ))
+}
+
+fn export_admin_attendance_error_to_app_error(error: AppExportAdminAttendanceError) -> AppError {
+    match error {
+        AppExportAdminAttendanceError::Forbidden => AppError::Forbidden("Forbidden".into()),
+        AppExportAdminAttendanceError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
 }

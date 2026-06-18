@@ -22,6 +22,7 @@ wasm-bindgen-futures = "0.4"
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+timekeeper-contract = { path = "../crates/contract" }
 
 # Async runtime
 wasm-bindgen = "0.2"

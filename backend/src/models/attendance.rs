@@ -1,10 +1,13 @@
 //! Models that represent employee attendance records and related requests.
 
-use crate::models::break_record::BreakRecordResponse;
-use crate::types::{AttendanceId, BreakRecordId, UserId};
+use crate::types::{AttendanceId, UserId};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+pub use timekeeper_contract::attendance::{
+    AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest, ClockInRequest,
+    ClockOutRequest,
+};
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
@@ -57,62 +60,15 @@ impl AttendanceStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// Request payload used when an employee clocks in.
-pub struct ClockInRequest {
-    pub date: Option<NaiveDate>,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// Request payload used when an employee clocks out.
-pub struct ClockOutRequest {
-    pub date: Option<NaiveDate>,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// Request payload for starting a break against an attendance record.
-pub struct BreakStartRequest {
-    pub attendance_id: AttendanceId,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// Request payload for ending a break session.
-pub struct BreakEndRequest {
-    pub break_record_id: BreakRecordId,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// API representation of attendance with associated break records.
-pub struct AttendanceResponse {
-    pub id: AttendanceId,
-    pub user_id: UserId,
-    pub date: NaiveDate,
-    pub clock_in_time: Option<NaiveDateTime>,
-    pub clock_out_time: Option<NaiveDateTime>,
-    pub status: AttendanceStatus,
-    pub total_work_hours: Option<f64>,
-    pub break_records: Vec<BreakRecordResponse>,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// High-level summary for reporting an employee's monthly attendance.
-pub struct AttendanceSummary {
-    pub month: u32,
-    pub year: i32,
-    pub total_work_hours: f64,
-    pub total_work_days: i32,
-    pub average_daily_hours: f64,
-}
-
 impl From<Attendance> for AttendanceResponse {
     fn from(a: Attendance) -> Self {
         Self {
-            id: a.id,
-            user_id: a.user_id,
+            id: a.id.to_string(),
+            user_id: a.user_id.to_string(),
             date: a.date,
             clock_in_time: a.clock_in_time,
             clock_out_time: a.clock_out_time,
-            status: a.status,
+            status: a.status.db_value().to_string(),
             total_work_hours: a.total_work_hours,
             break_records: Vec::new(),
         }

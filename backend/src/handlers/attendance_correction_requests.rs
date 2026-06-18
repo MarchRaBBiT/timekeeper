@@ -2,95 +2,201 @@ use axum::{
     extract::{Extension, Path, State},
     Json,
 };
-use chrono::NaiveDateTime;
+use timekeeper_app::attendance::{
+    AttendanceCorrectionBreak as AppCorrectionBreak,
+    AttendanceCorrectionRecord as AppCorrectionRecord,
+    AttendanceCorrectionRequestStatus as AppCorrectionStatus,
+    AttendanceCorrectionSnapshot as AppCorrectionSnapshot,
+    CancelAttendanceCorrectionCommand as AppCancelCorrectionCommand,
+    CancelAttendanceCorrectionRequest as CancelCorrectionUseCase,
+    CreateAttendanceCorrectionCommand as AppCreateCorrectionCommand,
+    CreateAttendanceCorrectionError as AppCreateCorrectionError,
+    CreateAttendanceCorrectionRequest as CreateCorrectionUseCase,
+    UpdateAttendanceCorrectionCommand as AppUpdateCorrectionCommand,
+    UpdateAttendanceCorrectionRepository as AppUpdateCorrectionRepository,
+    UpdateAttendanceCorrectionRequest as UpdateCorrectionUseCase,
+};
+use timekeeper_infra_postgres::attendance_correction::AttendanceCorrectionRepository;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    attendance::Attendance,
     attendance_correction_request::{
         AttendanceCorrectionResponse, AttendanceCorrectionSnapshot, CorrectionBreakItem,
         CreateAttendanceCorrectionRequest, UpdateAttendanceCorrectionRequest,
     },
     user::User,
 };
-use crate::repositories::{
-    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    attendance_correction_request::{
-        AttendanceCorrectionRequestRepository, CreateAttendanceCorrectionRequestParams,
-    },
-    break_record::BreakRecordRepository,
-};
 use crate::state::AppState;
+
+pub(crate) fn create_correction_error_to_app_error(error: AppCreateCorrectionError) -> AppError {
+    match error {
+        AppCreateCorrectionError::RequestNotFound => {
+            AppError::NotFound("Attendance correction request not found".into())
+        }
+        AppCreateCorrectionError::ReasonRequired => {
+            AppError::BadRequest("reason is required".into())
+        }
+        AppCreateCorrectionError::ReasonTooLong => {
+            AppError::BadRequest("reason must be between 1 and 500 characters".into())
+        }
+        AppCreateCorrectionError::AttendanceNotFound => {
+            AppError::NotFound("No attendance record found for specified date".into())
+        }
+        AppCreateCorrectionError::NotPendingUpdate => {
+            AppError::Conflict("Only pending requests can be updated".into())
+        }
+        AppCreateCorrectionError::NotPendingCancel => {
+            AppError::Conflict("Only pending requests can be cancelled".into())
+        }
+        AppCreateCorrectionError::NoChanges => {
+            AppError::BadRequest("At least one field must be changed".into())
+        }
+        AppCreateCorrectionError::ClockInRequired => {
+            AppError::BadRequest("clock_in_time is required".into())
+        }
+        AppCreateCorrectionError::ClockOutBeforeClockIn => {
+            AppError::BadRequest("clock_out_time must be later than clock_in_time".into())
+        }
+        AppCreateCorrectionError::BreakEndBeforeStart => {
+            AppError::BadRequest("break_end_time must be later than break_start_time".into())
+        }
+        AppCreateCorrectionError::BreakStartBeforeClockIn => {
+            AppError::BadRequest("break_start_time must be later than clock_in_time".into())
+        }
+        AppCreateCorrectionError::BreakEndAfterClockOut => {
+            AppError::BadRequest("break_end_time must be earlier than clock_out_time".into())
+        }
+        AppCreateCorrectionError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn app_status_to_backend(
+    status: AppCorrectionStatus,
+) -> crate::models::attendance_correction_request::AttendanceCorrectionStatus {
+    match status {
+        AppCorrectionStatus::Pending => {
+            crate::models::attendance_correction_request::AttendanceCorrectionStatus::Pending
+        }
+        AppCorrectionStatus::Approved => {
+            crate::models::attendance_correction_request::AttendanceCorrectionStatus::Approved
+        }
+        AppCorrectionStatus::Rejected => {
+            crate::models::attendance_correction_request::AttendanceCorrectionStatus::Rejected
+        }
+        AppCorrectionStatus::Cancelled => {
+            crate::models::attendance_correction_request::AttendanceCorrectionStatus::Cancelled
+        }
+        AppCorrectionStatus::Conflict => {
+            crate::models::attendance_correction_request::AttendanceCorrectionStatus::Conflict
+        }
+    }
+}
+
+pub(crate) fn backend_snapshot_to_app(
+    snapshot: AttendanceCorrectionSnapshot,
+) -> AppCorrectionSnapshot {
+    AppCorrectionSnapshot {
+        clock_in_time: snapshot.clock_in_time,
+        clock_out_time: snapshot.clock_out_time,
+        breaks: snapshot
+            .breaks
+            .into_iter()
+            .map(|item| AppCorrectionBreak {
+                break_start_time: item.break_start_time,
+                break_end_time: item.break_end_time,
+            })
+            .collect(),
+    }
+}
+
+pub(crate) fn app_snapshot_to_backend(
+    snapshot: AppCorrectionSnapshot,
+) -> AttendanceCorrectionSnapshot {
+    AttendanceCorrectionSnapshot {
+        clock_in_time: snapshot.clock_in_time,
+        clock_out_time: snapshot.clock_out_time,
+        breaks: snapshot
+            .breaks
+            .into_iter()
+            .map(|item| CorrectionBreakItem {
+                break_start_time: item.break_start_time,
+                break_end_time: item.break_end_time,
+            })
+            .collect(),
+    }
+}
+
+pub(crate) fn app_record_to_backend_response(
+    record: AppCorrectionRecord,
+) -> Result<AttendanceCorrectionResponse, AppError> {
+    Ok(AttendanceCorrectionResponse {
+        id: record.id,
+        user_id: record.user_id,
+        attendance_id: record.attendance_id,
+        date: record.date,
+        status: app_status_to_backend(record.status),
+        reason: record.reason,
+        original_snapshot: app_snapshot_to_backend(record.original_snapshot),
+        proposed_values: app_snapshot_to_backend(record.proposed_values),
+        decision_comment: record.decision_comment,
+        approved_by: record.approved_by,
+        approved_at: record.approved_at,
+        rejected_by: record.rejected_by,
+        rejected_at: record.rejected_at,
+        cancelled_at: record.cancelled_at,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    })
+}
 
 pub async fn create_attendance_correction_request(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
     Json(payload): Json<CreateAttendanceCorrectionRequest>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
-    validate_reason(&payload.reason)?;
+    let use_case = CreateCorrectionUseCase::new(AttendanceCorrectionRepository::new(
+        state.write_pool.clone(),
+    ));
+    let request = use_case
+        .execute(AppCreateCorrectionCommand {
+            request_id: Uuid::new_v4().to_string(),
+            user_id: user.id.to_string(),
+            date: payload.date,
+            clock_in_time: payload.clock_in_time,
+            clock_out_time: payload.clock_out_time,
+            breaks: payload.breaks.map(|breaks| {
+                breaks
+                    .into_iter()
+                    .map(|item| AppCorrectionBreak {
+                        break_start_time: item.break_start_time,
+                        break_end_time: item.break_end_time,
+                    })
+                    .collect()
+            }),
+            reason: payload.reason,
+        })
+        .await
+        .map_err(create_correction_error_to_app_error)?;
 
-    let attendance_repo = AttendanceRepository::new();
-    let break_repo = BreakRecordRepository::new();
-
-    let attendance = attendance_repo
-        .find_by_user_and_date(state.read_pool(), user.id, payload.date)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound("No attendance record found for specified date".into())
-        })?;
-
-    let original_snapshot = build_snapshot(&attendance, &break_repo, state.read_pool()).await?;
-    let proposed_snapshot = build_proposed_snapshot(
-        &original_snapshot,
-        payload.clock_in_time,
-        payload.clock_out_time,
-        payload.breaks,
-    )?;
-
-    if original_snapshot == proposed_snapshot {
-        return Err(AppError::BadRequest(
-            "At least one field must be changed".into(),
-        ));
-    }
-
-    validate_snapshot(&proposed_snapshot)?;
-
-    let repo = AttendanceCorrectionRequestRepository::new();
-    let request_id = Uuid::new_v4().to_string();
-    let request = repo
-        .create(
-            &state.write_pool,
-            CreateAttendanceCorrectionRequestParams {
-                id: &request_id,
-                user_id: user.id,
-                attendance_id: attendance.id,
-                date: payload.date,
-                reason: &payload.reason,
-                original_snapshot: &original_snapshot,
-                proposed_values: &proposed_snapshot,
-            },
-        )
-        .await?;
-
-    Ok(Json(
-        request
-            .to_response()
-            .map_err(AppError::InternalServerError)?,
-    ))
+    Ok(Json(app_record_to_backend_response(request)?))
 }
 
 pub async fn list_my_attendance_correction_requests(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
 ) -> Result<Json<Vec<AttendanceCorrectionResponse>>, AppError> {
-    let repo = AttendanceCorrectionRequestRepository::new();
-    let list = repo.list_by_user(state.read_pool(), user.id).await?;
-
-    let mut responses = Vec::with_capacity(list.len());
-    for item in list {
-        responses.push(item.to_response().map_err(AppError::InternalServerError)?);
-    }
+    let repo = AttendanceCorrectionRepository::new(state.read_pool().clone());
+    let list = repo
+        .list_by_user(&user.id.to_string())
+        .await
+        .map_err(create_correction_error_to_app_error)?;
+    let responses = list
+        .into_iter()
+        .map(app_record_to_backend_response)
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(responses))
 }
@@ -100,16 +206,13 @@ pub async fn get_my_attendance_correction_request(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
-    let repo = AttendanceCorrectionRequestRepository::new();
+    let repo = AttendanceCorrectionRepository::new(state.read_pool().clone());
     let request = repo
-        .find_by_id_for_user(state.read_pool(), &id, user.id)
-        .await?;
+        .find_attendance_correction_request_for_user(&id, &user.id.to_string())
+        .await
+        .map_err(create_correction_error_to_app_error)?;
 
-    Ok(Json(
-        request
-            .to_response()
-            .map_err(AppError::InternalServerError)?,
-    ))
+    Ok(Json(app_record_to_backend_response(request)?))
 }
 
 pub async fn update_my_attendance_correction_request(
@@ -118,52 +221,30 @@ pub async fn update_my_attendance_correction_request(
     Path(id): Path<String>,
     Json(payload): Json<UpdateAttendanceCorrectionRequest>,
 ) -> Result<Json<AttendanceCorrectionResponse>, AppError> {
-    validate_reason(&payload.reason)?;
+    let use_case = UpdateCorrectionUseCase::new(AttendanceCorrectionRepository::new(
+        state.write_pool.clone(),
+    ));
+    let updated = use_case
+        .execute(AppUpdateCorrectionCommand {
+            request_id: id,
+            user_id: user.id.to_string(),
+            clock_in_time: payload.clock_in_time,
+            clock_out_time: payload.clock_out_time,
+            breaks: payload.breaks.map(|breaks| {
+                breaks
+                    .into_iter()
+                    .map(|item| AppCorrectionBreak {
+                        break_start_time: item.break_start_time,
+                        break_end_time: item.break_end_time,
+                    })
+                    .collect()
+            }),
+            reason: payload.reason,
+        })
+        .await
+        .map_err(create_correction_error_to_app_error)?;
 
-    let repo = AttendanceCorrectionRequestRepository::new();
-    let current = repo
-        .find_by_id_for_user(state.read_pool(), &id, user.id)
-        .await?;
-
-    if current.status.db_value() != "pending" {
-        return Err(AppError::Conflict(
-            "Only pending requests can be updated".into(),
-        ));
-    }
-
-    let original_snapshot = current
-        .parse_original_snapshot()
-        .map_err(|error| AppError::InternalServerError(error.into()))?;
-    let proposed_snapshot = build_proposed_snapshot(
-        &original_snapshot,
-        payload.clock_in_time,
-        payload.clock_out_time,
-        payload.breaks,
-    )?;
-
-    if original_snapshot == proposed_snapshot {
-        return Err(AppError::BadRequest(
-            "At least one field must be changed".into(),
-        ));
-    }
-
-    validate_snapshot(&proposed_snapshot)?;
-
-    let updated = repo
-        .update_pending_for_user(
-            &state.write_pool,
-            &id,
-            user.id,
-            &payload.reason,
-            &proposed_snapshot,
-        )
-        .await?;
-
-    Ok(Json(
-        updated
-            .to_response()
-            .map_err(AppError::InternalServerError)?,
-    ))
+    Ok(Json(app_record_to_backend_response(updated)?))
 }
 
 pub async fn cancel_my_attendance_correction_request(
@@ -171,93 +252,15 @@ pub async fn cancel_my_attendance_correction_request(
     Extension(user): Extension<User>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let repo = AttendanceCorrectionRequestRepository::new();
-    repo.cancel_pending_for_user(&state.write_pool, &id, user.id)
-        .await?;
-    Ok(Json(serde_json::json!({ "id": id, "status": "cancelled" })))
-}
-
-pub fn build_proposed_snapshot(
-    original: &AttendanceCorrectionSnapshot,
-    clock_in_time: Option<NaiveDateTime>,
-    clock_out_time: Option<NaiveDateTime>,
-    breaks: Option<Vec<CorrectionBreakItem>>,
-) -> Result<AttendanceCorrectionSnapshot, AppError> {
-    let proposed = AttendanceCorrectionSnapshot {
-        clock_in_time: clock_in_time.or(original.clock_in_time),
-        clock_out_time: clock_out_time.or(original.clock_out_time),
-        breaks: breaks.unwrap_or_else(|| original.breaks.clone()),
-    };
-    Ok(proposed)
-}
-
-pub fn validate_snapshot(snapshot: &AttendanceCorrectionSnapshot) -> Result<(), AppError> {
-    let Some(clock_in) = snapshot.clock_in_time else {
-        return Err(AppError::BadRequest("clock_in_time is required".into()));
-    };
-    if let Some(clock_out) = snapshot.clock_out_time {
-        if clock_in > clock_out {
-            return Err(AppError::BadRequest(
-                "clock_out_time must be later than clock_in_time".into(),
-            ));
-        }
-    }
-
-    for br in &snapshot.breaks {
-        if let Some(end) = br.break_end_time {
-            if br.break_start_time > end {
-                return Err(AppError::BadRequest(
-                    "break_end_time must be later than break_start_time".into(),
-                ));
-            }
-            if br.break_start_time < clock_in {
-                return Err(AppError::BadRequest(
-                    "break_start_time must be later than clock_in_time".into(),
-                ));
-            }
-            if let Some(clock_out) = snapshot.clock_out_time {
-                if end > clock_out {
-                    return Err(AppError::BadRequest(
-                        "break_end_time must be earlier than clock_out_time".into(),
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_reason(reason: &str) -> Result<(), AppError> {
-    if reason.trim().is_empty() {
-        return Err(AppError::BadRequest("reason is required".into()));
-    }
-    if reason.chars().count() > 500 {
-        return Err(AppError::BadRequest(
-            "reason must be between 1 and 500 characters".into(),
-        ));
-    }
-    Ok(())
-}
-
-pub async fn build_snapshot(
-    attendance: &Attendance,
-    break_repo: &BreakRecordRepository,
-    db: &sqlx::PgPool,
-) -> Result<AttendanceCorrectionSnapshot, AppError> {
-    let breaks = break_repo
-        .find_by_attendance(db, attendance.id)
-        .await?
-        .into_iter()
-        .map(|item| CorrectionBreakItem {
-            break_start_time: item.break_start_time,
-            break_end_time: item.break_end_time,
+    let use_case = CancelCorrectionUseCase::new(AttendanceCorrectionRepository::new(
+        state.write_pool.clone(),
+    ));
+    use_case
+        .execute(AppCancelCorrectionCommand {
+            request_id: id.clone(),
+            user_id: user.id.to_string(),
         })
-        .collect();
-
-    Ok(AttendanceCorrectionSnapshot {
-        clock_in_time: attendance.clock_in_time,
-        clock_out_time: attendance.clock_out_time,
-        breaks,
-    })
+        .await
+        .map_err(create_correction_error_to_app_error)?;
+    Ok(Json(serde_json::json!({ "id": id, "status": "cancelled" })))
 }

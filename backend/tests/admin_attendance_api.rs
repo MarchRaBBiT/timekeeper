@@ -491,9 +491,9 @@ async fn test_system_admin_can_list_active_breaks() {
 
     assert_eq!(payload.len(), 1);
     let item = &payload[0];
-    assert_eq!(item.break_id, active_break.id);
-    assert_eq!(item.attendance_id, attendance.id);
-    assert_eq!(item.user_id, employee.id);
+    assert_eq!(item.break_id, active_break.id.to_string());
+    assert_eq!(item.attendance_id, attendance.id.to_string());
+    assert_eq!(item.user_id, employee.id.to_string());
     assert_eq!(item.username, employee.username);
     assert_eq!(item.full_name.as_deref(), Some(employee.full_name.as_str()));
     assert_eq!(item.break_start_time, break_start);

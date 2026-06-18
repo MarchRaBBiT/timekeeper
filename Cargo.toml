@@ -1,6 +1,16 @@
 [workspace]
 members = [
+    "apps/api",
+    "apps/web",
+    "apps/worker",
     "backend",
+    "crates/app",
+    "crates/contract",
+    "crates/domain",
+    "crates/infra-integrations",
+    "crates/infra-postgres",
+    "crates/infra-security",
+    "crates/observability",
     "frontend"
 ]
 resolver = "2"
@@ -18,3 +28,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }

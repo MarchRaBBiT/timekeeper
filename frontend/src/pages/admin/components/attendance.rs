@@ -23,6 +23,10 @@ fn parse_dt_local(input: &str) -> Option<NaiveDateTime> {
     }
 }
 
+fn format_dt_local(value: NaiveDateTime) -> String {
+    value.format("%Y-%m-%dT%H:%M:%S").to_string()
+}
+
 fn build_break_items(raw_breaks: Vec<(String, String)>) -> Vec<AdminBreakItem> {
     let mut break_items: Vec<AdminBreakItem> = vec![];
     for (start, end) in raw_breaks {
@@ -37,8 +41,8 @@ fn build_break_items(raw_breaks: Vec<(String, String)>) -> Vec<AdminBreakItem> {
         };
         if let Some(start_dt) = start_dt {
             break_items.push(AdminBreakItem {
-                break_start_time: start_dt,
-                break_end_time: end_dt,
+                break_start_time: format_dt_local(start_dt),
+                break_end_time: end_dt.map(format_dt_local),
             });
         }
     }
@@ -70,9 +74,9 @@ fn build_attendance_payload(
     let break_items = build_break_items(raw_breaks);
     Ok(AdminAttendanceUpsert {
         user_id: user_id.to_string(),
-        date,
-        clock_in_time: clock_in.expect("clock in checked above"),
-        clock_out_time: clock_out,
+        date: date.format("%Y-%m-%d").to_string(),
+        clock_in_time: format_dt_local(clock_in.expect("clock in checked above")),
+        clock_out_time: clock_out.map(format_dt_local),
         breaks: if break_items.is_empty() {
             None
         } else {
@@ -621,7 +625,8 @@ mod host_tests {
         )
         .expect("payload");
         assert_eq!(payload.user_id, "u1");
-        assert_eq!(payload.date.to_string(), "2025-01-01");
+        assert_eq!(payload.date, "2025-01-01");
+        assert_eq!(payload.clock_in_time, "2025-01-01T09:00:00");
         assert_eq!(payload.breaks.as_ref().map(|v| v.len()), Some(1));
     }
 
@@ -674,10 +679,10 @@ mod host_tests {
         )
         .expect("payload");
         assert_eq!(payload.user_id, "u1");
-        assert_eq!(payload.date.to_string(), "2025-01-01");
+        assert_eq!(payload.date, "2025-01-01");
         assert_eq!(
-            payload.clock_out_time.map(|dt| dt.to_string()),
-            Some("2025-01-01 18:00:15".to_string())
+            payload.clock_out_time.as_deref(),
+            Some("2025-01-01T18:00:15")
         );
     }
 
@@ -937,12 +942,8 @@ mod host_tests {
             ));
             let payload = AdminAttendanceUpsert {
                 user_id: "u1".to_string(),
-                date: NaiveDate::from_ymd_opt(2025, 1, 2).expect("valid date"),
-                clock_in_time: NaiveDateTime::parse_from_str(
-                    "2025-01-02T09:00:00",
-                    "%Y-%m-%dT%H:%M:%S",
-                )
-                .expect("valid datetime"),
+                date: "2025-01-02".to_string(),
+                clock_in_time: "2025-01-02T09:00:00".to_string(),
                 clock_out_time: None,
                 breaks: None,
             };

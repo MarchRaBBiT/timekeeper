@@ -5,7 +5,6 @@
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use sqlx::postgres::PgTransaction;
 use sqlx::Row as _;
 use sqlx::{PgPool, Postgres};
 
@@ -316,50 +315,6 @@ impl AttendanceRepositoryTrait for AttendanceRepository {
         let total_work_days: i64 = row.try_get("total_days").unwrap_or(0);
 
         Ok((total_work_hours, total_work_days))
-    }
-}
-
-impl AttendanceRepository {
-    pub async fn delete_by_user_and_date(
-        &self,
-        tx: &mut PgTransaction<'_>,
-        user_id: UserId,
-        date: NaiveDate,
-    ) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM attendance WHERE user_id = $1 AND date = $2")
-            .bind(user_id)
-            .bind(date)
-            .execute(tx.as_mut())
-            .await?;
-        Ok(())
-    }
-
-    pub async fn create_in_transaction(
-        &self,
-        tx: &mut PgTransaction<'_>,
-        item: &Attendance,
-    ) -> Result<Attendance, AppError> {
-        const SELECT_COLUMNS: &str =
-            "id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at";
-        let query = format!(
-            "INSERT INTO attendance (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
-             RETURNING {}",
-            SELECT_COLUMNS
-        );
-        let row = sqlx::query_as::<_, Attendance>(&query)
-            .bind(item.id)
-            .bind(item.user_id)
-            .bind(item.date)
-            .bind(item.clock_in_time)
-            .bind(item.clock_out_time)
-            .bind(item.status.db_value())
-            .bind(item.total_work_hours)
-            .bind(item.created_at)
-            .bind(item.updated_at)
-            .fetch_one(tx.as_mut())
-            .await?;
-        Ok(row)
     }
 }
 

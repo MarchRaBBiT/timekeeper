@@ -1,0 +1,16 @@
+[package]
+name = "timekeeper-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "timekeeper-api"
+path = "src/main.rs"
+
+[dependencies]
+timekeeper-app = { path = "../../crates/app" }
+timekeeper-contract = { path = "../../crates/contract" }
+timekeeper-observability = { path = "../../crates/observability" }

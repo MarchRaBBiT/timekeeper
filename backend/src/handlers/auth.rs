@@ -19,7 +19,7 @@ use crate::{
     middleware::request_id::RequestId,
     models::{
         active_session::ActiveSession,
-        password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
+        password_reset::{MessageResponse, RequestPasswordResetPayload, ResetPasswordPayload},
         user::{
             ChangePasswordRequest, LoginRequest, LoginResponse, MfaCodeRequest, MfaSetupResponse,
             MfaStatusResponse, UpdateProfile, User, UserResponse,
@@ -780,9 +780,9 @@ pub async fn request_password_reset(
         }
     }
 
-    Ok(Json(json!({
-        "message": "If the email exists, a password reset link has been sent"
-    })))
+    Ok(Json(MessageResponse {
+        message: "If the email exists, a password reset link has been sent".to_string(),
+    }))
 }
 
 pub async fn reset_password(
@@ -870,9 +870,9 @@ pub async fn reset_password(
         tracing::error!("Failed to send password changed notification: {:?}", e);
     }
 
-    Ok(Json(json!({
-        "message": "Password has been reset successfully"
-    })))
+    Ok(Json(MessageResponse {
+        message: "Password has been reset successfully".to_string(),
+    }))
 }
 
 // Helper methods

@@ -1,9 +1,10 @@
 //! Models that capture break sessions within an attendance record.
 
-use crate::types::{AttendanceId, BreakRecordId, UserId};
+use crate::types::{AttendanceId, BreakRecordId};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+pub use timekeeper_contract::attendance::{ActiveBreakResponse, BreakRecordResponse};
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
@@ -25,33 +26,12 @@ pub struct BreakRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// API-friendly representation of a break interval.
-pub struct BreakRecordResponse {
-    pub id: BreakRecordId,
-    pub attendance_id: AttendanceId,
-    pub break_start_time: NaiveDateTime,
-    pub break_end_time: Option<NaiveDateTime>,
-    pub duration_minutes: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
-/// Administrative view of active breaks that can be force-ended.
-pub struct ActiveBreakResponse {
-    pub break_id: BreakRecordId,
-    pub attendance_id: AttendanceId,
-    pub user_id: UserId,
-    pub username: String,
-    pub full_name: Option<String>,
-    pub break_start_time: NaiveDateTime,
-}
-
 impl From<BreakRecord> for BreakRecordResponse {
     /// Converts a database model into the response payload variant.
     fn from(record: BreakRecord) -> Self {
         BreakRecordResponse {
-            id: record.id,
-            attendance_id: record.attendance_id,
+            id: record.id.to_string(),
+            attendance_id: record.attendance_id.to_string(),
             break_start_time: record.break_start_time,
             break_end_time: record.break_end_time,
             duration_minutes: record.duration_minutes,

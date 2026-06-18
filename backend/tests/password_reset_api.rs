@@ -177,7 +177,7 @@ async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
         INSERT INTO users (id, username, password_hash, full_name_enc, email_enc, email_hash, role, is_system_admin)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id, username, password_hash, full_name_enc as full_name, email_enc as email, LOWER(role) as role, is_system_admin,
-        mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, created_at, updated_at
+        mfa_secret_enc as mfa_secret, mfa_enabled_at, password_changed_at, failed_login_attempts, locked_until, lock_reason, lockout_count, department_id, created_at, updated_at
         "#,
     )
     .bind(user_id)

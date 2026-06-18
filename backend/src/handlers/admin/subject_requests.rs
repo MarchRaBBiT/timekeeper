@@ -19,6 +19,9 @@ use crate::{
     state::AppState,
     utils::time,
 };
+pub use timekeeper_contract::subject_requests::{
+    SubjectRequestDecisionPayload as DecisionPayload, SubjectRequestListResponse,
+};
 
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
@@ -35,19 +38,6 @@ pub struct SubjectRequestListQuery {
     pub to: Option<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct SubjectRequestListResponse {
-    pub page: i64,
-    pub per_page: i64,
-    pub total: i64,
-    pub items: Vec<DataSubjectRequestResponse>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct DecisionPayload {
-    pub comment: String,
 }
 
 pub async fn list_subject_requests(

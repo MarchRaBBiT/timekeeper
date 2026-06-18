@@ -2,40 +2,49 @@ use axum::{
     extract::{Extension, Path, Query, State},
     Json,
 };
-use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, NaiveDateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::{Datelike, Duration, Months, NaiveDate, Utc};
+use serde::Deserialize;
 use serde_json::{json, Value};
-use sqlx::PgPool;
 use std::str::FromStr;
 use std::sync::Arc;
+use timekeeper_app::attendance::{
+    AttendanceStatus as AppAttendanceStatus, AttendanceStatusError,
+    AttendanceStatusQuery as AppAttendanceStatusQuery, BreakEnd as BreakEndUseCase,
+    BreakEndCommand as AppBreakEndCommand, BreakEndError, BreakPeriod as UseCaseBreakPeriod,
+    ClockIn as ClockInUseCase, ClockInCommand as AppClockInCommand, ClockInError,
+    ClockOut as ClockOutUseCase, ClockOutCommand as AppClockOutCommand, ClockOutError,
+    ExportUserAttendance as ExportUserAttendanceUseCase,
+    ExportUserAttendanceQuery as AppExportUserAttendanceQuery,
+    GetAttendanceStatus as GetAttendanceStatusUseCase,
+    GetBreaksByAttendance as GetBreaksByAttendanceUseCase, GetBreaksByAttendanceError,
+    GetBreaksByAttendanceQuery as AppGetBreaksByAttendanceQuery,
+    GetUserAttendanceSummary as GetUserAttendanceSummaryUseCase,
+    GetUserAttendanceSummaryQuery as AppGetUserAttendanceSummaryQuery,
+    HolidayCalendar as ClockInHolidayCalendar, HolidayDecision as AppHolidayDecision,
+    ListUserAttendance as ListUserAttendanceUseCase,
+    ListUserAttendanceError as AppListUserAttendanceError,
+    ListUserAttendanceQuery as AppListUserAttendanceQuery, StartBreak as StartBreakUseCase,
+    StartBreakCommand as AppStartBreakCommand, StartBreakError, WorkdayCalendar,
+};
+use timekeeper_contract::attendance::AttendanceStatusResponse;
+use timekeeper_domain::WorkDate;
+use timekeeper_infra_postgres::attendance::AttendanceWorkflowRepository;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::AppError;
-use crate::handlers::attendance_utils::{
-    ensure_authorized_access, ensure_clock_in_exists, ensure_clocked_in, ensure_not_clocked_in,
-    ensure_not_clocked_out, fetch_attendance_by_id, fetch_attendance_by_user_date,
-    get_break_records, get_break_records_map, insert_attendance_record, update_clock_in,
-    update_clock_out,
-};
-use crate::repositories::{
-    attendance::{AttendanceRepository, AttendanceRepositoryTrait},
-    attendance_correction_request::AttendanceCorrectionRequestRepository,
-    break_record::BreakRecordRepository,
-    repository::Repository,
-};
+use crate::handlers::attendance_utils::{fetch_attendance_by_user_date, get_break_records};
 use crate::state::AppState;
-use crate::types::{AttendanceId, BreakRecordId, UserId};
+use crate::types::{AttendanceId, BreakRecordId};
 use crate::{
     models::{
         attendance::{
             Attendance, AttendanceResponse, AttendanceSummary, ClockInRequest, ClockOutRequest,
         },
-        attendance_correction_request::CorrectionBreakItem,
-        break_record::{BreakRecord, BreakRecordResponse},
+        break_record::BreakRecordResponse,
         user::User,
     },
     services::holiday::HolidayServiceTrait,
-    utils::{csv::append_csv_row, time},
+    utils::{csv::render_user_attendance_export_csv, time},
 };
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -52,13 +61,200 @@ pub struct AttendanceExportQuery {
     pub to: Option<NaiveDate>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct AttendanceStatusResponse {
-    pub status: String,
-    pub attendance_id: Option<String>,
-    pub active_break_id: Option<String>,
-    pub clock_in_time: Option<NaiveDateTime>,
-    pub clock_out_time: Option<NaiveDateTime>,
+struct BackendClockInHolidayCalendar<'a> {
+    service: &'a dyn HolidayServiceTrait,
+}
+
+#[async_trait::async_trait]
+impl ClockInHolidayCalendar for BackendClockInHolidayCalendar<'_> {
+    async fn decision_for(
+        &self,
+        user_id: &str,
+        work_date: WorkDate,
+    ) -> Result<AppHolidayDecision, ClockInError> {
+        let decision = self
+            .service
+            .is_holiday(work_date.as_naive_date(), Some(user_id))
+            .await
+            .map_err(|error| ClockInError::HolidayCalendar(error.to_string()))?;
+        if decision.is_holiday {
+            Ok(AppHolidayDecision::Holiday {
+                reason: decision.reason.label().to_string(),
+            })
+        } else {
+            Ok(AppHolidayDecision::WorkingDay)
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl WorkdayCalendar<ClockOutError> for BackendClockInHolidayCalendar<'_> {
+    async fn decision_for(
+        &self,
+        user_id: &str,
+        work_date: WorkDate,
+    ) -> Result<AppHolidayDecision, ClockOutError> {
+        let decision = self
+            .service
+            .is_holiday(work_date.as_naive_date(), Some(user_id))
+            .await
+            .map_err(|error| ClockOutError::HolidayCalendar(error.to_string()))?;
+        if decision.is_holiday {
+            Ok(AppHolidayDecision::Holiday {
+                reason: decision.reason.label().to_string(),
+            })
+        } else {
+            Ok(AppHolidayDecision::WorkingDay)
+        }
+    }
+}
+
+fn break_period_to_response(period: UseCaseBreakPeriod) -> BreakRecordResponse {
+    BreakRecordResponse {
+        id: period.break_id,
+        attendance_id: period.attendance_id,
+        break_start_time: period.break_start_time,
+        break_end_time: period.break_end_time,
+        duration_minutes: period.duration_minutes,
+    }
+}
+
+fn break_periods_to_response(periods: Vec<UseCaseBreakPeriod>) -> Vec<BreakRecordResponse> {
+    periods.into_iter().map(break_period_to_response).collect()
+}
+
+fn attendance_page_item_to_response(
+    item: timekeeper_app::attendance::AttendancePageItem,
+) -> AttendanceResponse {
+    AttendanceResponse {
+        id: item.attendance.attendance_id,
+        user_id: item.attendance.user_id,
+        date: item.attendance.date,
+        clock_in_time: item.attendance.clock_in_time,
+        clock_out_time: item.attendance.clock_out_time,
+        status: item.attendance.status,
+        total_work_hours: item.attendance.total_work_hours,
+        break_records: break_periods_to_response(item.break_periods),
+    }
+}
+
+fn user_attendance_summary_to_response(
+    summary: timekeeper_app::attendance::UserAttendanceSummary,
+) -> AttendanceSummary {
+    AttendanceSummary {
+        month: summary.month,
+        year: summary.year,
+        total_work_hours: summary.total_work_hours,
+        total_work_days: summary.total_work_days,
+        average_daily_hours: summary.average_daily_hours,
+    }
+}
+
+fn attendance_status_to_response(status: AppAttendanceStatus) -> AttendanceStatusResponse {
+    AttendanceStatusResponse {
+        status: status.status,
+        attendance_id: status.attendance_id,
+        active_break_id: status.active_break_id,
+        clock_in_time: status.clock_in_time,
+        clock_out_time: status.clock_out_time,
+    }
+}
+
+fn clock_in_error_to_app_error(error: ClockInError) -> AppError {
+    match error {
+        ClockInError::AlreadyClockedIn => AppError::BadRequest("Already clocked in today".into()),
+        ClockInError::Holiday { work_date, reason } => AppError::Forbidden(format!(
+            "{} is a {}. Submit an overtime request before clocking in/out.",
+            work_date, reason
+        )),
+        ClockInError::Repository(message) | ClockInError::HolidayCalendar(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn clock_out_error_to_app_error(error: ClockOutError) -> AppError {
+    match error {
+        ClockOutError::AttendanceNotFound => {
+            AppError::NotFound("No attendance record found for today".into())
+        }
+        ClockOutError::ClockInRequired => {
+            AppError::BadRequest("Must clock in before clocking out".into())
+        }
+        ClockOutError::AlreadyClockedOut => {
+            AppError::BadRequest("Already clocked out today".into())
+        }
+        ClockOutError::ActiveBreakInProgress => {
+            AppError::BadRequest("Break in progress. End break before clocking out".into())
+        }
+        ClockOutError::Holiday { work_date, reason } => AppError::Forbidden(format!(
+            "{} is a {}. Submit an overtime request before clocking in/out.",
+            work_date, reason
+        )),
+        ClockOutError::Repository(message) | ClockOutError::HolidayCalendar(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn start_break_error_to_app_error(error: StartBreakError) -> AppError {
+    match error {
+        StartBreakError::AttendanceNotFound => {
+            AppError::NotFound("Attendance record not found".into())
+        }
+        StartBreakError::Forbidden => AppError::Forbidden("Forbidden".into()),
+        StartBreakError::ClockInRequired => {
+            AppError::BadRequest("Must be clocked in to start break".into())
+        }
+        StartBreakError::ActiveBreakInProgress => {
+            AppError::BadRequest("Break already in progress".into())
+        }
+        StartBreakError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn break_end_error_to_app_error(error: BreakEndError) -> AppError {
+    match error {
+        BreakEndError::BreakNotFound => AppError::NotFound("Break record not found".into()),
+        BreakEndError::AttendanceNotFound => {
+            AppError::NotFound("Attendance record not found".into())
+        }
+        BreakEndError::Forbidden => AppError::Forbidden("Forbidden".into()),
+        BreakEndError::BreakAlreadyEnded => AppError::BadRequest("Break already ended".into()),
+        BreakEndError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn attendance_status_error_to_app_error(error: AttendanceStatusError) -> AppError {
+    match error {
+        AttendanceStatusError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn get_breaks_error_to_app_error(error: GetBreaksByAttendanceError) -> AppError {
+    match error {
+        GetBreaksByAttendanceError::AttendanceNotFound => {
+            AppError::NotFound("Attendance record not found".into())
+        }
+        GetBreaksByAttendanceError::Forbidden => AppError::Forbidden("Forbidden".into()),
+        GetBreaksByAttendanceError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+fn list_user_attendance_error_to_app_error(error: AppListUserAttendanceError) -> AppError {
+    match error {
+        AppListUserAttendanceError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
 }
 
 pub async fn clock_in(
@@ -74,25 +270,27 @@ pub async fn clock_in(
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_in_time = now_local.naive_local();
+    let work_date = WorkDate::from_naive_date(date);
 
-    reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
+    let use_case = ClockInUseCase::new(
+        AttendanceWorkflowRepository::new(state.write_pool.clone()),
+        BackendClockInHolidayCalendar {
+            service: holiday_service.as_ref(),
+        },
+    );
+    use_case
+        .execute(AppClockInCommand {
+            user_id: user_id.to_string(),
+            work_date,
+            clock_in_time,
+            recorded_at: now_utc,
+        })
+        .await
+        .map_err(clock_in_error_to_app_error)?;
 
-    let attendance: Attendance =
-        match fetch_attendance_by_user_date(&state.write_pool, user_id, date).await? {
-            Some(mut attendance) => {
-                ensure_not_clocked_in(&attendance)?;
-                attendance.clock_in_time = Some(clock_in_time);
-                attendance.updated_at = now_utc;
-                update_clock_in(&state.write_pool, &attendance).await?;
-                attendance
-            }
-            None => {
-                let mut attendance = Attendance::new(user_id, date, now_utc);
-                attendance.clock_in_time = Some(clock_in_time);
-                insert_attendance_record(&state.write_pool, &attendance).await?;
-                attendance
-            }
-        };
+    let attendance = fetch_attendance_by_user_date(&state.write_pool, user_id, date)
+        .await?
+        .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-in not persisted")))?;
 
     let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
@@ -113,35 +311,27 @@ pub async fn clock_out(
     let now_utc = now_local.with_timezone(&Utc);
     let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_out_time = now_local.naive_local();
+    let work_date = WorkDate::from_naive_date(date);
 
-    reject_if_holiday(holiday_service.as_ref(), date, user_id).await?;
+    let use_case = ClockOutUseCase::new(
+        AttendanceWorkflowRepository::new(state.write_pool.clone()),
+        BackendClockInHolidayCalendar {
+            service: holiday_service.as_ref(),
+        },
+    );
+    use_case
+        .execute(AppClockOutCommand {
+            user_id: user_id.to_string(),
+            work_date,
+            clock_out_time,
+            recorded_at: now_utc,
+        })
+        .await
+        .map_err(clock_out_error_to_app_error)?;
 
-    let attendance_opt: Option<Attendance> =
-        fetch_attendance_by_user_date(&state.write_pool, user_id, date).await?;
-    let mut attendance: Attendance = attendance_opt
-        .ok_or_else(|| AppError::NotFound("No attendance record found for today".into()))?;
-
-    ensure_not_clocked_out(&attendance)?;
-    ensure_clock_in_exists(&attendance)?;
-
-    let break_repo = BreakRecordRepository::new();
-    let active_break = break_repo
-        .find_active_break(&state.write_pool, attendance.id)
-        .await?;
-
-    if active_break.is_some() {
-        return Err(AppError::BadRequest(
-            "Break in progress. End break before clocking out".into(),
-        ));
-    }
-
-    attendance.clock_out_time = Some(clock_out_time);
-    let break_minutes = total_break_minutes(&state.write_pool, attendance.id).await?;
-    attendance.calculate_work_hours(break_minutes);
-    attendance.updated_at = now_utc;
-
-    update_clock_out(&state.write_pool, &attendance).await?;
-
+    let attendance = fetch_attendance_by_user_date(&state.write_pool, user_id, date)
+        .await?
+        .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-out not persisted")))?;
     let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
@@ -153,31 +343,25 @@ pub async fn break_start(
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakStartRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
+    parse_attendance_id(&payload.attendance_id)?;
     let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_start_time = now_local.naive_local();
 
-    // Check if attendance record exists and user is clocked in
-    let attendance = fetch_attendance_by_id(&state.write_pool, payload.attendance_id).await?;
-    ensure_authorized_access(&attendance, user.id)?;
-    ensure_clocked_in(&attendance)?;
+    let use_case =
+        StartBreakUseCase::new(AttendanceWorkflowRepository::new(state.write_pool.clone()));
+    let break_period = use_case
+        .execute(AppStartBreakCommand {
+            user_id: user.id.to_string(),
+            attendance_id: payload.attendance_id,
+            break_start_time,
+            recorded_at: now_utc,
+        })
+        .await
+        .map_err(start_break_error_to_app_error)?;
 
-    // Check if there's already an active break
-    let break_repo = BreakRecordRepository::new();
-    let active_break = break_repo
-        .find_active_break(&state.write_pool, payload.attendance_id)
-        .await?;
-
-    if active_break.is_some() {
-        return Err(AppError::BadRequest("Break already in progress".into()));
-    }
-
-    let break_record = BreakRecord::new(payload.attendance_id, break_start_time, now_utc);
-    break_repo.create(&state.write_pool, &break_record).await?;
-
-    let response = BreakRecordResponse::from(break_record);
-    Ok(Json(response))
+    Ok(Json(break_period_to_response(break_period)))
 }
 
 pub async fn break_end(
@@ -185,32 +369,25 @@ pub async fn break_end(
     Extension(user): Extension<User>,
     Json(payload): Json<crate::models::attendance::BreakEndRequest>,
 ) -> Result<Json<BreakRecordResponse>, AppError> {
+    parse_break_record_id(&payload.break_record_id)?;
     let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
     let break_end_time = now_local.naive_local();
 
-    // Find the break record
-    let break_repo = BreakRecordRepository::new();
-    let mut break_record = break_repo
-        .find_by_id(&state.write_pool, payload.break_record_id)
-        .await?;
+    let use_case =
+        BreakEndUseCase::new(AttendanceWorkflowRepository::new(state.write_pool.clone()));
+    let break_period = use_case
+        .execute(AppBreakEndCommand {
+            user_id: user.id.to_string(),
+            break_id: payload.break_record_id,
+            break_end_time,
+            recorded_at: now_utc,
+        })
+        .await
+        .map_err(break_end_error_to_app_error)?;
 
-    if !break_record.is_active() {
-        return Err(AppError::BadRequest("Break already ended".into()));
-    }
-    let att = fetch_attendance_by_id(&state.write_pool, break_record.attendance_id).await?;
-    ensure_authorized_access(&att, user.id)?;
-
-    break_record.end_break(break_end_time, now_utc);
-    break_repo.update(&state.write_pool, &break_record).await?;
-
-    if att.clock_out_time.is_some() {
-        recalculate_total_hours(&state.write_pool, att, now_utc).await?;
-    }
-
-    let response = BreakRecordResponse::from(break_record);
-    Ok(Json(response))
+    Ok(Json(break_period_to_response(break_period)))
 }
 
 pub async fn get_my_attendance(
@@ -249,27 +426,20 @@ pub async fn get_my_attendance(
         (first_day, last_day)
     };
 
-    let repo = AttendanceRepository::new();
-    let attendances = repo
-        .find_by_user_and_range(state.read_pool(), user_id, from, to)
-        .await?;
-
-    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
-
-    let mut responses = Vec::new();
-    for attendance in attendances {
-        let attendance_id = attendance.id;
-        let break_records = break_map.remove(&attendance_id).unwrap_or_default();
-        responses.push(apply_effective_correction_to_response(
-            attendance,
-            break_records,
-            correction_map.get(&attendance_id),
-        ));
-    }
+    let use_case = ListUserAttendanceUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let responses = use_case
+        .execute(AppListUserAttendanceQuery {
+            user_id: user_id.to_string(),
+            from,
+            to,
+        })
+        .await
+        .map_err(list_user_attendance_error_to_app_error)?
+        .into_iter()
+        .map(attendance_page_item_to_response)
+        .collect();
 
     Ok(Json(responses))
 }
@@ -285,62 +455,18 @@ pub async fn get_attendance_status(
         .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
         .unwrap_or_else(|| time::today_local(&state.config.time_zone));
 
-    let repo = AttendanceRepository::new();
-    let attendance = repo
-        .find_by_user_and_date(state.read_pool(), user_id, date)
-        .await?;
+    let use_case = GetAttendanceStatusUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let status = use_case
+        .execute(AppAttendanceStatusQuery {
+            user_id: user_id.to_string(),
+            work_date: WorkDate::from_naive_date(date),
+        })
+        .await
+        .map_err(attendance_status_error_to_app_error)?;
 
-    if let Some(att) = attendance {
-        // Check active break
-        let break_repo = BreakRecordRepository::new();
-        let active_break = break_repo
-            .find_active_break(state.read_pool(), att.id)
-            .await?;
-
-        let resp = if att.clock_in_time.is_none() {
-            AttendanceStatusResponse {
-                status: "not_started".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: None,
-                clock_out_time: None,
-            }
-        } else if att.is_clocked_out() {
-            AttendanceStatusResponse {
-                status: "clocked_out".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: att.clock_out_time,
-            }
-        } else if let Some(b) = active_break {
-            let bid: Option<String> = Some(b.id.to_string());
-            AttendanceStatusResponse {
-                status: "on_break".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: bid,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: None,
-            }
-        } else {
-            AttendanceStatusResponse {
-                status: "clocked_in".into(),
-                attendance_id: Some(att.id.to_string()),
-                active_break_id: None,
-                clock_in_time: att.clock_in_time,
-                clock_out_time: None,
-            }
-        };
-        Ok(Json(resp))
-    } else {
-        Ok(Json(AttendanceStatusResponse {
-            status: "not_started".into(),
-            attendance_id: None,
-            active_break_id: None,
-            clock_in_time: None,
-            clock_out_time: None,
-        }))
-    }
+    Ok(Json(attendance_status_to_response(status)))
 }
 
 pub async fn get_breaks_by_attendance(
@@ -348,12 +474,19 @@ pub async fn get_breaks_by_attendance(
     Extension(user): Extension<User>,
     Path(attendance_id): Path<String>,
 ) -> Result<Json<Vec<BreakRecordResponse>>, AppError> {
-    let attendance_id = AttendanceId::from_str(&attendance_id)
+    AttendanceId::from_str(&attendance_id)
         .map_err(|_| AppError::BadRequest("Invalid attendance ID format".into()))?;
-    let attendance = fetch_attendance_by_id(state.read_pool(), attendance_id).await?;
-    ensure_authorized_access(&attendance, user.id)?;
-    let records = get_break_records(state.read_pool(), attendance.id).await?;
-    Ok(Json(records))
+    let use_case = GetBreaksByAttendanceUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let breaks = use_case
+        .execute(AppGetBreaksByAttendanceQuery {
+            user_id: user.id.to_string(),
+            attendance_id,
+        })
+        .await
+        .map_err(get_breaks_error_to_app_error)?;
+    Ok(Json(break_periods_to_response(breaks)))
 }
 
 pub async fn get_my_summary(
@@ -377,50 +510,21 @@ pub async fn get_my_summary(
         return Err(AppError::BadRequest("Invalid year/month provided".into()));
     };
 
-    let repo = AttendanceRepository::new();
-    let attendances = repo
-        .find_by_user_and_range(state.read_pool(), user_id, first_day, last_day)
-        .await?;
-    let attendance_ids: Vec<AttendanceId> = attendances.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
+    let use_case = GetUserAttendanceSummaryUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let summary = use_case
+        .execute(AppGetUserAttendanceSummaryQuery {
+            user_id: user_id.to_string(),
+            year,
+            month,
+            from: first_day,
+            to: last_day,
+        })
+        .await
+        .map_err(list_user_attendance_error_to_app_error)?;
 
-    let mut total_work_hours = 0.0;
-    let mut total_work_days_i64 = 0i64;
-    for attendance in attendances {
-        let attendance_id = attendance.id;
-        let break_records = break_map.remove(&attendance_id).unwrap_or_default();
-        let effective = apply_effective_correction_to_response(
-            attendance,
-            break_records,
-            correction_map.get(&attendance_id),
-        );
-        if let Some(hours) = effective.total_work_hours {
-            if hours > 0.0 {
-                total_work_hours += hours;
-                total_work_days_i64 += 1;
-            }
-        }
-    }
-
-    let total_work_days = total_work_days_i64 as i32;
-    let average_daily_hours = if total_work_days > 0 {
-        total_work_hours / total_work_days as f64
-    } else {
-        0.0
-    };
-
-    let summary = AttendanceSummary {
-        month,
-        year,
-        total_work_hours,
-        total_work_days,
-        average_daily_hours,
-    };
-
-    Ok(Json(summary))
+    Ok(Json(user_attendance_summary_to_response(summary)))
 }
 
 pub async fn export_my_attendance(
@@ -437,64 +541,20 @@ pub async fn export_my_attendance(
         }
     }
 
-    let repo = AttendanceRepository::new();
-    let rows = repo
-        .find_by_user_with_range_options(state.read_pool(), user.id, from, to)
-        .await?;
-    let attendance_ids: Vec<AttendanceId> = rows.iter().map(|a| a.id).collect();
-    let mut break_map = get_break_records_map(state.read_pool(), &attendance_ids).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
-    let correction_map =
-        load_effective_correction_map(state.read_pool(), &correction_repo, &attendance_ids).await?;
-
-    let mut csv_data = String::new();
-    append_csv_row(
-        &mut csv_data,
-        &[
-            "Username".to_string(),
-            "Full Name".to_string(),
-            "Date".to_string(),
-            "Clock In".to_string(),
-            "Clock Out".to_string(),
-            "Total Hours".to_string(),
-            "Status".to_string(),
-        ],
-    );
-    for row in rows {
-        let attendance_id = row.id;
-        let breaks = break_map.remove(&attendance_id).unwrap_or_default();
-        let effective =
-            apply_effective_correction_to_response(row, breaks, correction_map.get(&attendance_id));
-        let username = user.username.clone();
-        let full_name = user.full_name.clone();
-        let date = effective.date.format("%Y-%m-%d").to_string();
-        let clock_in = effective
-            .clock_in_time
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let clock_out = effective
-            .clock_out_time
-            .map(|t| t.format("%H:%M:%S").to_string())
-            .unwrap_or_default();
-        let total_hours = effective
-            .total_work_hours
-            .map(|h| format!("{:.2}", h))
-            .unwrap_or_else(|| "0.00".to_string());
-        let status = effective.status.db_value().to_string();
-
-        append_csv_row(
-            &mut csv_data,
-            &[
-                username,
-                full_name,
-                date,
-                clock_in,
-                clock_out,
-                total_hours,
-                status,
-            ],
-        );
-    }
+    let use_case = ExportUserAttendanceUseCase::new(AttendanceWorkflowRepository::new(
+        state.read_pool().clone(),
+    ));
+    let export = use_case
+        .execute(AppExportUserAttendanceQuery {
+            user_id: user.id.to_string(),
+            username: user.username.clone(),
+            full_name: user.full_name.clone(),
+            from,
+            to,
+        })
+        .await
+        .map_err(list_user_attendance_error_to_app_error)?;
+    let csv_data = render_user_attendance_export_csv(&export.rows);
 
     Ok(Json(json!({
         "csv_data": csv_data,
@@ -505,155 +565,60 @@ pub async fn export_my_attendance(
     })))
 }
 
-fn build_attendance_response(
+pub(crate) fn build_attendance_response(
     attendance: Attendance,
     break_records: Vec<BreakRecordResponse>,
 ) -> AttendanceResponse {
     AttendanceResponse {
-        id: attendance.id,
-        user_id: attendance.user_id,
+        id: attendance.id.to_string(),
+        user_id: attendance.user_id.to_string(),
         date: attendance.date,
         clock_in_time: attendance.clock_in_time,
         clock_out_time: attendance.clock_out_time,
-        status: attendance.status,
+        status: attendance.status.db_value().to_string(),
         total_work_hours: attendance.total_work_hours,
         break_records,
     }
 }
 
-fn load_break_items_from_json(value: &serde_json::Value) -> Vec<CorrectionBreakItem> {
-    serde_json::from_value(value.clone()).unwrap_or_default()
-}
-
-fn calc_total_work_hours_with_breaks(
-    clock_in_time: Option<NaiveDateTime>,
-    clock_out_time: Option<NaiveDateTime>,
-    breaks: &[CorrectionBreakItem],
-) -> Option<f64> {
-    let (Some(clock_in), Some(clock_out)) = (clock_in_time, clock_out_time) else {
-        return None;
-    };
-    let mut break_minutes = 0i64;
-    for br in breaks {
-        if let Some(end) = br.break_end_time {
-            let mins = end
-                .signed_duration_since(br.break_start_time)
-                .num_minutes()
-                .max(0);
-            break_minutes += mins;
-        }
-    }
-    let gross_minutes = clock_out
-        .signed_duration_since(clock_in)
-        .num_minutes()
-        .max(0);
-    Some((gross_minutes - break_minutes).max(0) as f64 / 60.0)
-}
-
-fn apply_effective_correction_to_response(
-    attendance: Attendance,
-    break_records: Vec<BreakRecordResponse>,
-    effective: Option<
-        &crate::models::attendance_correction_request::AttendanceCorrectionEffectiveValue,
-    >,
-) -> AttendanceResponse {
-    if let Some(effective) = effective {
-        let corrected_breaks = load_break_items_from_json(&effective.break_records_corrected_json);
-        let break_records = corrected_breaks
-            .iter()
-            .enumerate()
-            .map(|(idx, br)| BreakRecordResponse {
-                id: {
-                    let _ = idx;
-                    BreakRecordId::new()
-                },
-                attendance_id: attendance.id,
-                break_start_time: br.break_start_time,
-                break_end_time: br.break_end_time,
-                duration_minutes: br.break_end_time.map(|end| {
-                    end.signed_duration_since(br.break_start_time)
-                        .num_minutes()
-                        .max(0) as i32
-                }),
-            })
-            .collect::<Vec<_>>();
-        let clock_in_time = effective
-            .clock_in_time_corrected
-            .or(attendance.clock_in_time);
-        let clock_out_time = effective
-            .clock_out_time_corrected
-            .or(attendance.clock_out_time);
-
-        return AttendanceResponse {
-            id: attendance.id,
-            user_id: attendance.user_id,
-            date: attendance.date,
-            clock_in_time,
-            clock_out_time,
-            status: attendance.status,
-            total_work_hours: calc_total_work_hours_with_breaks(
-                clock_in_time,
-                clock_out_time,
-                &corrected_breaks,
-            ),
-            break_records,
-        };
-    }
-    build_attendance_response(attendance, break_records)
-}
-
-async fn load_effective_correction_map(
-    pool: &PgPool,
-    repo: &AttendanceCorrectionRequestRepository,
-    attendance_ids: &[AttendanceId],
-) -> Result<
-    std::collections::HashMap<
-        AttendanceId,
-        crate::models::attendance_correction_request::AttendanceCorrectionEffectiveValue,
-    >,
-    AppError,
-> {
-    let corrections = repo.get_effective_values(pool, attendance_ids).await?;
-    let map = corrections
-        .into_iter()
-        .map(|item| (item.attendance_id, item))
-        .collect();
-    Ok(map)
-}
-
-pub(crate) async fn total_break_minutes(
-    pool: &PgPool,
-    attendance_id: AttendanceId,
-) -> Result<i64, AppError> {
-    let repo = BreakRecordRepository::new();
-    repo.get_total_duration(pool, attendance_id).await
-}
-
+#[cfg(test)]
 pub(crate) async fn recalculate_total_hours(
-    pool: &PgPool,
+    pool: &sqlx::PgPool,
     mut attendance: Attendance,
-    updated_at: DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
 ) -> Result<(), AppError> {
     if attendance.clock_in_time.is_none() || attendance.clock_out_time.is_none() {
         return Ok(());
     }
 
-    let break_repo = BreakRecordRepository::new();
+    let break_repo = crate::repositories::break_record::BreakRecordRepository::new();
     let break_minutes = break_repo.get_total_duration(pool, attendance.id).await?;
 
     attendance.calculate_work_hours(break_minutes);
     attendance.updated_at = updated_at;
 
-    let att_repo = AttendanceRepository::new();
+    let att_repo = crate::repositories::attendance::AttendanceRepository::new();
+    use crate::repositories::attendance::AttendanceRepositoryTrait;
     att_repo.update(pool, &attendance).await?;
 
     Ok(())
 }
 
+fn parse_attendance_id(value: &str) -> Result<AttendanceId, AppError> {
+    AttendanceId::from_str(value)
+        .map_err(|_| AppError::BadRequest("Invalid attendance_id".to_string()))
+}
+
+fn parse_break_record_id(value: &str) -> Result<BreakRecordId, AppError> {
+    BreakRecordId::from_str(value)
+        .map_err(|_| AppError::BadRequest("Invalid break_record_id".to_string()))
+}
+
+#[cfg(test)]
 async fn reject_if_holiday(
     holiday_service: &dyn HolidayServiceTrait,
     date: NaiveDate,
-    user_id: UserId,
+    user_id: crate::types::UserId,
 ) -> Result<(), AppError> {
     let decision = holiday_service
         .is_holiday(date, Some(&user_id.to_string()))
@@ -744,6 +709,24 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2024, 1, 15);
         let request = ClockOutRequest { date };
         assert_eq!(request.date, date);
+    }
+
+    #[test]
+    fn parse_attendance_id_accepts_uuid_strings() {
+        let id = AttendanceId::new();
+
+        let parsed = parse_attendance_id(&id.to_string()).expect("valid attendance id");
+
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn parse_break_record_id_rejects_invalid_strings() {
+        let error = parse_break_record_id("not-a-uuid").expect_err("invalid break id");
+
+        assert!(
+            matches!(error, AppError::BadRequest(message) if message == "Invalid break_record_id")
+        );
     }
 
     #[test]
@@ -839,11 +822,12 @@ mod tests {
         };
 
         let response = build_attendance_response(attendance.clone(), Vec::new());
-        assert_eq!(response.id, attendance.id);
-        assert_eq!(response.user_id, attendance.user_id);
+        assert_eq!(response.id, attendance.id.to_string());
+        assert_eq!(response.user_id, attendance.user_id.to_string());
         assert_eq!(response.date, attendance.date);
         assert_eq!(response.clock_in_time, attendance.clock_in_time);
         assert_eq!(response.clock_out_time, attendance.clock_out_time);
+        assert_eq!(response.status, "present");
         assert!(response.break_records.is_empty());
     }
 

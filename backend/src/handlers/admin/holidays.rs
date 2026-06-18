@@ -1,4 +1,4 @@
-use crate::models::holiday::{AdminHolidayKind, AdminHolidayListItem};
+use crate::models::holiday::AdminHolidayKind;
 use crate::repositories::holiday::{HolidayRepository, HolidayRepositoryTrait};
 use crate::repositories::repository::Repository;
 use crate::repositories::weekly_holiday::WeeklyHolidayRepository;
@@ -7,9 +7,10 @@ use axum::{
     Json,
 };
 use chrono::{Duration, NaiveDate};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
+pub use timekeeper_contract::holidays::AdminHolidayListResponse;
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
@@ -205,14 +206,6 @@ pub struct AdminHolidayListQuery {
     pub r#type: Option<String>,
     pub from: Option<String>,
     pub to: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminHolidayListResponse {
-    pub page: i64,
-    pub per_page: i64,
-    pub total: i64,
-    pub items: Vec<AdminHolidayListItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

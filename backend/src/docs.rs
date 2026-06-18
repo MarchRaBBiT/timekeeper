@@ -4,13 +4,13 @@ use crate::{
     error::ErrorResponse,
     handlers::{
         admin::{
-            AdminAttendanceUpsert, AdminBreakItem, AdminHolidayListQuery, AdminHolidayListResponse,
-            AdminRequestListPageInfo, AdminRequestListResponse, AdminSessionResponse,
-            ApprovePayload, ArchivedUserResponse, AuditLogExportQuery, AuditLogListQuery,
-            AuditLogListResponse, AuditLogResponse, DecisionPayload, ExportQuery, RejectPayload,
-            RequestListQuery, SubjectRequestListQuery, SubjectRequestListResponse,
+            AdminHolidayListQuery, AdminHolidayListResponse, AdminRequestListPageInfo,
+            AdminRequestListResponse, AdminSessionResponse, ApprovePayload, ArchivedUserResponse,
+            AuditLogExportQuery, AuditLogListQuery, AuditLogListResponse, AuditLogResponse,
+            DecisionPayload, ExportQuery, RejectPayload, RequestListQuery, SubjectRequestListQuery,
+            SubjectRequestListResponse,
         },
-        attendance::{AttendanceExportQuery, AttendanceQuery, AttendanceStatusResponse},
+        attendance::{AttendanceExportQuery, AttendanceQuery},
         config::TimeZoneResponse,
         holidays::{HolidayCheckResponse, HolidayMonthEntry},
         sessions::SessionResponse,
@@ -36,7 +36,7 @@ use crate::{
         holiday_exception::{CreateHolidayExceptionPayload, HolidayExceptionResponse},
         leave_request::{CreateLeaveRequest, LeaveRequestResponse, LeaveType},
         overtime_request::{CreateOvertimeRequest, OvertimeRequestResponse},
-        password_reset::{RequestPasswordResetPayload, ResetPasswordPayload},
+        password_reset::{MessageResponse, RequestPasswordResetPayload, ResetPasswordPayload},
         request::RequestStatus,
         subject_request::{
             CreateDataSubjectRequest, DataSubjectRequestResponse, DataSubjectRequestType,
@@ -47,6 +47,9 @@ use crate::{
         },
         PaginationQuery,
     },
+};
+use timekeeper_contract::attendance::{
+    AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse,
 };
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -158,6 +161,7 @@ struct RequestCancellationResponse {
             LoginResponse,
             RequestPasswordResetPayload,
             ResetPasswordPayload,
+            MessageResponse,
             ChangePasswordRequest,
             MfaCodeRequest,
             MfaSetupResponse,
@@ -289,7 +293,7 @@ fn refresh_doc() {}
     post,
     path = "/api/auth/request-password-reset",
     request_body = RequestPasswordResetPayload,
-    responses((status = 200, description = "パスワードリセットメール送信受付", body = serde_json::Value)),
+    responses((status = 200, description = "パスワードリセットメール送信受付", body = MessageResponse)),
     tag = "Auth",
     security(())
 )]
@@ -299,7 +303,7 @@ fn request_password_reset_doc() {}
     post,
     path = "/api/auth/reset-password",
     request_body = ResetPasswordPayload,
-    responses((status = 200, description = "パスワードリセット完了", body = serde_json::Value)),
+    responses((status = 200, description = "パスワードリセット完了", body = MessageResponse)),
     tag = "Auth",
     security(())
 )]

@@ -1,0 +1,16 @@
+[package]
+name = "timekeeper-contract"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+chrono.workspace = true
+utoipa.workspace = true
+validator = { version = "0.20", features = ["derive"] }
+
+[dev-dependencies]
+serde_json.workspace = true

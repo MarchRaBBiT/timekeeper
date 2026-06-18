@@ -9,6 +9,7 @@ use crate::{
     models::{
         subject_request::{
             CreateDataSubjectRequest, DataSubjectRequest, DataSubjectRequestResponse,
+            DataSubjectRequestType,
         },
         user::User,
     },
@@ -27,7 +28,12 @@ pub async fn create_subject_request(
     let details = validate_details(payload.details)?;
     let now = time::now_utc(&state.config.time_zone);
     let user_id = user.id.to_string();
-    let request = DataSubjectRequest::new(user_id, payload.request_type, details, now);
+    let request = DataSubjectRequest::new(
+        user_id,
+        DataSubjectRequestType::from(payload.request_type),
+        details,
+        now,
+    );
 
     subject_request::insert_subject_request(&state.write_pool, &request)
         .await

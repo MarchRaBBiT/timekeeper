@@ -1,0 +1,17 @@
+[package]
+name = "timekeeper-worker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "timekeeper-worker"
+path = "src/main.rs"
+
+[dependencies]
+timekeeper-app = { path = "../../crates/app" }
+timekeeper-infra-integrations = { path = "../../crates/infra-integrations" }
+timekeeper-infra-postgres = { path = "../../crates/infra-postgres" }
+timekeeper-observability = { path = "../../crates/observability" }

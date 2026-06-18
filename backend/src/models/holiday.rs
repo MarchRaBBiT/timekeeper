@@ -2,40 +2,12 @@ use crate::types::{HolidayId, UserId, WeeklyHolidayId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use std::str::FromStr;
+pub use timekeeper_contract::holidays::{
+    AdminHolidayKind, AdminHolidayListItem, CreateHolidayRequest as CreateHolidayPayload,
+    CreateWeeklyHolidayRequest as CreateWeeklyHolidayPayload, GoogleHolidayCandidate,
+    HolidayResponse, WeeklyHolidayResponse,
+};
 use utoipa::ToSchema;
-use validator::Validate;
-
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AdminHolidayKind {
-    Public,
-    Weekly,
-    Exception,
-}
-
-impl AdminHolidayKind {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AdminHolidayKind::Public => "public",
-            AdminHolidayKind::Weekly => "weekly",
-            AdminHolidayKind::Exception => "exception",
-        }
-    }
-}
-
-impl FromStr for AdminHolidayKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "public" => Ok(AdminHolidayKind::Public),
-            "weekly" => Ok(AdminHolidayKind::Weekly),
-            "exception" => Ok(AdminHolidayKind::Exception),
-            _ => Err(()),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Holiday {
@@ -61,48 +33,15 @@ impl Holiday {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateHolidayPayload {
-    pub holiday_date: NaiveDate,
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct GoogleHolidayCandidate {
-    pub holiday_date: NaiveDate,
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct HolidayResponse {
-    pub id: HolidayId,
-    pub holiday_date: NaiveDate,
-    pub name: String,
-    pub description: Option<String>,
-}
-
 impl From<Holiday> for HolidayResponse {
     fn from(value: Holiday) -> Self {
         Self {
-            id: value.id,
+            id: value.id.to_string(),
             holiday_date: value.holiday_date,
             name: value.name,
             description: value.description,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
-pub struct CreateWeeklyHolidayPayload {
-    #[validate(range(min = 0, max = 6))]
-    pub weekday: u8,
-    pub starts_on: NaiveDate,
-    #[serde(default)]
-    pub ends_on: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
@@ -140,21 +79,11 @@ impl WeeklyHoliday {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct WeeklyHolidayResponse {
-    pub id: WeeklyHolidayId,
-    pub weekday: u8,
-    pub starts_on: NaiveDate,
-    pub ends_on: Option<NaiveDate>,
-    pub enforced_from: NaiveDate,
-    pub enforced_to: Option<NaiveDate>,
-}
-
 impl From<WeeklyHoliday> for WeeklyHolidayResponse {
     fn from(value: WeeklyHoliday) -> Self {
         Self {
-            id: value.id,
-            weekday: value.weekday as u8,
+            id: value.id.to_string(),
+            weekday: value.weekday,
             starts_on: value.starts_on,
             ends_on: value.ends_on,
             enforced_from: value.enforced_from,
@@ -163,29 +92,12 @@ impl From<WeeklyHoliday> for WeeklyHolidayResponse {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AdminHolidayListItem {
-    pub id: String,
-    pub kind: AdminHolidayKind,
-    pub applies_from: NaiveDate,
-    pub applies_to: Option<NaiveDate>,
-    pub date: Option<NaiveDate>,
-    pub weekday: Option<i16>,
-    pub starts_on: Option<NaiveDate>,
-    pub ends_on: Option<NaiveDate>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub user_id: Option<String>,
-    pub reason: Option<String>,
-    pub created_by: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub is_override: Option<bool>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::NaiveDate;
+    use std::str::FromStr;
+    use validator::Validate;
 
     #[test]
     fn admin_holiday_kind_as_str_and_from_str_roundtrip() {
@@ -237,14 +149,14 @@ mod tests {
         let holiday = Holiday::new(date, "Constitution".to_string(), None);
         let holiday_id = holiday.id;
         let holiday_response = HolidayResponse::from(holiday);
-        assert_eq!(holiday_response.id, holiday_id);
+        assert_eq!(holiday_response.id, holiday_id.to_string());
         assert_eq!(holiday_response.holiday_date, date);
         assert_eq!(holiday_response.name, "Constitution");
 
         let weekly = WeeklyHoliday::new(6, date, None, UserId::new());
         let weekly_id = weekly.id;
         let weekly_response = WeeklyHolidayResponse::from(weekly);
-        assert_eq!(weekly_response.id, weekly_id);
+        assert_eq!(weekly_response.id, weekly_id.to_string());
         assert_eq!(weekly_response.weekday, 6);
         assert_eq!(weekly_response.starts_on, date);
         assert!(weekly_response.ends_on.is_none());

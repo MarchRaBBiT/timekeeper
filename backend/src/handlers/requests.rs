@@ -3,17 +3,21 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
-use validator::Validate;
+use timekeeper_app::attendance::{
+    AttendanceCorrectionRequestStatus, CancelAttendanceCorrectionRepository,
+    CreateAttendanceCorrectionError, UpdateAttendanceCorrectionRepository,
+    UpdatedAttendanceCorrectionRequest,
+};
+use timekeeper_infra_postgres::attendance_correction::AttendanceCorrectionRepository;
 
 use crate::{
     error::AppError,
     models::{
         attendance_correction_request::AttendanceCorrectionResponse,
-        leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse},
+        leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse, LeaveType},
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{
-        attendance_correction_request::AttendanceCorrectionRequestRepository,
         leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
         request::{RequestCreate, RequestRecord, RequestRepository},
@@ -26,6 +30,12 @@ use chrono::Utc;
 use serde::Deserialize;
 use std::str::FromStr;
 
+use super::attendance_correction_requests::{
+    app_record_to_backend_response, backend_snapshot_to_app, create_correction_error_to_app_error,
+};
+
+const MAX_REQUEST_REASON_LENGTH: usize = 500;
+
 pub async fn create_leave_request(
     State(state): State<AppState>,
     Extension(user): Extension<crate::models::user::User>,
@@ -33,11 +43,12 @@ pub async fn create_leave_request(
 ) -> Result<Json<LeaveRequestResponse>, AppError> {
     let user_id = user.id;
 
-    payload.validate()?;
+    validate_create_leave_request(&payload)?;
+    let leave_type = parse_leave_type(&payload.leave_type)?;
 
     let leave_request = LeaveRequest::new(
         user_id,
-        payload.leave_type,
+        leave_type,
         payload.start_date,
         payload.end_date,
         payload.reason,
@@ -65,7 +76,7 @@ pub async fn create_overtime_request(
 ) -> Result<Json<OvertimeRequestResponse>, AppError> {
     let user_id = user.id;
 
-    payload.validate()?;
+    validate_create_overtime_request(&payload)?;
 
     let overtime_request =
         OvertimeRequest::new(user_id, payload.date, payload.planned_hours, payload.reason);
@@ -96,13 +107,14 @@ pub async fn get_my_requests(
 
     let repo = RequestRepository::new();
     let requests = repo.get_user_requests(state.read_pool(), user_id).await?;
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    let correction_repo = AttendanceCorrectionRepository::new(state.read_pool().clone());
     let corrections = correction_repo
-        .list_by_user(state.read_pool(), user_id)
-        .await?;
+        .list_by_user(&user_id.to_string())
+        .await
+        .map_err(create_correction_error_to_app_error)?;
     let correction_responses: Vec<AttendanceCorrectionResponse> = corrections
-        .iter()
-        .map(|item| item.to_response().map_err(AppError::InternalServerError))
+        .into_iter()
+        .map(app_record_to_backend_response)
         .collect::<Result<Vec<_>, _>>()?;
 
     let response = json!({
@@ -116,7 +128,7 @@ pub async fn get_my_requests(
 
 #[derive(Deserialize)]
 pub struct UpdateLeavePayload {
-    pub leave_type: Option<crate::models::leave_request::LeaveType>,
+    pub leave_type: Option<LeaveType>,
     pub start_date: Option<chrono::NaiveDate>,
     pub end_date: Option<chrono::NaiveDate>,
     pub reason: Option<String>,
@@ -127,6 +139,49 @@ pub struct UpdateOvertimePayload {
     pub date: Option<chrono::NaiveDate>,
     pub planned_hours: Option<f64>,
     pub reason: Option<String>,
+}
+
+fn validate_create_leave_request(payload: &CreateLeaveRequest) -> Result<(), AppError> {
+    if payload.start_date > payload.end_date {
+        return Err(AppError::BadRequest(
+            "start_date must be <= end_date".into(),
+        ));
+    }
+    validate_optional_reason(&payload.reason)?;
+    Ok(())
+}
+
+fn validate_create_overtime_request(payload: &CreateOvertimeRequest) -> Result<(), AppError> {
+    if !(0.5..=24.0).contains(&payload.planned_hours) {
+        return Err(AppError::BadRequest(
+            "planned_hours must be between 0.5 and 24".into(),
+        ));
+    }
+    validate_optional_reason(&payload.reason)?;
+    Ok(())
+}
+
+fn validate_optional_reason(reason: &Option<String>) -> Result<(), AppError> {
+    if reason
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > MAX_REQUEST_REASON_LENGTH)
+    {
+        return Err(AppError::BadRequest(format!(
+            "reason must be at most {} characters",
+            MAX_REQUEST_REASON_LENGTH
+        )));
+    }
+    Ok(())
+}
+
+fn parse_leave_type(value: &str) -> Result<LeaveType, AppError> {
+    match value {
+        "annual" => Ok(LeaveType::Annual),
+        "sick" => Ok(LeaveType::Sick),
+        "personal" => Ok(LeaveType::Personal),
+        "other" => Ok(LeaveType::Other),
+        _ => Err(AppError::BadRequest("Invalid leave_type".into())),
+    }
 }
 
 pub async fn update_request(
@@ -206,13 +261,13 @@ pub async fn update_request(
     }
 
     // Try attendance correction request update
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    let correction_repo = AttendanceCorrectionRepository::new(state.write_pool.clone());
     match correction_repo
-        .find_by_id_for_user(&state.write_pool, &request_id, user_id)
+        .find_attendance_correction_request_for_user(&request_id, &user_id.to_string())
         .await
     {
         Ok(current) => {
-            if current.status.db_value() != "pending" {
+            if current.status != AttendanceCorrectionRequestStatus::Pending {
                 return Err(AppError::BadRequest(
                     "Only pending requests can be updated".into(),
                 ));
@@ -229,24 +284,25 @@ pub async fn update_request(
                 .get("proposed_values")
                 .cloned()
                 .ok_or_else(|| AppError::BadRequest("proposed_values is required".into()))?;
-            let proposed = serde_json::from_value(proposed_values_json)
+            let proposed: crate::models::attendance_correction_request::AttendanceCorrectionSnapshot =
+                serde_json::from_value(proposed_values_json)
                 .map_err(|_| AppError::BadRequest("Invalid proposed_values".into()))?;
 
             correction_repo
-                .update_pending_for_user(
-                    &state.write_pool,
-                    &request_id,
-                    user_id,
-                    &reason,
-                    &proposed,
-                )
-                .await?;
+                .update_pending_attendance_correction_request(UpdatedAttendanceCorrectionRequest {
+                    id: request_id.clone(),
+                    user_id: user_id.to_string(),
+                    reason,
+                    proposed_values: backend_snapshot_to_app(proposed),
+                })
+                .await
+                .map_err(create_correction_error_to_app_error)?;
             return Ok(Json(
                 json!({"message":"Attendance correction request updated"}),
             ));
         }
-        Err(AppError::NotFound(_)) => {}
-        Err(err) => return Err(err),
+        Err(CreateAttendanceCorrectionError::RequestNotFound) => {}
+        Err(err) => return Err(create_correction_error_to_app_error(err)),
     }
 
     Err(AppError::NotFound("Request not found".into()))
@@ -283,14 +339,15 @@ pub async fn cancel_request(
     }
 
     // Try attendance correction cancellation
-    let correction_repo = AttendanceCorrectionRequestRepository::new();
+    let correction_repo = AttendanceCorrectionRepository::new(state.write_pool.clone());
     match correction_repo
-        .cancel_pending_for_user(&state.write_pool, &request_id, user_id)
+        .cancel_pending_attendance_correction_request(&request_id, &user_id.to_string())
         .await
     {
         Ok(_) => return Ok(Json(json!({"id": request_id, "status":"cancelled"}))),
-        Err(AppError::Conflict(_)) | Err(AppError::NotFound(_)) => {}
-        Err(err) => return Err(err),
+        Err(CreateAttendanceCorrectionError::NotPendingCancel)
+        | Err(CreateAttendanceCorrectionError::RequestNotFound) => {}
+        Err(err) => return Err(create_correction_error_to_app_error(err)),
     }
 
     Err(AppError::NotFound(
@@ -323,5 +380,46 @@ mod tests {
         assert!(is_valid_planned_hours(0.5));
         assert!(!is_valid_planned_hours(0.0));
         assert!(!is_valid_planned_hours(-1.0));
+    }
+
+    #[test]
+    fn create_leave_validation_rejects_invalid_type_and_window() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+        let end = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let payload = super::CreateLeaveRequest {
+            leave_type: "annual".into(),
+            start_date: start,
+            end_date: end,
+            reason: None,
+        };
+
+        assert!(super::validate_create_leave_request(&payload).is_err());
+        assert!(super::parse_leave_type("invalid").is_err());
+        assert!(matches!(
+            super::parse_leave_type("sick").unwrap(),
+            super::LeaveType::Sick
+        ));
+    }
+
+    #[test]
+    fn create_overtime_validation_rejects_out_of_range_hours() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let valid = super::CreateOvertimeRequest {
+            date,
+            planned_hours: 0.5,
+            reason: None,
+        };
+        let too_low = super::CreateOvertimeRequest {
+            planned_hours: 0.25,
+            ..valid.clone()
+        };
+        let too_high = super::CreateOvertimeRequest {
+            planned_hours: 24.5,
+            ..valid.clone()
+        };
+
+        assert!(super::validate_create_overtime_request(&valid).is_ok());
+        assert!(super::validate_create_overtime_request(&too_low).is_err());
+        assert!(super::validate_create_overtime_request(&too_high).is_err());
     }
 }

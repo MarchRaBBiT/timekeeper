@@ -19,6 +19,7 @@ use timekeeper_backend::{
     repositories::subject_request,
     state::AppState,
 };
+use timekeeper_contract::subject_requests::DataSubjectRequestType as ContractDataSubjectRequestType;
 use tokio::sync::Mutex;
 use tower::ServiceExt;
 
@@ -96,9 +97,9 @@ async fn create_and_list_subject_requests_for_user() {
     assert_eq!(created.user_id, user.id.to_string());
     assert!(matches!(
         created.request_type,
-        DataSubjectRequestType::Access
+        ContractDataSubjectRequestType::Access
     ));
-    assert!(matches!(created.status, RequestStatus::Pending));
+    assert_eq!(created.status, "pending");
 
     let response = app
         .oneshot(
@@ -183,7 +184,7 @@ async fn admin_can_list_and_decide_subject_requests() {
     reset_subject_requests(&pool).await;
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
-    let admin_user = support::seed_user(&pool, UserRole::Manager, false).await;
+    let admin_user = support::seed_user(&pool, UserRole::Manager, true).await;
     let state = AppState::new(pool.clone(), None, None, None, support::test_config());
     let now = Utc::now();
 

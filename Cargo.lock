@@ -5232,6 +5232,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "timekeeper-api"
+version = "0.1.0"
+dependencies = [
+ "timekeeper-app",
+ "timekeeper-contract",
+ "timekeeper-observability",
+]
+
+[[package]]
+name = "timekeeper-app"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "thiserror 1.0.69",
+ "timekeeper-contract",
+ "timekeeper-domain",
+ "tokio",
+]
+
+[[package]]
 name = "timekeeper-backend"
 version = "0.1.0"
 dependencies = [
@@ -5268,6 +5289,10 @@ dependencies = [
  "sqlx",
  "testcontainers",
  "thiserror 1.0.69",
+ "timekeeper-app",
+ "timekeeper-contract",
+ "timekeeper-domain",
+ "timekeeper-infra-postgres",
  "tokio",
  "totp-rs",
  "tower 0.5.2",
@@ -5280,6 +5305,25 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "timekeeper-contract"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "validator",
+]
+
+[[package]]
+name = "timekeeper-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5309,12 +5353,57 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "timekeeper-contract",
  "tokio",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "timekeeper-infra-integrations"
+version = "0.1.0"
+
+[[package]]
+name = "timekeeper-infra-postgres"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "timekeeper-app",
+ "timekeeper-domain",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "timekeeper-infra-security"
+version = "0.1.0"
+
+[[package]]
+name = "timekeeper-observability"
+version = "0.1.0"
+
+[[package]]
+name = "timekeeper-web"
+version = "0.1.0"
+dependencies = [
+ "timekeeper-contract",
+]
+
+[[package]]
+name = "timekeeper-worker"
+version = "0.1.0"
+dependencies = [
+ "timekeeper-app",
+ "timekeeper-infra-integrations",
+ "timekeeper-infra-postgres",
+ "timekeeper-observability",
 ]
 
 [[package]]

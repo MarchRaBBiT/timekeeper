@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::PgPool;
 
 use crate::{error::AppError, models::user::User, types::UserId};
 
@@ -99,15 +99,6 @@ pub async fn check_approval_authorization(
     Err(AppError::Forbidden("Forbidden".into()))
 }
 
-pub fn push_clause(builder: &mut QueryBuilder<'_, Postgres>, has_clause: &mut bool) {
-    if *has_clause {
-        builder.push(" AND ");
-    } else {
-        builder.push(" WHERE ");
-        *has_clause = true;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,20 +164,5 @@ mod tests {
             to.time(),
             NaiveTime::from_hms_opt(23, 59, 59).expect("time")
         );
-    }
-
-    #[test]
-    fn push_clause_switches_between_where_and_and() {
-        let mut builder: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT 1");
-        let mut has_clause = false;
-
-        push_clause(&mut builder, &mut has_clause);
-        builder.push("a = 1");
-        assert!(has_clause);
-
-        push_clause(&mut builder, &mut has_clause);
-        builder.push("b = 2");
-
-        assert_eq!(builder.sql(), "SELECT 1 WHERE a = 1 AND b = 2");
     }
 }

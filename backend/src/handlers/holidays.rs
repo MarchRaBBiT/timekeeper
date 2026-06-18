@@ -4,9 +4,9 @@ use axum::{
 };
 use chrono::{Datelike, NaiveDate};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
+pub use timekeeper_contract::holidays::{HolidayCheckResponse, HolidayMonthEntry};
 
 use crate::{
     error::AppError,
@@ -52,18 +52,6 @@ pub struct HolidayCheckQuery {
 pub struct HolidayMonthQuery {
     pub year: i32,
     pub month: u32,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct HolidayCheckResponse {
-    pub is_holiday: bool,
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct HolidayMonthEntry {
-    pub date: NaiveDate,
-    pub reason: String,
 }
 
 pub async fn fetch_google_holidays(

@@ -4,8 +4,8 @@ use crate::types::{LeaveRequestId, UserId};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+pub use timekeeper_contract::requests::{CreateLeaveRequest, LeaveRequestResponse};
 use utoipa::ToSchema;
-use validator::Validate;
 
 pub use crate::models::request::RequestStatus;
 
@@ -71,61 +71,24 @@ impl LeaveType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
-/// Payload used to create a new leave request.
-#[validate(schema(function = "validate_leave_date_range"))]
-pub struct CreateLeaveRequest {
-    pub leave_type: LeaveType,
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    #[validate(length(max = 500))]
-    pub reason: Option<String>,
-}
-
-fn validate_leave_date_range(req: &CreateLeaveRequest) -> Result<(), validator::ValidationError> {
-    if req.start_date > req.end_date {
-        return Err(validator::ValidationError::new("start_date_after_end_date"));
-    }
-    Ok(())
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-/// API representation shared with clients.
-pub struct LeaveRequestResponse {
-    pub id: LeaveRequestId,
-    pub user_id: UserId,
-    pub leave_type: LeaveType,
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-    pub reason: Option<String>,
-    pub status: RequestStatus,
-    pub approved_by: Option<UserId>,
-    pub approved_at: Option<DateTime<Utc>>,
-    pub rejected_by: Option<UserId>,
-    pub rejected_at: Option<DateTime<Utc>>,
-    pub cancelled_at: Option<DateTime<Utc>>,
-    pub decision_comment: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
 impl From<LeaveRequest> for LeaveRequestResponse {
     /// Converts the database entity into its transport-friendly variant.
     fn from(request: LeaveRequest) -> Self {
         LeaveRequestResponse {
-            id: request.id,
-            user_id: request.user_id,
-            leave_type: request.leave_type,
+            id: request.id.to_string(),
+            user_id: request.user_id.to_string(),
+            leave_type: request.leave_type.db_value().to_string(),
             start_date: request.start_date,
             end_date: request.end_date,
             reason: request.reason,
-            status: request.status,
-            approved_by: request.approved_by,
-            approved_at: request.approved_at,
-            rejected_by: request.rejected_by,
-            rejected_at: request.rejected_at,
-            cancelled_at: request.cancelled_at,
+            status: request.status.db_value().to_string(),
+            approved_by: request.approved_by.map(|id| id.to_string()),
+            approved_at: request.approved_at.map(|timestamp| timestamp.to_rfc3339()),
+            rejected_by: request.rejected_by.map(|id| id.to_string()),
+            rejected_at: request.rejected_at.map(|timestamp| timestamp.to_rfc3339()),
+            cancelled_at: request.cancelled_at.map(|timestamp| timestamp.to_rfc3339()),
             decision_comment: request.decision_comment,
-            created_at: request.created_at,
+            created_at: request.created_at.to_rfc3339(),
         }
     }
 }

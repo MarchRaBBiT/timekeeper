@@ -5,8 +5,8 @@ use crate::types::{AttendanceId, UserId};
 use crate::{error::AppError, models::attendance::Attendance};
 use chrono::NaiveDate;
 use sqlx::PgPool;
-use std::collections::HashMap;
 
+#[cfg(test)]
 pub fn ensure_authorized_access(attendance: &Attendance, user_id: UserId) -> Result<(), AppError> {
     if attendance.user_id == user_id {
         Ok(())
@@ -15,6 +15,7 @@ pub fn ensure_authorized_access(attendance: &Attendance, user_id: UserId) -> Res
     }
 }
 
+#[cfg(test)]
 pub fn ensure_not_clocked_in(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.clock_in_time.is_some() {
         Err(AppError::BadRequest("Already clocked in today".into()))
@@ -23,6 +24,7 @@ pub fn ensure_not_clocked_in(attendance: &Attendance) -> Result<(), AppError> {
     }
 }
 
+#[cfg(test)]
 pub fn ensure_not_clocked_out(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.is_clocked_out() {
         Err(AppError::BadRequest("Already clocked out today".into()))
@@ -31,6 +33,7 @@ pub fn ensure_not_clocked_out(attendance: &Attendance) -> Result<(), AppError> {
     }
 }
 
+#[cfg(test)]
 pub fn ensure_clock_in_exists(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.clock_in_time.is_none() {
         Err(AppError::BadRequest(
@@ -41,6 +44,7 @@ pub fn ensure_clock_in_exists(attendance: &Attendance) -> Result<(), AppError> {
     }
 }
 
+#[cfg(test)]
 pub fn ensure_clocked_in(attendance: &Attendance) -> Result<(), AppError> {
     if attendance.is_clocked_in() {
         Ok(())
@@ -60,37 +64,6 @@ pub async fn fetch_attendance_by_user_date(
     repo.find_by_user_and_date(pool, user_id, date).await
 }
 
-pub async fn fetch_attendance_by_id(
-    pool: &PgPool,
-    attendance_id: AttendanceId,
-) -> Result<Attendance, AppError> {
-    let repo = AttendanceRepository::new();
-    repo.find_by_id(pool, attendance_id).await
-}
-
-pub async fn insert_attendance_record(
-    pool: &PgPool,
-    attendance: &Attendance,
-) -> Result<(), AppError> {
-    let repo = AttendanceRepository::new();
-    repo.create(pool, attendance).await?;
-    Ok(())
-}
-
-pub async fn update_clock_in(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
-    update_attendance_record(pool, attendance).await
-}
-
-pub async fn update_clock_out(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
-    update_attendance_record(pool, attendance).await
-}
-
-async fn update_attendance_record(pool: &PgPool, attendance: &Attendance) -> Result<(), AppError> {
-    let repo = AttendanceRepository::new();
-    repo.update(pool, attendance).await?;
-    Ok(())
-}
-
 pub async fn get_break_records(
     pool: &PgPool,
     attendance_id: AttendanceId,
@@ -104,18 +77,19 @@ pub async fn get_break_records(
         .collect())
 }
 
+#[cfg(test)]
 pub async fn get_break_records_map(
     pool: &PgPool,
     attendance_ids: &[AttendanceId],
-) -> Result<HashMap<AttendanceId, Vec<BreakRecordResponse>>, AppError> {
+) -> Result<std::collections::HashMap<AttendanceId, Vec<BreakRecordResponse>>, AppError> {
     if attendance_ids.is_empty() {
-        return Ok(HashMap::new());
+        return Ok(std::collections::HashMap::new());
     }
 
     let repo = BreakRecordRepository::new();
     let break_records = repo.find_by_attendance_ids(pool, attendance_ids).await?;
 
-    let mut map = HashMap::new();
+    let mut map = std::collections::HashMap::new();
     for rec in break_records {
         let att_id = rec.attendance_id;
         map.entry(att_id)

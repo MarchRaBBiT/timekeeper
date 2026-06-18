@@ -131,5 +131,5 @@ async fn get_breaks_by_attendance_allows_owner() {
     let records: Vec<timekeeper_backend::models::break_record::BreakRecordResponse> =
         serde_json::from_slice(&body).expect("parse response");
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].attendance_id, saved.id);
+    assert_eq!(records[0].attendance_id, saved.id.to_string());
 }
