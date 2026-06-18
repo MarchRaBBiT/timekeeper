@@ -1,0 +1,7 @@
+[submodule "timekeeper-backend"]
+	path = timekeeper-backend
+	url = https://github.com/MarchRaBBiT/timekeeper-backend.git
+
+[submodule "timekeeper-frontend"]
+	path = timekeeper-frontend
+	url = https://github.com/MarchRaBBiT/timekeeper-frontend.git
