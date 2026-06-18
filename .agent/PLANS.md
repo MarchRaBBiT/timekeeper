@@ -11,22 +11,123 @@
 
 # EP-20260610-rebuild-architecture-harness
 
-## Goal
-- Timekeeper を 1 から作り直す前提の採用パッケージ・基本アーキテクチャ・移行順序を source of truth 化し、`AGENTS.md` 等のハーネス入口をその方針に合わせて再構築する。
+**完了済み (b958562)** — 詳細: [`docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md)
 
-## Source Of Truth
-- 詳細計画: `docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`
-- 再構築アーキテクチャ: `docs/design-docs/rebuild-architecture.md`
+# EP-20260612-rebuild-target-workspace
 
-## Done Criteria (Observable)
-- [x] 再構築アーキテクチャ doc が追加されている
-- [x] root `AGENTS.md` / manual / harness engineering が rebuild 方針を参照している
-- [x] `scripts/harness.sh docs-check` が追加され成功する
-- [x] `git diff --check` が成功する
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md`](../docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md)
 
-## Progress Notes
-- 2026-06-10: 現行 harness を確認し、docs-first の再構築計画として開始。
-- 2026-06-10: 再構築 architecture doc と docs-check stage を追加。`bash scripts/harness.sh docs-check` / `git diff --check` pass。
+# EP-20260612-attendance-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md)
+
+# EP-20260612-clock-in-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-in-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-in-use-case.md)
+
+# EP-20260612-clock-out-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-out-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-out-use-case.md)
+
+# EP-20260612-start-break-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-start-break-use-case.md`](../docs/exec-plans/active/EP-20260612-start-break-use-case.md)
+
+# EP-20260612-end-break-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-end-break-use-case.md)
+
+# EP-20260612-attendance-infra-postgres-repository
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md)
+
+# EP-20260612-attendance-status-read-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md`](../docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md)
+
+# EP-20260612-breaks-by-attendance-read-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md`](../docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md)
+
+# EP-20260612-admin-force-end-break-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md)
+
+# EP-20260612-admin-active-breaks-read-use-case
+
+**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md)
+
+# EP-20260612-admin-attendance-page-read-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md)
+
+# EP-20260612-admin-attendance-upsert-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md)
+
+# EP-20260613-user-attendance-range-read-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md)
+
+# EP-20260613-user-attendance-summary-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md)
+
+# EP-20260613-user-attendance-export-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md)
+
+# EP-20260613-admin-attendance-export-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md)
+
+# EP-20260613-create-attendance-correction-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md)
+
+# EP-20260613-manage-attendance-correction-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md)
+
+# EP-20260613-admin-attendance-correction-decision-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md)
+
+# EP-20260613-admin-attendance-correction-read-use-case
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md)
+
+# EP-20260613-attendance-correction-infra-postgres-repository
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md)
+
+# EP-20260613-attendance-correction-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md)
+
+# EP-20260613-admin-attendance-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md)
+
+# EP-20260613-leave-overtime-request-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md)
+
+# EP-20260613-subject-request-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md)
+
+# EP-20260613-department-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-department-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-department-contract-dtos.md)
+
+# EP-20260613-holiday-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md)
+
+# EP-20260613-auth-password-reset-contract-dtos
+
+**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md)
 
 ## テンプレート
 
@@ -93,7 +194,7 @@
 1. [x] PR #430 レイヤーの未対応コメントを test 追加込みで修正
 2. [x] PR #431 レイヤーの password change error mapping を error code ベースへ移行
 3. [x] focused validation 実施
-4. [x] `jj` snapshot を作成し、必要なら stack/bookmark を整理
+4. [x] commit snapshot を作成し、必要なら stack/bookmark を整理
 
 ## Validation Plan
 - [x] `cargo fmt --all --check`
@@ -103,12 +204,12 @@
 - [x] `cargo test -p timekeeper-backend --test password_api -- --nocapture`
 - [x] `bash scripts/harness.sh lint`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] focused tests pass
-- [x] `jj commit -m "fix(i18n): address locale foundation review follow-ups"`
-- [x] `jj commit -m "feat(i18n): localize shared and core frontend pages"`
-- [x] `jj commit -m "fix(settings): map password change errors by code"`
+- [x] commit recorded: `fix(i18n): address locale foundation review follow-ups`
+- [x] commit recorded: `feat(i18n): localize shared and core frontend pages`
+- [x] commit recorded: `fix(settings): map password change errors by code`
 
 ## Progress Notes
 - 2026-03-11: PR #430 / #431 review threads を確認し、残差分を locale 初期化・dialog a11y・ja 翻訳・password error code に絞り込んだ。
@@ -143,10 +244,10 @@
 - [x] `cargo fmt --all`
 - [x] `cargo test -p timekeeper-backend --lib encryption`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] `cargo test -p timekeeper-backend --lib encryption` pass
-- [ ] `jj commit -m "fix(security): route pii encryption through kms provider abstraction"`
+- [x] commit recorded: `fix(security): route pii encryption through kms provider abstraction`
 
 ## Progress Notes
 - 2026-02-12: 計画作成
@@ -181,10 +282,10 @@
 - [x] `cargo test -p timekeeper-backend --lib kms`
 - [x] `cargo test -p timekeeper-backend --lib encryption`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] `cargo test -p timekeeper-backend --lib kms` pass
-- [ ] `jj commit -m "feat(security): integrate aws and gcp kms api calls"`
+- [x] commit recorded: `feat(security): integrate aws and gcp kms api calls`
 
 ## Progress Notes
 - 2026-02-12: 実KMS API呼び出しコードの実装開始
@@ -221,10 +322,10 @@
 - [x] `cargo test -p timekeeper-frontend --lib admin_export`
 - [x] `cargo test -p timekeeper-frontend --lib admin_audit_logs`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] frontend対象テスト pass
-- [ ] `jj commit -m "feat(frontend): surface pii masking state in admin views"`
+- [x] commit recorded: `feat(frontend): surface pii masking state in admin views`
 
 ## Progress Notes
 - 2026-02-12: 実装開始
@@ -262,10 +363,10 @@
 - [x] `cargo test -p timekeeper-backend --lib kms`
 - [x] `cargo test -p timekeeper-backend --lib mfa`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] backend対象テスト pass
-- [ ] `jj commit -m "feat(security): automate pii key rotation workflow"`
+- [x] commit recorded: `feat(security): automate pii key rotation workflow`
 
 ## Progress Notes
 - 2026-02-12: 実装開始
@@ -305,10 +406,10 @@
 - [x] `cargo test -p timekeeper-backend --test user_update_api -- --nocapture`
 - [x] `cargo test -p timekeeper-backend --test user_repository -- --nocapture`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] backend関連テスト pass
-- [ ] `jj commit -m "fix(security): close issue150 pii plaintext gap"`
+- [x] commit recorded: `fix(security): close issue150 pii plaintext gap`
 
 ## Progress Notes
 - 2026-02-12: `*_enc` への一本化と平文列削除migration（032）を追加。
@@ -348,10 +449,10 @@
 - [x] `cargo test -p timekeeper-backend --test requests_api`
 - [x] `cargo test -p timekeeper-frontend --lib requests`
 
-## JJ Snapshot Log
-- [x] `jj status`
+## Git Snapshot Log
+- [x] `git status --short`
 - [x] backend/frontend 対象テスト pass
-- [ ] `jj commit -m "feat(requests): add attendance correction request workflow"`
+- [x] commit recorded: `feat(requests): add attendance correction request workflow`
 
 ## Progress Notes
 - 2026-02-13: 計画作成
