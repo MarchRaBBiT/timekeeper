@@ -50,7 +50,7 @@
 - API / handler: `backend/src/handlers/`
 - repository / SQL: `backend/src/repositories/`
 - integration test: `backend/tests/`
-- rebuild target use case: `crates/app/`（未作成なら ExecPlan に追加してから作る）
+- rebuild target use case: `crates/app/`
 - rebuild target domain: `crates/domain/`
 - rebuild target contract: `crates/contract/`
 

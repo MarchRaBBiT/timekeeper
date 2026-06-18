@@ -58,9 +58,10 @@
 
 - [x] `git status --short`
 - [x] docs-check pass
-- [ ] `git commit -m "docs: define rebuild architecture harness"`
+- [x] `git commit -m "docs: define rebuild architecture harness"`
 
 ## Progress Notes
 
 - 2026-06-10: 現行 `AGENTS.md`, manual, harness script, backend/frontend architecture docs を確認。再構築方針は PostgreSQL 専用 + Rust modular monolith + Leptos 継続として source of truth 化する。
 - 2026-06-10: `docs/design-docs/rebuild-architecture.md` を追加し、root/subdir AGENTS、HARNESS manual、harness engineering、`scripts/harness.sh` を docs-check stage に対応させた。`bash scripts/harness.sh --list`、`bash scripts/harness.sh docs-check`、`bash -n scripts/harness.sh`、`git diff --check` は成功。
+- 2026-06-10: `git commit b958562 "docs: define rebuild architecture harness"` 作成。EP 完了。
