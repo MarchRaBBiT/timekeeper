@@ -84,9 +84,15 @@ pages/attendance/
 - プロパティ: `Signal<T>` または `ReadSignal<T>` 受け渡し
 - イベント: `Callback<T>` で子→親通知
 
+### UI 文言 / i18n
+- user-facing copy は Rust コードへ直接書かず、translation key 経由で表示する
+- 新しい表示文言を追加する場合は `frontend/locales/ja.yml` と `frontend/locales/en.yml` を同じ変更で更新する
+- key 配置、例外、test 方針は `docs/manual/frontend-i18n-rule.md` を source of truth にする
+
 ## ANTI-PATTERNS
 - API クライアント直呼び出し禁止（必ず `repository.rs` 経由）
 - 生 DOM 操作禁止（Leptos リアクティブシステム利用）
+- user-facing copy の直書き禁止（translation key 経由にする）
 - プロパティドリーリング回避（Context 利用推奨）
 - 未実装 TODO コメント禁止（15+ 件存在：リファクタ後判定予定）
 - rebuild work で巨大 panel / view_model / global API client を移植先にも再作成することは禁止。feature boundary へ分ける

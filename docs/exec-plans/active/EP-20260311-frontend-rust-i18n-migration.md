@@ -111,9 +111,9 @@ Related Issue: #429
    - [ ] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` の結果を確認する
    - [ ] 許容例外（テスト assertion / コメント / ログ / API モック / fixture）を切り分ける
    - [ ] production code の残件を解消または明記する
-13. [ ] 運用ルールを追加する
-   - [ ] `docs/` に i18n 運用ルールを追加する
-   - [ ] `frontend/AGENTS.md` に「UI 文言は translation key 経由」を追記する
+13. [x] 運用ルールを追加する
+   - [x] `docs/` に i18n 運用ルールを追加する
+   - [x] `frontend/AGENTS.md` に「UI 文言は translation key 経由」を追記する
 14. [ ] 最終検証と仕上げを行う
    - [ ] 表示文言 assertion を translation key 非依存に更新したテストが green
    - [ ] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test を通す
@@ -585,3 +585,4 @@ key 配置の優先順:
 - 2026-03-11: GitHub issue #429 `feat(i18n): migrate frontend hardcoded copy to rust-i18n` を作成し、本 plan を登録。
 - 2026-03-11: 実行前インタビューを反映。locale 切替はヘッダー右上、`localStorage` 永続化、初回はブラウザ言語判定で未一致時 `en` 既定、`en` / `ja` 完全切替、backend 自然言語エラーは対象外、translation key は階層型、docs は `docs/` + `frontend/AGENTS.md` 更新、PR は 4 分割で進める方針を確定。
 - 2026-03-11: PR1 foundation を実装。`rust-i18n` 導入、`frontend/locales/{ja,en}.yml` 新設、`state::locale` によるブラウザ言語判定と `localStorage` 永続化、ヘッダー右上 locale switcher、`layout` / `confirm_dialog` / `error` の基盤翻訳化を追加。`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend --lib` を確認。
+- 2026-06-18: PR4 の未着手項目から i18n 運用ルール追加に着手。`docs/manual/frontend-i18n-rule.md` を追加し、`docs/index.md` と `frontend/AGENTS.md` から参照できるようにした。
