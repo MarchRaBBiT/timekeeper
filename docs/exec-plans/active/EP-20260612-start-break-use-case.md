@@ -38,7 +38,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `crates/app::attendance::StartBreak` を repository port による workflow として追加。backend break-start handler から adapter 経由で呼び出す形へ移行し、focused validation が成功。

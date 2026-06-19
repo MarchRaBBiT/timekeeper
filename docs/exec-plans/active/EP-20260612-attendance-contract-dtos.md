@@ -53,7 +53,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: attendance mutation request DTO を contract crate へ移行。frontend は ad hoc JSON ではなく contract DTO を serialize し、backend は旧 import path を re-export で維持しつつ handler 境界で string ID を typed ID に変換する。

@@ -42,7 +42,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: department response/create/update/assign-manager DTOs を `crates/contract::organization` に追加し、missing parent omission, empty parent clearing, response timestamps, and assign-manager payload shape を contract tests で固定した。

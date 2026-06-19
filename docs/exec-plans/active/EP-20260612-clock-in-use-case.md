@@ -38,7 +38,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: app crate の toy `ClockIn` を real workflow tests に置き換え、holiday-first / create / update / duplicate rejection の red-green cycle を開始。

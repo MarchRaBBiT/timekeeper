@@ -38,7 +38,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `ForceEndBreak` use case を追加し、admin force-end handler を app/infra 経由へ移行。focused validation が成功。

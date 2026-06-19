@@ -43,7 +43,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: correction create/update/decision/snapshot/response DTOs を `crates/contract::attendance` に追加し、wire-format tests で existing snake_case status, nested snapshots, nullable optional fields, and timestamp JSON を固定した。

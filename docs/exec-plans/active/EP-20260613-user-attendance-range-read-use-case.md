@@ -43,7 +43,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: `ListUserAttendance` use case and infra read port added; `get_my_attendance` delegates to app/infra and focused app/infra/attendance API tests pass.

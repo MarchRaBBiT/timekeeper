@@ -37,7 +37,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `crates/` と `apps/` が未作成であることを確認。移行戦略 1 に絞り、empty app shell と最小 domain/contract/app boundary test から開始。

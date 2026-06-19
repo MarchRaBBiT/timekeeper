@@ -40,7 +40,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: `CreateAttendanceCorrectionRequest` use case and app-layer policy tests added; backend create correction route now delegates to the use case through a local adapter while preserving the existing response contract.

@@ -45,7 +45,7 @@
 ## Git Snapshot Log
 - [x] focused tests pass
 - [x] `git status --short`
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: password reset request/reset request/message response DTOs を `crates/contract::auth` に追加し、email validation, token length, baseline password shape, and message response wire format を contract tests で固定した。

@@ -42,7 +42,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `ListAttendancePage` use case と infra read port 実装を追加し、admin attendance pagination handler を app/infra 経由へ移行開始。app/infra/admin focused tests は成功。

@@ -46,7 +46,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: `AttendanceCorrectionRepository` を `crates/infra-postgres` に追加し、correction create/update/cancel/admin read/approve/reject app ports and department authorization queries を SQLx-backed implementation に移した。

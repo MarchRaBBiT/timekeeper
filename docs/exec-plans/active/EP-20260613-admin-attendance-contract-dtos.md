@@ -44,7 +44,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: admin attendance upsert and active-break DTOs を `crates/contract::attendance` に追加し、wire-format tests で existing string date/datetime fields, nullable break end, and active-break timestamp JSON を固定した。

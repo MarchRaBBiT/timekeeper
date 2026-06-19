@@ -15,119 +15,119 @@
 
 # EP-20260612-rebuild-target-workspace
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md`](../docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md`](../docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md)
 
 # EP-20260612-attendance-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md)
 
 # EP-20260612-clock-in-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-in-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-in-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-in-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-in-use-case.md)
 
 # EP-20260612-clock-out-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-out-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-out-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-out-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-out-use-case.md)
 
 # EP-20260612-start-break-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-start-break-use-case.md`](../docs/exec-plans/active/EP-20260612-start-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-start-break-use-case.md`](../docs/exec-plans/active/EP-20260612-start-break-use-case.md)
 
 # EP-20260612-end-break-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-end-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-end-break-use-case.md)
 
 # EP-20260612-attendance-infra-postgres-repository
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md)
 
 # EP-20260612-attendance-status-read-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md`](../docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md`](../docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md)
 
 # EP-20260612-breaks-by-attendance-read-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md`](../docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md`](../docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md)
 
 # EP-20260612-admin-force-end-break-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md)
 
 # EP-20260612-admin-active-breaks-read-use-case
 
-**進行中** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md)
 
 # EP-20260612-admin-attendance-page-read-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md)
 
 # EP-20260612-admin-attendance-upsert-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md)
 
 # EP-20260613-user-attendance-range-read-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md)
 
 # EP-20260613-user-attendance-summary-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md)
 
 # EP-20260613-user-attendance-export-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md)
 
 # EP-20260613-admin-attendance-export-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md)
 
 # EP-20260613-create-attendance-correction-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md)
 
 # EP-20260613-manage-attendance-correction-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md)
 
 # EP-20260613-admin-attendance-correction-decision-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md)
 
 # EP-20260613-admin-attendance-correction-read-use-case
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md)
 
 # EP-20260613-attendance-correction-infra-postgres-repository
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md)
 
 # EP-20260613-attendance-correction-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md)
 
 # EP-20260613-admin-attendance-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md)
 
 # EP-20260613-leave-overtime-request-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md)
 
 # EP-20260613-subject-request-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md)
 
 # EP-20260613-department-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-department-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-department-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-department-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-department-contract-dtos.md)
 
 # EP-20260613-holiday-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md)
 
 # EP-20260613-auth-password-reset-contract-dtos
 
-**検証済み / commit pending** — 詳細: [`docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md)
 
 ## テンプレート
 

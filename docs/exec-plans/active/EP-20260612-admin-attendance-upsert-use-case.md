@@ -44,7 +44,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `UpsertAttendance` use case and transactional infra implementation added; admin upsert handler delegates to app/infra and focused app/admin tests pass.

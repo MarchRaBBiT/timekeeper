@@ -39,7 +39,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `crates/app::attendance::ClockOut` を repository / workday-calendar ports による workflow として追加。backend clock-out handler から adapter 経由で呼び出すようにし、`attendance_api` で既存 endpoint behavior を確認。

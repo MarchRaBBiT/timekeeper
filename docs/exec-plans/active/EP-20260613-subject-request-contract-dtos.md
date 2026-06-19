@@ -44,7 +44,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: subject request create, response, list, and decision DTOs を `crates/contract::subject_requests` に追加し、snake_case request type, string status, nullable decision fields, and timestamp JSON を contract tests で固定した。

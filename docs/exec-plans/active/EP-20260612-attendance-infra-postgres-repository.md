@@ -38,7 +38,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `crates/infra-postgres::attendance::AttendanceWorkflowRepository` を追加し、backend-local workflow SQLx adapter を置き換えた。attendance workflow endpoints は focused integration test で互換確認済み。

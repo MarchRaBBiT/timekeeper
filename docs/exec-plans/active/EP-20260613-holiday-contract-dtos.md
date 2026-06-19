@@ -44,7 +44,7 @@
 ## Git Snapshot Log
 - [x] focused tests pass
 - [x] `git status --short`
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: holiday/public weekly/admin list/calendar DTOs を `crates/contract::holidays` に追加し、nullable description, default missing weekly end date, admin kind snake_case, and calendar/check response shape を contract tests で固定した。

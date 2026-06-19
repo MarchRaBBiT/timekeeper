@@ -47,7 +47,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-13: leave / overtime create, update, and response DTOs を `crates/contract::requests` に追加し、existing string IDs/status/type and timestamp string wire format を contract tests で固定した。

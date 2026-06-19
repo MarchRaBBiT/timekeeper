@@ -41,7 +41,7 @@
 ## Git Snapshot Log
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit pending user direction
+- [x] commit recorded: c9b64b3 `feat(rebuild): add modular Rust workflow crates`
 
 ## Progress Notes
 - 2026-06-12: `GetAttendanceStatus` use case と infra read port 実装を追加し、backend status handler を use case 呼び出しへ移行。focused validation が成功。
