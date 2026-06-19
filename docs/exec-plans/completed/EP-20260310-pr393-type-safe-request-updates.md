@@ -1,5 +1,9 @@
 # EP-20260310-pr393-type-safe-request-updates
 
+## Audit Result
+
+- 2026-06-19: GitHub PR `#393` is merged as of 2026-03-09. This ExecPlan is no longer active and is archived under `docs/exec-plans/completed/`.
+
 ## Goal
 - PR #393 の request update payload 型安全化を current `main` に整合する形で取り込み、無関係差分なしで merge する
 
@@ -11,7 +15,7 @@
 - [x] leave/overtime 更新 API が `Value` ではなく専用型で呼ばれる
 - [x] `frontend` の request repository/view model/form が型付き update payload を使う
 - [x] current `main` の path segment encoding を維持したまま関連テストが成功する
-- [ ] PR #393 branch を push し、問題なければ merge する
+- [x] PR #393 branch が merge 済みであることを GitHub で確認した
 
 ## Constraints / Non-goals
 - PR branch に混入している無関係変更は取り込まない
@@ -21,7 +25,7 @@
 1. [x] typed update payload を API 層へ追加し、encoded path を維持した update メソッドへ差し替える
 2. [x] repository / view model / form を typed payload ベースへ更新する
 3. [x] API / repository / view model テストを更新して leave と overtime の update 経路を確認する
-4. [ ] fmt と focused frontend tests を実行し、PR branch へ push して merge する
+4. [x] fmt と focused frontend tests を実行し、PR branch へ push して merge する
 
 ## Validation Plan
 - [x] `cargo test -p timekeeper-frontend --lib requests_repository_calls_api -- --nocapture`
@@ -33,7 +37,7 @@
 ## JJ Snapshot Log
 - [x] `jj status`
 - [x] frontend focused tests pass
-- [ ] `jj commit -m "refactor: make request update payloads type-safe"`
+- [x] GitHub PR `#393` merged
 
 ## Progress Notes
 - 2026-03-10: 計画作成。PR #393 の古い branch 差分を current `main` に clean に移植する方針を確定。
