@@ -175,8 +175,10 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("Attendance Correction Request"));
-        assert!(html.contains("Editing"));
-        assert!(html.contains("Update Attendance Correction Request"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.correction_form.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.forms.editing_correction").as_ref()));
+        assert!(
+            html.contains(rust_i18n::t!("pages.requests.correction_form.actions.update").as_ref())
+        );
     }
 }

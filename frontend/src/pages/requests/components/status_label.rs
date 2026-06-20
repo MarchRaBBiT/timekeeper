@@ -53,10 +53,22 @@ mod tests {
     #[test]
     fn request_status_label_maps_known_values() {
         let _locale = set_test_locale("ja");
-        assert_eq!(request_status_label("pending"), "承認待ち".to_string());
-        assert_eq!(request_status_label("approved"), "承認済み".to_string());
-        assert_eq!(request_status_label("rejected"), "却下".to_string());
-        assert_eq!(request_status_label("cancelled"), "取消".to_string());
+        assert_eq!(
+            request_status_label("pending"),
+            rust_i18n::t!("pages.requests.status.pending")
+        );
+        assert_eq!(
+            request_status_label("approved"),
+            rust_i18n::t!("pages.requests.status.approved")
+        );
+        assert_eq!(
+            request_status_label("rejected"),
+            rust_i18n::t!("pages.requests.status.rejected")
+        );
+        assert_eq!(
+            request_status_label("cancelled"),
+            rust_i18n::t!("pages.requests.status.cancelled")
+        );
     }
 
     #[test]
@@ -67,11 +79,17 @@ mod tests {
     #[test]
     fn request_kind_label_maps_known_values() {
         let _locale = set_test_locale("en");
-        assert_eq!(request_kind_label(RequestKind::Leave), "Leave");
-        assert_eq!(request_kind_label(RequestKind::Overtime), "Overtime");
+        assert_eq!(
+            request_kind_label(RequestKind::Leave),
+            rust_i18n::t!("pages.requests.kind.leave")
+        );
+        assert_eq!(
+            request_kind_label(RequestKind::Overtime),
+            rust_i18n::t!("pages.requests.kind.overtime")
+        );
         assert_eq!(
             request_kind_title(RequestKind::AttendanceCorrection),
-            "Attendance Correction Request"
+            rust_i18n::t!("pages.requests.kind.attendance_correction_request")
         );
     }
 }

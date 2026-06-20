@@ -16,20 +16,20 @@ Related Issue: #429
 
 ## Current Baseline (Measured 2026-03-11)
 
-- [ ] `rust-i18n` は frontend 未導入
-- [ ] locale ディレクトリ未作成
-- [ ] production code の日本語直書きが広範囲に存在
-  - 代表箇所: `frontend/src/components/cards.rs`, `frontend/src/components/forms.rs`, `frontend/src/components/layout.rs`, `frontend/src/pages/settings/panel.rs`, `frontend/src/pages/admin/components/attendance.rs`, `frontend/src/pages/admin_users/*`
-- [ ] `frontend/src` 配下で日本語文字列を含む `.rs` は 74 ファイル
+- [x] `rust-i18n` を frontend に導入済み
+- [x] `frontend/locales/{ja,en}.yml` を作成済み
+- [ ] frontend 全体の production residual scan は PR3 / PR4 で完了させる
+  - 未完了監査範囲: `frontend/src/pages/admin/**/*`, `frontend/src/pages/admin_users/**/*`, `frontend/src/pages/admin_audit_logs/**/*`, `frontend/src/pages/admin_export/**/*`
+- [x] PR2 対象では、許容した日付・曜日 format を除く production code の日本語直書きを解消
 
 ## Done Criteria (Observable)
 
-- [ ] `frontend/Cargo.toml` に `rust-i18n` が追加され、app root で `i18n!` 初期化が行われる
-- [ ] `frontend/locales/ja.yml` と `frontend/locales/en.yml` が追加される
-- [ ] locale 選択の source of truth が frontend state/context に定義され、ヘッダー右上から変更できる
-- [ ] locale 選択は `localStorage` に保存され、初回訪問時はブラウザ言語判定で `ja` を選び、未一致時は `en` を既定にする
-- [ ] shared components の表示文言が `t!` ベースへ移行される
-- [ ] attendance / dashboard / requests / settings / login / mfa / reset-password の表示文言が `t!` ベースへ移行される
+- [x] `frontend/Cargo.toml` に `rust-i18n` が追加され、app root で `i18n!` 初期化が行われる
+- [x] `frontend/locales/ja.yml` と `frontend/locales/en.yml` が追加される
+- [x] locale 選択の source of truth が frontend state/context に定義され、ヘッダー右上から変更できる
+- [x] locale 選択は `localStorage` に保存され、初回訪問時はブラウザ言語判定で `ja` を選び、未一致時は `en` を既定にする
+- [x] shared components の表示文言が `t!` ベースへ移行される
+- [x] attendance / dashboard / requests / settings / login / mfa / reset-password の表示文言が `t!` ベースへ移行される
 - [ ] admin / admin_users / admin_audit_logs / admin_export の表示文言が `t!` ベースへ移行される
 - [ ] `en` / `ja` locale 間で frontend 内部生成 UI 文言が完全切替される
 - [ ] 英語文言について自然な英語レビューが完了している
@@ -73,22 +73,22 @@ Related Issue: #429
 
 ### PR2: Core Pages
 
-5. [ ] shared components の主要文言を移行する
-   - [ ] `components/forms.rs` のラベル・状態文言を `t!` 化する
-   - [ ] `components/cards.rs` のカード見出し・ラベルを `t!` 化する
-   - [ ] 補間を含む shared component 文言を translation helper 経由へ寄せる
-6. [ ] user-facing core pages を移行する
-   - [ ] attendance を移行する
-   - [ ] dashboard を移行する
-   - [ ] requests を移行する
-   - [ ] login / forgot_password / reset_password を移行する
-   - [ ] mfa / settings を移行する
-7. [ ] frontend 内部生成の status / confirmation 文言を key 化する
-   - [ ] `match => 文字列` を `match => key` or translation helper に寄せる
-   - [ ] ラベルのみ翻訳し、日付・曜日・単位フォーマットは維持する
-8. [ ] core pages 向けテストを translation key 非依存へ更新する
-   - [ ] 文字列の完全一致に依存する assertion を見直す
-   - [ ] locale 固定値ではなく構造・状態・key 解決結果で検証する
+5. [x] shared components の主要文言を移行する
+   - [x] `components/forms.rs` のラベル・状態文言を `t!` 化する
+   - [x] `components/cards.rs` のカード見出し・ラベルを `t!` 化する
+   - [x] 補間を含む shared component 文言を translation helper 経由へ寄せる
+6. [x] user-facing core pages を移行する
+   - [x] attendance を移行する
+   - [x] dashboard を移行する
+   - [x] requests を移行する
+   - [x] login / forgot_password / reset_password を移行する
+   - [x] mfa / settings を移行する
+7. [x] frontend 内部生成の status / confirmation 文言を key 化する
+   - [x] `match => 文字列` を `match => key` or translation helper に寄せる
+   - [x] ラベルと単位を翻訳し、日付・曜日フォーマットは維持する
+8. [x] core pages 向けテストを translation key 非依存へ更新する
+   - [x] 文字列の完全一致に依存する assertion を見直す
+   - [x] locale 固定値ではなく構造・状態・key 解決結果で検証する
 
 ### PR3: Admin Pages
 
@@ -141,12 +141,11 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 ### PR2: Core Pages
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
-- [ ] `cargo test -p timekeeper-frontend --lib dashboard`
-- [ ] `cargo test -p timekeeper-frontend --lib requests`
-- [ ] `cargo test -p timekeeper-frontend --lib login`
-- [ ] 表示文言 assertion を translation key 非依存へ更新した core page テストが green
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (364 passed)
+- [x] dashboard / requests / login を含む core page tests が green
+- [x] 表示文言 assertion を translation key 非依存へ更新した core page テストが green
 
 ### PR3: Admin Pages
 
@@ -233,10 +232,12 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 ### PR2: Core Pages
 
-- [ ] `forms` / `cards` の主要 shared component を移行
-- [ ] attendance / dashboard / requests / auth / settings 移行
-- [ ] status / confirmation 文言の key 化
-- [ ] 表示文言 assertion の translation key 非依存化
+- [x] `forms` / `cards` の主要 shared component を移行
+- [x] attendance / dashboard / requests / auth / settings 移行
+- [x] status / confirmation 文言の key 化
+- [x] 表示文言 assertion の translation key 非依存化
+
+以下のファイル一覧は実装前に作成した差分予測であり、PR2 の完了判定は上記チェック項目と Validation Plan を source of truth とする。
 
 想定差分ファイル:
 - [ ] `frontend/src/components/forms.rs`
@@ -449,8 +450,8 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 - [ ] locale key は PR1 でトップレベル構造と並び順を先に定義する
 - [ ] `layout.rs` の共通 nav 文言は PR1 でできるだけ先取りして移行する
-- [ ] `api/client.rs` の内部生成エラー key 化は PR2 でまとめて行い、PR3 では新規追加を避ける
-- [ ] `api/tests.rs` は PR2 で共通 assertion helper を整え、PR3 は追記中心にする
+- [x] `api/client.rs` の内部生成エラー key 化は PR2 でまとめて行い、PR3 では新規追加を避ける
+- [x] `api/tests.rs` は PR2 で translation key 非依存の assertion を整え、PR3 は追記中心にする
 - [ ] docs / AGENTS の運用ルール更新は PR4 に寄せる
 
 ## Locale Structure
@@ -549,35 +550,35 @@ key 配置の優先順:
 4. [ ] admin 部品専用なら `admin_components.*`
 5. [ ] API / state 内部生成文言なら `api.*` / `state.*`
 
-## JJ Snapshot Log
+## Git Snapshot Log
 
 ### PR1: Foundation
 
-- [x] `jj status`
+- [x] `git status --short`
 - [x] foundation 実装差分を確認
 - [x] foundation validation pass
-- [ ] `jj commit -m "feat(i18n): add frontend locale foundation"`
+- [x] commit recorded: `feat(i18n): add frontend locale foundation`
 
 ### PR2: Core Pages
 
-- [ ] `jj status`
-- [ ] core pages 実装差分を確認
-- [ ] core pages validation pass
-- [ ] `jj commit -m "feat(i18n): migrate frontend core pages copy"`
+- [x] `git status --short`
+- [x] core pages 実装差分を確認
+- [x] core pages validation pass
+- [x] commit recorded: `feat(i18n): complete frontend core page migration`
 
 ### PR3: Admin Pages
 
-- [ ] `jj status`
+- [ ] `git status --short`
 - [ ] admin pages 実装差分を確認
 - [ ] admin pages validation pass
-- [ ] `jj commit -m "feat(i18n): migrate frontend admin copy"`
+- [ ] `git commit -m "feat(i18n): migrate frontend admin copy"`
 
 ### PR4: Residual Cleanup
 
-- [ ] `jj status`
+- [ ] `git status --short`
 - [ ] residual scan 結果を確認
 - [ ] final validation pass
-- [ ] `jj commit -m "docs(i18n): enforce translation-key workflow"`
+- [ ] `git commit -m "docs(i18n): enforce translation-key workflow"`
 
 ## Progress Notes
 
@@ -586,3 +587,4 @@ key 配置の優先順:
 - 2026-03-11: 実行前インタビューを反映。locale 切替はヘッダー右上、`localStorage` 永続化、初回はブラウザ言語判定で未一致時 `en` 既定、`en` / `ja` 完全切替、backend 自然言語エラーは対象外、translation key は階層型、docs は `docs/` + `frontend/AGENTS.md` 更新、PR は 4 分割で進める方針を確定。
 - 2026-03-11: PR1 foundation を実装。`rust-i18n` 導入、`frontend/locales/{ja,en}.yml` 新設、`state::locale` によるブラウザ言語判定と `localStorage` 永続化、ヘッダー右上 locale switcher、`layout` / `confirm_dialog` / `error` の基盤翻訳化を追加。`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend --lib` を確認。
 - 2026-06-18: PR4 の未着手項目から i18n 運用ルール追加に着手。`docs/manual/frontend-i18n-rule.md` を追加し、`docs/index.md` と `frontend/AGENTS.md` から参照できるようにした。
+- 2026-06-20: PR2 Core Pages を完了。既存の shared/core page 移行を棚卸しし、home、API 内部生成エラー、dashboard の件数・単位、attendance の休憩時間表示に残っていた直書きを translation key 化した。core page の表示 assertion を `t!()` 解決結果へ更新し、`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (364 passed)、`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings` を確認。PR2 対象の production scan では、非対象の日付・曜日 format (`pages/dashboard/components/clock.rs`) のみ残存。

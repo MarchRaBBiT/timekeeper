@@ -8,13 +8,20 @@ pub fn current_year_month() -> (i32, u32) {
 
 pub fn format_hours(hours: Option<f64>) -> String {
     hours
-        .map(|h| format!("{:.2}時間", h))
+        .map(|h| format!("{:.2} {}", h, rust_i18n::t!("common.units.hours")))
         .unwrap_or_else(|| "-".into())
 }
 
 pub fn format_days(days: Option<i32>) -> String {
-    days.map(|d| format!("{d} 日"))
-        .unwrap_or_else(|| "-".into())
+    days.map(|days| {
+        let unit_key = if days == 1 {
+            "common.units.day"
+        } else {
+            "common.units.days"
+        };
+        format!("{days} {}", rust_i18n::t!(unit_key))
+    })
+    .unwrap_or_else(|| "-".into())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,17 +52,21 @@ impl ActivityStatusFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
 
     #[test]
     fn formats_hours_with_two_decimals() {
-        assert_eq!(format_hours(Some(12.3456)), "12.35時間");
-        assert_eq!(format_hours(Some(0.0)), "0.00時間");
+        let _locale = set_test_locale("en");
+        assert_eq!(format_hours(Some(12.3456)), "12.35 hr");
+        assert_eq!(format_hours(Some(0.0)), "0.00 hr");
         assert_eq!(format_hours(None), "-");
     }
 
     #[test]
     fn formats_days_with_suffix() {
-        assert_eq!(format_days(Some(5)), "5 日");
+        let _locale = set_test_locale("en");
+        assert_eq!(format_days(Some(1)), "1 day");
+        assert_eq!(format_days(Some(5)), "5 days");
         assert_eq!(format_days(None), "-");
     }
 }

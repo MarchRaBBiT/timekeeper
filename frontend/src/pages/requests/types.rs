@@ -201,7 +201,10 @@ mod tests {
         let summary = RequestSummary::from_overtime(&value);
         assert_eq!(summary.kind, RequestKind::Overtime);
         assert_eq!(summary.primary_label.as_deref(), Some("2025-01-15"));
-        assert_eq!(summary.secondary_label.as_deref(), Some("3.5 時間"));
+        assert_eq!(
+            summary.secondary_label.as_deref(),
+            Some(rust_i18n::t!("pages.requests.summary.overtime_hours", hours = 3.5).as_ref())
+        );
     }
 
     #[test]

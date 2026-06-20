@@ -51,6 +51,7 @@ common:
   units:
     hours: "hr"
     minutes: "min"
+    day: "day"
     days: "days"
   pagination: {}
   navigation:
@@ -187,6 +188,8 @@ pages:
       title: "Request Activity"
       description: "Recent leave and overtime request counts."
       loading: "Loading activities..."
+      count_one: "%{count} request"
+      count_other: "%{count} requests"
       items:
         leave_pending: "Leave Requests Pending"
         overtime_pending: "Overtime Requests Pending"
@@ -763,7 +766,10 @@ pages:
       user_required: "Select a specific user."
       date_format: "Enter dates in YYYY-MM-DD format."
       date_order: "From must be on or before To."
-  home: {}
+  home:
+    tagline: "Time tracking for small teams"
+    actions:
+      login: "Sign In"
 
 admin_components:
   attendance:
@@ -795,7 +801,9 @@ admin_components:
     title: "Weekly Holidays"
 
 api:
-  errors: {}
+  errors:
+    session_expired: "Your session has expired. Sign in again."
+    generic_server: "A server error occurred."
   auth: {}
   attendance: {}
   requests: {}

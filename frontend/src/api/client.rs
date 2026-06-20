@@ -98,10 +98,15 @@ fn lookup_mock(base_url: &str) -> Option<Arc<dyn TestResponder>> {
 }
 
 impl ApiClient {
-    const SESSION_EXPIRED_ERROR: &'static str =
-        "セッションが期限切れです。再度ログインしてください。";
     const SESSION_EXPIRED_CODE: &'static str = "SESSION_EXPIRED";
-    const GENERIC_SERVER_ERROR: &'static str = "サーバーエラーが発生しました。";
+
+    fn session_expired_error() -> String {
+        rust_i18n::t!("api.errors.session_expired").into_owned()
+    }
+
+    fn generic_server_error() -> String {
+        rust_i18n::t!("api.errors.generic_server").into_owned()
+    }
 
     pub(super) fn parse_pii_masked_header(headers: &reqwest::header::HeaderMap) -> bool {
         headers
@@ -113,7 +118,7 @@ impl ApiClient {
 
     pub(super) fn map_error_payload_parse_failure(error: reqwest::Error) -> ApiError {
         log::error!("Failed to parse error response payload: {}", error);
-        ApiError::unknown(Self::GENERIC_SERVER_ERROR)
+        ApiError::unknown(Self::generic_server_error())
     }
 
     pub fn new() -> Self {
@@ -226,7 +231,7 @@ impl ApiClient {
         Self::clear_auth_session();
         Self::handle_unauthorized_status(StatusCode::UNAUTHORIZED);
         Err(ApiError {
-            error: Self::SESSION_EXPIRED_ERROR.to_string(),
+            error: Self::session_expired_error(),
             code: Self::SESSION_EXPIRED_CODE.to_string(),
             details: None,
         })
@@ -1129,6 +1134,7 @@ pub(crate) fn reset_device_label_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::helpers::set_test_locale;
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
@@ -1147,6 +1153,20 @@ mod tests {
         assert!(first.starts_with("device-"));
         let second = ensure_device_label().expect("label reused");
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn internal_api_errors_resolve_from_the_active_locale() {
+        let _locale = set_test_locale("en");
+
+        assert_eq!(
+            ApiClient::session_expired_error(),
+            rust_i18n::t!("api.errors.session_expired")
+        );
+        assert_eq!(
+            ApiClient::generic_server_error(),
+            rust_i18n::t!("api.errors.generic_server")
+        );
     }
 
     #[wasm_bindgen_test]

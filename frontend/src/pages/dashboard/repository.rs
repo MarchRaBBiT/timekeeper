@@ -76,19 +76,19 @@ pub async fn fetch_recent_activities(
     let activities = vec![
         DashboardActivity {
             title: rust_i18n::t!("pages.dashboard.activities.items.leave_pending").into_owned(),
-            detail: Some(format!("{leave_pending} 件")),
+            detail: Some(format_activity_count(leave_pending)),
         },
         DashboardActivity {
             title: rust_i18n::t!("pages.dashboard.activities.items.overtime_pending").into_owned(),
-            detail: Some(format!("{overtime_pending} 件")),
+            detail: Some(format_activity_count(overtime_pending)),
         },
         DashboardActivity {
             title: rust_i18n::t!("pages.dashboard.activities.items.leave_approved").into_owned(),
-            detail: Some(format!("{leave_approved} 件")),
+            detail: Some(format_activity_count(leave_approved)),
         },
         DashboardActivity {
             title: rust_i18n::t!("pages.dashboard.activities.items.overtime_approved").into_owned(),
-            detail: Some(format!("{overtime_approved} 件")),
+            detail: Some(format_activity_count(overtime_approved)),
         },
     ];
 
@@ -99,6 +99,15 @@ pub async fn fetch_recent_activities(
     };
 
     Ok(filtered)
+}
+
+fn format_activity_count(count: i32) -> String {
+    let key = if count == 1 {
+        "pages.dashboard.activities.count_one"
+    } else {
+        "pages.dashboard.activities.count_other"
+    };
+    rust_i18n::t!(key, count = count).into_owned()
 }
 
 fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i32 {
@@ -112,6 +121,7 @@ fn count_by(summaries: &[RequestSummary], kind: RequestKind, status: &str) -> i3
 mod tests {
     use super::*;
     use crate::api::test_support::mock::*;
+    use crate::test_support::helpers::set_test_locale;
 
     #[test]
     fn alerts_warn_when_no_workdays() {
@@ -131,6 +141,13 @@ mod tests {
         let empty: crate::pages::requests::types::MyRequestsResponse = Default::default();
         let summaries = flatten_requests(&empty);
         assert_eq!(count_by(&summaries, RequestKind::Leave, "pending"), 0);
+    }
+
+    #[test]
+    fn activity_count_resolves_from_the_active_locale() {
+        let _locale = set_test_locale("en");
+        assert_eq!(format_activity_count(1), "1 request");
+        assert_eq!(format_activity_count(3), "3 requests");
     }
 
     #[tokio::test]

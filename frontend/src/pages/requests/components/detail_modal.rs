@@ -185,11 +185,14 @@ mod host_tests {
             let selected = create_rw_signal(Some(summary));
             view! { <RequestDetailModal selected=selected /> }
         });
-        assert!(html.contains("Leave Request"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.kind.leave_request").as_ref()));
         assert!(html.contains("role=\"dialog\""));
         assert!(html.contains("aria-modal=\"true\""));
-        assert!(html.contains("aria-label=\"Close\""));
-        assert!(html.contains("Pending"));
+        assert!(html.contains(&format!(
+            "aria-label=\"{}\"",
+            rust_i18n::t!("common.actions.close")
+        )));
+        assert!(html.contains(rust_i18n::t!("pages.requests.status.pending").as_ref()));
         assert!(html.contains("family"));
     }
 }

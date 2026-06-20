@@ -51,6 +51,7 @@ common:
   units:
     hours: "時間"
     minutes: "分"
+    day: "日"
     days: "日"
   pagination: {}
   navigation:
@@ -187,6 +188,8 @@ pages:
       title: "申請アクティビティ"
       description: "休暇と残業申請の件数を確認できます。"
       loading: "アクティビティを読み込み中..."
+      count_one: "%{count} 件"
+      count_other: "%{count} 件"
       items:
         leave_pending: "休暇申請（承認待ち）"
         overtime_pending: "残業申請（承認待ち）"
@@ -763,7 +766,10 @@ pages:
       user_required: "指定ユーザーを選択してください。"
       date_format: "日付は YYYY-MM-DD 形式で入力してください。"
       date_order: "From は To 以前の日付を指定してください。"
-  home: {}
+  home:
+    tagline: "少人数向けの勤怠管理システム"
+    actions:
+      login: "ログイン"
 
 admin_components:
   attendance:
@@ -795,7 +801,9 @@ admin_components:
     title: "週次休日"
 
 api:
-  errors: {}
+  errors:
+    session_expired: "セッションが期限切れです。再度ログインしてください。"
+    generic_server: "サーバーエラーが発生しました。"
   auth: {}
   attendance: {}
   requests: {}

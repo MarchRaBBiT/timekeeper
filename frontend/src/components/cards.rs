@@ -249,7 +249,7 @@ mod host_tests {
             let (signal, _) = create_signal(state);
             view! { <AttendanceCard attendance_state=signal /> }
         });
-        assert!(html.contains("Clock In"));
+        assert!(html.contains(rust_i18n::t!("components.cards.attendance.clock_in").as_ref()));
         assert!(html.contains("09:00"));
         assert!(html.contains("30 min"));
         assert!(html.contains("8.00 hr"));

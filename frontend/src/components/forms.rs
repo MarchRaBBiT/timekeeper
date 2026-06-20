@@ -254,7 +254,7 @@ mod host_tests {
             view! { <DatePicker value=value label=Some("pages.attendance.filters.from") /> }
         });
 
-        assert!(html.contains("From"));
+        assert!(html.contains(rust_i18n::t!("pages.attendance.filters.from").as_ref()));
     }
 }
 
@@ -643,7 +643,10 @@ mod form_field_tests {
             let value = create_rw_signal(String::new());
             view! { <TextInput value=value label="pages.attendance.filters.from" /> }
         });
-        assert!(html.contains("From"), "label key should resolve");
+        assert!(
+            html.contains(rust_i18n::t!("pages.attendance.filters.from").as_ref()),
+            "label key should resolve"
+        );
         assert!(html.contains("<input"), "should render an input element");
     }
 
@@ -683,7 +686,10 @@ mod form_field_tests {
             let value = create_rw_signal(String::new());
             view! { <PasswordInput value=value label="pages.attendance.filters.from" /> }
         });
-        assert!(html.contains("From"), "label should resolve");
+        assert!(
+            html.contains(rust_i18n::t!("pages.attendance.filters.from").as_ref()),
+            "label should resolve"
+        );
         assert!(html.contains("password"), "should contain a password input");
     }
 
@@ -711,7 +717,10 @@ mod form_field_tests {
             let checked = create_rw_signal(false);
             view! { <CheckboxField checked=checked label="common.states.loading" /> }
         });
-        assert!(html.contains("Loading"), "label key should resolve");
+        assert!(
+            html.contains(rust_i18n::t!("common.states.loading").as_ref()),
+            "label key should resolve"
+        );
         assert!(
             html.contains(r#"type="checkbox"#),
             "should render a checkbox input"
@@ -725,7 +734,10 @@ mod form_field_tests {
             let value = create_rw_signal(String::new());
             view! { <TextArea value=value label="pages.attendance.filters.from" /> }
         });
-        assert!(html.contains("From"), "label key should resolve");
+        assert!(
+            html.contains(rust_i18n::t!("pages.attendance.filters.from").as_ref()),
+            "label key should resolve"
+        );
         assert!(
             html.contains("<textarea"),
             "should render a textarea element"

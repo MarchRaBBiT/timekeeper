@@ -356,18 +356,42 @@ mod host_tests {
             let forced = describe_holiday_reason("forced holiday");
             let unknown = describe_holiday_reason("unknown");
 
-            assert_eq!(public, "祝日");
-            assert_eq!(weekly, "法定休日");
-            assert_eq!(forced, "会社休日");
-            assert_eq!(unknown, "休日");
+            assert_eq!(
+                public,
+                rust_i18n::t!("state.attendance.holiday_reason.public_holiday")
+            );
+            assert_eq!(
+                weekly,
+                rust_i18n::t!("state.attendance.holiday_reason.weekly_holiday")
+            );
+            assert_eq!(
+                forced,
+                rust_i18n::t!("state.attendance.holiday_reason.forced_holiday")
+            );
+            assert_eq!(
+                unknown,
+                rust_i18n::t!("state.attendance.holiday_reason.default")
+            );
         }
 
         {
             let _locale = set_test_locale("en");
-            assert_eq!(describe_holiday_reason("public holiday"), "public holiday");
-            assert_eq!(describe_holiday_reason("weekly holiday"), "weekly holiday");
-            assert_eq!(describe_holiday_reason("forced holiday"), "company holiday");
-            assert_eq!(describe_holiday_reason("unknown"), "holiday");
+            assert_eq!(
+                describe_holiday_reason("public holiday"),
+                rust_i18n::t!("state.attendance.holiday_reason.public_holiday")
+            );
+            assert_eq!(
+                describe_holiday_reason("weekly holiday"),
+                rust_i18n::t!("state.attendance.holiday_reason.weekly_holiday")
+            );
+            assert_eq!(
+                describe_holiday_reason("forced holiday"),
+                rust_i18n::t!("state.attendance.holiday_reason.forced_holiday")
+            );
+            assert_eq!(
+                describe_holiday_reason("unknown"),
+                rust_i18n::t!("state.attendance.holiday_reason.default")
+            );
         }
     }
 }

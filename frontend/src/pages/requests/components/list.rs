@@ -307,7 +307,7 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("No requests to display"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.list.empty_title").as_ref()));
     }
 
     #[test]
@@ -330,9 +330,9 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("Request List"));
-        assert!(html.contains("Pending"));
-        assert!(html.contains("Leave"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.list.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.status.pending").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.kind.leave").as_ref()));
     }
 
     #[test]

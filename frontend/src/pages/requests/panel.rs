@@ -186,9 +186,9 @@ mod host_tests {
         let _locale = set_test_locale("en");
         let html =
             render_with_router_to_string("http://localhost/", move || view! { <RequestsPage /> });
-        assert!(html.contains("Leave Request"));
-        assert!(html.contains("Overtime Request"));
-        assert!(html.contains("Attendance Correction Request"));
-        assert!(html.contains("Requests"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.leave_form.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.overtime_form.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.correction_form.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.layout.title").as_ref()));
     }
 }

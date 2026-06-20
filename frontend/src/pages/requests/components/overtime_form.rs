@@ -152,8 +152,10 @@ mod host_tests {
                 />
             }
         });
-        assert!(html.contains("Overtime Request"));
-        assert!(html.contains("Editing"));
-        assert!(html.contains("Update Overtime Request"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.overtime_form.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.forms.editing_overtime").as_ref()));
+        assert!(
+            html.contains(rust_i18n::t!("pages.requests.overtime_form.actions.update").as_ref())
+        );
     }
 }

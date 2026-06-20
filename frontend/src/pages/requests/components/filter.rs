@@ -45,12 +45,12 @@ mod host_tests {
             let filter = RequestFilterState::default();
             view! { <RequestsFilter filter_state=filter /> }
         });
-        assert!(html.contains("Filter Requests"));
-        assert!(html.contains("Pending"));
-        assert!(html.contains("Approved"));
-        assert!(html.contains("Rejected"));
-        assert!(html.contains("Cancelled"));
-        assert!(html.contains("Clear"));
+        assert!(html.contains(rust_i18n::t!("pages.requests.filter.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.filter.options.pending").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.filter.options.approved").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.filter.options.rejected").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.requests.filter.options.cancelled").as_ref()));
+        assert!(html.contains(rust_i18n::t!("common.actions.clear").as_ref()));
     }
 
     #[test]

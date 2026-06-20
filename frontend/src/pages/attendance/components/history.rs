@@ -194,10 +194,7 @@ fn HistoryRow(
                                     each=move || breaks.get()
                                     key=|record| record.id.clone()
                                     children=move |record| {
-                                        let duration = record
-                                            .duration_minutes
-                                            .map(|mins| format!("{mins}分"))
-                                            .unwrap_or_else(|| "-".into());
+                                        let duration = format_break_duration(record.duration_minutes);
                                         view! {
                                             <li class="flex items-center justify-between p-2 rounded-xl bg-surface-muted text-xs font-medium">
                                                 <span class="text-fg-muted">{format!(
@@ -222,10 +219,17 @@ fn HistoryRow(
     }
 }
 
+fn format_break_duration(minutes: Option<i32>) -> String {
+    minutes
+        .map(|minutes| format!("{minutes} {}", rust_i18n::t!("common.units.minutes")))
+        .unwrap_or_else(|| "-".into())
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod host_tests {
     use super::*;
     use crate::api::{AttendanceResponse, BreakRecordResponse};
+    use crate::test_support::helpers::set_test_locale;
     use crate::test_support::ssr::render_to_string;
 
     fn sample_attendance() -> AttendanceResponse {
@@ -287,6 +291,13 @@ mod host_tests {
         });
         assert!(html.contains("09:00"));
         assert!(html.contains("8.0h"));
+    }
+
+    #[test]
+    fn break_duration_resolves_from_the_active_locale() {
+        let _locale = set_test_locale("en");
+        assert_eq!(format_break_duration(Some(30)), "30 min");
+        assert_eq!(format_break_duration(None), "-");
     }
 
     #[test]
