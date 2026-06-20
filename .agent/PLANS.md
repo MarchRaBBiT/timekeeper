@@ -9,6 +9,10 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260620-work-schedule-master-design
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-design.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-design.md)
+
 # EP-20260610-rebuild-architecture-harness
 
 **完了済み (b958562)** — 詳細: [`docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md)

@@ -17,6 +17,7 @@
 
 - [Harness Engineering](./design-docs/harness-engineering.md)
 - [Timekeeper Rebuild Architecture](./design-docs/rebuild-architecture.md)
+- [Work Schedule Master](./design-docs/work-schedule-master.md)
 - [Frontend Structure](./design-docs/frontend-structure.md)
 - [Scaling Guide](./design-docs/scaling.md)
 - [Theme Implementation](./design-docs/theme-implementation.md)
