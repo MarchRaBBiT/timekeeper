@@ -1,3 +1,5 @@
+pub mod work_schedules;
+
 pub mod attendance {
     use std::collections::HashMap;
 

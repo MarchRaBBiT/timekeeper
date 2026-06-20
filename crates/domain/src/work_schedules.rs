@@ -11,6 +11,27 @@ pub enum DayKind {
     NonWorkingDay,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublicHolidayPolicy {
+    NonWorking,
+    FollowWeeklyPattern,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkScheduleSource {
+    Override,
+    User,
+    Department,
+    Organization,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolvedDayKind {
+    ScheduledWorkday,
+    ScheduledNonWorkingDay,
+    PublicHoliday,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedWorkInterval {
     pub start_time: NaiveTime,

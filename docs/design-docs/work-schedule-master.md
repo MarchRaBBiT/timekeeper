@@ -1,16 +1,17 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 1 management model/API implemented; resolver integration pending
+**Status:** Phase 1 management model/API and daily workday resolver implemented; attendance integration pending
 
-**Updated:** 2026-06-20
+**Updated:** 2026-06-21
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
 
 ## Implementation Status
 
-2026-06-20時点で、勤務体系マスタ、draft/published版、曜日別勤務区間・予定休憩、
-全社・部署・従業員への期間付き割り当て、および管理APIを実装済み。
-`ResolvedWorkday`、日別例外、打刻との接続、frontend管理画面は後続フェーズで実装する。
+2026-06-21時点で、勤務体系マスタ、draft/published版、曜日別勤務区間・予定休憩、
+全社・部署・従業員への期間付き割り当て、管理API、および`ResolveWorkday`と
+`ResolvedWorkday` projectionを実装済み。日別例外はresolverからの読み取りまで対応した。
+日別例外の管理API、予定一覧API、打刻との接続、frontend管理画面は後続フェーズで実装する。
 
 ## Decision Summary
 
@@ -218,6 +219,10 @@ resolver の出力を保存した日別 projection。勤怠の再現性を保証
 6. 対象日の published version を選択する
 7. 曜日ルールと `public_holiday_policy` を合成する
 8. projection を保存して返す
+
+`non_working_day` overrideもtimezone、日界時刻、不変版のprovenanceを保持するため、
+下位優先順位の割り当てから版を選択したうえで勤務区間を空にする。
+下位割り当て自体がない場合は`work_schedule_not_configured`とする。
 
 優先順位は次で固定する。
 
