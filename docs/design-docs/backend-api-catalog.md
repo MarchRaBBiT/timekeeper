@@ -1,6 +1,6 @@
 # Backend API Catalog
 
-**Updated:** 2026-03-16
+**Updated:** 2026-06-20
 **Purpose:** frontend が「存在しない backend endpoint」を前提に実装しないための、実装起点の API 契約一覧です。
 
 ## Maintenance Directive
@@ -138,6 +138,24 @@
 | `/api/admin/departments/{id}/managers` | `GET` | Manager+ | Path `id` | `200 [DepartmentManagerEntry { department_id, user_id, assigned_at }]` | `403` forbidden, `404` not found, `500` lookup failure | 部署のマネージャー一覧取得 |
 | `/api/admin/departments/{id}/managers` | `POST` | System Admin | Path `id`; Body `AssignManagerPayload { user_id }` | `200 DepartmentManagerEntry` | `400` user not found, `403` forbidden, `404` department not found, `409` already assigned, `500` assign failure | 部署にマネージャーを割り当てる |
 | `/api/admin/departments/{id}/managers/{uid}` | `DELETE` | System Admin | Path `id`, `uid` | `200 {"message":"Manager removed","department_id":id,"user_id":uid}` | `403` forbidden, `404` not found, `500` remove failure | 部署のマネージャーを解除する |
+
+## Admin / Work Schedule Master
+
+| Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/api/admin/work-schedules` | `GET` | Manager+ | Query `status?`, `q?`, `page?`, `per_page?` | `200 WorkScheduleListResponse` | `400` filter不正, `403` forbidden, `500` lookup failure | 勤務体系マスタ一覧を取得する |
+| `/api/admin/work-schedules` | `POST` | System Admin | Body `CreateWorkScheduleRequest { code, name, description? }` | `201 WorkScheduleResponse` + `Location` | `400` validation, `409 WORK_SCHEDULE_CODE_CONFLICT`, `403` forbidden | 勤務体系マスタを作成する |
+| `/api/admin/work-schedules/{id}` | `GET` | Manager+ | Path `id` | `200 WorkScheduleDetailResponse` | `400` invalid id, `403` forbidden, `404` not found | マスタとバージョン概要を取得する |
+| `/api/admin/work-schedules/{id}` | `PATCH` | System Admin | Path `id`; Body `UpdateWorkScheduleRequest { name?, description? }` | `200 WorkScheduleResponse` | `400` validation, `403` forbidden, `404` not found | マスタの表示情報を更新する。空descriptionはnullへ変更する |
+| `/api/admin/work-schedules/{id}/retire` | `POST` | System Admin | Path `id` | `200 WorkScheduleResponse` | `400` invalid id, `403` forbidden, `404` not found | マスタをretiredにして新規版・割当を禁止する |
+| `/api/admin/work-schedules/{id}/versions` | `POST` | System Admin | Path `id`; Body `CreateWorkScheduleVersionRequest` | `201 WorkScheduleVersionResponse` + `Location` | `422 INVALID_SCHEDULE_INTERVALS`, `409 WORK_SCHEDULE_RETIRED`, `404` not found | 7曜日を持つdraftバージョンを作成する |
+| `/api/admin/work-schedules/{id}/versions/{version_id}` | `GET` | Manager+ | Path `id`, `version_id` | `200 WorkScheduleVersionResponse` | `400` invalid id, `403` forbidden, `404` not found | 曜日・勤務区間・予定休憩を含む版詳細を取得する |
+| `/api/admin/work-schedules/{id}/versions/{version_id}` | `PUT` | System Admin | Body `ReplaceWorkScheduleVersionRequest { revision, ... }` | `200 WorkScheduleVersionResponse` | `409 REVISION_CONFLICT` / `PUBLISHED_VERSION_IMMUTABLE`, `422` interval不正 | 楽観ロック付きでdraft版全体を置換する |
+| `/api/admin/work-schedules/{id}/versions/{version_id}` | `DELETE` | System Admin | Path `id`, `version_id` | `204 No Content` | `409 PUBLISHED_VERSION_IMMUTABLE`, `404` not found | draft版を削除する |
+| `/api/admin/work-schedules/{id}/versions/{version_id}/publish` | `POST` | System Admin | Path `id`, `version_id` | `200 WorkScheduleVersionResponse` | `409 EFFECTIVE_PERIOD_OVERLAP` / `PUBLISHED_VERSION_IMMUTABLE`, `404` not found | draft版を公開し、以後変更不能にする |
+| `/api/admin/work-schedule-assignments` | `GET` | Manager+ | Query `work_schedule_id?`, `department_id?`, `user_id?`, `page?`, `per_page?` | `200 WorkScheduleAssignmentListResponse` | `400` invalid filter, `403` forbidden, `500` lookup failure | 期間付き割当一覧を取得する |
+| `/api/admin/work-schedule-assignments` | `POST` | System Admin | Body `WorkScheduleAssignmentRequest` | `201 WorkScheduleAssignmentResponse` + `Location` | `400` invalid target/range, `409 EFFECTIVE_PERIOD_OVERLAP` / `WORK_SCHEDULE_RETIRED` | 全社・部署・従業員への割当を作成する |
+| `/api/admin/work-schedule-assignments/{id}` | `DELETE` | System Admin | Path `id` | `204 No Content` | `400` invalid id, `403` forbidden, `404` not found | 割当を削除する |
 
 ## Admin / System Admin User & Attendance Operations
 

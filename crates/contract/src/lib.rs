@@ -155,6 +155,8 @@ pub mod attendance {
     }
 }
 
+pub mod work_schedules;
+
 pub mod requests {
     use chrono::NaiveDate;
     use serde::{Deserialize, Serialize};

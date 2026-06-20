@@ -598,6 +598,56 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
             "request",
             Some((*request_id).to_string()),
         )),
+        (&Method::POST, ["api", "admin", "work-schedules"]) => {
+            Some(event("work_schedule_created", "work_schedule", None))
+        }
+        (&Method::PATCH, ["api", "admin", "work-schedules", schedule_id]) => Some(event(
+            "work_schedule_updated",
+            "work_schedule",
+            Some((*schedule_id).to_string()),
+        )),
+        (&Method::POST, ["api", "admin", "work-schedules", schedule_id, "retire"]) => Some(event(
+            "work_schedule_retired",
+            "work_schedule",
+            Some((*schedule_id).to_string()),
+        )),
+        (&Method::POST, ["api", "admin", "work-schedules", _, "versions"]) => Some(event(
+            "work_schedule_version_created",
+            "work_schedule_version",
+            None,
+        )),
+        (&Method::PUT, ["api", "admin", "work-schedules", _, "versions", version_id]) => {
+            Some(event(
+                "work_schedule_version_updated",
+                "work_schedule_version",
+                Some((*version_id).to_string()),
+            ))
+        }
+        (
+            &Method::POST,
+            ["api", "admin", "work-schedules", _, "versions", version_id, "publish"],
+        ) => Some(event(
+            "work_schedule_version_published",
+            "work_schedule_version",
+            Some((*version_id).to_string()),
+        )),
+        (&Method::DELETE, ["api", "admin", "work-schedules", _, "versions", version_id]) => {
+            Some(event(
+                "work_schedule_version_deleted",
+                "work_schedule_version",
+                Some((*version_id).to_string()),
+            ))
+        }
+        (&Method::POST, ["api", "admin", "work-schedule-assignments"]) => Some(event(
+            "work_schedule_assignment_created",
+            "work_schedule_assignment",
+            None,
+        )),
+        (&Method::DELETE, ["api", "admin", "work-schedule-assignments", id]) => Some(event(
+            "work_schedule_assignment_deleted",
+            "work_schedule_assignment",
+            Some((*id).to_string()),
+        )),
         (&Method::GET, ["api", "admin", "holidays"]) => {
             Some(event("admin_holiday_list", "system", None))
         }
@@ -800,6 +850,29 @@ mod tests {
         assert_eq!(export_event.event_type, "admin_audit_log_export");
         assert_eq!(export_event.target_type, Some("audit_log"));
         assert!(export_event.target_id.is_none());
+    }
+
+    #[test]
+    fn classify_event_matches_work_schedule_mutations() {
+        let create = classify_event(&Method::POST, "/api/admin/work-schedules")
+            .expect("work schedule create maps");
+        assert_eq!(create.event_type, "work_schedule_created");
+
+        let publish = classify_event(
+            &Method::POST,
+            "/api/admin/work-schedules/schedule-1/versions/version-2/publish",
+        )
+        .expect("version publish maps");
+        assert_eq!(publish.event_type, "work_schedule_version_published");
+        assert_eq!(publish.target_id.as_deref(), Some("version-2"));
+
+        let assignment = classify_event(
+            &Method::DELETE,
+            "/api/admin/work-schedule-assignments/assignment-1",
+        )
+        .expect("assignment delete maps");
+        assert_eq!(assignment.event_type, "work_schedule_assignment_deleted");
+        assert_eq!(assignment.target_id.as_deref(), Some("assignment-1"));
     }
 
     #[test]

@@ -51,6 +51,16 @@ use crate::{
 use timekeeper_contract::attendance::{
     AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse,
 };
+use timekeeper_contract::work_schedules::{
+    AssignmentTarget, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest, DayKind,
+    PlannedBreakInput, PlannedBreakResponse, PlannedWorkIntervalInput, PlannedWorkIntervalResponse,
+    PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest,
+    WeekdayRuleInput, WeekdayRuleResponse, WorkScheduleAssignmentListQuery,
+    WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
+    WorkScheduleAssignmentResponse, WorkScheduleDetailResponse, WorkScheduleListQuery,
+    WorkScheduleListResponse, WorkScheduleResponse, WorkScheduleStatus,
+    WorkScheduleVersionResponse, WorkScheduleVersionStatus, WorkScheduleVersionSummary,
+};
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
     Modify, OpenApi, ToSchema,
@@ -152,7 +162,20 @@ struct RequestCancellationResponse {
         system_admin_restore_archived_user_doc,
         admin_create_holiday_exception_doc,
         admin_list_holiday_exceptions_doc,
-        admin_delete_holiday_exception_doc
+        admin_delete_holiday_exception_doc,
+        admin_list_work_schedules_doc,
+        admin_create_work_schedule_doc,
+        admin_get_work_schedule_doc,
+        admin_update_work_schedule_doc,
+        admin_retire_work_schedule_doc,
+        admin_create_work_schedule_version_doc,
+        admin_get_work_schedule_version_doc,
+        admin_replace_work_schedule_version_doc,
+        admin_delete_work_schedule_version_doc,
+        admin_publish_work_schedule_version_doc,
+        admin_list_work_schedule_assignments_doc,
+        admin_create_work_schedule_assignment_doc,
+        admin_delete_work_schedule_assignment_doc
     ),
     components(
         schemas(
@@ -237,7 +260,30 @@ struct RequestCancellationResponse {
             AuditLogListQuery,
             AuditLogListResponse,
             AuditLogResponse,
-            AuditLogExportQuery
+            AuditLogExportQuery,
+            CreateWorkScheduleRequest,
+            UpdateWorkScheduleRequest,
+            WorkScheduleResponse,
+            WorkScheduleListResponse,
+            WorkScheduleDetailResponse,
+            WorkScheduleStatus,
+            WorkScheduleVersionStatus,
+            PublicHolidayPolicy,
+            DayKind,
+            PlannedWorkIntervalInput,
+            PlannedBreakInput,
+            WeekdayRuleInput,
+            CreateWorkScheduleVersionRequest,
+            ReplaceWorkScheduleVersionRequest,
+            PlannedWorkIntervalResponse,
+            PlannedBreakResponse,
+            WeekdayRuleResponse,
+            WorkScheduleVersionSummary,
+            WorkScheduleVersionResponse,
+            AssignmentTarget,
+            WorkScheduleAssignmentRequest,
+            WorkScheduleAssignmentResponse,
+            WorkScheduleAssignmentListResponse
         )
     ),
     modifiers(&SecuritySchemes),
@@ -1053,6 +1099,138 @@ fn admin_list_holiday_exceptions_doc() {}
 )]
 fn admin_delete_holiday_exception_doc() {}
 
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-schedules",
+    params(WorkScheduleListQuery),
+    responses((status = 200, body = WorkScheduleListResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_list_work_schedules_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedules",
+    request_body = CreateWorkScheduleRequest,
+    responses((status = 201, body = WorkScheduleResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_create_work_schedule_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-schedules/{id}",
+    params(("id" = String, Path, description = "勤務体系ID")),
+    responses((status = 200, body = WorkScheduleDetailResponse), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_get_work_schedule_doc() {}
+
+#[utoipa::path(
+    patch,
+    path = "/api/admin/work-schedules/{id}",
+    params(("id" = String, Path, description = "勤務体系ID")),
+    request_body = UpdateWorkScheduleRequest,
+    responses((status = 200, body = WorkScheduleResponse), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_update_work_schedule_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedules/{id}/retire",
+    params(("id" = String, Path, description = "勤務体系ID")),
+    responses((status = 200, body = WorkScheduleResponse), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_retire_work_schedule_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedules/{id}/versions",
+    params(("id" = String, Path, description = "勤務体系ID")),
+    request_body = CreateWorkScheduleVersionRequest,
+    responses((status = 201, body = WorkScheduleVersionResponse), (status = 422)),
+    tag = "Admin"
+)]
+fn admin_create_work_schedule_version_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-schedules/{id}/versions/{version_id}",
+    params(
+        ("id" = String, Path, description = "勤務体系ID"),
+        ("version_id" = String, Path, description = "バージョンID")
+    ),
+    responses((status = 200, body = WorkScheduleVersionResponse), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_get_work_schedule_version_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/work-schedules/{id}/versions/{version_id}",
+    params(
+        ("id" = String, Path, description = "勤務体系ID"),
+        ("version_id" = String, Path, description = "バージョンID")
+    ),
+    request_body = ReplaceWorkScheduleVersionRequest,
+    responses((status = 200, body = WorkScheduleVersionResponse), (status = 409), (status = 422)),
+    tag = "Admin"
+)]
+fn admin_replace_work_schedule_version_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/work-schedules/{id}/versions/{version_id}",
+    params(
+        ("id" = String, Path, description = "勤務体系ID"),
+        ("version_id" = String, Path, description = "バージョンID")
+    ),
+    responses((status = 204), (status = 409), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_delete_work_schedule_version_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedules/{id}/versions/{version_id}/publish",
+    params(
+        ("id" = String, Path, description = "勤務体系ID"),
+        ("version_id" = String, Path, description = "バージョンID")
+    ),
+    responses((status = 200, body = WorkScheduleVersionResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_publish_work_schedule_version_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-schedule-assignments",
+    params(WorkScheduleAssignmentListQuery),
+    responses((status = 200, body = WorkScheduleAssignmentListResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_list_work_schedule_assignments_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedule-assignments",
+    request_body = WorkScheduleAssignmentRequest,
+    responses((status = 201, body = WorkScheduleAssignmentResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_create_work_schedule_assignment_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/work-schedule-assignments/{id}",
+    params(("id" = String, Path, description = "割り当てID")),
+    responses((status = 204), (status = 404)),
+    tag = "Admin"
+)]
+fn admin_delete_work_schedule_assignment_doc() {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1092,6 +1270,9 @@ mod tests {
         assert!(paths.contains_key("/api/attendance-corrections/{id}"));
         assert!(paths.contains_key("/api/admin/users/{id}"));
         assert!(paths.contains_key("/api/admin/users/{user_id}/holiday-exceptions/{id}"));
+        assert!(paths.contains_key("/api/admin/work-schedules"));
+        assert!(paths.contains_key("/api/admin/work-schedules/{id}/versions/{version_id}/publish"));
+        assert!(paths.contains_key("/api/admin/work-schedule-assignments"));
 
         let tags = json
             .get("tags")
@@ -1187,6 +1368,19 @@ mod tests {
             admin_create_holiday_exception_doc,
             admin_list_holiday_exceptions_doc,
             admin_delete_holiday_exception_doc,
+            admin_list_work_schedules_doc,
+            admin_create_work_schedule_doc,
+            admin_get_work_schedule_doc,
+            admin_update_work_schedule_doc,
+            admin_retire_work_schedule_doc,
+            admin_create_work_schedule_version_doc,
+            admin_get_work_schedule_version_doc,
+            admin_replace_work_schedule_version_doc,
+            admin_delete_work_schedule_version_doc,
+            admin_publish_work_schedule_version_doc,
+            admin_list_work_schedule_assignments_doc,
+            admin_create_work_schedule_assignment_doc,
+            admin_delete_work_schedule_assignment_doc,
         ];
 
         for endpoint_doc in docs {

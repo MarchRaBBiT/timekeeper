@@ -4,7 +4,7 @@ use axum::{
         HeaderValue, Method,
     },
     middleware as axum_middleware,
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Extension, Router,
 };
 use chrono::Utc;
@@ -413,6 +413,22 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             "/api/admin/departments/{id}/managers",
             get(handlers::admin::list_department_managers_handler),
         )
+        .route(
+            "/api/admin/work-schedules",
+            get(handlers::admin::list_work_schedules),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}",
+            get(handlers::admin::get_work_schedule),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}/versions/{version_id}",
+            get(handlers::admin::get_work_schedule_version),
+        )
+        .route(
+            "/api/admin/work-schedule-assignments",
+            get(handlers::admin::list_work_schedule_assignments),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
@@ -495,6 +511,39 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             "/api/admin/bulk-import/users",
             post(handlers::admin::import_users),
         )
+        .route(
+            "/api/admin/work-schedules",
+            post(handlers::admin::create_work_schedule),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}",
+            patch(handlers::admin::update_work_schedule),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}/retire",
+            post(handlers::admin::retire_work_schedule),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}/versions",
+            post(handlers::admin::create_work_schedule_version),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}/versions/{version_id}",
+            put(handlers::admin::replace_work_schedule_version)
+                .delete(handlers::admin::delete_work_schedule_version),
+        )
+        .route(
+            "/api/admin/work-schedules/{id}/versions/{version_id}/publish",
+            post(handlers::admin::publish_work_schedule_version),
+        )
+        .route(
+            "/api/admin/work-schedule-assignments",
+            post(handlers::admin::create_work_schedule_assignment),
+        )
+        .route(
+            "/api/admin/work-schedule-assignments/{id}",
+            delete(handlers::admin::delete_work_schedule_assignment),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
@@ -551,7 +600,13 @@ fn log_config(config: &Config) {
 
 fn cors_layer(config: &Config) -> CorsLayer {
     let mut layer = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([ACCEPT, AUTHORIZATION, CONTENT_TYPE])
         .allow_credentials(true)
         .max_age(Duration::from_secs(24 * 60 * 60));

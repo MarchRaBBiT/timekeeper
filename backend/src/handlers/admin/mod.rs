@@ -8,6 +8,7 @@ pub mod holidays;
 pub mod requests;
 pub mod sessions;
 pub mod users;
+pub mod work_schedules;
 
 pub use attendance::*;
 pub use attendance_correction_requests::*;
@@ -21,6 +22,7 @@ pub use holidays::*;
 pub use requests::*;
 pub use sessions::*;
 pub use users::*;
+pub use work_schedules::*;
 
 pub mod subject_requests;
 pub use subject_requests::*;

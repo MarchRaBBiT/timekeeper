@@ -22,8 +22,10 @@ pub enum AppError {
     UnauthorizedWithCode { message: String, code: String },
     Forbidden(String),
     Conflict(String),
+    ConflictWithCode { message: String, code: String },
     BadRequest(String),
     BadRequestWithCode { message: String, code: String },
+    UnprocessableEntityWithCode { message: String, code: String },
     InternalServerError(anyhow::Error),
     Validation(Vec<String>),
 }
@@ -43,6 +45,9 @@ impl IntoResponse for AppError {
             }
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg, "FORBIDDEN".to_string(), None),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg, "CONFLICT".to_string(), None),
+            AppError::ConflictWithCode { message, code } => {
+                (StatusCode::CONFLICT, message, code, None)
+            }
             AppError::BadRequest(msg) => (
                 StatusCode::BAD_REQUEST,
                 msg,
@@ -51,6 +56,9 @@ impl IntoResponse for AppError {
             ),
             AppError::BadRequestWithCode { message, code } => {
                 (StatusCode::BAD_REQUEST, message, code, None)
+            }
+            AppError::UnprocessableEntityWithCode { message, code } => {
+                (StatusCode::UNPROCESSABLE_ENTITY, message, code, None)
             }
             AppError::InternalServerError(err) => {
                 tracing::error!("Internal server error: {:?}", err);
@@ -166,6 +174,24 @@ mod tests {
         let json = response_json(response).await;
         assert_eq!(json["error"], "conflict");
         assert_eq!(json["code"], "CONFLICT");
+
+        let response = AppError::ConflictWithCode {
+            message: "coded-conflict".to_string(),
+            code: "EFFECTIVE_PERIOD_OVERLAP".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let json = response_json(response).await;
+        assert_eq!(json["code"], "EFFECTIVE_PERIOD_OVERLAP");
+
+        let response = AppError::UnprocessableEntityWithCode {
+            message: "invalid intervals".to_string(),
+            code: "INVALID_SCHEDULE_INTERVALS".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let json = response_json(response).await;
+        assert_eq!(json["code"], "INVALID_SCHEDULE_INTERVALS");
 
         let response = AppError::NotFound("missing".to_string()).into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);

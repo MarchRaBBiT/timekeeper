@@ -8,4 +8,5 @@ repository.workspace = true
 
 [dependencies]
 chrono.workspace = true
+chrono-tz = "0.8"
 thiserror.workspace = true

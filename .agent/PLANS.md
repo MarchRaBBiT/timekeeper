@@ -13,6 +13,10 @@
 
 **完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-design.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-design.md)
 
+# EP-20260620-work-schedule-master-api
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-api.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-api.md)
+
 # EP-20260610-rebuild-architecture-harness
 
 **完了済み (b958562)** — 詳細: [`docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md)

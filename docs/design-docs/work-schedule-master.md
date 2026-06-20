@@ -1,10 +1,16 @@
 # 勤務体系マスタ設計
 
-**Status:** Proposed baseline
+**Status:** Phase 1 management model/API implemented; resolver integration pending
 
 **Updated:** 2026-06-20
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
+
+## Implementation Status
+
+2026-06-20時点で、勤務体系マスタ、draft/published版、曜日別勤務区間・予定休憩、
+全社・部署・従業員への期間付き割り当て、および管理APIを実装済み。
+`ResolvedWorkday`、日別例外、打刻との接続、frontend管理画面は後続フェーズで実装する。
 
 ## Decision Summary
 

@@ -219,10 +219,12 @@ mod tests {
         match err {
             AppError::BadRequest(message)
             | AppError::BadRequestWithCode { message, .. }
+            | AppError::UnprocessableEntityWithCode { message, .. }
             | AppError::Forbidden(message)
             | AppError::Unauthorized(message)
             | AppError::UnauthorizedWithCode { message, .. }
             | AppError::Conflict(message)
+            | AppError::ConflictWithCode { message, .. }
             | AppError::NotFound(message) => message,
             AppError::Validation(errors) => errors.join(", "),
             AppError::InternalServerError(err) => err.to_string(),

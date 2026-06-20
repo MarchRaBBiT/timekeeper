@@ -25,6 +25,7 @@ pub mod transaction;
 pub mod user;
 pub mod user_repository;
 pub mod weekly_holiday;
+pub mod work_schedule;
 
 pub use active_session::*;
 pub use audit_log::*;
