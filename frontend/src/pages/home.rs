@@ -32,11 +32,15 @@ mod host_tests {
 
     #[test]
     fn home_page_resolves_copy_from_the_active_locale() {
+        let japanese_tagline = {
+            let _locale = set_test_locale("ja");
+            rust_i18n::t!("pages.home.tagline").into_owned()
+        };
         let _locale = set_test_locale("en");
         let html = render_to_string(|| view! { <HomePage /> });
 
         assert!(html.contains(rust_i18n::t!("pages.home.tagline").as_ref()));
         assert!(html.contains(rust_i18n::t!("pages.home.actions.login").as_ref()));
-        assert!(!html.contains("少人数向けの勤怠管理システム"));
+        assert!(!html.contains(&japanese_tagline));
     }
 }

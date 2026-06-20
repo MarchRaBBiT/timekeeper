@@ -26,6 +26,6 @@ mod host_tests {
             provide_auth(Some(admin_user(true)));
             view! { <AdminDepartmentsPage /> }
         });
-        assert!(html.contains("部署管理"));
+        assert!(html.contains(rust_i18n::t!("admin_components.departments.title").as_ref()));
     }
 }

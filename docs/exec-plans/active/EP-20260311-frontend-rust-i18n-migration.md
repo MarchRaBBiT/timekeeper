@@ -14,12 +14,13 @@ Related Issue: #429
 - In: `frontend/Cargo.toml`, `frontend/src/**/*`, 新規 `frontend/locales/*`, frontend docs/rules 更新
 - Out: backend API の文言仕様変更、DB migration、サーバーサイド翻訳、英訳品質の最終レビュー
 
-## Current Baseline (Measured 2026-03-11)
+## Current Baseline (Measured 2026-06-20)
 
 - [x] `rust-i18n` を frontend に導入済み
 - [x] `frontend/locales/{ja,en}.yml` を作成済み
-- [ ] frontend 全体の production residual scan は PR3 / PR4 で完了させる
-  - 未完了監査範囲: `frontend/src/pages/admin/**/*`, `frontend/src/pages/admin_users/**/*`, `frontend/src/pages/admin_audit_logs/**/*`, `frontend/src/pages/admin_export/**/*`
+- [x] frontend 全体の production residual scan を PR3 / PR4 で完了
+  - `pages/dashboard/components/clock.rs` の日付・曜日 format は運用ルールで定義済みの許容例外
+  - その他の scan hit は test fixture、mock data、backend 由来 message、comment に分類済み
 - [x] PR2 対象では、許容した日付・曜日 format を除く production code の日本語直書きを解消
 
 ## Done Criteria (Observable)
@@ -30,10 +31,10 @@ Related Issue: #429
 - [x] locale 選択は `localStorage` に保存され、初回訪問時はブラウザ言語判定で `ja` を選び、未一致時は `en` を既定にする
 - [x] shared components の表示文言が `t!` ベースへ移行される
 - [x] attendance / dashboard / requests / settings / login / mfa / reset-password の表示文言が `t!` ベースへ移行される
-- [ ] admin / admin_users / admin_audit_logs / admin_export の表示文言が `t!` ベースへ移行される
-- [ ] `en` / `ja` locale 間で frontend 内部生成 UI 文言が完全切替される
-- [ ] 英語文言について自然な英語レビューが完了している
-- [ ] frontend production code の日本語直書きが、翻訳定義・テスト assertion・コメント・ログ・API モックデータ・fixture 文字列を除いて解消される
+- [x] admin / admin_users / admin_audit_logs / admin_export の表示文言が `t!` ベースへ移行される
+- [x] `en` / `ja` locale 間で frontend 内部生成 UI 文言が完全切替される
+- [x] 英語文言について自然な英語レビューが完了している
+- [x] frontend production code の日本語直書きが、翻訳定義・テスト assertion・コメント・ログ・API モックデータ・fixture 文字列を除いて解消される
 - [x] frontend 文言追加時に直書き禁止であることが `docs/` の運用ルールと `frontend/AGENTS.md` に明記される
 
 ## Constraints / Non-goals
@@ -92,32 +93,32 @@ Related Issue: #429
 
 ### PR3: Admin Pages
 
-9. [ ] admin pages を移行する
-   - [ ] admin を移行する
-   - [ ] admin_users を移行する
-   - [ ] admin_audit_logs を移行する
-   - [ ] admin_export を移行する
-10. [ ] admin 周辺の helper / message を移行する
-   - [ ] admin 向け modal / feedback / banner 文言を `t!` 化する
-   - [ ] related shared helpers の文字列生成を translation helper 経由へ寄せる
-   - [ ] backend 由来エラーをそのまま表示する境界を明示する
-11. [ ] 英語文言の自然さレビューを反映する
-   - [ ] admin 含む `en.yml` を通読し、不自然な直訳を修正する
-   - [ ] 略語、ボタン文言、エラーメッセージのトーンを揃える
+9. [x] admin pages を移行する
+   - [x] admin を移行する
+   - [x] admin_users を移行する
+   - [x] admin_audit_logs を移行する
+   - [x] admin_export を移行する
+10. [x] admin 周辺の helper / message を移行する
+   - [x] admin 向け modal / feedback / banner 文言を `t!` 化する
+   - [x] related shared helpers の文字列生成を translation helper 経由へ寄せる
+   - [x] backend 由来エラーをそのまま表示する境界を明示する
+11. [x] 英語文言の自然さレビューを反映する
+   - [x] admin 含む `en.yml` を通読し、不自然な直訳を修正する
+   - [x] 略語、ボタン文言、エラーメッセージのトーンを揃える
 
 ### PR4: Residual Cleanup
 
-12. [ ] 残直書きを scan して例外を整理する
-   - [ ] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` の結果を確認する
-   - [ ] 許容例外（テスト assertion / コメント / ログ / API モック / fixture）を切り分ける
-   - [ ] production code の残件を解消または明記する
+12. [x] 残直書きを scan して例外を整理する
+   - [x] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` の結果を確認する
+   - [x] 許容例外（テスト assertion / コメント / ログ / API モック / fixture）を切り分ける
+   - [x] production code の残件を解消または明記する
 13. [x] 運用ルールを追加する
    - [x] `docs/` に i18n 運用ルールを追加する
    - [x] `frontend/AGENTS.md` に「UI 文言は translation key 経由」を追記する
-14. [ ] 最終検証と仕上げを行う
-   - [ ] 表示文言 assertion を translation key 非依存に更新したテストが green
-   - [ ] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test を通す
-   - [ ] full residual scan の結果を plan / PR に記録する
+14. [x] 最終検証と仕上げを行う
+   - [x] 表示文言 assertion を translation key 非依存に更新したテストが green
+   - [x] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test を通す
+   - [x] full residual scan の結果を plan / PR に記録する
 
 ## Sequencing
 
@@ -149,21 +150,21 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 
 ### PR3: Admin Pages
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
-- [ ] `cargo test -p timekeeper-frontend --lib admin`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_users`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_audit_logs`
-- [ ] `cargo test -p timekeeper-frontend --lib admin_export`
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-frontend --lib admin` (149 passed)
+- [x] `cargo test -p timekeeper-frontend --lib admin_users` (22 passed)
+- [x] `cargo test -p timekeeper-frontend --lib admin_audit_logs` (14 passed)
+- [x] `cargo test -p timekeeper-frontend --lib admin_export` (10 passed)
 
 ### PR4: Residual Cleanup
 
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test -p timekeeper-frontend --lib`
-- [ ] `bash scripts/harness.sh lint`
-- [ ] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'`
-- [ ] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test が green
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (365 passed)
+- [x] `bash scripts/harness.sh lint`
+- [x] `rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'`
+- [x] `en` / `ja` 切替と `localStorage` 永続化を確認する focused host test が green
 
 ## Risks / Watchpoints
 
@@ -533,22 +534,22 @@ docs:
 
 設計ルール:
 
-- [ ] page 固有の表示文言は `pages.<page>.*` に置く
-- [ ] shared component 固有の文言は `components.<component>.*` に置く
-- [ ] admin 配下の部分コンポーネントは `admin_components.<name>.*` に置く
-- [ ] 複数画面で再利用するボタン、ラベル、成功/失敗文言は `common.*` に寄せる
-- [ ] frontend 内部生成の API エラー文言は `api.errors.*` に寄せる
-- [ ] locale switcher 自体の文言は `app.locale.*` に置く
-- [ ] 文言 key は `snake_case` ではなく階層 + `lower_snake_case` の leaf を使う
-- [ ] date / weekday / unit format は今回 localize しないため、必要ならラベルだけ `common.time.*` / `common.units.*` に置く
+- [x] page 固有の表示文言は `pages.<page>.*` に置く
+- [x] shared component 固有の文言は `components.<component>.*` に置く
+- [x] admin 配下の部分コンポーネントは `admin_components.<name>.*` に置く
+- [x] 複数画面で再利用するボタン、ラベル、成功/失敗文言は `common.*` に寄せる
+- [x] frontend 内部生成の API エラー文言は `api.errors.*` に寄せる
+- [x] locale switcher 自体の文言は `app.locale.*` に置く
+- [x] 文言 key は `snake_case` ではなく階層 + `lower_snake_case` の leaf を使う
+- [x] date / weekday / unit format は今回 localize しないため、必要ならラベルだけ `common.time.*` / `common.units.*` に置く
 
 key 配置の優先順:
 
-1. [ ] `common.*` に置けるか確認する
-2. [ ] shared component 専用なら `components.*`
-3. [ ] page 専用なら `pages.*`
-4. [ ] admin 部品専用なら `admin_components.*`
-5. [ ] API / state 内部生成文言なら `api.*` / `state.*`
+1. [x] `common.*` に置けるか確認する
+2. [x] shared component 専用なら `components.*`
+3. [x] page 専用なら `pages.*`
+4. [x] admin 部品専用なら `admin_components.*`
+5. [x] API / state 内部生成文言なら `api.*` / `state.*`
 
 ## Git Snapshot Log
 
@@ -568,17 +569,17 @@ key 配置の優先順:
 
 ### PR3: Admin Pages
 
-- [ ] `git status --short`
-- [ ] admin pages 実装差分を確認
-- [ ] admin pages validation pass
-- [ ] `git commit -m "feat(i18n): migrate frontend admin copy"`
+- [x] `git status --short`
+- [x] admin pages 実装差分を確認
+- [x] admin pages validation pass
+- [x] commit recorded: `cb86170 feat(i18n): migrate frontend admin copy`
 
 ### PR4: Residual Cleanup
 
-- [ ] `git status --short`
-- [ ] residual scan 結果を確認
-- [ ] final validation pass
-- [ ] `git commit -m "docs(i18n): enforce translation-key workflow"`
+- [x] `git status --short`
+- [x] residual scan 結果を確認
+- [x] final validation pass
+- [x] commit recorded: `test(i18n): finish frontend residual cleanup`
 
 ## Progress Notes
 
@@ -588,3 +589,5 @@ key 配置の優先順:
 - 2026-03-11: PR1 foundation を実装。`rust-i18n` 導入、`frontend/locales/{ja,en}.yml` 新設、`state::locale` によるブラウザ言語判定と `localStorage` 永続化、ヘッダー右上 locale switcher、`layout` / `confirm_dialog` / `error` の基盤翻訳化を追加。`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`、`cargo test -p timekeeper-frontend --lib` を確認。
 - 2026-06-18: PR4 の未着手項目から i18n 運用ルール追加に着手。`docs/manual/frontend-i18n-rule.md` を追加し、`docs/index.md` と `frontend/AGENTS.md` から参照できるようにした。
 - 2026-06-20: PR2 Core Pages を完了。既存の shared/core page 移行を棚卸しし、home、API 内部生成エラー、dashboard の件数・単位、attendance の休憩時間表示に残っていた直書きを translation key 化した。core page の表示 assertion を `t!()` 解決結果へ更新し、`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (364 passed)、`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings` を確認。PR2 対象の production scan では、非対象の日付・曜日 format (`pages/dashboard/components/clock.rs`) のみ残存。
+- 2026-06-20: PR3 Admin Pages を完了。admin の勤怠、部署、祝日、申請、本人対応申請、MFA、週次休日の表示・validation・feedback を `admin_components.*` へ移行し、admin_users / admin_audit_logs / admin_export の既存移行も監査した。監査ログ event key は `ja` / `en` 双方で実解決を検証し、admin export の表示 assertion を `t!()` 基準へ更新した。focused admin tests、fmt、frontend clippy を確認し、`cb86170` を記録。
+- 2026-06-20: PR4 Residual Cleanup を完了。全 `frontend/src/**/*.rs` の日本語 scan を production と test/fixture/comment/backend message に分類し、production の残差は運用ルールで対象外とした `pages/dashboard/components/clock.rs` の日付・曜日 format のみであることを確認。残っていた翻訳済み文言の hardcoded assertion を `t!()` 基準へ更新した。`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (365 passed)、`cargo fmt --all --check`、workspace `cargo clippy --all-targets -- -D warnings`、`bash scripts/harness.sh lint` を確認。

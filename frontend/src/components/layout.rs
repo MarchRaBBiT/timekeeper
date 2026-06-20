@@ -538,7 +538,7 @@ mod host_tests {
         let _locale = set_test_locale("ja");
         set_time_zone_ok();
         let html = render_to_string(move || view! { <TimeZoneWarningBanner /> });
-        assert!(!html.contains("タイムゾーン情報に関する警告"));
+        assert!(!html.contains(rust_i18n::t!("components.layout.time_zone_warning.title").as_ref()));
     }
 
     #[test]
@@ -566,7 +566,13 @@ mod host_tests {
             loading: false,
         };
         assert!(should_show_time_zone_warning(&fallback));
-        assert!(build_time_zone_warning_message(&fallback).contains("現在 UTC として動作"));
+        assert_eq!(
+            build_time_zone_warning_message(&fallback),
+            rust_i18n::t!(
+                "components.layout.time_zone_warning.fallback",
+                time_zone = "UTC"
+            )
+        );
 
         let errored = TimeZoneStatus {
             time_zone: Some("Asia/Tokyo".into()),
@@ -584,6 +590,9 @@ mod host_tests {
             loading: true,
         };
         assert!(!should_show_time_zone_warning(&loading));
-        assert!(build_time_zone_warning_message(&loading).contains("再取得しています"));
+        assert_eq!(
+            build_time_zone_warning_message(&loading),
+            rust_i18n::t!("components.layout.time_zone_warning.loading")
+        );
     }
 }

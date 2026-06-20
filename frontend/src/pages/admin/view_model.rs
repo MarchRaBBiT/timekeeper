@@ -313,7 +313,10 @@ mod host_tests {
             wait_until(|| !vm.request_action.pending().get_untracked()).await;
             match vm.request_action.value().get() {
                 Some(Err(err)) => {
-                    assert_eq!(err.error, "リクエストIDを取得できませんでした。");
+                    assert_eq!(
+                        err.error,
+                        rust_i18n::t!("pages.admin.validation.request_id_missing")
+                    );
                     assert_eq!(err.code, "VALIDATION_ERROR");
                 }
                 other => panic!("expected request validation error, got {:?}", other),

@@ -49,7 +49,7 @@ mod host_tests {
             view! { <AdminPanel /> }
         });
         assert!(html.contains(rust_i18n::t!("pages.admin.title").as_ref()));
-        assert!(html.contains("申請一覧"));
+        assert!(html.contains(rust_i18n::t!("admin_components.requests.title").as_ref()));
     }
 
     #[test]
@@ -59,6 +59,6 @@ mod host_tests {
             provide_auth(Some(manager_user()));
             view! { <AdminPanel /> }
         });
-        assert!(html.contains("申請一覧"));
+        assert!(html.contains(rust_i18n::t!("admin_components.requests.title").as_ref()));
     }
 }

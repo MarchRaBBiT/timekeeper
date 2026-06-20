@@ -133,8 +133,11 @@ mod host_tests {
         assert!(html.contains("role=\"dialog\""));
         assert!(html.contains("aria-modal=\"true\""));
         assert!(html.contains("本当に実行しますか？"));
-        assert!(html.contains("aria-label=\"閉じる\""));
-        assert!(html.contains("はい"));
-        assert!(html.contains("いいえ"));
+        assert!(html.contains(&format!(
+            "aria-label=\"{}\"",
+            rust_i18n::t!("common.actions.close")
+        )));
+        assert!(html.contains(rust_i18n::t!("components.confirm_dialog.confirm").as_ref()));
+        assert!(html.contains(rust_i18n::t!("components.confirm_dialog.cancel").as_ref()));
     }
 }
