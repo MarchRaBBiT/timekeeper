@@ -773,17 +773,168 @@ pages:
 
 admin_components:
   attendance:
+    title: "Attendance Tools"
+    validation:
+      required_fields: "Enter a user, date, and clock-in time."
+      date_format: "Enter the date in YYYY-MM-DD format."
+      break_required: "Select an active break to end."
+    feedback:
+      saved: "Attendance was saved."
+      break_ended: "The break was ended."
+    actions:
+      save: "Save Attendance"
+      saving: "Saving..."
+      force_end: "End Break"
+      force_ending: "Ending..."
+      add_break: "Add Row"
+      reload: "Reload"
     fields:
+      target_user: "User"
       target_date: "Target Date"
+      breaks_optional: "Breaks (Optional)"
+    active_break:
+      title: "End an Active Break"
+      description: "Select an active break to end it immediately."
+      loading: "Loading active breaks..."
+      fetch_failed: "Could not load active breaks"
+      placeholder: "Select an active break"
+      empty: "No active breaks"
+      option: "%{owner} / Started %{started_at} / Break ID: %{break_id}"
+  departments:
+    title: "Department Management"
+    validation:
+      name_required: "Enter a department name."
+    fields:
+      name: "Department Name"
+      parent: "Parent Department"
+    placeholders:
+      name: "e.g. Sales"
+    actions:
+      create: "Create"
+      creating: "Creating..."
+      delete: "Delete"
+    empty: "No departments have been created."
   holidays:
+    title: "Public Holiday Management"
     fields:
       date: "Date"
+      name: "Name"
+      notes: "Notes (Optional)"
+    validation:
+      optional_date_format: "Enter %{label} in YYYY-MM-DD format."
+      date_order: "The start date must be on or before the end date."
+      month_required: "Select a month."
+      month_format: "Enter the month in YYYY-MM format."
+      required_fields: "Enter a date and name."
+      date_format: "Enter the date in YYYY-MM-DD format."
+    feedback:
+      none_to_import: "There are no holidays to add."
+      imported: "Added %{count} public holidays."
+      created: "Added %{name} (%{date})."
+      deleted: "The public holiday was deleted."
     filters:
       from: "Start Date"
       to: "End Date"
-  requests: {}
-  subject_requests: {}
-  system_tools: {}
+      title: "Filter Public Holidays"
+      description: "Set a date range to show matching public holidays only."
+      apply: "Apply Date Filter"
+      clear: "Clear Filters"
+      month_range: "Calendar Month (YYYY-MM)"
+      apply_month: "Use Selected Month"
+    pagination:
+      loading: "Loading public holidays..."
+      empty: "No matching public holidays were found."
+      summary: "Showing %{start}-%{end} of %{total}"
+      per_page: "Rows Per Page"
+      page: "Page %{current} of %{total}"
+      previous: "Previous"
+      next: "Next"
+    actions:
+      create: "Add Public Holiday"
+      creating: "Adding..."
+      fetch_google: "Fetch Google Holidays"
+      fetching: "Fetching..."
+      register_selected: "Add Selected Holidays"
+      delete: "Delete"
+    table:
+      date: "Date"
+      name: "Name"
+      notes: "Notes"
+      actions: "Actions"
+    loading: "Loading public holidays..."
+    google_candidates: "Google Holiday Candidates"
+  requests:
+    title: "Request Approvals"
+    types:
+      leave: "Leave"
+      overtime: "Overtime"
+    filters:
+      all: "All"
+      user: "User"
+      all_users: "All Users"
+      search: "Search"
+      searching: "Searching..."
+    loading: "Loading requests..."
+    columns:
+      type: "Type"
+      target: "Target"
+      user: "User"
+      status: "Status"
+      actions: "Actions"
+    empty:
+      title: "No requests"
+      description: "No request data is available for the current filters."
+    actions:
+      details: "Details"
+      close: "Close"
+      reject: "Reject"
+      approve: "Approve"
+    detail:
+      title: "Request Details"
+      comment_optional: "Comment (Optional)"
+  subject_requests:
+    title: "Data Subject Requests"
+    validation:
+      comment_required: "Enter a comment."
+      request_missing: "Could not retrieve the request details."
+    filters:
+      all: "All"
+      request_type: "Request Type"
+      all_users: "All Users"
+      search: "Search"
+      searching: "Searching..."
+    types:
+      access: "Access"
+      rectify: "Rectification"
+      delete: "Deletion"
+      stop: "Restriction"
+    loading: "Loading data subject requests..."
+    columns:
+      type: "Type"
+      user: "User"
+      status: "Status"
+      created_at: "Submitted"
+      actions: "Actions"
+    actions:
+      details: "Details"
+      close: "Close"
+      reject: "Reject"
+      approve: "Approve"
+    detail:
+      title: "Data Subject Request Details"
+      comment: "Comment"
+  system_tools:
+    title: "Reset MFA"
+    validation:
+      user_required: "Select a user."
+    feedback:
+      reset: "MFA was reset."
+    fields:
+      target_user: "User"
+      user_placeholder: "Select a user"
+    actions:
+      reset: "Reset MFA"
+      resetting: "Resetting..."
   user_select:
     placeholder: "Select a user"
     loading: "Loading users..."
@@ -795,10 +946,48 @@ admin_components:
     fetch_failed: "Failed to load departments"
     empty: "No departments found"
   weekly_holidays:
+    description: "Create recurring weekly holidays. System administrators can start them today."
     fields:
+      weekday: "Weekday"
       starts_on: "Effective Start Date"
       ends_on: "Effective End Date (Optional)"
     title: "Weekly Holidays"
+    validation:
+      weekday: "Enter a weekday from 0 (Sunday) to 6 (Saturday)."
+      start_required: "Enter a start date."
+      start_format: "Enter the start date in YYYY-MM-DD format."
+      start_min: "Select a start date on or after %{date}."
+      end_format: "Enter the end date in YYYY-MM-DD format."
+      end_order: "The end date must be on or after the start date."
+    feedback:
+      created: "Added %{weekday} (%{date})."
+      deleted: "The weekly holiday was deleted."
+    hints:
+      system_admin: "System administrators can start the schedule today."
+      admin: "Administrators can start the schedule tomorrow or later."
+    weekdays:
+      sun: "Sunday (0)"
+      mon: "Monday (1)"
+      tue: "Tuesday (2)"
+      wed: "Wednesday (3)"
+      thu: "Thursday (4)"
+      fri: "Friday (5)"
+      sat: "Saturday (6)"
+    actions:
+      reload: "Reload"
+      create: "Add Weekly Holiday"
+      creating: "Adding..."
+      delete: "Delete"
+    loading: "Loading weekly holidays..."
+    empty: "No weekly holidays have been created."
+    table:
+      weekday: "Weekday"
+      configured_period: "Configured Period"
+      effective_period: "Effective Period"
+      actions: "Actions"
+      unset: "Not Set"
+      active: "Active"
+    confirm_delete: "Delete this weekly holiday?"
 
 api:
   errors:

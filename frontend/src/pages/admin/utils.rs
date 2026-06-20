@@ -50,26 +50,31 @@ impl WeeklyHolidayFormState {
     }
 
     pub fn to_payload(self, min_start: NaiveDate) -> Result<CreateWeeklyHolidayRequest, ApiError> {
-        let weekday_value: u8 =
-            self.weekday.get().trim().parse::<u8>().map_err(|_| {
-                ApiError::validation("曜日は 0 (日) 〜 6 (土) で入力してください。")
-            })?;
+        let weekday_value: u8 = self.weekday.get().trim().parse::<u8>().map_err(|_| {
+            ApiError::validation(rust_i18n::t!(
+                "admin_components.weekly_holidays.validation.weekday"
+            ))
+        })?;
         if weekday_value >= 7 {
-            return Err(ApiError::validation(
-                "曜日は 0 (日) 〜 6 (土) で入力してください。",
-            ));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "admin_components.weekly_holidays.validation.weekday"
+            )));
         }
         let start_raw = self.starts_on.get();
         if start_raw.trim().is_empty() {
-            return Err(ApiError::validation("稼働開始日を入力してください。"));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "admin_components.weekly_holidays.validation.start_required"
+            )));
         }
         let start_date = NaiveDate::parse_from_str(start_raw.trim(), "%Y-%m-%d").map_err(|_| {
-            ApiError::validation("稼働開始日は YYYY-MM-DD 形式で入力してください。")
+            ApiError::validation(rust_i18n::t!(
+                "admin_components.weekly_holidays.validation.start_format"
+            ))
         })?;
         if start_date < min_start {
-            return Err(ApiError::validation(format!(
-                "稼働開始日は {} 以降の日付を選択してください。",
-                min_start.format("%Y-%m-%d")
+            return Err(ApiError::validation(rust_i18n::t!(
+                "admin_components.weekly_holidays.validation.start_min",
+                date = min_start.format("%Y-%m-%d")
             )));
         }
 
@@ -79,12 +84,14 @@ impl WeeklyHolidayFormState {
                 None
             } else {
                 let parsed = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d").map_err(|_| {
-                    ApiError::validation("稼働終了日は YYYY-MM-DD 形式で入力してください。")
+                    ApiError::validation(rust_i18n::t!(
+                        "admin_components.weekly_holidays.validation.end_format"
+                    ))
                 })?;
                 if parsed < start_date {
-                    return Err(ApiError::validation(
-                        "稼働終了日は開始日以降を指定してください。",
-                    ));
+                    return Err(ApiError::validation(rust_i18n::t!(
+                        "admin_components.weekly_holidays.validation.end_order"
+                    )));
                 }
                 Some(parsed)
             }
@@ -235,17 +242,18 @@ pub fn next_allowed_weekly_start(today: NaiveDate, is_system_admin: bool) -> Nai
     }
 }
 
-pub fn weekday_label(idx: i16) -> &'static str {
-    match idx {
-        0 => "日",
-        1 => "月",
-        2 => "火",
-        3 => "水",
-        4 => "木",
-        5 => "金",
-        6 => "土",
-        _ => "-",
-    }
+pub fn weekday_label(idx: i16) -> String {
+    let key = match idx {
+        0 => "common.time.weekdays.sun",
+        1 => "common.time.weekdays.mon",
+        2 => "common.time.weekdays.tue",
+        3 => "common.time.weekdays.wed",
+        4 => "common.time.weekdays.thu",
+        5 => "common.time.weekdays.fri",
+        6 => "common.time.weekdays.sat",
+        _ => return "-".to_string(),
+    };
+    rust_i18n::t!(key).into_owned()
 }
 
 #[cfg(test)]
@@ -335,8 +343,8 @@ mod host_tests {
 
     #[test]
     fn weekday_label_maps_values() {
-        assert_eq!(weekday_label(0), "日");
-        assert_eq!(weekday_label(6), "土");
+        assert_eq!(weekday_label(0), rust_i18n::t!("common.time.weekdays.sun"));
+        assert_eq!(weekday_label(6), rust_i18n::t!("common.time.weekdays.sat"));
         assert_eq!(weekday_label(9), "-");
     }
 }

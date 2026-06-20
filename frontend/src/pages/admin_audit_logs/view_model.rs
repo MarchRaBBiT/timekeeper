@@ -391,7 +391,8 @@ mod tests {
     }
 
     #[test]
-    fn audit_event_types_keys_are_unique_and_labels_not_empty() {
+    fn audit_event_types_keys_are_unique_and_labels_resolve_in_supported_locales() {
+        use crate::test_support::helpers::set_test_locale;
         use std::collections::HashSet;
 
         let mut keys = HashSet::new();
@@ -404,6 +405,21 @@ mod tests {
                 !label.trim().is_empty(),
                 "audit event type label must not be empty for key: {key}"
             );
+        }
+
+        for locale in ["ja", "en"] {
+            let _locale = set_test_locale(locale);
+            for (key, label_key) in AUDIT_EVENT_TYPES {
+                let translated = rust_i18n::t!(*label_key);
+                assert_ne!(
+                    translated, *label_key,
+                    "missing {locale} translation for audit event: {key}"
+                );
+                assert!(
+                    !translated.trim().is_empty(),
+                    "empty {locale} translation for audit event: {key}"
+                );
+            }
         }
     }
 

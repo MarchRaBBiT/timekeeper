@@ -15,11 +15,14 @@ fn weekly_create_feedback(
 ) -> (Option<String>, Option<ApiError>, Option<chrono::NaiveDate>) {
     match result {
         Ok(created) => (
-            Some(format!(
-                "{} ({}) を登録しました。",
-                crate::pages::admin::utils::weekday_label(created.weekday),
-                created.starts_on.format("%Y-%m-%d")
-            )),
+            Some(
+                rust_i18n::t!(
+                    "admin_components.weekly_holidays.feedback.created",
+                    weekday = crate::pages::admin::utils::weekday_label(created.weekday),
+                    date = created.starts_on.format("%Y-%m-%d")
+                )
+                .into_owned(),
+            ),
             None,
             Some(created.starts_on),
         ),
@@ -29,16 +32,19 @@ fn weekly_create_feedback(
 
 fn weekly_delete_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("週次休日を削除しました。".into()), None),
+        Ok(_) => (
+            Some(rust_i18n::t!("admin_components.weekly_holidays.feedback.deleted").into_owned()),
+            None,
+        ),
         Err(err) => (None, Some(err)),
     }
 }
 
-fn weekly_start_hint(system_admin_allowed: bool) -> &'static str {
+fn weekly_start_hint(system_admin_allowed: bool) -> String {
     if system_admin_allowed {
-        "システム管理者は本日から設定できます。"
+        rust_i18n::t!("admin_components.weekly_holidays.hints.system_admin").into_owned()
     } else {
-        "通常管理者は翌日以降が設定可能です。"
+        rust_i18n::t!("admin_components.weekly_holidays.hints.admin").into_owned()
     }
 }
 
@@ -124,7 +130,7 @@ pub fn WeeklyHolidaySection(
                         {rust_i18n::t!("admin_components.weekly_holidays.title")}
                     </h2>
                     <p class="text-sm text-fg-muted">
-                        {"週単位の休日を登録します。システム管理者は即日開始も設定できます。"}
+                        {rust_i18n::t!("admin_components.weekly_holidays.description")}
                     </p>
                 </div>
                 <button
@@ -132,25 +138,25 @@ pub fn WeeklyHolidaySection(
                     disabled={move || holidays_loading.get()}
                     on:click=on_refresh
                 >
-                    {"再取得"}
+                    {rust_i18n::t!("admin_components.weekly_holidays.actions.reload")}
                 </button>
             </div>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_submit>
                 <div class="lg:col-span-1">
-                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"曜日"}</label>
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{rust_i18n::t!("admin_components.weekly_holidays.fields.weekday")}</label>
                     <div class="relative">
                         <select
                             class="appearance-none w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
                             prop:value={move || weekday_signal.get()}
                             on:change=move |ev| weekday_signal.set(event_target_value(&ev))
                         >
-                            <option value="0">{"日 (0)"}</option>
-                            <option value="1">{"月 (1)"}</option>
-                            <option value="2">{"火 (2)"}</option>
-                            <option value="3">{"水 (3)"}</option>
-                            <option value="4">{"木 (4)"}</option>
-                            <option value="5">{"金 (5)"}</option>
-                            <option value="6">{"土 (6)"}</option>
+                            <option value="0">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.sun")}</option>
+                            <option value="1">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.mon")}</option>
+                            <option value="2">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.tue")}</option>
+                            <option value="3">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.wed")}</option>
+                            <option value="4">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.thu")}</option>
+                            <option value="5">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.fri")}</option>
+                            <option value="6">{rust_i18n::t!("admin_components.weekly_holidays.weekdays.sat")}</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-fg-muted">
                             <i class="fas fa-chevron-down text-xs"></i>
@@ -178,7 +184,11 @@ pub fn WeeklyHolidaySection(
                         class="w-full lg:w-auto px-4 py-2 rounded bg-action-primary-bg text-action-primary-text hover:bg-action-primary-bg-hover disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
-                        {move || if create_pending.get() { "登録中..." } else { "週次休日を登録" }}
+                        {move || if create_pending.get() {
+                            rust_i18n::t!("admin_components.weekly_holidays.actions.creating")
+                        } else {
+                            rust_i18n::t!("admin_components.weekly_holidays.actions.create")
+                        }}
                     </button>
                 </div>
             </form>
@@ -194,21 +204,21 @@ pub fn WeeklyHolidaySection(
             <Show when=move || holidays_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
-                    <span>{"週次休日を読み込み中です..."}</span>
+                    <span>{rust_i18n::t!("admin_components.weekly_holidays.loading")}</span>
                 </div>
             </Show>
             <Show when=move || !holidays_loading.get() && holidays_data.get().is_empty()>
-                <p class="text-sm text-fg-muted">{"登録済みの週次休日はありません。"} </p>
+                <p class="text-sm text-fg-muted">{rust_i18n::t!("admin_components.weekly_holidays.empty")} </p>
             </Show>
             <Show when=move || !holidays_loading.get() && !holidays_data.get().is_empty()>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-border text-sm">
                         <thead class="bg-surface-muted">
                             <tr>
-                                <th class="px-4 py-2 text-left text-fg-muted">{"曜日"}</th>
-                                <th class="px-4 py-2 text-left text-fg-muted">{"指定期間"}</th>
-                                <th class="px-4 py-2 text-left text-fg-muted">{"適用期間"}</th>
-                                <th class="px-4 py-2 text-right text-fg-muted">{"操作"}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.weekly_holidays.table.weekday")}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.weekly_holidays.table.configured_period")}</th>
+                                <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.weekly_holidays.table.effective_period")}</th>
+                                <th class="px-4 py-2 text-right text-fg-muted">{rust_i18n::t!("admin_components.weekly_holidays.table.actions")}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-border">
@@ -221,22 +231,22 @@ pub fn WeeklyHolidaySection(
                                             <td class="px-4 py-2 text-fg">{crate::pages::admin::utils::weekday_label(item.weekday)}</td>
                                             <td class="px-4 py-2 text-fg-muted">
                                                 {format!(
-                                                    "{} 〜 {}",
+                                                    "{} - {}",
                                                     item.starts_on.format("%Y-%m-%d"),
                                                     item
                                                         .ends_on
                                                         .map(|d| d.format("%Y-%m-%d").to_string())
-                                                        .unwrap_or_else(|| "未設定".into())
+                                                        .unwrap_or_else(|| rust_i18n::t!("admin_components.weekly_holidays.table.unset").into_owned())
                                                 )}
                                             </td>
                                             <td class="px-4 py-2 text-fg-muted">
                                                 {format!(
-                                                    "{} 〜 {}",
+                                                    "{} - {}",
                                                     item.enforced_from.format("%Y-%m-%d"),
                                                     item
                                                         .enforced_to
                                                         .map(|d| d.format("%Y-%m-%d").to_string())
-                                                        .unwrap_or_else(|| "適用中".into())
+                                                        .unwrap_or_else(|| rust_i18n::t!("admin_components.weekly_holidays.table.active").into_owned())
                                                 )}
                                             </td>
                                             <td class="px-4 py-2 text-right">
@@ -247,14 +257,16 @@ pub fn WeeklyHolidaySection(
                                                         let id = item.id.clone();
                                                         move |_| {
                                                             if let Some(window) = web_sys::window() {
-                                                                if let Ok(true) = window.confirm_with_message("この週次休日を削除してもよろしいですか？") {
+                                                                if let Ok(true) = window.confirm_with_message(
+                                                                    rust_i18n::t!("admin_components.weekly_holidays.confirm_delete").as_ref()
+                                                                ) {
                                                                     delete_action.dispatch(id.clone());
                                                                 }
                                                             }
                                                         }
                                                     }
                                                 >
-                                                    {"削除"}
+                                                    {rust_i18n::t!("admin_components.weekly_holidays.actions.delete")}
                                                 </button>
                                             </td>
                                         </tr>
@@ -324,7 +336,7 @@ mod host_tests {
         let _locale = set_test_locale("ja");
         let html = render_with_resource(Vec::new(), true, false);
         assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
-        assert!(html.contains("登録済みの週次休日はありません。"));
+        assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.empty").as_ref()));
     }
 
     #[test]
@@ -332,14 +344,24 @@ mod host_tests {
         let _locale = set_test_locale("ja");
         let html = render_with_resource(vec![sample_item()], true, true);
         assert!(html.contains(rust_i18n::t!("admin_components.weekly_holidays.title").as_ref()));
-        assert!(html.contains("月"));
+        assert!(html.contains(rust_i18n::t!("common.time.weekdays.mon").as_ref()));
     }
 
     #[test]
     fn helper_feedback_and_hint_cover_success_and_error_paths() {
         let created = sample_item();
         let (create_msg, create_err, reset_start) = weekly_create_feedback(Ok(created));
-        assert!(create_msg.unwrap_or_default().contains("登録しました"));
+        assert_eq!(
+            create_msg.as_deref(),
+            Some(
+                rust_i18n::t!(
+                    "admin_components.weekly_holidays.feedback.created",
+                    weekday = crate::pages::admin::utils::weekday_label(1),
+                    date = "2025-01-01"
+                )
+                .as_ref()
+            )
+        );
         assert!(create_err.is_none());
         assert_eq!(
             reset_start.map(|d| d.to_string()).as_deref(),
@@ -353,7 +375,10 @@ mod host_tests {
         assert!(create_fail_start.is_none());
 
         let (delete_ok_msg, delete_ok_err) = weekly_delete_feedback(Ok(()));
-        assert_eq!(delete_ok_msg.as_deref(), Some("週次休日を削除しました。"));
+        assert_eq!(
+            delete_ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.weekly_holidays.feedback.deleted").as_ref())
+        );
         assert!(delete_ok_err.is_none());
 
         let (delete_err_msg, delete_err) =
@@ -363,11 +388,11 @@ mod host_tests {
 
         assert_eq!(
             weekly_start_hint(true),
-            "システム管理者は本日から設定できます。"
+            rust_i18n::t!("admin_components.weekly_holidays.hints.system_admin")
         );
         assert_eq!(
             weekly_start_hint(false),
-            "通常管理者は翌日以降が設定可能です。"
+            rust_i18n::t!("admin_components.weekly_holidays.hints.admin")
         );
     }
 }

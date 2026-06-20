@@ -773,17 +773,168 @@ pages:
 
 admin_components:
   attendance:
+    title: "勤怠ツール"
+    validation:
+      required_fields: "ユーザーID・日付・出勤時刻を入力してください。"
+      date_format: "日付は YYYY-MM-DD 形式で入力してください。"
+      break_required: "強制終了する休憩を選択してください。"
+    feedback:
+      saved: "勤怠データを登録しました。"
+      break_ended: "休憩を強制終了しました。"
+    actions:
+      save: "勤怠を登録"
+      saving: "登録中..."
+      force_end: "強制終了"
+      force_ending: "終了中..."
+      add_break: "行を追加"
+      reload: "再読込"
     fields:
+      target_user: "対象ユーザー"
       target_date: "対象日"
+      breaks_optional: "休憩（任意）"
+    active_break:
+      title: "休憩の強制終了"
+      description: "進行中の休憩を選択して強制終了できます。"
+      loading: "進行中の休憩を読み込み中..."
+      fetch_failed: "進行中の休憩の取得に失敗しました"
+      placeholder: "強制終了する休憩を選択してください"
+      empty: "進行中の休憩はありません"
+      option: "%{owner} / 開始 %{started_at} / Break ID: %{break_id}"
+  departments:
+    title: "部署管理"
+    validation:
+      name_required: "部署名を入力してください。"
+    fields:
+      name: "部署名"
+      parent: "親部署"
+    placeholders:
+      name: "例: 営業部"
+    actions:
+      create: "作成"
+      creating: "作成中..."
+      delete: "削除"
+    empty: "部署が登録されていません。"
   holidays:
+    title: "祝日管理"
     fields:
       date: "日付"
+      name: "名称"
+      notes: "備考（任意）"
+    validation:
+      optional_date_format: "%{label}は YYYY-MM-DD 形式で入力してください。"
+      date_order: "開始日は終了日以前である必要があります。"
+      month_required: "月を選択してください。"
+      month_format: "月は YYYY-MM 形式で入力してください。"
+      required_fields: "日付と名称を入力してください。"
+      date_format: "日付は YYYY-MM-DD 形式で入力してください。"
+    feedback:
+      none_to_import: "追加対象の祝日はありません。"
+      imported: "%{count} 件の祝日を追加しました。"
+      created: "%{name} (%{date}) を登録しました。"
+      deleted: "祝日を削除しました。"
     filters:
       from: "開始日"
       to: "終了日"
-  requests: {}
-  subject_requests: {}
-  system_tools: {}
+      title: "祝日一覧フィルター"
+      description: "期間を指定すると一致する祝日だけを表示します。"
+      apply: "日付で絞り込み"
+      clear: "条件クリア"
+      month_range: "カレンダー範囲 (YYYY-MM)"
+      apply_month: "選択月の範囲を適用"
+    pagination:
+      loading: "祝日一覧を取得しています..."
+      empty: "該当する祝日はありません。"
+      summary: "%{total} 件中 %{start} - %{end} 件を表示中"
+      per_page: "件数/ページ"
+      page: "ページ %{current}/%{total}"
+      previous: "前へ"
+      next: "次へ"
+    actions:
+      create: "祝日を登録"
+      creating: "登録中..."
+      fetch_google: "Google 祝日取得"
+      fetching: "取得中..."
+      register_selected: "一覧から登録"
+      delete: "削除"
+    table:
+      date: "日付"
+      name: "名称"
+      notes: "備考"
+      actions: "操作"
+    loading: "祝日一覧を読み込み中..."
+    google_candidates: "Google 祝日候補"
+  requests:
+    title: "申請一覧"
+    types:
+      leave: "休暇"
+      overtime: "残業"
+    filters:
+      all: "すべて"
+      user: "ユーザー"
+      all_users: "全ユーザー"
+      search: "検索"
+      searching: "検索中..."
+    loading: "申請情報を読み込み中..."
+    columns:
+      type: "種別"
+      target: "対象"
+      user: "ユーザー"
+      status: "ステータス"
+      actions: "操作"
+    empty:
+      title: "申請がありません"
+      description: "表示できる申請データが見つかりませんでした。"
+    actions:
+      details: "詳細"
+      close: "閉じる"
+      reject: "却下"
+      approve: "承認"
+    detail:
+      title: "申請詳細"
+      comment_optional: "コメント（任意）"
+  subject_requests:
+    title: "本人対応申請"
+    validation:
+      comment_required: "コメントを入力してください。"
+      request_missing: "申請情報を取得できませんでした。"
+    filters:
+      all: "すべて"
+      request_type: "請求種別"
+      all_users: "全ユーザー"
+      search: "検索"
+      searching: "検索中..."
+    types:
+      access: "開示"
+      rectify: "訂正"
+      delete: "削除"
+      stop: "停止"
+    loading: "本人対応申請を読み込み中..."
+    columns:
+      type: "種別"
+      user: "ユーザー"
+      status: "ステータス"
+      created_at: "申請日"
+      actions: "操作"
+    actions:
+      details: "詳細"
+      close: "閉じる"
+      reject: "却下"
+      approve: "承認"
+    detail:
+      title: "本人対応申請の詳細"
+      comment: "コメント"
+  system_tools:
+    title: "MFA リセット"
+    validation:
+      user_required: "ユーザーIDを入力してください。"
+    feedback:
+      reset: "MFA をリセットしました。"
+    fields:
+      target_user: "対象ユーザー"
+      user_placeholder: "ユーザーを選択してください"
+    actions:
+      reset: "MFA をリセット"
+      resetting: "リセット中..."
   user_select:
     placeholder: "ユーザーを選択"
     loading: "ユーザーを読み込み中..."
@@ -795,10 +946,48 @@ admin_components:
     fetch_failed: "部署の取得に失敗しました"
     empty: "部署が0件です"
   weekly_holidays:
+    description: "週単位の休日を登録します。システム管理者は即日開始も設定できます。"
     fields:
+      weekday: "曜日"
       starts_on: "稼働開始日"
       ends_on: "稼働終了日（任意）"
     title: "週次休日"
+    validation:
+      weekday: "曜日は 0 (日) 〜 6 (土) で入力してください。"
+      start_required: "稼働開始日を入力してください。"
+      start_format: "稼働開始日は YYYY-MM-DD 形式で入力してください。"
+      start_min: "稼働開始日は %{date} 以降の日付を選択してください。"
+      end_format: "稼働終了日は YYYY-MM-DD 形式で入力してください。"
+      end_order: "稼働終了日は開始日以降を指定してください。"
+    feedback:
+      created: "%{weekday} (%{date}) を登録しました。"
+      deleted: "週次休日を削除しました。"
+    hints:
+      system_admin: "システム管理者は本日から設定できます。"
+      admin: "通常管理者は翌日以降が設定可能です。"
+    weekdays:
+      sun: "日 (0)"
+      mon: "月 (1)"
+      tue: "火 (2)"
+      wed: "水 (3)"
+      thu: "木 (4)"
+      fri: "金 (5)"
+      sat: "土 (6)"
+    actions:
+      reload: "再取得"
+      create: "週次休日を登録"
+      creating: "登録中..."
+      delete: "削除"
+    loading: "週次休日を読み込み中です..."
+    empty: "登録済みの週次休日はありません。"
+    table:
+      weekday: "曜日"
+      configured_period: "指定期間"
+      effective_period: "適用期間"
+      actions: "操作"
+      unset: "未設定"
+      active: "適用中"
+    confirm_delete: "この週次休日を削除してもよろしいですか？"
 
 api:
   errors:

@@ -60,12 +60,15 @@ fn build_attendance_payload(
     let date_raw = date_raw.trim();
     let clock_in = parse_dt_local(clock_in_raw.trim());
     if user_id.is_empty() || date_raw.is_empty() || clock_in.is_none() {
-        return Err(ApiError::validation(
-            "ユーザーID・日付・出勤時刻を入力してください。",
-        ));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.attendance.validation.required_fields"
+        )));
     }
-    let date = NaiveDate::parse_from_str(date_raw, "%Y-%m-%d")
-        .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))?;
+    let date = NaiveDate::parse_from_str(date_raw, "%Y-%m-%d").map_err(|_| {
+        ApiError::validation(rust_i18n::t!(
+            "admin_components.attendance.validation.date_format"
+        ))
+    })?;
     let clock_out = if clock_out_raw.trim().is_empty() {
         None
     } else {
@@ -88,7 +91,9 @@ fn build_attendance_payload(
 fn validate_force_break_selection(break_id_raw: &str) -> Result<String, ApiError> {
     let id = break_id_raw.trim();
     if id.is_empty() {
-        Err(ApiError::validation("強制終了する休憩を選択してください。"))
+        Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.attendance.validation.break_required"
+        )))
     } else {
         Ok(id.to_string())
     }
@@ -99,24 +104,31 @@ fn active_break_option_label(item: &ActiveBreakResponse) -> String {
         Some(name) if !name.trim().is_empty() => format!("{} ({})", name, item.username),
         _ => item.username.clone(),
     };
-    format!(
-        "{} / 開始 {} / Break ID: {}",
-        owner,
-        item.break_start_time.format("%Y-%m-%d %H:%M"),
-        item.break_id
+    rust_i18n::t!(
+        "admin_components.attendance.active_break.option",
+        owner = owner,
+        started_at = item.break_start_time.format("%Y-%m-%d %H:%M"),
+        break_id = item.break_id.clone()
     )
+    .into_owned()
 }
 
 fn attendance_upsert_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("勤怠データを登録しました。".into()), None),
+        Ok(_) => (
+            Some(rust_i18n::t!("admin_components.attendance.feedback.saved").into_owned()),
+            None,
+        ),
         Err(err) => (None, Some(err)),
     }
 }
 
 fn force_break_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("休憩を強制終了しました。".into()), None),
+        Ok(_) => (
+            Some(rust_i18n::t!("admin_components.attendance.feedback.break_ended").into_owned()),
+            None,
+        ),
         Err(err) => (None, Some(err)),
     }
 }
@@ -283,19 +295,19 @@ fn update_break_end_signal(breaks: RwSignal<Vec<(String, String)>>, idx: usize, 
     breaks.update(|list| update_break_end(list, idx, value));
 }
 
-fn attendance_submit_label(pending: bool) -> &'static str {
+fn attendance_submit_label(pending: bool) -> String {
     if pending {
-        "登録中..."
+        rust_i18n::t!("admin_components.attendance.actions.saving").into_owned()
     } else {
-        "勤怠を登録"
+        rust_i18n::t!("admin_components.attendance.actions.save").into_owned()
     }
 }
 
-fn force_break_button_label(pending: bool) -> &'static str {
+fn force_break_button_label(pending: bool) -> String {
     if pending {
-        "終了中..."
+        rust_i18n::t!("admin_components.attendance.actions.force_ending").into_owned()
     } else {
-        "強制終了"
+        rust_i18n::t!("admin_components.attendance.actions.force_end").into_owned()
     }
 }
 
@@ -418,13 +430,13 @@ pub fn AdminAttendanceToolsSection(
     view! {
         <Show when=move || system_admin_allowed.get()>
             <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-                <h3 class="text-lg font-medium text-fg">{"勤怠ツール"}</h3>
+                <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("admin_components.attendance.title")}</h3>
                 <form class="space-y-3" on:submit=on_submit_attendance>
                     <AdminUserSelect
                         users=users
                         selected=att_user
-                        label=Some("対象ユーザー".into())
-                        placeholder="ユーザーを選択してください".into()
+                        label=Some(rust_i18n::t!("admin_components.attendance.fields.target_user").into_owned())
+                        placeholder=rust_i18n::t!("admin_components.system_tools.fields.user_placeholder").into_owned()
                     />
                     <DatePicker
                         label=Some("admin_components.attendance.fields.target_date")
@@ -434,8 +446,8 @@ pub fn AdminAttendanceToolsSection(
                     <input type="datetime-local" class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1" on:input=move |ev| set_input_signal(att_out, event_target_value(&ev)) />
                     <div>
                         <div class="flex items-center justify-between mb-1">
-                            <span class="text-sm text-fg-muted">{"休憩（任意）"}</span>
-                            <button type="button" class="text-link hover:text-link-hover text-sm" on:click=add_break>{"行を追加"}</button>
+                            <span class="text-sm text-fg-muted">{rust_i18n::t!("admin_components.attendance.fields.breaks_optional")}</span>
+                            <button type="button" class="text-link hover:text-link-hover text-sm" on:click=add_break>{rust_i18n::t!("admin_components.attendance.actions.add_break")}</button>
                         </div>
                         <For
                             each=move || breaks.get().into_iter().enumerate()
@@ -479,9 +491,9 @@ pub fn AdminAttendanceToolsSection(
                     </button>
                 </form>
                 <div class="mt-4">
-                    <h4 class="text-sm font-medium text-fg mb-2">{"休憩の強制終了"}</h4>
+                    <h4 class="text-sm font-medium text-fg mb-2">{rust_i18n::t!("admin_components.attendance.active_break.title")}</h4>
                     <p class="text-sm text-fg-muted mb-2">
-                        {"進行中の休憩を選択して強制終了できます。"}
+                        {rust_i18n::t!("admin_components.attendance.active_break.description")}
                     </p>
                     <div class="flex flex-col sm:flex-row gap-2">
                         <select
@@ -493,11 +505,11 @@ pub fn AdminAttendanceToolsSection(
                             <option value="">
                                 {move || {
                                     if active_breaks_loading.get() {
-                                        "進行中の休憩を読み込み中..."
+                                        rust_i18n::t!("admin_components.attendance.active_break.loading")
                                     } else if active_break_fetch_error.get().is_some() {
-                                        "進行中の休憩の取得に失敗しました"
+                                        rust_i18n::t!("admin_components.attendance.active_break.fetch_failed")
                                     } else {
-                                        "強制終了する休憩を選択してください"
+                                        rust_i18n::t!("admin_components.attendance.active_break.placeholder")
                                     }
                                 }}
                             </option>
@@ -505,7 +517,7 @@ pub fn AdminAttendanceToolsSection(
                                 match active_breaks.get() {
                                     Some(Ok(list)) => {
                                         if list.is_empty() {
-                                            view! { <option value="" disabled>{"進行中の休憩はありません"}</option> }.into_view()
+                                            view! { <option value="" disabled>{rust_i18n::t!("admin_components.attendance.active_break.empty")}</option> }.into_view()
                                         } else {
                                             view! {
                                                 <For
@@ -529,7 +541,7 @@ pub fn AdminAttendanceToolsSection(
                             disabled=move || active_breaks_loading.get() || force_pending.get()
                             on:click=on_retry_active_breaks
                         >
-                            <span class="whitespace-nowrap">{"再読込"}</span>
+                            <span class="whitespace-nowrap">{rust_i18n::t!("admin_components.attendance.actions.reload")}</span>
                         </button>
                         <button
                             type="button"
@@ -702,7 +714,10 @@ mod host_tests {
     #[test]
     fn helper_feedback_mappings_cover_success_and_error() {
         let (upsert_ok_msg, upsert_ok_err) = attendance_upsert_feedback(Ok(()));
-        assert_eq!(upsert_ok_msg.as_deref(), Some("勤怠データを登録しました。"));
+        assert_eq!(
+            upsert_ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.attendance.feedback.saved").as_ref())
+        );
         assert!(upsert_ok_err.is_none());
 
         let (upsert_err_msg, upsert_err) =
@@ -711,7 +726,10 @@ mod host_tests {
         assert_eq!(upsert_err.expect("error").error, "upsert failed");
 
         let (force_ok_msg, force_ok_err) = force_break_feedback(Ok(()));
-        assert_eq!(force_ok_msg.as_deref(), Some("休憩を強制終了しました。"));
+        assert_eq!(
+            force_ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.attendance.feedback.break_ended").as_ref())
+        );
         assert!(force_ok_err.is_none());
 
         let (force_err_msg, force_err) =
@@ -798,10 +816,22 @@ mod host_tests {
             set_input_signal(text_signal, "updated".to_string());
             assert_eq!(text_signal.get(), "updated");
 
-            assert_eq!(attendance_submit_label(true), "登録中...");
-            assert_eq!(attendance_submit_label(false), "勤怠を登録");
-            assert_eq!(force_break_button_label(true), "終了中...");
-            assert_eq!(force_break_button_label(false), "強制終了");
+            assert_eq!(
+                attendance_submit_label(true),
+                rust_i18n::t!("admin_components.attendance.actions.saving")
+            );
+            assert_eq!(
+                attendance_submit_label(false),
+                rust_i18n::t!("admin_components.attendance.actions.save")
+            );
+            assert_eq!(
+                force_break_button_label(true),
+                rust_i18n::t!("admin_components.attendance.actions.force_ending")
+            );
+            assert_eq!(
+                force_break_button_label(false),
+                rust_i18n::t!("admin_components.attendance.actions.force_end")
+            );
         });
     }
 
@@ -892,7 +922,10 @@ mod host_tests {
             let error = create_rw_signal(None::<ApiError>);
 
             apply_attendance_action_result(Ok(()), message, error);
-            assert_eq!(message.get().as_deref(), Some("勤怠データを登録しました。"));
+            assert_eq!(
+                message.get().as_deref(),
+                Some(rust_i18n::t!("admin_components.attendance.feedback.saved").as_ref())
+            );
             assert!(error.get().is_none());
 
             apply_attendance_action_result(Err(ApiError::unknown("upsert failed")), message, error);
@@ -900,7 +933,10 @@ mod host_tests {
             assert_eq!(error.get().as_ref().expect("error").error, "upsert failed");
 
             apply_force_break_action_result(Ok(()), message, error);
-            assert_eq!(message.get().as_deref(), Some("休憩を強制終了しました。"));
+            assert_eq!(
+                message.get().as_deref(),
+                Some(rust_i18n::t!("admin_components.attendance.feedback.break_ended").as_ref())
+            );
             assert!(error.get().is_none());
 
             apply_force_break_action_result(Err(ApiError::unknown("force failed")), message, error);
@@ -969,7 +1005,7 @@ mod host_tests {
             let allowed = create_memo(|_| true);
             view! { <AdminAttendanceToolsSection repository=repo system_admin_allowed=allowed users=users /> }
         });
-        assert!(html.contains("勤怠ツール"));
+        assert!(html.contains(rust_i18n::t!("admin_components.attendance.title").as_ref()));
     }
 
     #[test]
@@ -981,7 +1017,8 @@ mod host_tests {
             let allowed = create_memo(|_| false);
             view! { <AdminAttendanceToolsSection repository=repo system_admin_allowed=allowed users=users /> }
         });
-        assert!(!html.contains("勤怠ツール"));
-        assert!(!html.contains("休憩の強制終了"));
+        assert!(!html.contains(rust_i18n::t!("admin_components.attendance.title").as_ref()));
+        assert!(!html
+            .contains(rust_i18n::t!("admin_components.attendance.active_break.title").as_ref()));
     }
 }

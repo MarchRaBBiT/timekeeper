@@ -11,17 +11,19 @@ use leptos::*;
 fn validate_mfa_reset_user_id(value: &str) -> Result<String, ApiError> {
     let user_id = value.trim();
     if user_id.is_empty() {
-        Err(ApiError::validation("ユーザーIDを入力してください。"))
+        Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.system_tools.validation.user_required"
+        )))
     } else {
         Ok(user_id.to_string())
     }
 }
 
-fn reset_button_label(pending: bool) -> &'static str {
+fn reset_button_label(pending: bool) -> String {
     if pending {
-        "リセット中..."
+        rust_i18n::t!("admin_components.system_tools.actions.resetting").into_owned()
     } else {
-        "MFA をリセット"
+        rust_i18n::t!("admin_components.system_tools.actions.reset").into_owned()
     }
 }
 
@@ -38,7 +40,10 @@ fn prepare_mfa_reset_submission(
 
 fn mfa_reset_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("MFA をリセットしました。".into()), None),
+        Ok(_) => (
+            Some(rust_i18n::t!("admin_components.system_tools.feedback.reset").into_owned()),
+            None,
+        ),
         Err(err) => (None, Some(err)),
     }
 }
@@ -95,13 +100,13 @@ pub fn AdminMfaResetSection(
     view! {
         <Show when=move || system_admin_allowed.get()>
             <div class="bg-surface-elevated shadow rounded-lg p-6">
-                <h3 class="text-lg font-medium text-fg mb-4">{"MFA リセット"}</h3>
+                <h3 class="text-lg font-medium text-fg mb-4">{rust_i18n::t!("admin_components.system_tools.title")}</h3>
                 <div class="flex flex-col gap-2">
                     <AdminUserSelect
                         users=users
                         selected=user_id
-                        label=Some("対象ユーザー".into())
-                        placeholder="ユーザーを選択してください".into()
+                        label=Some(rust_i18n::t!("admin_components.system_tools.fields.target_user").into_owned())
+                        placeholder=rust_i18n::t!("admin_components.system_tools.fields.user_placeholder").into_owned()
                     />
                     <button
                         class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
@@ -142,7 +147,7 @@ mod host_tests {
             let allowed = create_memo(|_| true);
             view! { <AdminMfaResetSection repository=repo system_admin_allowed=allowed users=users /> }
         });
-        assert!(html.contains("MFA リセット"));
+        assert!(html.contains(rust_i18n::t!("admin_components.system_tools.title").as_ref()));
     }
 
     #[test]
@@ -164,13 +169,19 @@ mod host_tests {
             let allowed = create_memo(|_| false);
             view! { <AdminMfaResetSection repository=repo system_admin_allowed=allowed users=users /> }
         });
-        assert!(!html.contains("MFA リセット"));
+        assert!(!html.contains(rust_i18n::t!("admin_components.system_tools.title").as_ref()));
     }
 
     #[test]
     fn reset_button_label_reflects_pending_state() {
-        assert_eq!(reset_button_label(true), "リセット中...");
-        assert_eq!(reset_button_label(false), "MFA をリセット");
+        assert_eq!(
+            reset_button_label(true),
+            rust_i18n::t!("admin_components.system_tools.actions.resetting")
+        );
+        assert_eq!(
+            reset_button_label(false),
+            rust_i18n::t!("admin_components.system_tools.actions.reset")
+        );
     }
 
     #[test]
@@ -190,7 +201,10 @@ mod host_tests {
     #[test]
     fn mfa_reset_feedback_maps_success_and_error() {
         let (ok_msg, ok_err) = mfa_reset_feedback(Ok(()));
-        assert_eq!(ok_msg.as_deref(), Some("MFA をリセットしました。"));
+        assert_eq!(
+            ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.system_tools.feedback.reset").as_ref())
+        );
         assert!(ok_err.is_none());
 
         let (err_msg, err) = mfa_reset_feedback(Err(ApiError::unknown("reset failed")));

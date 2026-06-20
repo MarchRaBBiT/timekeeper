@@ -21,10 +21,15 @@ fn build_subject_action_payload(
     approve: bool,
 ) -> Result<SubjectRequestActionPayload, ApiError> {
     if comment.trim().is_empty() {
-        return Err(ApiError::validation("コメントを入力してください。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.subject_requests.validation.comment_required"
+        )));
     }
-    let request =
-        modal_request.ok_or_else(|| ApiError::validation("申請情報を取得できませんでした。"))?;
+    let request = modal_request.ok_or_else(|| {
+        ApiError::validation(rust_i18n::t!(
+            "admin_components.subject_requests.validation.request_missing"
+        ))
+    })?;
     Ok(SubjectRequestActionPayload {
         id: request.id,
         comment: comment.to_string(),
@@ -227,7 +232,7 @@ fn render_subject_request_rows(
                 .items
                 .into_iter()
                 .map(|item| {
-                    let status_label = item.status.clone();
+                    let status_label = subject_request_status_label(&item.status);
                     let created_label = format_datetime(item.created_at);
                     let type_label = type_label(&item.request_type);
                     let id = item.id.clone();
@@ -246,7 +251,7 @@ fn render_subject_request_rows(
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-fg">{created_label}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                <button class="text-link hover:text-link-hover" on:click=open>{"詳細"}</button>
+                                <button class="text-link hover:text-link-hover" on:click=open>{rust_i18n::t!("admin_components.subject_requests.actions.details")}</button>
                                 <span class="sr-only">{id}</span>
                             </td>
                         </tr>
@@ -333,34 +338,34 @@ pub fn AdminSubjectRequestsSection(
 
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-fg">{"本人対応申請"}</h3>
+            <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("admin_components.subject_requests.title")}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
                     class="w-full lg:w-auto border border-form-control-border bg-form-control-bg text-form-control-text rounded-md px-2 py-1"
                     on:change=move |ev| on_status_change(event_target_value(&ev))
                 >
-                    <option value="">{ "すべて" }</option>
-                    <option value="pending">{ "承認待ち" }</option>
-                    <option value="approved">{ "承認済み" }</option>
-                    <option value="rejected">{ "却下" }</option>
-                    <option value="cancelled">{ "取消" }</option>
+                    <option value="">{rust_i18n::t!("admin_components.subject_requests.filters.all")}</option>
+                    <option value="pending">{rust_i18n::t!("pages.settings.subject_request.status.pending")}</option>
+                    <option value="approved">{rust_i18n::t!("pages.settings.subject_request.status.approved")}</option>
+                    <option value="rejected">{rust_i18n::t!("pages.settings.subject_request.status.rejected")}</option>
+                    <option value="cancelled">{rust_i18n::t!("pages.settings.subject_request.status.cancelled")}</option>
                 </select>
                 <select
                     class="w-full lg:w-auto border border-form-control-border bg-form-control-bg text-form-control-text rounded-md px-2 py-1"
                     on:change=move |ev| on_type_change(event_target_value(&ev))
                 >
-                    <option value="">{ "請求種別" }</option>
-                    <option value="access">{ "開示" }</option>
-                    <option value="rectify">{ "訂正" }</option>
-                    <option value="delete">{ "削除" }</option>
-                    <option value="stop">{ "停止" }</option>
+                    <option value="">{rust_i18n::t!("admin_components.subject_requests.filters.request_type")}</option>
+                    <option value="access">{rust_i18n::t!("admin_components.subject_requests.types.access")}</option>
+                    <option value="rectify">{rust_i18n::t!("admin_components.subject_requests.types.rectify")}</option>
+                    <option value="delete">{rust_i18n::t!("admin_components.subject_requests.types.delete")}</option>
+                    <option value="stop">{rust_i18n::t!("admin_components.subject_requests.types.stop")}</option>
                 </select>
                 <div class="w-full lg:min-w-[220px] lg:flex-1">
                     <AdminUserSelect
                         users=users
                         selected=filter.user_id_signal()
-                        label=Some("請求種別".into())
-                        placeholder="全ユーザー".into()
+                        label=Some(rust_i18n::t!("admin_components.subject_requests.columns.user").into_owned())
+                        placeholder=rust_i18n::t!("admin_components.subject_requests.filters.all_users").into_owned()
                     />
                 </div>
                 <button
@@ -372,7 +377,11 @@ pub fn AdminSubjectRequestsSection(
                         <Show when=move || loading.get()>
                             <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                         </Show>
-                        {move || if loading.get() { "検索中..." } else { "検索" }}
+                        {move || if loading.get() {
+                            rust_i18n::t!("admin_components.subject_requests.filters.searching")
+                        } else {
+                            rust_i18n::t!("admin_components.subject_requests.filters.search")
+                        }}
                     </span>
                 </button>
             </div>
@@ -382,18 +391,18 @@ pub fn AdminSubjectRequestsSection(
             <Show when=move || loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
-                    <span>{"本人対応申請を読み込み中..."}</span>
+                    <span>{rust_i18n::t!("admin_components.subject_requests.loading")}</span>
                 </div>
             </Show>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-border">
                     <thead class="bg-surface-muted">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"種別"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ユーザー"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ステータス"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"申請日"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"操作"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.subject_requests.columns.type")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.subject_requests.columns.user")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.subject_requests.columns.status")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.subject_requests.columns.created_at")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.subject_requests.columns.actions")}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-surface-elevated divide-y divide-border">
@@ -406,7 +415,7 @@ pub fn AdminSubjectRequestsSection(
             <Show when=move || modal_open.get()>
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
-                        <h3 class="text-lg font-medium text-fg mb-2">{"本人対応申請の詳細"}</h3>
+                        <h3 class="text-lg font-medium text-fg mb-2">{rust_i18n::t!("admin_components.subject_requests.detail.title")}</h3>
                         <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
                             {move || {
                                 let user_list =
@@ -434,7 +443,7 @@ pub fn AdminSubjectRequestsSection(
                             }}
                         </div>
                         <div class="mt-3">
-                            <label class="block text-sm font-medium text-fg-muted">{"コメント"}</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("admin_components.subject_requests.detail.comment")}</label>
                             <textarea
                                 class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                                 on:input=move |ev| {
@@ -452,7 +461,7 @@ pub fn AdminSubjectRequestsSection(
                                 class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover"
                                 on:click=move |_| close_modal(modal_open)
                             >
-                                {"閉じる"}
+                                {rust_i18n::t!("admin_components.subject_requests.actions.close")}
                             </button>
                             <button
                                 class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
@@ -464,7 +473,7 @@ pub fn AdminSubjectRequestsSection(
                                 }}
                                 on:click=move |_| on_action(false)
                             >
-                                {"却下"}
+                                {rust_i18n::t!("admin_components.subject_requests.actions.reject")}
                             </button>
                             <button
                                 class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
@@ -476,7 +485,7 @@ pub fn AdminSubjectRequestsSection(
                                 }}
                                 on:click=move |_| on_action(true)
                             >
-                                {"承認"}
+                                {rust_i18n::t!("admin_components.subject_requests.actions.approve")}
                             </button>
                         </div>
                     </div>
@@ -551,7 +560,7 @@ mod host_tests {
     #[test]
     fn subject_requests_renders_empty() {
         let html = render_with_items(Vec::new());
-        assert!(html.contains("本人対応申請"));
+        assert!(html.contains(rust_i18n::t!("admin_components.subject_requests.title").as_ref()));
     }
 
     #[test]
@@ -571,7 +580,9 @@ mod host_tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }]);
-        assert!(html.contains("開示"));
+        assert!(
+            html.contains(rust_i18n::t!("admin_components.subject_requests.types.access").as_ref())
+        );
         assert!(html.contains("pending"));
     }
 
@@ -589,10 +600,22 @@ mod host_tests {
 
     #[test]
     fn helper_type_and_datetime_formatting() {
-        assert_eq!(type_label(&DataSubjectRequestType::Access), "開示");
-        assert_eq!(type_label(&DataSubjectRequestType::Rectify), "訂正");
-        assert_eq!(type_label(&DataSubjectRequestType::Delete), "削除");
-        assert_eq!(type_label(&DataSubjectRequestType::Stop), "停止");
+        assert_eq!(
+            type_label(&DataSubjectRequestType::Access),
+            rust_i18n::t!("admin_components.subject_requests.types.access")
+        );
+        assert_eq!(
+            type_label(&DataSubjectRequestType::Rectify),
+            rust_i18n::t!("admin_components.subject_requests.types.rectify")
+        );
+        assert_eq!(
+            type_label(&DataSubjectRequestType::Delete),
+            rust_i18n::t!("admin_components.subject_requests.types.delete")
+        );
+        assert_eq!(
+            type_label(&DataSubjectRequestType::Stop),
+            rust_i18n::t!("admin_components.subject_requests.types.stop")
+        );
 
         let dt = DateTime::parse_from_rfc3339("2026-01-16T12:34:56Z")
             .expect("valid datetime")
@@ -913,9 +936,12 @@ mod host_tests {
             );
             assert_eq!(rows.len(), 1);
             let html = rows[0].clone().render_to_string().to_string();
-            assert!(html.contains("開示"));
+            assert!(html.contains(
+                rust_i18n::t!("admin_components.subject_requests.types.access").as_ref()
+            ));
             assert!(html.contains("u1"));
-            assert!(html.contains("pending"));
+            assert!(html
+                .contains(rust_i18n::t!("pages.settings.subject_request.status.pending").as_ref()));
             assert!(html.contains("sr-1"));
             assert!(render_subject_request_rows(
                 None,
@@ -964,13 +990,32 @@ mod host_tests {
     }
 }
 
-fn type_label(request_type: &DataSubjectRequestType) -> &'static str {
+fn type_label(request_type: &DataSubjectRequestType) -> String {
     match request_type {
-        DataSubjectRequestType::Access => "開示",
-        DataSubjectRequestType::Rectify => "訂正",
-        DataSubjectRequestType::Delete => "削除",
-        DataSubjectRequestType::Stop => "停止",
+        DataSubjectRequestType::Access => {
+            rust_i18n::t!("admin_components.subject_requests.types.access").into_owned()
+        }
+        DataSubjectRequestType::Rectify => {
+            rust_i18n::t!("admin_components.subject_requests.types.rectify").into_owned()
+        }
+        DataSubjectRequestType::Delete => {
+            rust_i18n::t!("admin_components.subject_requests.types.delete").into_owned()
+        }
+        DataSubjectRequestType::Stop => {
+            rust_i18n::t!("admin_components.subject_requests.types.stop").into_owned()
+        }
     }
+}
+
+fn subject_request_status_label(status: &str) -> String {
+    let key = match status {
+        "pending" => "pages.settings.subject_request.status.pending",
+        "approved" => "pages.settings.subject_request.status.approved",
+        "rejected" => "pages.settings.subject_request.status.rejected",
+        "cancelled" => "pages.settings.subject_request.status.cancelled",
+        _ => return status.to_string(),
+    };
+    rust_i18n::t!(key).into_owned()
 }
 
 fn format_datetime(value: DateTime<chrono::Utc>) -> String {

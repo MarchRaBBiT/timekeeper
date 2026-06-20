@@ -38,16 +38,19 @@ fn parse_optional_filter_date(value: &str, label: &str) -> Result<Option<NaiveDa
     NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
         .map(Some)
         .map_err(|_| {
-            ApiError::validation(format!("{}は YYYY-MM-DD 形式で入力してください。", label))
+            ApiError::validation(rust_i18n::t!(
+                "admin_components.holidays.validation.optional_date_format",
+                label = label
+            ))
         })
 }
 
 fn validate_filter_window(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Result<(), ApiError> {
     if let (Some(from), Some(to)) = (from, to) {
         if from > to {
-            return Err(ApiError::validation(
-                "開始日は終了日以前である必要があります。",
-            ));
+            return Err(ApiError::validation(rust_i18n::t!(
+                "admin_components.holidays.validation.date_order"
+            )));
         }
     }
     Ok(())
@@ -56,10 +59,16 @@ fn validate_filter_window(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Res
 fn parse_calendar_month_range(month_raw: &str) -> Result<(NaiveDate, NaiveDate), ApiError> {
     let trimmed = month_raw.trim();
     if trimmed.is_empty() {
-        return Err(ApiError::validation("月を選択してください。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.holidays.validation.month_required"
+        )));
     }
-    let first_day = NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
-        .map_err(|_| ApiError::validation("月は YYYY-MM 形式で入力してください。"))?;
+    let first_day =
+        NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d").map_err(|_| {
+            ApiError::validation(rust_i18n::t!(
+                "admin_components.holidays.validation.month_format"
+            ))
+        })?;
     let next_month = if first_day.month() == 12 {
         NaiveDate::from_ymd_opt(first_day.year() + 1, 1, 1)
     } else {
@@ -75,10 +84,15 @@ fn parse_holiday_form(
     desc_raw: &str,
 ) -> Result<CreateHolidayRequest, ApiError> {
     if date_raw.trim().is_empty() || name_raw.trim().is_empty() {
-        return Err(ApiError::validation("日付と名称を入力してください。"));
+        return Err(ApiError::validation(rust_i18n::t!(
+            "admin_components.holidays.validation.required_fields"
+        )));
     }
-    let parsed_date = NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d")
-        .map_err(|_| ApiError::validation("日付は YYYY-MM-DD 形式で入力してください。"))?;
+    let parsed_date = NaiveDate::parse_from_str(date_raw.trim(), "%Y-%m-%d").map_err(|_| {
+        ApiError::validation(rust_i18n::t!(
+            "admin_components.holidays.validation.date_format"
+        ))
+    })?;
     Ok(CreateHolidayRequest {
         holiday_date: parsed_date,
         name: name_raw.trim().to_string(),
@@ -113,27 +127,41 @@ fn parse_filter_inputs(
     from_raw: &str,
     to_raw: &str,
 ) -> Result<(Option<NaiveDate>, Option<NaiveDate>), ApiError> {
-    let parsed_from = parse_optional_filter_date(from_raw, "開始日")?;
-    let parsed_to = parse_optional_filter_date(to_raw, "終了日")?;
+    let parsed_from = parse_optional_filter_date(
+        from_raw,
+        rust_i18n::t!("admin_components.holidays.filters.from").as_ref(),
+    )?;
+    let parsed_to = parse_optional_filter_date(
+        to_raw,
+        rust_i18n::t!("admin_components.holidays.filters.to").as_ref(),
+    )?;
     validate_filter_window(parsed_from, parsed_to)?;
     Ok((parsed_from, parsed_to))
 }
 
 fn import_result_message(count: usize) -> String {
     if count == 0 {
-        "追加対象の祝日はありません。".into()
+        rust_i18n::t!("admin_components.holidays.feedback.none_to_import").into_owned()
     } else {
-        format!("{} 件の祝日を追加しました。", count)
+        rust_i18n::t!("admin_components.holidays.feedback.imported", count = count).into_owned()
     }
 }
 
 fn page_bounds_message(bounds: Option<(i64, i64, i64)>) -> String {
     bounds
         .map(|(start, end, total)| match (start, end, total) {
-            (0, 0, 0) => "該当する祝日はありません。".to_string(),
-            _ => format!("{} 件中 {} - {} 件を表示中", total, start, end),
+            (0, 0, 0) => rust_i18n::t!("admin_components.holidays.pagination.empty").into_owned(),
+            _ => rust_i18n::t!(
+                "admin_components.holidays.pagination.summary",
+                total = total,
+                start = start,
+                end = end
+            )
+            .into_owned(),
         })
-        .unwrap_or_else(|| "祝日一覧を取得しています...".into())
+        .unwrap_or_else(|| {
+            rust_i18n::t!("admin_components.holidays.pagination.loading").into_owned()
+        })
 }
 
 fn create_holiday_feedback(
@@ -141,11 +169,14 @@ fn create_holiday_feedback(
 ) -> (Option<String>, Option<ApiError>, bool) {
     match result {
         Ok(created) => (
-            Some(format!(
-                "{} ({}) を登録しました。",
-                created.name,
-                created.holiday_date.format("%Y-%m-%d")
-            )),
+            Some(
+                rust_i18n::t!(
+                    "admin_components.holidays.feedback.created",
+                    name = created.name,
+                    date = created.holiday_date.format("%Y-%m-%d")
+                )
+                .into_owned(),
+            ),
             None,
             true,
         ),
@@ -155,7 +186,10 @@ fn create_holiday_feedback(
 
 fn delete_holiday_feedback(result: Result<(), ApiError>) -> (Option<String>, Option<ApiError>) {
     match result {
-        Ok(_) => (Some("祝日を削除しました。".into()), None),
+        Ok(_) => (
+            Some(rust_i18n::t!("admin_components.holidays.feedback.deleted").into_owned()),
+            None,
+        ),
         Err(err) => (None, Some(err)),
     }
 }
@@ -170,10 +204,10 @@ fn import_holidays_feedback(result: Result<usize, ApiError>) -> (Option<String>,
 fn prepare_import_candidates(
     existing_dates: impl IntoIterator<Item = NaiveDate>,
     google_holidays: Vec<CreateHolidayRequest>,
-) -> Result<Vec<CreateHolidayRequest>, &'static str> {
+) -> Result<Vec<CreateHolidayRequest>, String> {
     let candidates = filter_new_google_holidays(existing_dates, google_holidays);
     if candidates.is_empty() {
-        Err("追加対象の祝日はありません。")
+        Err(rust_i18n::t!("admin_components.holidays.feedback.none_to_import").into_owned())
     } else {
         Ok(candidates)
     }
@@ -454,7 +488,7 @@ fn resolve_import_payload(
             Some(candidates)
         }
         Err(message) => {
-            holiday_message.set(Some(message.into()));
+            holiday_message.set(Some(message));
             holiday_error.set(None);
             None
         }
@@ -686,18 +720,18 @@ pub fn HolidayManagementSection(
 
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-fg">{"祝日管理"}</h3>
+            <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("admin_components.holidays.title")}</h3>
             <form class="grid gap-3 lg:grid-cols-3" on:submit=on_create_holiday>
                 <DatePicker
                     label=Some("admin_components.holidays.fields.date")
                     value=holiday_date_input
                 />
                 <div>
-                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"名称"}</label>
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{rust_i18n::t!("admin_components.holidays.fields.name")}</label>
                     <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_name_input.set(event_target_value(&ev)) />
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"備考（任意）"}</label>
+                    <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{rust_i18n::t!("admin_components.holidays.fields.notes")}</label>
                     <input class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200" on:input=move |ev| holiday_desc_input.set(event_target_value(&ev)) />
                 </div>
                 <div class="lg:col-span-3">
@@ -706,7 +740,11 @@ pub fn HolidayManagementSection(
                         class="px-4 py-2 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                         disabled={move || create_pending.get()}
                     >
-                        {move || if create_pending.get() { "登録中..." } else { "祝日を登録" }}
+                        {move || if create_pending.get() {
+                            rust_i18n::t!("admin_components.holidays.actions.creating")
+                        } else {
+                            rust_i18n::t!("admin_components.holidays.actions.create")
+                        }}
                     </button>
                 </div>
             </form>
@@ -723,7 +761,11 @@ pub fn HolidayManagementSection(
                         disabled={move || google_loading.get()}
                         on:click=on_fetch_google
                     >
-                        {move || if google_loading.get() { "取得中..." } else { "Google 祝日取得" }}
+                        {move || if google_loading.get() {
+                            rust_i18n::t!("admin_components.holidays.actions.fetching")
+                        } else {
+                            rust_i18n::t!("admin_components.holidays.actions.fetch_google")
+                        }}
                     </button>
                 </div>
                 <button
@@ -731,13 +773,13 @@ pub fn HolidayManagementSection(
                     disabled={move || google_holidays.get().is_empty()}
                     on:click=on_import_google
                 >
-                    {"一覧から登録"}
+                    {rust_i18n::t!("admin_components.holidays.actions.register_selected")}
                 </button>
             </div>
             <div class="space-y-3 rounded-lg border border-dashed border-border p-4">
                 <div class="flex flex-col gap-1">
-                    <h4 class="text-sm font-medium text-fg">{"祝日一覧フィルター"}</h4>
-                    <p class="text-xs text-fg-muted">{"期間を指定すると一致する祝日だけを表示します。"}</p>
+                    <h4 class="text-sm font-medium text-fg">{rust_i18n::t!("admin_components.holidays.filters.title")}</h4>
+                    <p class="text-xs text-fg-muted">{rust_i18n::t!("admin_components.holidays.filters.description")}</p>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-4 align-bottom">
                     <DatePicker
@@ -750,16 +792,16 @@ pub fn HolidayManagementSection(
                     />
                     <div class="lg:col-span-2 flex items-end gap-2 mb-0.5">
                         <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_filters>
-                            {"日付で絞り込み"}
+                            {rust_i18n::t!("admin_components.holidays.filters.apply")}
                         </button>
                         <button class="h-[50px] px-4 rounded-xl text-fg-muted hover:text-fg font-medium transition-colors" on:click=on_clear_filters>
-                            {"条件クリア"}
+                            {rust_i18n::t!("admin_components.holidays.filters.clear")}
                         </button>
                     </div>
                 </div>
                 <div class="grid gap-3 lg:grid-cols-3">
                     <div>
-                        <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{"カレンダー範囲 (YYYY-MM)"}</label>
+                        <label class="block text-sm font-bold text-fg-muted ml-1 mb-1.5">{rust_i18n::t!("admin_components.holidays.filters.month_range")}</label>
                         <input
                             type="month"
                             class="w-full rounded-xl border-2 border-form-control-border bg-form-control-bg text-fg py-2.5 px-4 shadow-sm focus:outline-none focus:border-action-primary-border-hover focus:ring-4 focus:ring-action-primary-focus transition-all duration-200"
@@ -769,7 +811,7 @@ pub fn HolidayManagementSection(
                     </div>
                     <div class="lg:col-span-2 flex items-end mb-0.5">
                         <button class="h-[50px] px-4 rounded-xl border-2 border-border text-fg hover:bg-action-ghost-bg-hover font-medium transition-colors" on:click=on_apply_calendar_range>
-                            {"選択月の範囲を適用"}
+                            {rust_i18n::t!("admin_components.holidays.filters.apply_month")}
                         </button>
                     </div>
                 </div>
@@ -789,7 +831,7 @@ pub fn HolidayManagementSection(
             <Show when=move || holidays_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
-                    <span>{"祝日一覧を読み込み中..."}</span>
+                    <span>{rust_i18n::t!("admin_components.holidays.loading")}</span>
                 </div>
             </Show>
             <div class="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm text-fg lg:flex-row lg:items-center lg:justify-between">
@@ -799,7 +841,7 @@ pub fn HolidayManagementSection(
                 <div class="flex flex-wrap items-center gap-3">
                     <label class="flex items-center gap-1">
                         <span class="text-xs uppercase tracking-wide text-fg-muted">
-                            {"件数/ページ"}
+                            {rust_i18n::t!("admin_components.holidays.pagination.per_page")}
                         </span>
                         <select
                             class="border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
@@ -817,12 +859,16 @@ pub fn HolidayManagementSection(
                             disabled={move || holidays_loading.get() || !can_go_prev.get()}
                             on:click=on_prev_page
                         >
-                            {"前へ"}
+                            {rust_i18n::t!("admin_components.holidays.pagination.previous")}
                         </button>
                         <span class="text-xs text-fg-muted">
                             {move || {
                                 let current = page_total.get().map(|(page, _, _)| page).unwrap_or(1);
-                                format!("ページ {}/{}", current, total_pages.get())
+                                rust_i18n::t!(
+                                    "admin_components.holidays.pagination.page",
+                                    current = current,
+                                    total = total_pages.get()
+                                )
                             }}
                         </span>
                         <button
@@ -830,7 +876,7 @@ pub fn HolidayManagementSection(
                             disabled={move || holidays_loading.get() || !can_go_next.get()}
                             on:click=on_next_page
                         >
-                            {"次へ"}
+                            {rust_i18n::t!("admin_components.holidays.pagination.next")}
                         </button>
                     </div>
                 </div>
@@ -839,10 +885,10 @@ pub fn HolidayManagementSection(
                 <table class="min-w-full divide-y divide-border text-sm">
                     <thead class="bg-surface-muted">
                         <tr>
-                            <th class="px-4 py-2 text-left text-fg-muted">{"日付"}</th>
-                            <th class="px-4 py-2 text-left text-fg-muted">{"名称"}</th>
-                            <th class="px-4 py-2 text-left text-fg-muted">{"備考"}</th>
-                            <th class="px-4 py-2 text-right text-fg-muted">{"操作"}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.holidays.table.date")}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.holidays.table.name")}</th>
+                            <th class="px-4 py-2 text-left text-fg-muted">{rust_i18n::t!("admin_components.holidays.table.notes")}</th>
+                            <th class="px-4 py-2 text-right text-fg-muted">{rust_i18n::t!("admin_components.holidays.table.actions")}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
@@ -865,7 +911,7 @@ pub fn HolidayManagementSection(
                                                 disabled={move || deleting_id.get().as_deref() == Some(&item.id)}
                                                 on:click=remove
                                             >
-                                                {"削除"}
+                                                {rust_i18n::t!("admin_components.holidays.actions.delete")}
                                             </button>
                                         </td>
                                     </tr>
@@ -877,7 +923,7 @@ pub fn HolidayManagementSection(
             </div>
             <Show when=move || !google_holidays.get().is_empty()>
                 <div class="border border-border rounded-lg p-4 space-y-2">
-                    <h4 class="text-sm font-medium text-fg">{"Google 祝日候補"}</h4>
+                    <h4 class="text-sm font-medium text-fg">{rust_i18n::t!("admin_components.holidays.google_candidates")}</h4>
                     <ul class="space-y-1 text-sm text-fg">
                         <For
                             each=move || google_holidays.get()
@@ -930,7 +976,7 @@ mod host_tests {
             let allowed = create_memo(|_| false);
             view! { <HolidayManagementSection repository=repo admin_allowed=allowed /> }
         });
-        assert!(html.contains("祝日管理"));
+        assert!(html.contains(rust_i18n::t!("admin_components.holidays.title").as_ref()));
     }
 
     #[test]
@@ -945,13 +991,29 @@ mod host_tests {
     #[test]
     fn filter_date_parsing_and_window_validation() {
         assert_eq!(
-            parse_optional_filter_date("   ", "開始日").expect("empty is none"),
+            parse_optional_filter_date(
+                "   ",
+                rust_i18n::t!("admin_components.holidays.filters.from").as_ref(),
+            )
+            .expect("empty is none"),
             None
         );
-        let from = parse_optional_filter_date("2026-01-01", "開始日").expect("from");
-        let to = parse_optional_filter_date("2026-01-31", "終了日").expect("to");
+        let from = parse_optional_filter_date(
+            "2026-01-01",
+            rust_i18n::t!("admin_components.holidays.filters.from").as_ref(),
+        )
+        .expect("from");
+        let to = parse_optional_filter_date(
+            "2026-01-31",
+            rust_i18n::t!("admin_components.holidays.filters.to").as_ref(),
+        )
+        .expect("to");
         assert!(validate_filter_window(from, to).is_ok());
-        assert!(parse_optional_filter_date("bad", "開始日").is_err());
+        assert!(parse_optional_filter_date(
+            "bad",
+            rust_i18n::t!("admin_components.holidays.filters.from").as_ref()
+        )
+        .is_err());
         let from = Some(NaiveDate::from_ymd_opt(2026, 2, 1).expect("valid"));
         let to = Some(NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid"));
         assert!(validate_filter_window(from, to).is_err());
@@ -1057,17 +1119,31 @@ mod host_tests {
 
     #[test]
     fn helper_import_and_page_bounds_messages_cover_edges() {
-        assert_eq!(import_result_message(0), "追加対象の祝日はありません。");
-        assert_eq!(import_result_message(3), "3 件の祝日を追加しました。");
+        assert_eq!(
+            import_result_message(0),
+            rust_i18n::t!("admin_components.holidays.feedback.none_to_import")
+        );
+        assert_eq!(
+            import_result_message(3),
+            rust_i18n::t!("admin_components.holidays.feedback.imported", count = 3)
+        );
 
-        assert_eq!(page_bounds_message(None), "祝日一覧を取得しています...");
+        assert_eq!(
+            page_bounds_message(None),
+            rust_i18n::t!("admin_components.holidays.pagination.loading")
+        );
         assert_eq!(
             page_bounds_message(Some((0, 0, 0))),
-            "該当する祝日はありません。"
+            rust_i18n::t!("admin_components.holidays.pagination.empty")
         );
         assert_eq!(
             page_bounds_message(Some((11, 20, 35))),
-            "35 件中 11 - 20 件を表示中"
+            rust_i18n::t!(
+                "admin_components.holidays.pagination.summary",
+                total = 35,
+                start = 11,
+                end = 20
+            )
         );
     }
 
@@ -1091,7 +1167,10 @@ mod host_tests {
         assert!(!create_err_reload);
 
         let (delete_ok_msg, delete_ok_err) = delete_holiday_feedback(Ok(()));
-        assert_eq!(delete_ok_msg.as_deref(), Some("祝日を削除しました。"));
+        assert_eq!(
+            delete_ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.holidays.feedback.deleted").as_ref())
+        );
         assert!(delete_ok_err.is_none());
 
         let (delete_err_msg, delete_err) =
@@ -1100,7 +1179,10 @@ mod host_tests {
         assert_eq!(delete_err.expect("error").error, "delete failed");
 
         let (import_ok_msg, import_ok_err) = import_holidays_feedback(Ok(2));
-        assert_eq!(import_ok_msg.as_deref(), Some("2 件の祝日を追加しました。"));
+        assert_eq!(
+            import_ok_msg.as_deref(),
+            Some(rust_i18n::t!("admin_components.holidays.feedback.imported", count = 2).as_ref())
+        );
         assert!(import_ok_err.is_none());
 
         let (import_err_msg, import_err) =
@@ -1422,7 +1504,10 @@ mod host_tests {
             assert!(holiday_error.get().is_none());
             assert_eq!(
                 holiday_message.get().as_deref(),
-                Some("2 件の祝日を追加しました。")
+                Some(
+                    rust_i18n::t!("admin_components.holidays.feedback.imported", count = 2)
+                        .as_ref()
+                )
             );
             assert_eq!(holidays_reload.get(), 3);
 
@@ -1488,7 +1573,7 @@ mod host_tests {
             assert!(no_candidates.is_none());
             assert_eq!(
                 holiday_message.get().as_deref(),
-                Some("追加対象の祝日はありません。")
+                Some(rust_i18n::t!("admin_components.holidays.feedback.none_to_import").as_ref())
             );
             assert!(holiday_error.get().is_none());
 

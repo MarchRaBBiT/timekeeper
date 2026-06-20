@@ -21,12 +21,23 @@ struct AdminRequestRow {
     data: Value,
 }
 
-fn request_kind_label(kind: &str) -> &'static str {
+fn request_kind_label(kind: &str) -> String {
     if kind == "leave" {
-        "休暇"
+        rust_i18n::t!("admin_components.requests.types.leave").into_owned()
     } else {
-        "残業"
+        rust_i18n::t!("admin_components.requests.types.overtime").into_owned()
     }
+}
+
+fn request_status_label(status: &str) -> String {
+    let key = match status {
+        "pending" => "pages.requests.status.pending",
+        "approved" => "pages.requests.status.approved",
+        "rejected" => "pages.requests.status.rejected",
+        "cancelled" => "pages.requests.status.cancelled",
+        _ => return status.to_string(),
+    };
+    rust_i18n::t!(key).into_owned()
 }
 
 fn request_target(kind: &str, data: &Value) -> String {
@@ -55,7 +66,7 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
             let data = item.clone();
             rows.push(AdminRequestRow {
                 kind: "leave".into(),
-                kind_label: request_kind_label("leave").to_string(),
+                kind_label: request_kind_label("leave"),
                 target: request_target("leave", &data),
                 user_id: data
                     .get("user_id")
@@ -76,7 +87,7 @@ fn flatten_request_rows(data: &Value) -> Vec<AdminRequestRow> {
             let data = item.clone();
             rows.push(AdminRequestRow {
                 kind: "overtime".into(),
-                kind_label: request_kind_label("overtime").to_string(),
+                kind_label: request_kind_label("overtime"),
                 target: request_target("overtime", &data),
                 user_id: data
                     .get("user_id")
@@ -310,24 +321,24 @@ pub fn AdminRequestsSection(
 
     view! {
         <div class="bg-surface-elevated shadow rounded-lg p-6 space-y-4">
-            <h3 class="text-lg font-medium text-fg">{"申請一覧"}</h3>
+            <h3 class="text-lg font-medium text-fg">{rust_i18n::t!("admin_components.requests.title")}</h3>
             <div class="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <select
                     class="w-full lg:w-auto border border-form-control-border bg-form-control-bg text-form-control-text rounded-md px-2 py-1"
                     on:change=move |ev| on_status_change(event_target_value(&ev))
                 >
-                    <option value="">{ "すべて" }</option>
-                    <option value="pending">{ "承認待ち" }</option>
-                    <option value="approved">{ "承認済み" }</option>
-                    <option value="rejected">{ "却下" }</option>
-                    <option value="cancelled">{ "取消" }</option>
+                    <option value="">{rust_i18n::t!("admin_components.requests.filters.all")}</option>
+                    <option value="pending">{rust_i18n::t!("pages.requests.status.pending")}</option>
+                    <option value="approved">{rust_i18n::t!("pages.requests.status.approved")}</option>
+                    <option value="rejected">{rust_i18n::t!("pages.requests.status.rejected")}</option>
+                    <option value="cancelled">{rust_i18n::t!("pages.requests.status.cancelled")}</option>
                 </select>
                 <div class="w-full lg:min-w-[220px] lg:flex-1">
                     <AdminUserSelect
                         users=users
                         selected=filter.user_id_signal()
-                        label=Some("ユーザー".into())
-                        placeholder="全ユーザー".into()
+                        label=Some(rust_i18n::t!("admin_components.requests.filters.user").into_owned())
+                        placeholder=rust_i18n::t!("admin_components.requests.filters.all_users").into_owned()
                     />
                 </div>
                 <button
@@ -339,7 +350,11 @@ pub fn AdminRequestsSection(
                         <Show when=move || requests_loading.get()>
                             <span class="h-4 w-4 animate-spin rounded-full border-2 border-action-primary-text/70 border-t-transparent"></span>
                         </Show>
-                        {move || if requests_loading.get() { "検索中..." } else { "検索" }}
+                        {move || if requests_loading.get() {
+                            rust_i18n::t!("admin_components.requests.filters.searching")
+                        } else {
+                            rust_i18n::t!("admin_components.requests.filters.search")
+                        }}
                     </span>
                 </button>
             </div>
@@ -349,18 +364,18 @@ pub fn AdminRequestsSection(
             <Show when=move || requests_loading.get()>
                 <div class="flex items-center gap-2 text-sm text-fg-muted">
                     <LoadingSpinner />
-                    <span>{"申請情報を読み込み中..."}</span>
+                    <span>{rust_i18n::t!("admin_components.requests.loading")}</span>
                 </div>
             </Show>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-border">
                     <thead class="bg-surface-muted">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"種別"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"対象"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ユーザー"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"ステータス"}</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{"操作"}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.requests.columns.type")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.requests.columns.target")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.requests.columns.user")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.requests.columns.status")}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-fg-muted uppercase tracking-wider">{rust_i18n::t!("admin_components.requests.columns.actions")}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-surface-elevated divide-y divide-border">
@@ -372,8 +387,8 @@ pub fn AdminRequestsSection(
                                         <tr>
                                             <td colspan="5" class="p-4 bg-surface-muted">
                                                 <EmptyState
-                                                    title="申請がありません"
-                                                    description="表示できる申請データが見つかりませんでした。"
+                                                    title=rust_i18n::t!("admin_components.requests.empty.title").into_owned()
+                                                    description=rust_i18n::t!("admin_components.requests.empty.description").into_owned()
                                                 />
                                             </td>
                                         </tr>
@@ -382,7 +397,7 @@ pub fn AdminRequestsSection(
                                     view! { <>
                                         {rows.into_iter().map(|row| {
                                         let data = row.data.clone();
-                                        let statusv = row.status.clone();
+                                        let statusv = request_status_label(&row.status);
                                         let user = row.user_id.clone();
                                         let target = row.target.clone();
                                         let open = {
@@ -401,7 +416,7 @@ pub fn AdminRequestsSection(
                                                     </span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                                    <button class="text-link hover:text-link-hover" on:click=open>{"詳細"}</button>
+                                                    <button class="text-link hover:text-link-hover" on:click=open>{rust_i18n::t!("admin_components.requests.actions.details")}</button>
                                                 </td>
                                             </tr>
                                         }
@@ -416,7 +431,7 @@ pub fn AdminRequestsSection(
             <Show when=move || modal_open.get()>
                 <div class="fixed inset-0 bg-overlay-backdrop flex items-center justify-center z-50">
                     <div class="bg-surface-elevated rounded-lg shadow-lg w-full max-w-lg p-6">
-                        <h3 class="text-lg font-medium text-fg mb-2">{"申請詳細"}</h3>
+                        <h3 class="text-lg font-medium text-fg mb-2">{rust_i18n::t!("admin_components.requests.detail.title")}</h3>
                         <div class="overflow-y-auto max-h-64 divide-y divide-border-subtle">
                             {move || {
                                 let user_list =
@@ -437,7 +452,7 @@ pub fn AdminRequestsSection(
                             }}
                         </div>
                         <div class="mt-3">
-                            <label class="block text-sm font-medium text-fg-muted">{"コメント（任意）"}</label>
+                            <label class="block text-sm font-medium text-fg-muted">{rust_i18n::t!("admin_components.requests.detail.comment_optional")}</label>
                             <textarea
                                 class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-2 py-1"
                                 on:input=move |ev| modal_comment.set(event_target_value(&ev))
@@ -447,20 +462,20 @@ pub fn AdminRequestsSection(
                             <InlineErrorMessage error={action_error.into()} />
                         </Show>
                         <div class="mt-4 flex justify-end space-x-2">
-                            <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{"閉じる"}</button>
+                            <button class="px-3 py-1 rounded border border-border text-fg hover:bg-action-ghost-bg-hover" on:click=move |_| modal_open.set(false)>{rust_i18n::t!("admin_components.requests.actions.close")}</button>
                             <button
                                 class="px-3 py-1 rounded bg-action-danger-bg text-action-danger-text disabled:opacity-50"
                                 disabled={move || action_pending.get()}
                                 on:click=move |_| on_action(false)
                             >
-                                {"却下"}
+                                {rust_i18n::t!("admin_components.requests.actions.reject")}
                             </button>
                             <button
                                 class="px-3 py-1 rounded bg-action-primary-bg text-action-primary-text disabled:opacity-50"
                                 disabled={move || action_pending.get()}
                                 on:click=move |_| on_action(true)
                             >
-                                {"承認"}
+                                {rust_i18n::t!("admin_components.requests.actions.approve")}
                             </button>
                         </div>
                     </div>
@@ -506,7 +521,7 @@ mod host_tests {
             "leave_requests": [],
             "overtime_requests": []
         }));
-        assert!(html.contains("申請がありません"));
+        assert!(html.contains(rust_i18n::t!("admin_components.requests.empty.title").as_ref()));
     }
 
     #[test]
@@ -521,7 +536,7 @@ mod host_tests {
             }],
             "overtime_requests": []
         }));
-        assert!(html.contains("休暇"));
+        assert!(html.contains(rust_i18n::t!("admin_components.requests.types.leave").as_ref()));
         assert!(html.contains("pending"));
     }
 
@@ -543,9 +558,15 @@ mod host_tests {
             }]
         }));
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].kind_label, "休暇");
+        assert_eq!(
+            rows[0].kind_label,
+            rust_i18n::t!("admin_components.requests.types.leave")
+        );
         assert_eq!(rows[0].target, "2025-01-01 - 2025-01-02");
-        assert_eq!(rows[1].kind_label, "残業");
+        assert_eq!(
+            rows[1].kind_label,
+            rust_i18n::t!("admin_components.requests.types.overtime")
+        );
         assert_eq!(rows[1].target, "2025-01-03");
     }
 

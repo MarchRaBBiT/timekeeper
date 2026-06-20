@@ -217,7 +217,7 @@ mod host_tests {
             provide_auth(Some(regular_user()));
             view! { <AdminExportPage /> }
         });
-        assert!(html.contains("administrator privileges"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_export.unauthorized").as_ref()));
     }
 
     #[test]
@@ -237,9 +237,9 @@ mod host_tests {
             ));
             view! { <AdminExportPage /> }
         });
-        assert!(html.contains("Data Export"));
-        assert!(html.contains("Export CSV"));
-        assert!(html.contains("Start Date"));
-        assert!(html.contains("End Date"));
+        assert!(html.contains(rust_i18n::t!("pages.admin_export.title").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_export.actions.export").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_export.fields.start_date").as_ref()));
+        assert!(html.contains(rust_i18n::t!("pages.admin_export.fields.end_date").as_ref()));
     }
 }

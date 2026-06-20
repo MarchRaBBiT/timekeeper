@@ -75,7 +75,9 @@ pub fn DepartmentsPanel() -> impl IntoView {
         ev.prevent_default();
         let name = new_name.get();
         if name.trim().is_empty() {
-            set_create_error.set(Some(ApiError::validation("部署名を入力してください。")));
+            set_create_error.set(Some(ApiError::validation(rust_i18n::t!(
+                "admin_components.departments.validation.name_required"
+            ))));
             return;
         }
         set_create_error.set(None);
@@ -107,19 +109,19 @@ pub fn DepartmentsPanel() -> impl IntoView {
 
     view! {
         <div class="space-y-6">
-            <h2 class="text-lg font-semibold text-fg-default">{"部署管理"}</h2>
+            <h2 class="text-lg font-semibold text-fg-default">{rust_i18n::t!("admin_components.departments.title")}</h2>
 
             // Create form (system_admin only)
             <Show when=move || can_write.get()>
                 <form on:submit=on_create class="flex gap-2 items-end">
                     <div class="flex-1">
                         <label class="block text-sm font-medium text-fg-muted mb-1">
-                            {"新規部署名"}
+                            {rust_i18n::t!("admin_components.departments.fields.name")}
                         </label>
                         <input
                             type="text"
                             class="w-full border border-form-control-border bg-form-control-bg text-form-control-text rounded px-3 py-1.5 text-sm"
-                            placeholder="例: 営業部"
+                            placeholder=rust_i18n::t!("admin_components.departments.placeholders.name")
                             prop:value=new_name
                             on:input=move |ev| set_new_name.set(event_target_value(&ev))
                         />
@@ -129,7 +131,11 @@ pub fn DepartmentsPanel() -> impl IntoView {
                         class="px-4 py-1.5 bg-action-primary-bg text-action-primary-text rounded text-sm disabled:opacity-50"
                         prop:disabled=creating
                     >
-                        {move || if creating.get() { "作成中..." } else { "作成" }}
+                        {move || if creating.get() {
+                            rust_i18n::t!("admin_components.departments.actions.creating")
+                        } else {
+                            rust_i18n::t!("admin_components.departments.actions.create")
+                        }}
                     </button>
                 </form>
                 <Show when=move || create_error.get().is_some()>
@@ -160,14 +166,14 @@ pub fn DepartmentsPanel() -> impl IntoView {
                                     {"ID"}
                                 </th>
                                 <th class="text-left py-2 pr-4 text-fg-muted font-medium">
-                                    {"部署名"}
+                                    {rust_i18n::t!("admin_components.departments.fields.name")}
                                 </th>
                                 <th class="text-left py-2 pr-4 text-fg-muted font-medium">
-                                    {"親部署"}
+                                    {rust_i18n::t!("admin_components.departments.fields.parent")}
                                 </th>
                                 <Show when=move || can_write.get()>
                                     <th class="text-left py-2 text-fg-muted font-medium">
-                                        {"操作"}
+                                        {rust_i18n::t!("admin_components.requests.columns.actions")}
                                     </th>
                                 </Show>
                             </tr>
@@ -207,7 +213,7 @@ pub fn DepartmentsPanel() -> impl IntoView {
                                                                 .dispatch(dept.get_value().id)
                                                         }
                                                     >
-                                                        {"削除"}
+                                                        {rust_i18n::t!("admin_components.departments.actions.delete")}
                                                     </button>
                                                 </td>
                                             </Show>
@@ -219,7 +225,7 @@ pub fn DepartmentsPanel() -> impl IntoView {
                     </table>
                     <Show when=move || departments.get().is_empty() && !loading.get()>
                         <p class="text-sm text-fg-muted py-4 text-center">
-                            {"部署が登録されていません。"}
+                            {rust_i18n::t!("admin_components.departments.empty")}
                         </p>
                     </Show>
                 </div>
