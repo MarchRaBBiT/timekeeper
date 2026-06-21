@@ -139,22 +139,38 @@ impl AttendanceRepository for AttendanceWorkflowRepository {
 
     async fn create_clock_in(&self, record: NewClockIn) -> Result<AttendanceDay, ClockInError> {
         validate_uuid(&record.user_id).map_err(clock_in_invalid_user_id)?;
+        let mut transaction = self.pool.begin().await.map_err(clock_in_repository_error)?;
+        let resolved_workday_id = lock_resolved_workday(
+            &mut transaction,
+            &record.resolved_workday_id,
+            &record.user_id,
+            record.work_date.as_naive_date(),
+            record.recorded_at,
+        )
+        .await
+        .map_err(clock_in_repository_error)?;
         let id = Uuid::new_v4().to_string();
         let attendance = sqlx::query_as::<_, AttendanceRow>(&format!(
             "INSERT INTO attendance \
-             (id, user_id, date, clock_in_time, clock_out_time, status, total_work_hours, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, NULL, 'present', NULL, $5, $5) \
+             (id, user_id, date, resolved_workday_id, clock_in_time, clock_out_time, \
+              status, total_work_hours, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, NULL, 'present', NULL, $6, $6) \
              RETURNING {}",
             ATTENDANCE_COLUMNS
         ))
         .bind(id)
-        .bind(record.user_id)
+        .bind(&record.user_id)
         .bind(record.work_date.as_naive_date())
+        .bind(resolved_workday_id)
         .bind(record.clock_in_time)
         .bind(record.recorded_at)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(clock_in_repository_error)?;
+        transaction
+            .commit()
+            .await
+            .map_err(clock_in_repository_error)?;
         Ok(attendance_to_day(attendance))
     }
 
@@ -163,33 +179,52 @@ impl AttendanceRepository for AttendanceWorkflowRepository {
         record: ExistingClockIn,
     ) -> Result<AttendanceDay, ClockInError> {
         validate_uuid(&record.attendance_id).map_err(clock_in_invalid_attendance_id)?;
+        let mut transaction = self.pool.begin().await.map_err(clock_in_repository_error)?;
+        let resolved_workday_id = lock_resolved_workday(
+            &mut transaction,
+            &record.resolved_workday_id,
+            &record.user_id,
+            record.work_date.as_naive_date(),
+            record.recorded_at,
+        )
+        .await
+        .map_err(clock_in_repository_error)?;
         let attendance = sqlx::query_as::<_, AttendanceRow>(&format!(
-            "UPDATE attendance SET clock_in_time = $2, updated_at = $3 \
+            "UPDATE attendance SET resolved_workday_id = $2, clock_in_time = $3, updated_at = $4 \
              WHERE id = $1 RETURNING {}",
             ATTENDANCE_COLUMNS
         ))
         .bind(record.attendance_id)
+        .bind(resolved_workday_id)
         .bind(record.clock_in_time)
         .bind(record.recorded_at)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(clock_in_repository_error)?;
+        transaction
+            .commit()
+            .await
+            .map_err(clock_in_repository_error)?;
         Ok(attendance_to_day(attendance))
     }
 }
 
 #[async_trait]
 impl ClockOutRepository for AttendanceWorkflowRepository {
-    async fn find_by_user_and_date(
+    async fn find_for_clock_out(
         &self,
         user_id: &str,
-        work_date: WorkDate,
+        requested_work_date: Option<WorkDate>,
     ) -> Result<Option<AttendanceDay>, ClockOutError> {
         validate_uuid(user_id).map_err(clock_out_invalid_user_id)?;
-        find_attendance_by_user_and_date(&self.pool, user_id, work_date.as_naive_date())
-            .await
-            .map(|attendance| attendance.map(attendance_to_day))
-            .map_err(clock_out_repository_error)
+        find_attendance_for_clock_out(
+            &self.pool,
+            user_id,
+            requested_work_date.map(WorkDate::as_naive_date),
+        )
+        .await
+        .map(|attendance| attendance.map(attendance_to_day))
+        .map_err(clock_out_repository_error)
     }
 
     async fn has_active_break(&self, attendance_id: &str) -> Result<bool, ClockOutError> {
@@ -501,6 +536,66 @@ async fn find_attendance_by_user_and_date(
     .bind(date)
     .fetch_optional(pool)
     .await
+}
+
+async fn find_attendance_for_clock_out(
+    pool: &PgPool,
+    user_id: &str,
+    requested_work_date: Option<NaiveDate>,
+) -> Result<Option<AttendanceRow>, sqlx::Error> {
+    if let Some(work_date) = requested_work_date {
+        return find_attendance_by_user_and_date(pool, user_id, work_date).await;
+    }
+    sqlx::query_as::<_, AttendanceRow>(&format!(
+        "SELECT {} FROM attendance \
+         WHERE user_id = $1 AND clock_in_time IS NOT NULL AND clock_out_time IS NULL \
+         ORDER BY date DESC, clock_in_time DESC LIMIT 1",
+        ATTENDANCE_COLUMNS
+    ))
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn lock_resolved_workday(
+    transaction: &mut sqlx::Transaction<'_, Postgres>,
+    resolved_workday_id: &str,
+    user_id: &str,
+    work_date: NaiveDate,
+    locked_at: DateTime<Utc>,
+) -> Result<Uuid, sqlx::Error> {
+    let resolved_workday_id = Uuid::parse_str(resolved_workday_id)
+        .map_err(|_| sqlx::Error::Protocol("invalid resolved_workday_id".to_string()))?;
+    let result = sqlx::query(
+        "UPDATE resolved_workdays SET locked_at = $4 \
+         WHERE id = $1 AND user_id = $2 AND work_date = $3 AND locked_at IS NULL",
+    )
+    .bind(resolved_workday_id)
+    .bind(user_id)
+    .bind(work_date)
+    .bind(locked_at)
+    .execute(&mut **transaction)
+    .await?;
+    if result.rows_affected() == 1 {
+        return Ok(resolved_workday_id);
+    }
+
+    let already_locked: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM resolved_workdays \
+         WHERE id = $1 AND user_id = $2 AND work_date = $3 AND locked_at IS NOT NULL)",
+    )
+    .bind(resolved_workday_id)
+    .bind(user_id)
+    .bind(work_date)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if already_locked {
+        Ok(resolved_workday_id)
+    } else {
+        Err(sqlx::Error::Protocol(
+            "resolved workday is unavailable for attendance".to_string(),
+        ))
+    }
 }
 
 async fn find_attendance_by_id(

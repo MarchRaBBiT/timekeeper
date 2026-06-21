@@ -4,13 +4,17 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use timekeeper_app::attendance::{ClockInError, ClockInWorkdayResolver};
 use timekeeper_app::work_schedules::{
     AssignmentTarget, NewResolvedWorkday, OrganizationHierarchy, PublicHolidayPolicy,
     ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday,
     ScheduleAssignment, ScheduleDayRule, ScheduleVersion, WorkScheduleSource,
     WorkdayHolidayCalendar, WorkdayOverride, WorkdayOverrideKind, WorkdayResolutionRepository,
 };
-use timekeeper_domain::work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval};
+use timekeeper_domain::{
+    work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval},
+    WorkDate,
+};
 
 #[derive(Default)]
 struct FakeRepository {
@@ -406,4 +410,115 @@ async fn returns_not_configured_without_creating_an_implicit_schedule() {
 
     assert_eq!(error, ResolveWorkdayError::WorkScheduleNotConfigured);
     assert!(saved.lock().expect("saved lock").is_empty());
+}
+
+#[tokio::test]
+async fn punch_before_workday_boundary_resolves_to_previous_work_date() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-org"),
+        );
+    configure_schedule(
+        &repository,
+        "schedule-org",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+    );
+    let resolver = resolver(repository, vec![], false);
+    let punch_time = NaiveDate::from_ymd_opt(2026, 7, 7)
+        .expect("date")
+        .and_hms_opt(2, 0, 0)
+        .expect("punch time");
+
+    let result = resolver
+        .resolve_for_punch("user-1", None, punch_time, resolved_at())
+        .await
+        .expect("previous work date");
+
+    assert_eq!(result.work_date.to_string(), "2026-07-06");
+}
+
+#[tokio::test]
+async fn explicit_punch_work_date_bypasses_boundary_derivation() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-org"),
+        );
+    configure_schedule(
+        &repository,
+        "schedule-org",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+    );
+    let resolver = resolver(repository, vec![], false);
+    let punch_time = NaiveDate::from_ymd_opt(2026, 7, 7)
+        .expect("date")
+        .and_hms_opt(2, 0, 0)
+        .expect("punch time");
+
+    let result = resolver
+        .resolve_for_punch(
+            "user-1",
+            Some(WorkDate::from_ymd(2026, 7, 7).expect("work date")),
+            punch_time,
+            resolved_at(),
+        )
+        .await
+        .expect("explicit work date");
+
+    assert_eq!(result.work_date.to_string(), "2026-07-07");
+}
+
+#[tokio::test]
+async fn punch_after_workday_boundary_uses_current_work_date() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-org"),
+        );
+    configure_schedule(
+        &repository,
+        "schedule-org",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+    );
+    let resolver = resolver(repository, vec![], false);
+    let punch_time = NaiveDate::from_ymd_opt(2026, 7, 7)
+        .expect("date")
+        .and_hms_opt(9, 0, 0)
+        .expect("punch time");
+
+    let result = resolver
+        .resolve_for_punch("user-1", None, punch_time, resolved_at())
+        .await
+        .expect("current work date");
+
+    assert_eq!(result.work_date.to_string(), "2026-07-07");
+}
+
+#[tokio::test]
+async fn punch_without_any_schedule_returns_not_configured() {
+    let resolver = resolver(FakeRepository::default(), vec![], false);
+    let punch_time = NaiveDate::from_ymd_opt(2026, 7, 7)
+        .expect("date")
+        .and_hms_opt(9, 0, 0)
+        .expect("punch time");
+
+    let error = resolver
+        .resolve_for_punch("user-1", None, punch_time, resolved_at())
+        .await
+        .expect_err("missing schedule");
+
+    assert!(matches!(error, ClockInError::WorkScheduleNotConfigured));
 }

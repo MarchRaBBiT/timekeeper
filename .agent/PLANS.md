@@ -21,6 +21,10 @@
 
 **完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-resolve-workday.md`](../docs/exec-plans/active/EP-20260621-resolve-workday.md)
 
+# EP-20260621-connect-punches-to-workdays
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-connect-punches-to-workdays.md`](../docs/exec-plans/active/EP-20260621-connect-punches-to-workdays.md)
+
 # EP-20260610-rebuild-architecture-harness
 
 **完了済み (b958562)** — 詳細: [`docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md)

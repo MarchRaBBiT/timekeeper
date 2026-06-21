@@ -1,6 +1,6 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 1 management model/API and daily workday resolver implemented; attendance integration pending
+**Status:** Phase 1 management model/API, daily resolver, and attendance integration implemented
 
 **Updated:** 2026-06-21
 
@@ -10,8 +10,10 @@
 
 2026-06-21時点で、勤務体系マスタ、draft/published版、曜日別勤務区間・予定休憩、
 全社・部署・従業員への期間付き割り当て、管理API、および`ResolveWorkday`と
-`ResolvedWorkday` projectionを実装済み。日別例外はresolverからの読み取りまで対応した。
-日別例外の管理API、予定一覧API、打刻との接続、frontend管理画面は後続フェーズで実装する。
+`ResolvedWorkday` projection、および出退勤打刻との接続を実装済み。最初の出勤でprojectionを
+固定し、attendanceから不変snapshotを参照する。祝日・予定非勤務日の打刻も保存し、
+`is_unscheduled_work`で識別する。日別例外はresolverからの読み取りまで対応した。
+日別例外の管理API、予定一覧API、anomaly管理、frontend管理画面は後続フェーズで実装する。
 
 ## Decision Summary
 

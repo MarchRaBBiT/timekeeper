@@ -6,7 +6,6 @@ use chrono::{Datelike, Duration, Months, NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
-use std::sync::Arc;
 use timekeeper_app::attendance::{
     AttendanceStatus as AppAttendanceStatus, AttendanceStatusError,
     AttendanceStatusQuery as AppAttendanceStatusQuery, BreakEnd as BreakEndUseCase,
@@ -20,15 +19,16 @@ use timekeeper_app::attendance::{
     GetBreaksByAttendanceQuery as AppGetBreaksByAttendanceQuery,
     GetUserAttendanceSummary as GetUserAttendanceSummaryUseCase,
     GetUserAttendanceSummaryQuery as AppGetUserAttendanceSummaryQuery,
-    HolidayCalendar as ClockInHolidayCalendar, HolidayDecision as AppHolidayDecision,
     ListUserAttendance as ListUserAttendanceUseCase,
     ListUserAttendanceError as AppListUserAttendanceError,
     ListUserAttendanceQuery as AppListUserAttendanceQuery, StartBreak as StartBreakUseCase,
-    StartBreakCommand as AppStartBreakCommand, StartBreakError, WorkdayCalendar,
+    StartBreakCommand as AppStartBreakCommand, StartBreakError,
 };
+use timekeeper_app::work_schedules::ResolveWorkday;
 use timekeeper_contract::attendance::AttendanceStatusResponse;
 use timekeeper_domain::WorkDate;
 use timekeeper_infra_postgres::attendance::AttendanceWorkflowRepository;
+use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::AppError;
@@ -43,7 +43,6 @@ use crate::{
         break_record::BreakRecordResponse,
         user::User,
     },
-    services::holiday::HolidayServiceTrait,
     utils::{csv::render_user_attendance_export_csv, time},
 };
 
@@ -59,54 +58,6 @@ pub struct AttendanceQuery {
 pub struct AttendanceExportQuery {
     pub from: Option<NaiveDate>,
     pub to: Option<NaiveDate>,
-}
-
-struct BackendClockInHolidayCalendar<'a> {
-    service: &'a dyn HolidayServiceTrait,
-}
-
-#[async_trait::async_trait]
-impl ClockInHolidayCalendar for BackendClockInHolidayCalendar<'_> {
-    async fn decision_for(
-        &self,
-        user_id: &str,
-        work_date: WorkDate,
-    ) -> Result<AppHolidayDecision, ClockInError> {
-        let decision = self
-            .service
-            .is_holiday(work_date.as_naive_date(), Some(user_id))
-            .await
-            .map_err(|error| ClockInError::HolidayCalendar(error.to_string()))?;
-        if decision.is_holiday {
-            Ok(AppHolidayDecision::Holiday {
-                reason: decision.reason.label().to_string(),
-            })
-        } else {
-            Ok(AppHolidayDecision::WorkingDay)
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl WorkdayCalendar<ClockOutError> for BackendClockInHolidayCalendar<'_> {
-    async fn decision_for(
-        &self,
-        user_id: &str,
-        work_date: WorkDate,
-    ) -> Result<AppHolidayDecision, ClockOutError> {
-        let decision = self
-            .service
-            .is_holiday(work_date.as_naive_date(), Some(user_id))
-            .await
-            .map_err(|error| ClockOutError::HolidayCalendar(error.to_string()))?;
-        if decision.is_holiday {
-            Ok(AppHolidayDecision::Holiday {
-                reason: decision.reason.label().to_string(),
-            })
-        } else {
-            Ok(AppHolidayDecision::WorkingDay)
-        }
-    }
 }
 
 fn break_period_to_response(period: UseCaseBreakPeriod) -> BreakRecordResponse {
@@ -163,11 +114,11 @@ fn attendance_status_to_response(status: AppAttendanceStatus) -> AttendanceStatu
 fn clock_in_error_to_app_error(error: ClockInError) -> AppError {
     match error {
         ClockInError::AlreadyClockedIn => AppError::BadRequest("Already clocked in today".into()),
-        ClockInError::Holiday { work_date, reason } => AppError::Forbidden(format!(
-            "{} is a {}. Submit an overtime request before clocking in/out.",
-            work_date, reason
-        )),
-        ClockInError::Repository(message) | ClockInError::HolidayCalendar(message) => {
+        ClockInError::WorkScheduleNotConfigured => AppError::UnprocessableEntityWithCode {
+            message: "Work schedule is not configured for the requested day".to_string(),
+            code: "WORK_SCHEDULE_NOT_CONFIGURED".to_string(),
+        },
+        ClockInError::Repository(message) | ClockInError::WorkdayResolution(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }
     }
@@ -187,11 +138,7 @@ fn clock_out_error_to_app_error(error: ClockOutError) -> AppError {
         ClockOutError::ActiveBreakInProgress => {
             AppError::BadRequest("Break in progress. End break before clocking out".into())
         }
-        ClockOutError::Holiday { work_date, reason } => AppError::Forbidden(format!(
-            "{} is a {}. Submit an overtime request before clocking in/out.",
-            work_date, reason
-        )),
-        ClockOutError::Repository(message) | ClockOutError::HolidayCalendar(message) => {
+        ClockOutError::Repository(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }
     }
@@ -260,7 +207,6 @@ fn list_user_attendance_error_to_app_error(error: AppListUserAttendanceError) ->
 pub async fn clock_in(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockInRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id;
@@ -268,29 +214,35 @@ pub async fn clock_in(
     let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
-    let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_in_time = now_local.naive_local();
-    let work_date = WorkDate::from_naive_date(date);
+    let resolver_repository = WorkdayResolverPostgresRepository::new(state.write_pool.clone());
+    let workday_resolver = ResolveWorkday::new(
+        resolver_repository.clone(),
+        resolver_repository.clone(),
+        resolver_repository,
+    );
 
     let use_case = ClockInUseCase::new(
         AttendanceWorkflowRepository::new(state.write_pool.clone()),
-        BackendClockInHolidayCalendar {
-            service: holiday_service.as_ref(),
-        },
+        workday_resolver,
     );
-    use_case
+    let attendance_day = use_case
         .execute(AppClockInCommand {
             user_id: user_id.to_string(),
-            work_date,
+            requested_work_date: payload.date.map(WorkDate::from_naive_date),
             clock_in_time,
             recorded_at: now_utc,
         })
         .await
         .map_err(clock_in_error_to_app_error)?;
 
-    let attendance = fetch_attendance_by_user_date(&state.write_pool, user_id, date)
-        .await?
-        .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-in not persisted")))?;
+    let attendance = fetch_attendance_by_user_date(
+        &state.write_pool,
+        user_id,
+        attendance_day.work_date.as_naive_date(),
+    )
+    .await?
+    .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-in not persisted")))?;
 
     let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
@@ -301,7 +253,6 @@ pub async fn clock_in(
 pub async fn clock_out(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
-    Extension(holiday_service): Extension<Arc<dyn HolidayServiceTrait>>,
     Json(payload): Json<ClockOutRequest>,
 ) -> Result<Json<AttendanceResponse>, AppError> {
     let user_id = user.id;
@@ -309,29 +260,27 @@ pub async fn clock_out(
     let tz = &state.config.time_zone;
     let now_local = time::now_in_timezone(tz);
     let now_utc = now_local.with_timezone(&Utc);
-    let date = payload.date.unwrap_or_else(|| now_local.date_naive());
     let clock_out_time = now_local.naive_local();
-    let work_date = WorkDate::from_naive_date(date);
 
-    let use_case = ClockOutUseCase::new(
-        AttendanceWorkflowRepository::new(state.write_pool.clone()),
-        BackendClockInHolidayCalendar {
-            service: holiday_service.as_ref(),
-        },
-    );
-    use_case
+    let use_case =
+        ClockOutUseCase::new(AttendanceWorkflowRepository::new(state.write_pool.clone()));
+    let attendance_day = use_case
         .execute(AppClockOutCommand {
             user_id: user_id.to_string(),
-            work_date,
+            requested_work_date: payload.date.map(WorkDate::from_naive_date),
             clock_out_time,
             recorded_at: now_utc,
         })
         .await
         .map_err(clock_out_error_to_app_error)?;
 
-    let attendance = fetch_attendance_by_user_date(&state.write_pool, user_id, date)
-        .await?
-        .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-out not persisted")))?;
+    let attendance = fetch_attendance_by_user_date(
+        &state.write_pool,
+        user_id,
+        attendance_day.work_date.as_naive_date(),
+    )
+    .await?
+    .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("clock-out not persisted")))?;
     let break_records = get_break_records(&state.write_pool, attendance.id).await?;
     let response = build_attendance_response(attendance, break_records);
 
@@ -615,34 +564,11 @@ fn parse_break_record_id(value: &str) -> Result<BreakRecordId, AppError> {
 }
 
 #[cfg(test)]
-async fn reject_if_holiday(
-    holiday_service: &dyn HolidayServiceTrait,
-    date: NaiveDate,
-    user_id: crate::types::UserId,
-) -> Result<(), AppError> {
-    let decision = holiday_service
-        .is_holiday(date, Some(&user_id.to_string()))
-        .await?;
-
-    if decision.is_holiday {
-        let reason = decision.reason.label();
-        return Err(AppError::Forbidden(format!(
-            "{} is a {}. Submit an overtime request before clocking in/out.",
-            date, reason
-        )));
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::holiday::{HolidayCalendarEntry, HolidayDecision, HolidayReason};
     use crate::types::{AttendanceId, UserId};
     use chrono::NaiveDate;
     use sqlx::postgres::PgPoolOptions;
-    use std::sync::Arc;
 
     #[test]
     fn test_attendance_query_default_values() {
@@ -743,64 +669,6 @@ mod tests {
         assert_eq!(summary.total_work_hours, 160.5);
         assert_eq!(summary.total_work_days, 20);
         assert_eq!(summary.average_daily_hours, 8.0);
-    }
-
-    struct FixedHolidayService {
-        decision: HolidayDecision,
-    }
-
-    #[async_trait::async_trait]
-    impl crate::services::holiday::HolidayServiceTrait for FixedHolidayService {
-        async fn is_holiday(
-            &self,
-            _date: NaiveDate,
-            _user_id: Option<&str>,
-        ) -> sqlx::Result<HolidayDecision> {
-            Ok(self.decision.clone())
-        }
-
-        async fn list_month(
-            &self,
-            _year: i32,
-            _month: u32,
-            _user_id: Option<&str>,
-        ) -> sqlx::Result<Vec<HolidayCalendarEntry>> {
-            Ok(Vec::new())
-        }
-    }
-
-    #[tokio::test]
-    async fn reject_if_holiday_allows_working_day() {
-        let service = Arc::new(FixedHolidayService {
-            decision: HolidayDecision {
-                is_holiday: false,
-                reason: HolidayReason::None,
-            },
-        });
-        let date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
-        let user_id = UserId::new();
-
-        let result = reject_if_holiday(service.as_ref(), date, user_id).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn reject_if_holiday_rejects_holiday_with_reason() {
-        let service = Arc::new(FixedHolidayService {
-            decision: HolidayDecision {
-                is_holiday: true,
-                reason: HolidayReason::PublicHoliday,
-            },
-        });
-        let date = NaiveDate::from_ymd_opt(2026, 2, 11).expect("date");
-        let user_id = UserId::new();
-
-        let result = reject_if_holiday(service.as_ref(), date, user_id).await;
-        let err = result.expect_err("holiday should be rejected");
-        match err {
-            AppError::Forbidden(message) => assert!(message.contains("public holiday")),
-            other => panic!("unexpected error: {other:?}"),
-        }
     }
 
     #[test]

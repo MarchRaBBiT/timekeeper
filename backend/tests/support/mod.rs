@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use chrono::{Datelike, Duration as ChronoDuration, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime};
 use chrono_tz::Asia::Tokyo;
 use ctor::{ctor, dtor};
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -317,6 +317,88 @@ async fn insert_user_with_password_hash(
 
 pub async fn seed_user(pool: &PgPool, role: UserRole, is_system_admin: bool) -> User {
     insert_user_with_password_hash(pool, role, is_system_admin, "hash".into()).await
+}
+
+pub async fn seed_work_schedule_for_user(
+    pool: &PgPool,
+    user_id: UserId,
+    public_holiday_policy: &str,
+) -> (Uuid, Uuid) {
+    let schedule_id = Uuid::new_v4();
+    let version_id = Uuid::new_v4();
+    let user_id = user_id.to_string();
+    sqlx::query("INSERT INTO work_schedules (id, code, name, created_by) VALUES ($1, $2, $3, $4)")
+        .bind(schedule_id)
+        .bind(format!("test-schedule-{schedule_id}"))
+        .bind("Test work schedule")
+        .bind(&user_id)
+        .execute(pool)
+        .await
+        .expect("insert work schedule");
+    sqlx::query(
+        "INSERT INTO work_schedule_versions \
+         (id, work_schedule_id, version_number, status, effective_from, timezone, \
+          workday_boundary, public_holiday_policy, published_by, published_at) \
+         VALUES ($1, $2, 1, 'published', $3, 'Asia/Tokyo', $4, $5, $6, NOW())",
+    )
+    .bind(version_id)
+    .bind(schedule_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("effective date"))
+    .bind(NaiveTime::from_hms_opt(5, 0, 0).expect("boundary"))
+    .bind(public_holiday_policy)
+    .bind(&user_id)
+    .execute(pool)
+    .await
+    .expect("insert work schedule version");
+    for weekday in 1_i16..=7 {
+        let day_rule_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO work_schedule_day_rules \
+             (id, version_id, weekday, day_kind, expected_work_minutes) \
+             VALUES ($1, $2, $3, 'working_day', 480)",
+        )
+        .bind(day_rule_id)
+        .bind(version_id)
+        .bind(weekday)
+        .execute(pool)
+        .await
+        .expect("insert work schedule day rule");
+        sqlx::query(
+            "INSERT INTO work_schedule_work_intervals \
+             (day_rule_id, sequence, start_time, start_day_offset, end_time, end_day_offset) \
+             VALUES ($1, 1, $2, 0, $3, 0)",
+        )
+        .bind(day_rule_id)
+        .bind(NaiveTime::from_hms_opt(9, 0, 0).expect("start time"))
+        .bind(NaiveTime::from_hms_opt(18, 0, 0).expect("end time"))
+        .execute(pool)
+        .await
+        .expect("insert work interval");
+        sqlx::query(
+            "INSERT INTO work_schedule_planned_breaks \
+             (day_rule_id, sequence, start_time, start_day_offset, end_time, end_day_offset) \
+             VALUES ($1, 1, $2, 0, $3, 0)",
+        )
+        .bind(day_rule_id)
+        .bind(NaiveTime::from_hms_opt(12, 0, 0).expect("break start"))
+        .bind(NaiveTime::from_hms_opt(13, 0, 0).expect("break end"))
+        .execute(pool)
+        .await
+        .expect("insert planned break");
+    }
+    sqlx::query(
+        "INSERT INTO work_schedule_assignments \
+         (id, work_schedule_id, user_id, is_org_default, valid_from, created_by) \
+         VALUES ($1, $2, $3, FALSE, $4, $3)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(schedule_id)
+    .bind(&user_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("valid from"))
+    .execute(pool)
+    .await
+    .expect("insert work schedule assignment");
+    (schedule_id, version_id)
 }
 
 pub async fn seed_user_with_password(

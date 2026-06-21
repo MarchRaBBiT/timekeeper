@@ -6,12 +6,12 @@ pub mod attendance {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
     use thiserror::Error;
-    use timekeeper_domain::WorkDate;
+    use timekeeper_domain::{work_schedules::ResolvedDayKind, WorkDate};
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct ClockInCommand {
         pub user_id: String,
-        pub work_date: WorkDate,
+        pub requested_work_date: Option<WorkDate>,
         pub clock_in_time: NaiveDateTime,
         pub recorded_at: DateTime<Utc>,
     }
@@ -19,7 +19,7 @@ pub mod attendance {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct ClockOutCommand {
         pub user_id: String,
-        pub work_date: WorkDate,
+        pub requested_work_date: Option<WorkDate>,
         pub clock_out_time: NaiveDateTime,
         pub recorded_at: DateTime<Utc>,
     }
@@ -409,6 +409,7 @@ pub mod attendance {
     pub struct NewClockIn {
         pub user_id: String,
         pub work_date: WorkDate,
+        pub resolved_workday_id: String,
         pub clock_in_time: NaiveDateTime,
         pub recorded_at: DateTime<Utc>,
     }
@@ -418,6 +419,7 @@ pub mod attendance {
         pub attendance_id: String,
         pub user_id: String,
         pub work_date: WorkDate,
+        pub resolved_workday_id: String,
         pub clock_in_time: NaiveDateTime,
         pub clock_out_time: Option<NaiveDateTime>,
         pub recorded_at: DateTime<Utc>,
@@ -461,21 +463,22 @@ pub mod attendance {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum HolidayDecision {
-        WorkingDay,
-        Holiday { reason: String },
+    pub struct ClockInWorkday {
+        pub resolved_workday_id: String,
+        pub work_date: WorkDate,
+        pub day_kind: ResolvedDayKind,
     }
 
     #[derive(Debug, Error)]
     pub enum ClockInError {
         #[error("already clocked in")]
         AlreadyClockedIn,
-        #[error("clock-in rejected for holiday on {work_date}: {reason}")]
-        Holiday { work_date: WorkDate, reason: String },
+        #[error("work schedule is not configured")]
+        WorkScheduleNotConfigured,
         #[error("attendance repository error: {0}")]
         Repository(String),
-        #[error("holiday calendar error: {0}")]
-        HolidayCalendar(String),
+        #[error("workday resolution error: {0}")]
+        WorkdayResolution(String),
     }
 
     #[derive(Debug, Error)]
@@ -488,12 +491,8 @@ pub mod attendance {
         AlreadyClockedOut,
         #[error("break in progress")]
         ActiveBreakInProgress,
-        #[error("clock-out rejected for holiday on {work_date}: {reason}")]
-        Holiday { work_date: WorkDate, reason: String },
         #[error("attendance repository error: {0}")]
         Repository(String),
-        #[error("holiday calendar error: {0}")]
-        HolidayCalendar(String),
     }
 
     #[derive(Debug, Error)]
@@ -655,29 +654,137 @@ pub mod attendance {
     }
 
     #[async_trait]
-    pub trait HolidayCalendar: Send + Sync {
-        async fn decision_for(
+    pub trait ClockInWorkdayResolver: Send + Sync {
+        async fn resolve_for_punch(
             &self,
             user_id: &str,
-            work_date: WorkDate,
-        ) -> Result<HolidayDecision, ClockInError>;
+            requested_work_date: Option<WorkDate>,
+            punch_time: NaiveDateTime,
+            resolved_at: DateTime<Utc>,
+        ) -> Result<ClockInWorkday, ClockInError>;
     }
 
     #[async_trait]
-    pub trait WorkdayCalendar<E>: Send + Sync {
-        async fn decision_for(
+    impl<R, O, H> ClockInWorkdayResolver for crate::work_schedules::ResolveWorkday<R, O, H>
+    where
+        R: crate::work_schedules::WorkdayResolutionRepository,
+        O: crate::work_schedules::OrganizationHierarchy,
+        H: crate::work_schedules::WorkdayHolidayCalendar,
+    {
+        async fn resolve_for_punch(
+            &self,
+            user_id: &str,
+            requested_work_date: Option<WorkDate>,
+            punch_time: NaiveDateTime,
+            resolved_at: DateTime<Utc>,
+        ) -> Result<ClockInWorkday, ClockInError> {
+            if let Some(work_date) = requested_work_date {
+                return self
+                    .resolve_clock_in_workday(user_id, work_date, resolved_at)
+                    .await
+                    .map(ClockInWorkday::from);
+            }
+
+            let current_work_date = WorkDate::from_naive_date(punch_time.date());
+            let current = self
+                .resolve_clock_in_workday(user_id, current_work_date, resolved_at)
+                .await;
+            match current {
+                Ok(workday) if punch_time.time() >= workday.workday_boundary => Ok(workday.into()),
+                Ok(workday) => {
+                    let Some(previous_date) = punch_time.date().pred_opt() else {
+                        return Ok(workday.into());
+                    };
+                    match self
+                        .resolve_clock_in_workday(
+                            user_id,
+                            WorkDate::from_naive_date(previous_date),
+                            resolved_at,
+                        )
+                        .await
+                    {
+                        Ok(previous) if punch_time.time() < previous.workday_boundary => {
+                            Ok(previous.into())
+                        }
+                        Ok(_) => Ok(workday.into()),
+                        Err(ClockInError::WorkScheduleNotConfigured) => {
+                            Err(ClockInError::WorkScheduleNotConfigured)
+                        }
+                        Err(error) => Err(error),
+                    }
+                }
+                Err(ClockInError::WorkScheduleNotConfigured) => {
+                    let previous_date = punch_time
+                        .date()
+                        .pred_opt()
+                        .ok_or(ClockInError::WorkScheduleNotConfigured)?;
+                    let previous = self
+                        .resolve_clock_in_workday(
+                            user_id,
+                            WorkDate::from_naive_date(previous_date),
+                            resolved_at,
+                        )
+                        .await?;
+                    if punch_time.time() < previous.workday_boundary {
+                        Ok(previous.into())
+                    } else {
+                        Err(ClockInError::WorkScheduleNotConfigured)
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        }
+    }
+
+    impl<R, O, H> crate::work_schedules::ResolveWorkday<R, O, H>
+    where
+        R: crate::work_schedules::WorkdayResolutionRepository,
+        O: crate::work_schedules::OrganizationHierarchy,
+        H: crate::work_schedules::WorkdayHolidayCalendar,
+    {
+        async fn resolve_clock_in_workday(
             &self,
             user_id: &str,
             work_date: WorkDate,
-        ) -> Result<HolidayDecision, E>;
+            resolved_at: DateTime<Utc>,
+        ) -> Result<crate::work_schedules::ResolvedWorkday, ClockInError> {
+            self.execute(crate::work_schedules::ResolveWorkdayCommand {
+                user_id: user_id.to_string(),
+                work_date: work_date.as_naive_date(),
+                resolved_at,
+            })
+            .await
+            .map_err(map_resolve_workday_error)
+        }
+    }
+
+    impl From<crate::work_schedules::ResolvedWorkday> for ClockInWorkday {
+        fn from(workday: crate::work_schedules::ResolvedWorkday) -> Self {
+            Self {
+                resolved_workday_id: workday.id,
+                work_date: WorkDate::from_naive_date(workday.work_date),
+                day_kind: workday.day_kind,
+            }
+        }
+    }
+
+    fn map_resolve_workday_error(
+        error: crate::work_schedules::ResolveWorkdayError,
+    ) -> ClockInError {
+        match error {
+            crate::work_schedules::ResolveWorkdayError::WorkScheduleNotConfigured => {
+                ClockInError::WorkScheduleNotConfigured
+            }
+            other => ClockInError::WorkdayResolution(other.to_string()),
+        }
     }
 
     #[async_trait]
     pub trait ClockOutRepository: Send + Sync {
-        async fn find_by_user_and_date(
+        async fn find_for_clock_out(
             &self,
             user_id: &str,
-            work_date: WorkDate,
+            requested_work_date: Option<WorkDate>,
         ) -> Result<Option<AttendanceDay>, ClockOutError>;
 
         async fn has_active_break(&self, attendance_id: &str) -> Result<bool, ClockOutError>;
@@ -915,15 +1022,14 @@ pub mod attendance {
     }
 
     #[derive(Debug, Clone)]
-    pub struct ClockIn<R, H> {
+    pub struct ClockIn<R, W> {
         repository: R,
-        holiday_calendar: H,
+        workday_resolver: W,
     }
 
     #[derive(Debug, Clone)]
-    pub struct ClockOut<R, H> {
+    pub struct ClockOut<R> {
         repository: R,
-        holiday_calendar: H,
     }
 
     #[derive(Debug, Clone)]
@@ -1021,15 +1127,15 @@ pub mod attendance {
         repository: R,
     }
 
-    impl<R, H> ClockIn<R, H>
+    impl<R, W> ClockIn<R, W>
     where
         R: AttendanceRepository,
-        H: HolidayCalendar,
+        W: ClockInWorkdayResolver,
     {
-        pub fn new(repository: R, holiday_calendar: H) -> Self {
+        pub fn new(repository: R, workday_resolver: W) -> Self {
             Self {
                 repository,
-                holiday_calendar,
+                workday_resolver,
             }
         }
 
@@ -1041,23 +1147,19 @@ pub mod attendance {
             &self,
             command: ClockInCommand,
         ) -> Result<AttendanceDay, ClockInError> {
-            match self
-                .holiday_calendar
-                .decision_for(&command.user_id, command.work_date)
-                .await?
-            {
-                HolidayDecision::WorkingDay => {}
-                HolidayDecision::Holiday { reason } => {
-                    return Err(ClockInError::Holiday {
-                        work_date: command.work_date,
-                        reason,
-                    })
-                }
-            }
+            let workday = self
+                .workday_resolver
+                .resolve_for_punch(
+                    &command.user_id,
+                    command.requested_work_date,
+                    command.clock_in_time,
+                    command.recorded_at,
+                )
+                .await?;
 
             let existing = self
                 .repository
-                .find_by_user_and_date(&command.user_id, command.work_date)
+                .find_by_user_and_date(&command.user_id, workday.work_date)
                 .await?;
 
             match existing {
@@ -1067,7 +1169,8 @@ pub mod attendance {
                         .update_clock_in(ExistingClockIn {
                             attendance_id: day.attendance_id,
                             user_id: command.user_id,
-                            work_date: command.work_date,
+                            work_date: workday.work_date,
+                            resolved_workday_id: workday.resolved_workday_id,
                             clock_in_time: command.clock_in_time,
                             clock_out_time: day.clock_out_time,
                             recorded_at: command.recorded_at,
@@ -1078,7 +1181,8 @@ pub mod attendance {
                     self.repository
                         .create_clock_in(NewClockIn {
                             user_id: command.user_id,
-                            work_date: command.work_date,
+                            work_date: workday.work_date,
+                            resolved_workday_id: workday.resolved_workday_id,
                             clock_in_time: command.clock_in_time,
                             recorded_at: command.recorded_at,
                         })
@@ -1088,39 +1192,21 @@ pub mod attendance {
         }
     }
 
-    impl<R, H> ClockOut<R, H>
+    impl<R> ClockOut<R>
     where
         R: ClockOutRepository,
-        H: WorkdayCalendar<ClockOutError>,
     {
-        pub fn new(repository: R, holiday_calendar: H) -> Self {
-            Self {
-                repository,
-                holiday_calendar,
-            }
+        pub fn new(repository: R) -> Self {
+            Self { repository }
         }
 
         pub async fn execute(
             &self,
             command: ClockOutCommand,
         ) -> Result<AttendanceDay, ClockOutError> {
-            match self
-                .holiday_calendar
-                .decision_for(&command.user_id, command.work_date)
-                .await?
-            {
-                HolidayDecision::WorkingDay => {}
-                HolidayDecision::Holiday { reason } => {
-                    return Err(ClockOutError::Holiday {
-                        work_date: command.work_date,
-                        reason,
-                    })
-                }
-            }
-
             let day = self
                 .repository
-                .find_by_user_and_date(&command.user_id, command.work_date)
+                .find_for_clock_out(&command.user_id, command.requested_work_date)
                 .await?
                 .ok_or(ClockOutError::AttendanceNotFound)?;
 
@@ -1145,7 +1231,7 @@ pub mod attendance {
                 .update_clock_out(ExistingClockOut {
                     attendance_id: day.attendance_id,
                     user_id: command.user_id,
-                    work_date: command.work_date,
+                    work_date: day.work_date,
                     clock_in_time,
                     clock_out_time: command.clock_out_time,
                     total_work_hours,

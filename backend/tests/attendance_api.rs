@@ -5,24 +5,23 @@ use axum::{
 };
 use serde_json::json;
 use sqlx::PgPool;
-use std::sync::Arc;
 use timekeeper_backend::{
     handlers::attendance,
     models::{
         attendance::{ClockInRequest, ClockOutRequest},
         user::{User, UserRole},
     },
-    services::holiday::HolidayService,
     state::AppState,
     types::AttendanceId,
 };
 use tower::ServiceExt;
+use uuid::Uuid;
 
 mod support;
 
 use support::{
     create_test_token, seed_attendance, seed_break_record, seed_public_holiday, seed_user,
-    test_config, test_pool,
+    seed_work_schedule_for_user, test_config, test_pool,
 };
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
@@ -34,9 +33,7 @@ async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
-    let state = AppState::new(pool.clone(), None, None, None, test_config());
-    let holiday_service: Arc<dyn timekeeper_backend::services::holiday::HolidayServiceTrait> =
-        Arc::new(HolidayService::new(pool));
+    let state = AppState::new(pool, None, None, None, test_config());
 
     Router::new()
         .route(
@@ -76,8 +73,13 @@ fn test_router_with_state(pool: PgPool, user: User) -> Router {
             axum::routing::get(attendance::export_my_attendance),
         )
         .layer(Extension(user))
-        .layer(Extension(holiday_service))
         .with_state(state)
+}
+
+async fn seed_scheduled_employee(pool: &PgPool) -> User {
+    let employee = seed_user(pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(pool, employee.id, "non_working").await;
+    employee
 }
 
 #[tokio::test]
@@ -89,7 +91,7 @@ async fn test_clock_in_creates_attendance_record() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -116,7 +118,7 @@ async fn test_clock_in_with_specific_date() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -145,7 +147,7 @@ async fn test_clock_in_twice_returns_error() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -181,7 +183,7 @@ async fn test_clock_out_without_clock_in_returns_error() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -208,7 +210,7 @@ async fn test_clock_out_after_clock_in_succeeds() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -245,7 +247,7 @@ async fn test_start_break_without_clock_in_returns_error() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -274,7 +276,7 @@ async fn test_break_flow_works_correctly() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -338,7 +340,7 @@ async fn test_get_attendance_status_returns_correct_status() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -391,7 +393,7 @@ async fn test_get_my_summary_rejects_invalid_month() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
 
@@ -456,7 +458,7 @@ async fn test_export_my_attendance_rejects_invalid_range() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
 
@@ -478,7 +480,7 @@ async fn test_export_my_attendance_returns_csv_payload() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     let date = chrono::NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
     let clock_in =
         chrono::NaiveDateTime::parse_from_str("2026-02-04T09:00:00", "%Y-%m-%dT%H:%M:%S")
@@ -521,7 +523,7 @@ async fn test_get_my_attendance_returns_list() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -560,7 +562,7 @@ async fn test_clock_out_during_break_returns_error() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
 
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool.clone(), employee.clone());
@@ -615,7 +617,7 @@ async fn test_get_my_attendance_rejects_invalid_ranges_and_month() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool, employee);
 
@@ -644,7 +646,43 @@ async fn test_get_my_attendance_rejects_invalid_ranges_and_month() {
 }
 
 #[tokio::test]
-async fn test_clock_in_rejects_public_holiday_date() {
+async fn test_clock_in_without_work_schedule_returns_unprocessable_entity() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/attendance/clock-in")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Content-Type", "application/json")
+        .body(Body::from(json!({"date":"2026-02-11"}).to_string()))
+        .expect("build clock-in request");
+
+    let response = app.oneshot(request).await.expect("call clock-in");
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response body");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("error json");
+    assert_eq!(json["code"], "WORK_SCHEDULE_NOT_CONFIGURED");
+    let attendance_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM attendance WHERE user_id = $1")
+            .bind(employee.id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("attendance count");
+    assert_eq!(attendance_count, 0);
+}
+
+#[tokio::test]
+async fn test_clock_in_allows_public_holiday_and_locks_unscheduled_workday() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
     sqlx::migrate!("./migrations")
@@ -652,7 +690,7 @@ async fn test_clock_in_rejects_public_holiday_date() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     seed_public_holiday(
         &pool,
         chrono::NaiveDate::from_ymd_opt(2026, 2, 11).expect("valid date"),
@@ -661,7 +699,7 @@ async fn test_clock_in_rejects_public_holiday_date() {
     .await;
 
     let token = create_test_token(employee.id, employee.role.clone());
-    let app = test_router_with_state(pool, employee);
+    let app = test_router_with_state(pool.clone(), employee.clone());
 
     let request = Request::builder()
         .method("POST")
@@ -672,7 +710,20 @@ async fn test_clock_in_rejects_public_holiday_date() {
         .expect("build holiday clock-in request");
 
     let response = app.oneshot(request).await.expect("call holiday clock-in");
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::OK);
+    let persisted: (Option<Uuid>, bool, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        "SELECT a.resolved_workday_id, a.is_unscheduled_work, r.locked_at \
+         FROM attendance a LEFT JOIN resolved_workdays r ON r.id = a.resolved_workday_id \
+         WHERE a.user_id = $1 AND a.date = $2",
+    )
+    .bind(employee.id.to_string())
+    .bind(chrono::NaiveDate::from_ymd_opt(2026, 2, 11).expect("valid date"))
+    .fetch_one(&pool)
+    .await
+    .expect("linked attendance");
+    assert!(persisted.0.is_some());
+    assert!(persisted.1);
+    assert!(persisted.2.is_some());
 }
 
 #[tokio::test]
@@ -684,7 +735,7 @@ async fn test_break_start_twice_and_break_end_twice_return_bad_request() {
         .await
         .expect("run migrations");
 
-    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let employee = seed_scheduled_employee(&pool).await;
     let token = create_test_token(employee.id, employee.role.clone());
     let app = test_router_with_state(pool, employee);
 

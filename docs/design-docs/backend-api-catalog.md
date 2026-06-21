@@ -64,8 +64,8 @@
 
 | Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/api/attendance/clock-in` | `POST` | User | Body `ClockInRequest { date? }` | `200 AttendanceResponse` | `400` already clocked in, holiday 打刻不可, `500` persistence failure | 出勤打刻を行う |
-| `/api/attendance/clock-out` | `POST` | User | Body `ClockOutRequest { date? }` | `200 AttendanceResponse` | `404` 当日勤怠なし, `400` 未出勤 / 既に退勤 / 休憩中, holiday 打刻不可, `500` update failure | 退勤打刻を行い total_work_hours を再計算する |
+| `/api/attendance/clock-in` | `POST` | User | Body `ClockInRequest { date? }`; 省略時はtimezoneと日界時刻から勤務日を解決 | `200 AttendanceResponse` | `400` already clocked in, `422 WORK_SCHEDULE_NOT_CONFIGURED`, `500` resolver/persistence failure | 勤務予定を解決・固定して出勤打刻を保存する。祝日・非勤務日も予定外勤務として許可する |
+| `/api/attendance/clock-out` | `POST` | User | Body `ClockOutRequest { date? }`; 省略時は未退勤attendanceを使用 | `200 AttendanceResponse` | `404` 未退勤attendanceなし, `400` 未出勤 / 既に退勤 / 休憩中, `500` update failure | 出勤時と同じ勤務日snapshotを使って退勤し、total_work_hoursを再計算する |
 | `/api/attendance/break-start` | `POST` | User | Body `BreakStartRequest { attendance_id }` | `200 BreakRecordResponse` | `403` 他人の attendance, `400` 未出勤 / 既に休憩中, `404` attendance not found, `500` create failure | 休憩開始 |
 | `/api/attendance/break-end` | `POST` | User | Body `BreakEndRequest { break_record_id }` | `200 BreakRecordResponse` | `400` 既に終了済み, `403` 他人の attendance, `404` break not found, `500` update failure | 休憩終了 |
 | `/api/attendance/status` | `GET` | User | Query `date?` (`YYYY-MM-DD`) | `200 AttendanceStatusResponse { status, attendance_id?, active_break_id?, clock_in_time?, clock_out_time? }` | `500` lookup failure | 当日または指定日の打刻状態を返す |

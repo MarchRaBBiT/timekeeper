@@ -462,7 +462,12 @@ fn revoke_session_doc() {}
     post,
     path = "/api/attendance/clock-in",
     request_body = ClockInRequest,
-    responses((status = 200, body = AttendanceResponse)),
+    responses(
+        (status = 200, body = AttendanceResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
     tag = "Attendance"
 )]
 fn clock_in_doc() {}
@@ -471,7 +476,12 @@ fn clock_in_doc() {}
     post,
     path = "/api/attendance/clock-out",
     request_body = ClockOutRequest,
-    responses((status = 200, body = AttendanceResponse)),
+    responses(
+        (status = 200, body = AttendanceResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
     tag = "Attendance"
 )]
 fn clock_out_doc() {}

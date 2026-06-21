@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use timekeeper_app::attendance::{
     AttendanceDay, ClockOut, ClockOutCommand, ClockOutError, ClockOutRepository, ExistingClockOut,
-    HolidayDecision, WorkdayCalendar,
 };
 use timekeeper_domain::WorkDate;
 
@@ -17,10 +16,10 @@ struct RecordingClockOutRepository {
 
 #[async_trait::async_trait]
 impl ClockOutRepository for RecordingClockOutRepository {
-    async fn find_by_user_and_date(
+    async fn find_for_clock_out(
         &self,
         _user_id: &str,
-        _work_date: WorkDate,
+        _requested_work_date: Option<WorkDate>,
     ) -> Result<Option<AttendanceDay>, ClockOutError> {
         Ok(self.existing.lock().expect("existing lock").clone())
     }
@@ -51,35 +50,6 @@ impl ClockOutRepository for RecordingClockOutRepository {
     }
 }
 
-struct FixedWorkdayCalendar {
-    decision: HolidayDecision,
-}
-
-#[async_trait::async_trait]
-impl WorkdayCalendar<ClockOutError> for FixedWorkdayCalendar {
-    async fn decision_for(
-        &self,
-        _user_id: &str,
-        _work_date: WorkDate,
-    ) -> Result<HolidayDecision, ClockOutError> {
-        Ok(self.decision.clone())
-    }
-}
-
-fn working_day_calendar() -> FixedWorkdayCalendar {
-    FixedWorkdayCalendar {
-        decision: HolidayDecision::WorkingDay,
-    }
-}
-
-fn holiday_calendar() -> FixedWorkdayCalendar {
-    FixedWorkdayCalendar {
-        decision: HolidayDecision::Holiday {
-            reason: "public holiday".to_string(),
-        },
-    }
-}
-
 fn clock_in_time() -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 6, 12)
         .expect("date")
@@ -97,7 +67,7 @@ fn clock_out_time() -> NaiveDateTime {
 fn command() -> ClockOutCommand {
     ClockOutCommand {
         user_id: "user-1".to_string(),
-        work_date: WorkDate::from_ymd(2026, 6, 12).expect("valid work date"),
+        requested_work_date: Some(WorkDate::from_ymd(2026, 6, 12).expect("valid work date")),
         clock_out_time: clock_out_time(),
         recorded_at: DateTime::<Utc>::from_timestamp(1_781_283_600, 0).expect("recorded at"),
     }
@@ -107,7 +77,7 @@ fn clocked_in_day() -> AttendanceDay {
     AttendanceDay {
         attendance_id: "attendance-1".to_string(),
         user_id: "user-1".to_string(),
-        work_date: command().work_date,
+        work_date: command().requested_work_date.expect("work date"),
         clock_in_time: Some(clock_in_time()),
         clock_out_time: None,
     }
@@ -119,7 +89,7 @@ async fn clock_out_updates_existing_clocked_in_day_with_net_work_hours() {
     *repository.existing.lock().expect("existing lock") = Some(clocked_in_day());
     *repository.break_minutes.lock().expect("break minutes lock") = 60;
     let updated = Arc::clone(&repository.updated);
-    let use_case = ClockOut::new(repository, working_day_calendar());
+    let use_case = ClockOut::new(repository);
 
     let result = use_case
         .execute(command())
@@ -135,10 +105,7 @@ async fn clock_out_updates_existing_clocked_in_day_with_net_work_hours() {
 
 #[tokio::test]
 async fn clock_out_rejects_missing_attendance_record() {
-    let use_case = ClockOut::new(
-        RecordingClockOutRepository::default(),
-        working_day_calendar(),
-    );
+    let use_case = ClockOut::new(RecordingClockOutRepository::default());
 
     let error = use_case
         .execute(command())
@@ -155,7 +122,7 @@ async fn clock_out_rejects_missing_clock_in_time() {
         clock_in_time: None,
         ..clocked_in_day()
     });
-    let use_case = ClockOut::new(repository, working_day_calendar());
+    let use_case = ClockOut::new(repository);
 
     let error = use_case
         .execute(command())
@@ -172,7 +139,7 @@ async fn clock_out_rejects_duplicate_clock_out() {
         clock_out_time: Some(clock_out_time()),
         ..clocked_in_day()
     });
-    let use_case = ClockOut::new(repository, working_day_calendar());
+    let use_case = ClockOut::new(repository);
 
     let error = use_case
         .execute(command())
@@ -188,7 +155,7 @@ async fn clock_out_rejects_active_break_without_updating() {
     *repository.existing.lock().expect("existing lock") = Some(clocked_in_day());
     *repository.active_break.lock().expect("active break lock") = true;
     let updated = Arc::clone(&repository.updated);
-    let use_case = ClockOut::new(repository, working_day_calendar());
+    let use_case = ClockOut::new(repository);
 
     let error = use_case
         .execute(command())
@@ -200,13 +167,17 @@ async fn clock_out_rejects_active_break_without_updating() {
 }
 
 #[tokio::test]
-async fn clock_out_rejects_holidays_before_repository_lookup() {
-    let use_case = ClockOut::new(RecordingClockOutRepository::default(), holiday_calendar());
+async fn clock_out_without_requested_date_uses_the_open_attendance_workday() {
+    let repository = RecordingClockOutRepository::default();
+    *repository.existing.lock().expect("existing lock") = Some(clocked_in_day());
+    let use_case = ClockOut::new(repository);
+    let mut command = command();
+    command.requested_work_date = None;
 
-    let error = use_case
-        .execute(command())
+    let result = use_case
+        .execute(command)
         .await
-        .expect_err("holiday should fail");
+        .expect("open attendance is used");
 
-    assert!(matches!(error, ClockOutError::Holiday { .. }));
+    assert_eq!(result.work_date.to_string(), "2026-06-12");
 }
