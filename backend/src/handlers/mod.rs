@@ -10,3 +10,4 @@ pub mod holidays;
 pub mod requests;
 pub mod sessions;
 pub mod subject_requests;
+pub mod work_schedules;

@@ -156,6 +156,10 @@
 | `/api/admin/work-schedule-assignments` | `GET` | Manager+ | Query `work_schedule_id?`, `department_id?`, `user_id?`, `page?`, `per_page?` | `200 WorkScheduleAssignmentListResponse` | `400` invalid filter, `403` forbidden, `500` lookup failure | 期間付き割当一覧を取得する |
 | `/api/admin/work-schedule-assignments` | `POST` | System Admin | Body `WorkScheduleAssignmentRequest` | `201 WorkScheduleAssignmentResponse` + `Location` | `400` invalid target/range, `409 EFFECTIVE_PERIOD_OVERLAP` / `WORK_SCHEDULE_RETIRED` | 全社・部署・従業員への割当を作成する |
 | `/api/admin/work-schedule-assignments/{id}` | `DELETE` | System Admin | Path `id` | `204 No Content` | `400` invalid id, `403` forbidden, `404` not found | 割当を削除する |
+| `/api/work-schedules/me` | `GET` | User | Query `from`, `to` (必須, 最大366日) | `200 ResolvedWorkdayListResponse` | `400 INVALID_WORK_SCHEDULE` (範囲不正), `500` lookup failure | 認証ユーザー本人の解決済み勤務日を範囲取得する |
+| `/api/admin/users/{user_id}/resolved-workdays` | `GET` | Scoped Manager+ | Path `user_id`; Query `from`, `to` (必須) | `200 ResolvedWorkdayListResponse` | `400 INVALID_WORK_SCHEDULE`, `403` 部署スコープ外, `500` lookup failure | 配下ユーザーの解決済み勤務日を範囲取得する。System Admin は全ユーザー、Manager は配下のみ |
+| `/api/admin/users/{user_id}/workday-overrides/{date}` | `PUT` | Scoped Manager+ | Path `user_id`, `date` (YYYY-MM-DD); Body `SetWorkdayOverrideRequest { kind, work_schedule_id?, reason }` | `200 WorkdayOverrideResponse` | `400 INVALID_WORK_SCHEDULE` (kind/schedule不整合・reason不正), `403` 部署スコープ外, `409 RESOLVED_WORKDAY_LOCKED` | 日別例外をupsertする。`non_working_day` は schedule なし、`use_schedule` は schedule 必須 |
+| `/api/admin/users/{user_id}/workday-overrides/{date}` | `DELETE` | Scoped Manager+ | Path `user_id`, `date` (YYYY-MM-DD) | `204 No Content` | `400 INVALID_WORK_SCHEDULE`, `403` 部署スコープ外, `404` 例外なし, `409 RESOLVED_WORKDAY_LOCKED` | 未ロックの日別例外を削除する |
 
 ## Admin / System Admin User & Attendance Operations
 

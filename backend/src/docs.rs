@@ -54,12 +54,15 @@ use timekeeper_contract::attendance::{
 use timekeeper_contract::work_schedules::{
     AssignmentTarget, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest, DayKind,
     PlannedBreakInput, PlannedBreakResponse, PlannedWorkIntervalInput, PlannedWorkIntervalResponse,
-    PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest,
+    PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, ResolvedBreakResponse, ResolvedDayKind,
+    ResolvedWorkIntervalResponse, ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery,
+    ResolvedWorkdayResponse, SetWorkdayOverrideRequest, UpdateWorkScheduleRequest,
     WeekdayRuleInput, WeekdayRuleResponse, WorkScheduleAssignmentListQuery,
     WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
     WorkScheduleAssignmentResponse, WorkScheduleDetailResponse, WorkScheduleListQuery,
-    WorkScheduleListResponse, WorkScheduleResponse, WorkScheduleStatus,
+    WorkScheduleListResponse, WorkScheduleResponse, WorkScheduleSource, WorkScheduleStatus,
     WorkScheduleVersionResponse, WorkScheduleVersionStatus, WorkScheduleVersionSummary,
+    WorkdayOverrideKind, WorkdayOverrideResponse,
 };
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -175,7 +178,11 @@ struct RequestCancellationResponse {
         admin_publish_work_schedule_version_doc,
         admin_list_work_schedule_assignments_doc,
         admin_create_work_schedule_assignment_doc,
-        admin_delete_work_schedule_assignment_doc
+        admin_delete_work_schedule_assignment_doc,
+        work_schedules_me_doc,
+        admin_get_user_resolved_workdays_doc,
+        admin_set_workday_override_doc,
+        admin_delete_workday_override_doc
     ),
     components(
         schemas(
@@ -283,7 +290,16 @@ struct RequestCancellationResponse {
             AssignmentTarget,
             WorkScheduleAssignmentRequest,
             WorkScheduleAssignmentResponse,
-            WorkScheduleAssignmentListResponse
+            WorkScheduleAssignmentListResponse,
+            ResolvedDayKind,
+            WorkScheduleSource,
+            WorkdayOverrideKind,
+            ResolvedWorkIntervalResponse,
+            ResolvedBreakResponse,
+            ResolvedWorkdayResponse,
+            ResolvedWorkdayListResponse,
+            SetWorkdayOverrideRequest,
+            WorkdayOverrideResponse
         )
     ),
     modifiers(&SecuritySchemes),
@@ -1241,6 +1257,52 @@ fn admin_create_work_schedule_assignment_doc() {}
 )]
 fn admin_delete_work_schedule_assignment_doc() {}
 
+#[utoipa::path(
+    get,
+    path = "/api/work-schedules/me",
+    params(ResolvedWorkdayRangeQuery),
+    responses((status = 200, body = ResolvedWorkdayListResponse), (status = 400)),
+    tag = "Work Schedule"
+)]
+fn work_schedules_me_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/resolved-workdays",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        ResolvedWorkdayRangeQuery
+    ),
+    responses((status = 200, body = ResolvedWorkdayListResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_get_user_resolved_workdays_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/users/{user_id}/workday-overrides/{date}",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        ("date" = String, Path, description = "勤務日 (YYYY-MM-DD)")
+    ),
+    request_body = SetWorkdayOverrideRequest,
+    responses((status = 200, body = WorkdayOverrideResponse), (status = 400), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_set_workday_override_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/users/{user_id}/workday-overrides/{date}",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        ("date" = String, Path, description = "勤務日 (YYYY-MM-DD)")
+    ),
+    responses((status = 204), (status = 404), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_delete_workday_override_doc() {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1391,6 +1453,10 @@ mod tests {
             admin_list_work_schedule_assignments_doc,
             admin_create_work_schedule_assignment_doc,
             admin_delete_work_schedule_assignment_doc,
+            work_schedules_me_doc,
+            admin_get_user_resolved_workdays_doc,
+            admin_set_workday_override_doc,
+            admin_delete_workday_override_doc,
         ];
 
         for endpoint_doc in docs {

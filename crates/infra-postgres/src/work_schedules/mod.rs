@@ -1,3 +1,4 @@
+mod management;
 mod persistence;
 mod rows;
 

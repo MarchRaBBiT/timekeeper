@@ -243,3 +243,95 @@ pub struct WorkScheduleAssignmentListResponse {
     pub total: i64,
     pub items: Vec<WorkScheduleAssignmentResponse>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolvedDayKind {
+    ScheduledWorkday,
+    ScheduledNonWorkingDay,
+    PublicHoliday,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkScheduleSource {
+    Override,
+    User,
+    Department,
+    Organization,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkdayOverrideKind {
+    NonWorkingDay,
+    UseSchedule,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ResolvedWorkIntervalResponse {
+    pub start_time: NaiveTime,
+    pub start_day_offset: u8,
+    pub end_time: NaiveTime,
+    pub end_day_offset: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ResolvedBreakResponse {
+    pub start_time: NaiveTime,
+    pub start_day_offset: u8,
+    pub end_time: NaiveTime,
+    pub end_day_offset: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ResolvedWorkdayResponse {
+    pub id: String,
+    pub user_id: String,
+    pub work_date: NaiveDate,
+    pub work_schedule_id: String,
+    pub work_schedule_version_id: String,
+    pub source: WorkScheduleSource,
+    pub day_kind: ResolvedDayKind,
+    pub timezone: String,
+    pub workday_boundary: NaiveTime,
+    pub expected_work_minutes: i32,
+    pub work_intervals: Vec<ResolvedWorkIntervalResponse>,
+    pub planned_breaks: Vec<ResolvedBreakResponse>,
+    pub resolved_at: DateTime<Utc>,
+    pub locked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ResolvedWorkdayListResponse {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub items: Vec<ResolvedWorkdayResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, IntoParams)]
+pub struct ResolvedWorkdayRangeQuery {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct SetWorkdayOverrideRequest {
+    pub kind: WorkdayOverrideKind,
+    #[serde(default)]
+    pub work_schedule_id: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkdayOverrideResponse {
+    pub id: String,
+    pub user_id: String,
+    pub work_date: NaiveDate,
+    pub kind: WorkdayOverrideKind,
+    pub work_schedule_id: Option<String>,
+    pub reason: String,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

@@ -9,6 +9,7 @@ pub mod requests;
 pub mod sessions;
 pub mod users;
 pub mod work_schedules;
+pub mod workday_overrides;
 
 pub use attendance::*;
 pub use attendance_correction_requests::*;
@@ -23,6 +24,7 @@ pub use requests::*;
 pub use sessions::*;
 pub use users::*;
 pub use work_schedules::*;
+pub use workday_overrides::*;
 
 pub mod subject_requests;
 pub use subject_requests::*;

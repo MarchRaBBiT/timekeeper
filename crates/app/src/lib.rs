@@ -1,4 +1,6 @@
+pub mod user_workdays;
 pub mod work_schedules;
+pub mod workday_overrides;
 
 pub mod attendance {
     use std::collections::HashMap;

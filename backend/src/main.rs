@@ -285,6 +285,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
             "/api/holidays/month",
             get(handlers::holidays::list_month_holidays),
         )
+        .route(
+            "/api/work-schedules/me",
+            get(handlers::work_schedules::get_my_workdays),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
@@ -428,6 +432,15 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/work-schedule-assignments",
             get(handlers::admin::list_work_schedule_assignments),
+        )
+        .route(
+            "/api/admin/users/{user_id}/resolved-workdays",
+            get(handlers::admin::get_user_resolved_workdays),
+        )
+        .route(
+            "/api/admin/users/{user_id}/workday-overrides/{date}",
+            put(handlers::admin::set_workday_override)
+                .delete(handlers::admin::delete_workday_override),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),

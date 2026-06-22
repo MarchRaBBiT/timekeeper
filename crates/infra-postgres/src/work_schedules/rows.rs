@@ -4,6 +4,7 @@ use timekeeper_app::work_schedules::{
     PublicHolidayPolicy, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday, ScheduleAssignment,
     ScheduleDayRule, ScheduleVersion, WorkScheduleSource, WorkdayOverride, WorkdayOverrideKind,
 };
+use timekeeper_app::workday_overrides::{StoredWorkdayOverride, WorkdayOverrideError};
 use timekeeper_domain::work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval};
 use uuid::Uuid;
 
@@ -37,6 +38,47 @@ pub(super) struct OverrideRow {
     pub id: Uuid,
     pub kind: String,
     pub work_schedule_id: Option<Uuid>,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct OverrideRecordRow {
+    pub id: Uuid,
+    pub user_id: String,
+    pub work_date: NaiveDate,
+    pub kind: String,
+    pub work_schedule_id: Option<Uuid>,
+    pub reason: String,
+    pub created_by: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+fn override_kind(value: &str) -> Result<WorkdayOverrideKind, WorkdayOverrideError> {
+    match value {
+        "non_working_day" => Ok(WorkdayOverrideKind::NonWorkingDay),
+        "use_schedule" => Ok(WorkdayOverrideKind::UseSchedule),
+        other => Err(WorkdayOverrideError::Repository(format!(
+            "unknown workday override kind: {other}"
+        ))),
+    }
+}
+
+impl TryFrom<OverrideRecordRow> for StoredWorkdayOverride {
+    type Error = WorkdayOverrideError;
+
+    fn try_from(row: OverrideRecordRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.id.to_string(),
+            user_id: row.user_id,
+            work_date: row.work_date,
+            kind: override_kind(&row.kind)?,
+            work_schedule_id: row.work_schedule_id.map(|value| value.to_string()),
+            reason: row.reason,
+            created_by: row.created_by,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
 }
 
 #[derive(Debug, FromRow)]

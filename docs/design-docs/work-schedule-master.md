@@ -1,8 +1,8 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 1 management model/API, daily resolver, and attendance integration implemented
+**Status:** Phase 1 complete — management model/API, daily resolver, attendance integration, schedule read API, and workday-override management implemented
 
-**Updated:** 2026-06-21
+**Updated:** 2026-06-22
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
 
@@ -12,8 +12,12 @@
 全社・部署・従業員への期間付き割り当て、管理API、および`ResolveWorkday`と
 `ResolvedWorkday` projection、および出退勤打刻との接続を実装済み。最初の出勤でprojectionを
 固定し、attendanceから不変snapshotを参照する。祝日・予定非勤務日の打刻も保存し、
-`is_unscheduled_work`で識別する。日別例外はresolverからの読み取りまで対応した。
-日別例外の管理API、予定一覧API、anomaly管理、frontend管理画面は後続フェーズで実装する。
+`is_unscheduled_work`で識別する。
+2026-06-22に Phase 1 の残APIを実装し、従業員向け予定取得 (`GET /api/work-schedules/me`)、
+マネージャー向け予定取得 (`GET /api/admin/users/{user_id}/resolved-workdays`)、
+日別例外のupsert/削除 (`PUT`/`DELETE /api/admin/users/{user_id}/workday-overrides/{date}`) を追加した。
+予定取得と日別例外操作は部署スコープ認可に従い、locked済み勤務日の例外変更は `RESOLVED_WORKDAY_LOCKED` で拒否する。
+anomaly管理、未来projection worker、管理者カレンダーUI、月次締めは後続フェーズで実装する。
 
 ## Decision Summary
 
