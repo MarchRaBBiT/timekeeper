@@ -154,10 +154,36 @@ async fn employee_reads_own_resolved_workdays_in_range() {
 
     assert_eq!(status, StatusCode::OK);
     let items = body["items"].as_array().expect("items array");
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 31);
     assert_eq!(items[0]["work_date"], "2026-07-01");
+    assert_eq!(items[4]["work_date"], "2026-07-05");
     assert_eq!(items[0]["day_kind"], "scheduled_workday");
     assert_eq!(items[0]["source"], "user");
+}
+
+#[tokio::test]
+async fn employee_read_materializes_missing_resolved_workdays() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (_schedule_id, _version_id) =
+        seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let (status, body) = get_json(
+        me_router(pool.clone(), employee.clone()),
+        "/api/work-schedules/me?from=2026-07-01&to=2026-07-31",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let items = body["items"].as_array().expect("items array");
+    assert_eq!(items.len(), 31);
+    assert_eq!(items[0]["work_date"], "2026-07-01");
+    assert_eq!(items[0]["day_kind"], "scheduled_workday");
 }
 
 #[tokio::test]
@@ -209,7 +235,11 @@ async fn system_admin_reads_any_user_resolved_workdays() {
     let (status, body) = get_json(admin_router(pool.clone(), admin), &uri).await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["items"].as_array().expect("items").len(), 1);
+    assert_eq!(body["items"].as_array().expect("items").len(), 31);
+    assert_eq!(
+        body["items"].as_array().expect("items")[1]["work_date"],
+        "2026-07-02"
+    );
 }
 
 #[tokio::test]

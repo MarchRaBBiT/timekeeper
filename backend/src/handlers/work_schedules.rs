@@ -2,10 +2,14 @@ use axum::{
     extract::{Extension, Query, State},
     Json,
 };
+use chrono::Utc;
 use timekeeper_app::user_workdays::{
     ListUserWorkdays, ListUserWorkdaysCommand, ListUserWorkdaysError,
 };
-use timekeeper_app::work_schedules::{ResolvedDayKind, ResolvedWorkday, WorkScheduleSource};
+use timekeeper_app::work_schedules::{
+    ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday,
+    WorkScheduleSource,
+};
 use timekeeper_contract::work_schedules::{
     ResolvedBreakResponse, ResolvedDayKind as ContractResolvedDayKind,
     ResolvedWorkIntervalResponse, ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery,
@@ -31,6 +35,7 @@ pub(crate) async fn list_resolved_workdays(
     user_id: &str,
     query: ResolvedWorkdayRangeQuery,
 ) -> Result<Json<ResolvedWorkdayListResponse>, AppError> {
+    materialize_resolved_workdays(state, user_id, query.from, query.to).await?;
     let repository = WorkdayResolverPostgresRepository::new(state.read_pool().clone());
     let use_case = ListUserWorkdays::new(repository);
     let workdays = use_case
@@ -49,6 +54,39 @@ pub(crate) async fn list_resolved_workdays(
             .map(resolved_workday_to_response)
             .collect(),
     }))
+}
+
+async fn materialize_resolved_workdays(
+    state: &AppState,
+    user_id: &str,
+    from: chrono::NaiveDate,
+    to: chrono::NaiveDate,
+) -> Result<(), AppError> {
+    let repository = WorkdayResolverPostgresRepository::new(state.write_pool.clone());
+    let resolver = ResolveWorkday::new(repository.clone(), repository.clone(), repository);
+    let resolved_at = Utc::now();
+    let mut current = from;
+    while current <= to {
+        match resolver
+            .execute(ResolveWorkdayCommand {
+                user_id: user_id.to_string(),
+                work_date: current,
+                resolved_at,
+            })
+            .await
+        {
+            Ok(_) | Err(ResolveWorkdayError::WorkScheduleNotConfigured) => {}
+            Err(error) => {
+                return Err(AppError::InternalServerError(anyhow::anyhow!(
+                    error.to_string()
+                )));
+            }
+        }
+        current = current
+            .succ_opt()
+            .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("date overflow")))?;
+    }
+    Ok(())
 }
 
 fn list_workdays_error_to_app_error(error: ListUserWorkdaysError) -> AppError {

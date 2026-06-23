@@ -103,6 +103,7 @@ pub async fn audit_log(
         None
     };
 
+    let target_id = descriptor.target_id.clone();
     let entry = AuditLogEntry {
         occurred_at: Utc::now(),
         actor_id: actor.as_ref().map(|user| user.id),
@@ -112,7 +113,7 @@ pub async fn audit_log(
             .unwrap_or_else(|| "anonymous".to_string()),
         event_type: descriptor.event_type.to_string(),
         target_type: descriptor.target_type.map(|value| value.to_string()),
-        target_id: descriptor.target_id,
+        target_id,
         result: result.to_string(),
         error_code,
         metadata: build_metadata(
@@ -120,6 +121,7 @@ pub async fn audit_log(
             &headers,
             &state,
             actor.as_ref(),
+            descriptor.target_id.as_deref(),
             body_bytes.as_ref(),
         ),
         ip: extract_ip(&headers),
@@ -259,6 +261,7 @@ fn needs_body_for_metadata(event_type: &str) -> bool {
             | "subject_request_create"
             | "admin_subject_request_approve"
             | "admin_subject_request_reject"
+            | "workday_override_upserted"
     )
 }
 
@@ -267,6 +270,7 @@ fn build_metadata(
     headers: &HeaderMap,
     state: &AppState,
     actor: Option<&User>,
+    target_id: Option<&str>,
     body_bytes: Option<&Bytes>,
 ) -> Option<Value> {
     match event_type {
@@ -294,6 +298,14 @@ fn build_metadata(
         }
         "admin_request_approve" | "admin_request_reject" => {
             Some(build_approval_metadata(event_type))
+        }
+        "workday_override_upserted" | "workday_override_deleted" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_workday_override_metadata(
+                event_type,
+                target_id,
+                payload.as_ref(),
+            ))
         }
         "password_change" => Some(build_password_change_metadata(actor)),
         _ => None,
@@ -417,6 +429,51 @@ fn build_subject_request_metadata(event_type: &str, payload: Option<&Value>) -> 
         }
         _ => {}
     }
+    Value::Object(summary)
+}
+
+fn build_workday_override_metadata(
+    event_type: &str,
+    target_id: Option<&str>,
+    payload: Option<&Value>,
+) -> Value {
+    let mut summary = Map::new();
+    if let Some(target_id) = target_id {
+        summary.insert(
+            "target_id".to_string(),
+            Value::String(target_id.to_string()),
+        );
+        if let Some((user_id, work_date)) = target_id.split_once(':') {
+            summary.insert("user_id".to_string(), Value::String(user_id.to_string()));
+            summary.insert(
+                "work_date".to_string(),
+                Value::String(work_date.to_string()),
+            );
+        }
+    }
+
+    if event_type == "workday_override_upserted" {
+        if let Some(payload) = payload {
+            insert_string_if_present(&mut summary, payload, "kind");
+            insert_string_if_present(&mut summary, payload, "reason");
+            if let Some(work_schedule_id) = payload.get("work_schedule_id").and_then(Value::as_str)
+            {
+                summary.insert(
+                    "work_schedule_id".to_string(),
+                    Value::String(work_schedule_id.to_string()),
+                );
+            } else if payload.get("work_schedule_id").is_some() {
+                summary.insert("work_schedule_id".to_string(), Value::Null);
+            }
+            if let Some(reason) = payload.get("reason").and_then(Value::as_str) {
+                summary.insert(
+                    "reason_length".to_string(),
+                    Value::Number(serde_json::Number::from(reason.chars().count() as u64)),
+                );
+            }
+        }
+    }
+
     Value::Object(summary)
 }
 
@@ -685,6 +742,20 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
                 Some((*exception_id).to_string()),
             ))
         }
+        (&Method::PUT, ["api", "admin", "users", user_id, "workday-overrides", work_date]) => {
+            Some(event(
+                "workday_override_upserted",
+                "workday_override",
+                Some(format!("{user_id}:{work_date}")),
+            ))
+        }
+        (&Method::DELETE, ["api", "admin", "users", user_id, "workday-overrides", work_date]) => {
+            Some(event(
+                "workday_override_deleted",
+                "workday_override",
+                Some(format!("{user_id}:{work_date}")),
+            ))
+        }
         (&Method::GET, ["api", "admin", "export"]) => Some(event("admin_export", "export", None)),
         (&Method::GET, ["api", "admin", "users"]) => Some(event("admin_user_list", "system", None)),
         (&Method::POST, ["api", "admin", "users"]) => {
@@ -873,6 +944,48 @@ mod tests {
         .expect("assignment delete maps");
         assert_eq!(assignment.event_type, "work_schedule_assignment_deleted");
         assert_eq!(assignment.target_id.as_deref(), Some("assignment-1"));
+    }
+
+    #[test]
+    fn classify_event_matches_workday_override_paths() {
+        let upsert = classify_event(
+            &Method::PUT,
+            "/api/admin/users/user-1/workday-overrides/2026-07-15",
+        )
+        .expect("override upsert maps");
+        assert_eq!(upsert.event_type, "workday_override_upserted");
+        assert_eq!(upsert.target_type, Some("workday_override"));
+        assert_eq!(upsert.target_id.as_deref(), Some("user-1:2026-07-15"));
+
+        let delete = classify_event(
+            &Method::DELETE,
+            "/api/admin/users/user-1/workday-overrides/2026-07-15",
+        )
+        .expect("override delete maps");
+        assert_eq!(delete.event_type, "workday_override_deleted");
+        assert_eq!(delete.target_type, Some("workday_override"));
+        assert_eq!(delete.target_id.as_deref(), Some("user-1:2026-07-15"));
+    }
+
+    #[test]
+    fn build_workday_override_metadata_includes_payload_details() {
+        let payload = serde_json::json!({
+            "kind": "use_schedule",
+            "work_schedule_id": "ws-123",
+            "reason": "特別対応",
+        });
+        let metadata = build_workday_override_metadata(
+            "workday_override_upserted",
+            Some("user-1:2026-07-15"),
+            Some(&payload),
+        );
+
+        assert_eq!(metadata["target_id"], "user-1:2026-07-15");
+        assert_eq!(metadata["user_id"], "user-1");
+        assert_eq!(metadata["work_date"], "2026-07-15");
+        assert_eq!(metadata["kind"], "use_schedule");
+        assert_eq!(metadata["work_schedule_id"], "ws-123");
+        assert_eq!(metadata["reason_length"], 4);
     }
 
     #[test]

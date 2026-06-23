@@ -72,12 +72,13 @@ async fn request_json(
     (status, json)
 }
 
-async fn insert_locked_resolved_workday(
+async fn insert_resolved_workday(
     pool: &PgPool,
     user_id: UserId,
     work_date: NaiveDate,
     schedule_id: Uuid,
     version_id: Uuid,
+    locked_at: Option<chrono::DateTime<Utc>>,
 ) {
     sqlx::query(
         "INSERT INTO resolved_workdays \
@@ -93,10 +94,28 @@ async fn insert_locked_resolved_workday(
     .bind(Uuid::new_v4())
     .bind(NaiveTime::from_hms_opt(5, 0, 0).expect("boundary"))
     .bind(Utc::now())
-    .bind(Utc::now())
+    .bind(locked_at)
     .execute(pool)
     .await
-    .expect("insert locked resolved workday");
+    .expect("insert resolved workday");
+}
+
+async fn insert_locked_resolved_workday(
+    pool: &PgPool,
+    user_id: UserId,
+    work_date: NaiveDate,
+    schedule_id: Uuid,
+    version_id: Uuid,
+) {
+    insert_resolved_workday(
+        pool,
+        user_id,
+        work_date,
+        schedule_id,
+        version_id,
+        Some(Utc::now()),
+    )
+    .await;
 }
 
 async fn assign_manager_to_employee_department(pool: &PgPool, manager: UserId, employee: UserId) {
@@ -209,6 +228,101 @@ async fn override_rejected_when_resolved_workday_locked() {
 
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["code"], "RESOLVED_WORKDAY_LOCKED");
+}
+
+#[tokio::test]
+async fn locked_resolved_workday_rejects_raw_override_upsert() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, version_id) =
+        seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+    insert_locked_resolved_workday(&pool, employee.id, date(), schedule_id, version_id).await;
+
+    let error = sqlx::query(
+        "INSERT INTO workday_overrides \
+         (id, user_id, work_date, kind, reason, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(employee.id.to_string())
+    .bind(date())
+    .bind("non_working_day")
+    .bind("締め後変更")
+    .bind(admin.id.to_string())
+    .execute(&pool)
+    .await
+    .expect_err("locked override insert rejected");
+
+    match error {
+        sqlx::Error::Database(db_error) => {
+            assert_eq!(db_error.code().as_deref(), Some("23514"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn locked_resolved_workday_rejects_raw_override_delete() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, version_id) =
+        seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+    insert_resolved_workday(&pool, employee.id, date(), schedule_id, version_id, None).await;
+    let override_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workday_overrides \
+         (id, user_id, work_date, kind, reason, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(override_id)
+    .bind(employee.id.to_string())
+    .bind(date())
+    .bind("non_working_day")
+    .bind("締め前変更")
+    .bind(admin.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("insert override");
+
+    let lock_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM resolved_workdays WHERE user_id = $1 AND work_date = $2",
+    )
+    .bind(employee.id.to_string())
+    .bind(date())
+    .fetch_one(&pool)
+    .await
+    .expect("resolved workday id");
+    sqlx::query("UPDATE resolved_workdays SET locked_at = $2 WHERE id = $1")
+        .bind(lock_id)
+        .bind(Utc::now())
+        .execute(&pool)
+        .await
+        .expect("apply lock");
+
+    let error = sqlx::query("DELETE FROM workday_overrides WHERE id = $1")
+        .bind(override_id)
+        .execute(&pool)
+        .await
+        .expect_err("locked override delete rejected");
+
+    match error {
+        sqlx::Error::Database(db_error) => {
+            assert_eq!(db_error.code().as_deref(), Some("23514"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
 }
 
 #[tokio::test]

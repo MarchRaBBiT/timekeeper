@@ -7,8 +7,8 @@ use timekeeper_app::workday_overrides::{
 };
 use uuid::Uuid;
 
-use super::rows::{assemble_resolved_workday, IntervalRow, OverrideRecordRow, ResolvedWorkdayRow};
-use super::{WorkdayResolverPostgresRepository, INTERVAL_COLUMNS, RESOLVED_COLUMNS};
+use super::rows::OverrideRecordRow;
+use super::WorkdayResolverPostgresRepository;
 
 #[async_trait]
 impl UserWorkdayReadRepository for WorkdayResolverPostgresRepository {
@@ -18,43 +18,9 @@ impl UserWorkdayReadRepository for WorkdayResolverPostgresRepository {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<ResolvedWorkday>, ListUserWorkdaysError> {
-        let sql = format!(
-            "SELECT {RESOLVED_COLUMNS} FROM resolved_workdays \
-             WHERE user_id = $1 AND work_date BETWEEN $2 AND $3 ORDER BY work_date"
-        );
-        let rows = sqlx::query_as::<_, ResolvedWorkdayRow>(&sql)
-            .bind(user_id)
-            .bind(from)
-            .bind(to)
-            .fetch_all(self.pool())
+        super::load_resolved_in_range(self.pool(), user_id, from, to)
             .await
-            .map_err(|_| read_error("load resolved workday range"))?;
-
-        let mut workdays = Vec::with_capacity(rows.len());
-        for row in rows {
-            let interval_sql = format!(
-                "SELECT {INTERVAL_COLUMNS} FROM resolved_workday_intervals \
-                 WHERE resolved_workday_id = $1 ORDER BY sequence"
-            );
-            let intervals = sqlx::query_as::<_, IntervalRow>(&interval_sql)
-                .bind(row.id)
-                .fetch_all(self.pool())
-                .await
-                .map_err(|_| read_error("load resolved work intervals"))?;
-            let break_sql = format!(
-                "SELECT {INTERVAL_COLUMNS} FROM resolved_workday_breaks \
-                 WHERE resolved_workday_id = $1 ORDER BY sequence"
-            );
-            let breaks = sqlx::query_as::<_, IntervalRow>(&break_sql)
-                .bind(row.id)
-                .fetch_all(self.pool())
-                .await
-                .map_err(|_| read_error("load resolved planned breaks"))?;
-            let workday = assemble_resolved_workday(row, intervals, breaks)
-                .map_err(|error| ListUserWorkdaysError::Repository(error.to_string()))?;
-            workdays.push(workday);
-        }
-        Ok(workdays)
+            .map_err(|error| ListUserWorkdaysError::Repository(error.to_string()))
     }
 }
 
@@ -121,7 +87,7 @@ impl WorkdayOverrideRepository for WorkdayResolverPostgresRepository {
                 .bind(work_date)
                 .execute(self.pool())
                 .await
-                .map_err(|_| override_error("delete workday override"))?;
+                .map_err(map_delete_error)?;
         Ok(result.rows_affected() > 0)
     }
 }
@@ -140,6 +106,9 @@ fn parse_schedule_id(value: &str) -> Result<Uuid, WorkdayOverrideError> {
 }
 
 fn map_upsert_error(error: sqlx::Error) -> WorkdayOverrideError {
+    if let Some(error) = map_locked_override_error(&error) {
+        return error;
+    }
     if let sqlx::Error::Database(db_error) = &error {
         // FK 違反: 参照する work_schedule / user が存在しない
         if db_error.code().as_deref() == Some("23503") {
@@ -151,8 +120,23 @@ fn map_upsert_error(error: sqlx::Error) -> WorkdayOverrideError {
     override_error("upsert workday override")
 }
 
-fn read_error(operation: &str) -> ListUserWorkdaysError {
-    ListUserWorkdaysError::Repository(format!("{operation} failed"))
+fn map_delete_error(error: sqlx::Error) -> WorkdayOverrideError {
+    if let Some(error) = map_locked_override_error(&error) {
+        return error;
+    }
+    override_error("delete workday override")
+}
+
+fn map_locked_override_error(error: &sqlx::Error) -> Option<WorkdayOverrideError> {
+    let sqlx::Error::Database(db_error) = error else {
+        return None;
+    };
+    if db_error.code().as_deref() == Some("23514")
+        && db_error.message().contains("resolved workdays are locked")
+    {
+        return Some(WorkdayOverrideError::ResolvedWorkdayLocked);
+    }
+    None
 }
 
 fn override_error(operation: &str) -> WorkdayOverrideError {

@@ -5,6 +5,7 @@ mod rows;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use timekeeper_app::work_schedules::{
     AssignmentTarget, NewResolvedWorkday, OrganizationHierarchy, ResolveWorkdayError,
     ResolvedWorkday, ScheduleAssignment, ScheduleDayRule, ScheduleVersion, WorkdayHolidayCalendar,
@@ -14,7 +15,7 @@ use uuid::Uuid;
 
 use rows::{
     assemble_day_rule, assemble_resolved_workday, AssignmentRow, DayRuleRow, IntervalRow,
-    OverrideRow, ResolvedWorkdayRow, VersionRow,
+    OverrideRow, ResolvedBreakRow, ResolvedIntervalRow, ResolvedWorkdayRow, VersionRow,
 };
 
 const RESOLVED_COLUMNS: &str = "id, user_id, work_date, work_schedule_id, \
@@ -244,6 +245,84 @@ async fn load_resolved(
         .await
         .map_err(|_| database_error("load resolved planned breaks"))?;
     assemble_resolved_workday(row, intervals, breaks).map(Some)
+}
+
+pub(super) async fn load_resolved_in_range(
+    pool: &PgPool,
+    user_id: &str,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<ResolvedWorkday>, ResolveWorkdayError> {
+    let sql = format!(
+        "SELECT {RESOLVED_COLUMNS} FROM resolved_workdays \
+         WHERE user_id = $1 AND work_date BETWEEN $2 AND $3 ORDER BY work_date"
+    );
+    let rows = sqlx::query_as::<_, ResolvedWorkdayRow>(&sql)
+        .bind(user_id)
+        .bind(from)
+        .bind(to)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| database_error("load resolved workday range"))?;
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let resolved_ids: Vec<_> = rows.iter().map(|row| row.id).collect();
+    let interval_sql = format!(
+        "SELECT resolved_workday_id, {INTERVAL_COLUMNS} FROM resolved_workday_intervals \
+         WHERE resolved_workday_id = ANY($1) ORDER BY resolved_workday_id, sequence"
+    );
+    let interval_rows = sqlx::query_as::<_, ResolvedIntervalRow>(&interval_sql)
+        .bind(&resolved_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| database_error("load resolved work intervals"))?;
+    let break_sql = format!(
+        "SELECT resolved_workday_id, {INTERVAL_COLUMNS} FROM resolved_workday_breaks \
+         WHERE resolved_workday_id = ANY($1) ORDER BY resolved_workday_id, sequence"
+    );
+    let break_rows = sqlx::query_as::<_, ResolvedBreakRow>(&break_sql)
+        .bind(&resolved_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| database_error("load resolved planned breaks"))?;
+
+    let mut intervals_by_workday: HashMap<_, Vec<IntervalRow>> = HashMap::new();
+    for row in interval_rows {
+        intervals_by_workday
+            .entry(row.resolved_workday_id)
+            .or_default()
+            .push(IntervalRow {
+                start_time: row.start_time,
+                start_day_offset: row.start_day_offset,
+                end_time: row.end_time,
+                end_day_offset: row.end_day_offset,
+            });
+    }
+
+    let mut breaks_by_workday: HashMap<_, Vec<IntervalRow>> = HashMap::new();
+    for row in break_rows {
+        breaks_by_workday
+            .entry(row.resolved_workday_id)
+            .or_default()
+            .push(IntervalRow {
+                start_time: row.start_time,
+                start_day_offset: row.start_day_offset,
+                end_time: row.end_time,
+                end_day_offset: row.end_day_offset,
+            });
+    }
+
+    let mut workdays = Vec::with_capacity(rows.len());
+    for row in rows {
+        let intervals = intervals_by_workday.remove(&row.id).unwrap_or_default();
+        let breaks = breaks_by_workday.remove(&row.id).unwrap_or_default();
+        let workday = assemble_resolved_workday(row, intervals, breaks)
+            .map_err(|error| ResolveWorkdayError::Repository(error.to_string()))?;
+        workdays.push(workday);
+    }
+    Ok(workdays)
 }
 
 fn parse_uuid(value: &str, field: &str) -> Result<Uuid, ResolveWorkdayError> {

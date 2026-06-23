@@ -34,10 +34,28 @@ pub(super) struct IntervalRow {
 }
 
 #[derive(Debug, FromRow)]
+pub(super) struct ResolvedIntervalRow {
+    pub resolved_workday_id: Uuid,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
+}
+
+#[derive(Debug, FromRow)]
 pub(super) struct OverrideRow {
     pub id: Uuid,
     pub kind: String,
     pub work_schedule_id: Option<Uuid>,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct ResolvedBreakRow {
+    pub resolved_workday_id: Uuid,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
 }
 
 #[derive(Debug, FromRow)]
