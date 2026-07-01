@@ -1,8 +1,8 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 1 complete — management model/API, daily resolver, attendance integration, schedule read API, and workday-override management implemented
+**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available
 
-**Updated:** 2026-06-22
+**Updated:** 2026-07-02
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
 
@@ -17,7 +17,8 @@
 マネージャー向け予定取得 (`GET /api/admin/users/{user_id}/resolved-workdays`)、
 日別例外のupsert/削除 (`PUT`/`DELETE /api/admin/users/{user_id}/workday-overrides/{date}`) を追加した。
 予定取得と日別例外操作は部署スコープ認可に従い、locked済み勤務日の例外変更は `RESOLVED_WORKDAY_LOCKED` で拒否する。
-anomaly管理、未来projection worker、管理者カレンダーUI、月次締めは後続フェーズで実装する。
+2026-07-02に Phase 2 backend MVP として、未来projection生成、未設定・予定外勤務・打刻漏れanomaly検出、
+管理者カレンダーAPI、一括割当、月次締めlockを追加した。frontend管理画面と常駐worker daemonは未実装。
 
 ## Decision Summary
 
@@ -325,7 +326,12 @@ resolved_workday_breaks
 | --- | --- | --- | --- |
 | `GET` | `/api/admin/work-schedule-assignments` | manager+ | target/dateで絞り込み |
 | `POST` | `/api/admin/work-schedule-assignments` | system admin | 割り当て作成。`201` |
+| `POST` | `/api/admin/work-schedule-assignments/bulk` | system admin | 複数targetへ同一割当を作成、target別結果 |
 | `DELETE` | `/api/admin/work-schedule-assignments/{id}` | system admin | 将来割り当て削除、`204` |
+| `POST` | `/api/admin/work-schedule-projections/generate` | system admin | 指定ユーザー・範囲のresolved workday生成 |
+| `GET` | `/api/admin/work-schedule-anomalies` | manager+ | 未設定・予定外勤務・打刻漏れの検出 |
+| `GET` | `/api/admin/users/{user_id}/work-schedule-calendar` | scoped manager+ | resolved workday / attendance / anomalyの日別表示 |
+| `POST` | `/api/admin/work-schedule-closures/monthly` | system admin | 対象月のresolved workdayをlock |
 | `PUT` | `/api/admin/users/{user_id}/workday-overrides/{date}` | authorized manager | 日別例外をupsert |
 | `DELETE` | `/api/admin/users/{user_id}/workday-overrides/{date}` | authorized manager | 未ロック例外を削除、`204` |
 | `GET` | `/api/admin/users/{user_id}/resolved-workdays` | scoped manager+ | `from`, `to` 必須 |

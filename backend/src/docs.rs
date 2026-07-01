@@ -52,17 +52,23 @@ use timekeeper_contract::attendance::{
     AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse,
 };
 use timekeeper_contract::work_schedules::{
-    AssignmentTarget, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest, DayKind,
+    AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
+    BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
+    CloseWorkScheduleMonthResponse, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
+    DayKind, GenerateWorkScheduleProjectionsRequest, GenerateWorkScheduleProjectionsResponse,
     PlannedBreakInput, PlannedBreakResponse, PlannedWorkIntervalInput, PlannedWorkIntervalResponse,
     PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, ResolvedBreakResponse, ResolvedDayKind,
     ResolvedWorkIntervalResponse, ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery,
     ResolvedWorkdayResponse, SetWorkdayOverrideRequest, UpdateWorkScheduleRequest,
-    WeekdayRuleInput, WeekdayRuleResponse, WorkScheduleAssignmentListQuery,
+    WeekdayRuleInput, WeekdayRuleResponse, WorkScheduleAnomalyKind, WorkScheduleAnomalyListQuery,
+    WorkScheduleAnomalyListResponse, WorkScheduleAnomalyResponse, WorkScheduleAssignmentListQuery,
     WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
-    WorkScheduleAssignmentResponse, WorkScheduleDetailResponse, WorkScheduleListQuery,
-    WorkScheduleListResponse, WorkScheduleResponse, WorkScheduleSource, WorkScheduleStatus,
-    WorkScheduleVersionResponse, WorkScheduleVersionStatus, WorkScheduleVersionSummary,
-    WorkdayOverrideKind, WorkdayOverrideResponse,
+    WorkScheduleAssignmentResponse, WorkScheduleCalendarAttendanceResponse,
+    WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse, WorkScheduleDetailResponse,
+    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleProjectionError,
+    WorkScheduleResponse, WorkScheduleSource, WorkScheduleStatus, WorkScheduleVersionResponse,
+    WorkScheduleVersionStatus, WorkScheduleVersionSummary, WorkdayOverrideKind,
+    WorkdayOverrideResponse,
 };
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -179,6 +185,11 @@ struct RequestCancellationResponse {
         admin_list_work_schedule_assignments_doc,
         admin_create_work_schedule_assignment_doc,
         admin_delete_work_schedule_assignment_doc,
+        admin_bulk_create_work_schedule_assignments_doc,
+        admin_generate_work_schedule_projections_doc,
+        admin_list_work_schedule_anomalies_doc,
+        admin_get_work_schedule_calendar_doc,
+        admin_close_work_schedule_month_doc,
         work_schedules_me_doc,
         admin_get_user_resolved_workdays_doc,
         admin_set_workday_override_doc,
@@ -291,6 +302,9 @@ struct RequestCancellationResponse {
             WorkScheduleAssignmentRequest,
             WorkScheduleAssignmentResponse,
             WorkScheduleAssignmentListResponse,
+            BulkWorkScheduleAssignmentRequest,
+            BulkWorkScheduleAssignmentResponse,
+            BulkWorkScheduleAssignmentFailure,
             ResolvedDayKind,
             WorkScheduleSource,
             WorkdayOverrideKind,
@@ -299,7 +313,18 @@ struct RequestCancellationResponse {
             ResolvedWorkdayResponse,
             ResolvedWorkdayListResponse,
             SetWorkdayOverrideRequest,
-            WorkdayOverrideResponse
+            WorkdayOverrideResponse,
+            GenerateWorkScheduleProjectionsRequest,
+            GenerateWorkScheduleProjectionsResponse,
+            WorkScheduleProjectionError,
+            WorkScheduleAnomalyKind,
+            WorkScheduleAnomalyResponse,
+            WorkScheduleAnomalyListResponse,
+            WorkScheduleCalendarAttendanceResponse,
+            WorkScheduleCalendarDayResponse,
+            WorkScheduleCalendarResponse,
+            CloseWorkScheduleMonthRequest,
+            CloseWorkScheduleMonthResponse
         )
     ),
     modifiers(&SecuritySchemes),
@@ -1258,6 +1283,54 @@ fn admin_create_work_schedule_assignment_doc() {}
 fn admin_delete_work_schedule_assignment_doc() {}
 
 #[utoipa::path(
+    post,
+    path = "/api/admin/work-schedule-assignments/bulk",
+    request_body = BulkWorkScheduleAssignmentRequest,
+    responses((status = 200, body = BulkWorkScheduleAssignmentResponse), (status = 400)),
+    tag = "Admin"
+)]
+fn admin_bulk_create_work_schedule_assignments_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedule-projections/generate",
+    request_body = GenerateWorkScheduleProjectionsRequest,
+    responses((status = 200, body = GenerateWorkScheduleProjectionsResponse), (status = 400)),
+    tag = "Admin"
+)]
+fn admin_generate_work_schedule_projections_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/work-schedule-anomalies",
+    params(WorkScheduleAnomalyListQuery),
+    responses((status = 200, body = WorkScheduleAnomalyListResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_list_work_schedule_anomalies_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/work-schedule-calendar",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        WorkScheduleAnomalyListQuery
+    ),
+    responses((status = 200, body = WorkScheduleCalendarResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_get_work_schedule_calendar_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/work-schedule-closures/monthly",
+    request_body = CloseWorkScheduleMonthRequest,
+    responses((status = 200, body = CloseWorkScheduleMonthResponse), (status = 400)),
+    tag = "Admin"
+)]
+fn admin_close_work_schedule_month_doc() {}
+
+#[utoipa::path(
     get,
     path = "/api/work-schedules/me",
     params(ResolvedWorkdayRangeQuery),
@@ -1453,6 +1526,11 @@ mod tests {
             admin_list_work_schedule_assignments_doc,
             admin_create_work_schedule_assignment_doc,
             admin_delete_work_schedule_assignment_doc,
+            admin_bulk_create_work_schedule_assignments_doc,
+            admin_generate_work_schedule_projections_doc,
+            admin_list_work_schedule_anomalies_doc,
+            admin_get_work_schedule_calendar_doc,
+            admin_close_work_schedule_month_doc,
             work_schedules_me_doc,
             admin_get_user_resolved_workdays_doc,
             admin_set_workday_override_doc,

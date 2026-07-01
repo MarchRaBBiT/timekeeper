@@ -244,6 +244,28 @@ pub struct WorkScheduleAssignmentListResponse {
     pub items: Vec<WorkScheduleAssignmentResponse>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct BulkWorkScheduleAssignmentRequest {
+    pub work_schedule_id: String,
+    pub targets: Vec<AssignmentTarget>,
+    pub valid_from: NaiveDate,
+    #[serde(default)]
+    pub valid_until: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct BulkWorkScheduleAssignmentFailure {
+    pub target: AssignmentTarget,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct BulkWorkScheduleAssignmentResponse {
+    pub created: Vec<WorkScheduleAssignmentResponse>,
+    pub failed: Vec<BulkWorkScheduleAssignmentFailure>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResolvedDayKind {
@@ -334,4 +356,104 @@ pub struct WorkdayOverrideResponse {
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct GenerateWorkScheduleProjectionsRequest {
+    pub user_ids: Vec<String>,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleProjectionError {
+    pub user_id: String,
+    pub work_date: NaiveDate,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct GenerateWorkScheduleProjectionsResponse {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub requested_users: usize,
+    pub projected: usize,
+    pub already_locked: usize,
+    pub not_configured: usize,
+    pub errors: Vec<WorkScheduleProjectionError>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkScheduleAnomalyKind {
+    ScheduleNotConfigured,
+    UnscheduledWork,
+    MissingClockIn,
+    MissingClockOut,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleAnomalyResponse {
+    pub user_id: String,
+    pub work_date: NaiveDate,
+    pub kind: WorkScheduleAnomalyKind,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, IntoParams)]
+pub struct WorkScheduleAnomalyListQuery {
+    pub user_id: Option<String>,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleAnomalyListResponse {
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub items: Vec<WorkScheduleAnomalyResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleCalendarAttendanceResponse {
+    pub id: String,
+    pub clock_in_time: Option<chrono::NaiveDateTime>,
+    pub clock_out_time: Option<chrono::NaiveDateTime>,
+    pub is_unscheduled_work: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleCalendarDayResponse {
+    pub work_date: NaiveDate,
+    pub resolved_workday: Option<ResolvedWorkdayResponse>,
+    pub attendance: Option<WorkScheduleCalendarAttendanceResponse>,
+    pub anomalies: Vec<WorkScheduleAnomalyResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleCalendarResponse {
+    pub user_id: String,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub days: Vec<WorkScheduleCalendarDayResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CloseWorkScheduleMonthRequest {
+    pub year: i32,
+    pub month: u32,
+    #[serde(default)]
+    pub user_ids: Vec<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CloseWorkScheduleMonthResponse {
+    pub year: i32,
+    pub month: u32,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub locked_count: i64,
 }

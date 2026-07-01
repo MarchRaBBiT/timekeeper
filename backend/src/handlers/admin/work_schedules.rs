@@ -6,22 +6,33 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::{NaiveDate, Utc};
+use timekeeper_app::user_workdays::{ListUserWorkdays, ListUserWorkdaysCommand};
+use timekeeper_app::work_schedules::{ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError};
 use timekeeper_contract::work_schedules::{
-    AssignmentTarget, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
-    ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest, WorkScheduleAssignmentListQuery,
-    WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest, WorkScheduleDetailResponse,
-    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleResponse,
-    WorkScheduleVersionResponse,
+    AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
+    BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
+    CloseWorkScheduleMonthResponse, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
+    GenerateWorkScheduleProjectionsRequest, GenerateWorkScheduleProjectionsResponse,
+    ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest, WorkScheduleAnomalyListQuery,
+    WorkScheduleAnomalyListResponse, WorkScheduleAssignmentListQuery,
+    WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
+    WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse, WorkScheduleDetailResponse,
+    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleProjectionError,
+    WorkScheduleResponse, WorkScheduleVersionResponse,
 };
 use timekeeper_domain::work_schedules::{
     DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, WeekdayRule,
 };
+use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
     error::AppError,
+    handlers::work_schedules::resolved_workday_to_response,
     models::user::User,
+    repositories::department::can_manager_approve,
     repositories::work_schedule::{
         self, AssignmentListFilter, WorkScheduleListFilter, WorkScheduleRepositoryError,
     },
@@ -317,6 +328,265 @@ pub async fn delete_work_schedule_assignment(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn generate_work_schedule_projections(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<GenerateWorkScheduleProjectionsRequest>,
+) -> Result<Json<GenerateWorkScheduleProjectionsResponse>, AppError> {
+    require_system_admin(&user)?;
+    validate_range(payload.from, payload.to)?;
+    if payload.user_ids.is_empty() {
+        return Err(invalid_work_schedule("user_ids must not be empty"));
+    }
+    for user_id in &payload.user_ids {
+        UserId::from_str(user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    }
+
+    let repository = WorkdayResolverPostgresRepository::new(state.write_pool.clone());
+    let resolver = ResolveWorkday::new(repository.clone(), repository.clone(), repository);
+    let mut projected = 0_usize;
+    let mut already_locked = 0_usize;
+    let mut not_configured = 0_usize;
+    let mut errors = Vec::new();
+    let resolved_at = Utc::now();
+
+    for user_id in &payload.user_ids {
+        for work_date in dates_inclusive(payload.from, payload.to)? {
+            match resolver
+                .execute(ResolveWorkdayCommand {
+                    user_id: user_id.clone(),
+                    work_date,
+                    resolved_at,
+                })
+                .await
+            {
+                Ok(workday) => {
+                    projected += 1;
+                    if workday.locked_at.is_some() {
+                        already_locked += 1;
+                    }
+                }
+                Err(ResolveWorkdayError::WorkScheduleNotConfigured) => {
+                    not_configured += 1;
+                    errors.push(WorkScheduleProjectionError {
+                        user_id: user_id.clone(),
+                        work_date,
+                        code: "WORK_SCHEDULE_NOT_CONFIGURED".to_string(),
+                        message: "work schedule is not configured".to_string(),
+                    });
+                }
+                Err(error) => {
+                    errors.push(WorkScheduleProjectionError {
+                        user_id: user_id.clone(),
+                        work_date,
+                        code: "WORK_SCHEDULE_PROJECTION_FAILED".to_string(),
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(Json(GenerateWorkScheduleProjectionsResponse {
+        from: payload.from,
+        to: payload.to,
+        requested_users: payload.user_ids.len(),
+        projected,
+        already_locked,
+        not_configured,
+        errors,
+    }))
+}
+
+pub async fn get_work_schedule_calendar(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Query(query): Query<WorkScheduleAnomalyListQuery>,
+) -> Result<Json<WorkScheduleCalendarResponse>, AppError> {
+    validate_range(query.from, query.to)?;
+    let target =
+        UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    authorize_scope(&state, &user, target).await?;
+
+    let repository = WorkdayResolverPostgresRepository::new(state.read_pool().clone());
+    let use_case = ListUserWorkdays::new(repository);
+    let workdays = use_case
+        .execute(ListUserWorkdaysCommand {
+            user_id: user_id.clone(),
+            from: query.from,
+            to: query.to,
+        })
+        .await
+        .map_err(|error| AppError::InternalServerError(anyhow::anyhow!(error.to_string())))?;
+    let mut workdays_by_date = workdays
+        .into_iter()
+        .map(|workday| (workday.work_date, resolved_workday_to_response(workday)))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut attendance_by_date = work_schedule::list_user_attendance_calendar(
+        state.read_pool(),
+        &user_id,
+        query.from,
+        query.to,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    let anomalies = work_schedule::list_anomalies(
+        state.read_pool(),
+        Some(vec![user_id.clone()]),
+        query.from,
+        query.to,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    let mut anomalies_by_date: std::collections::HashMap<_, Vec<_>> =
+        std::collections::HashMap::new();
+    for anomaly in anomalies {
+        anomalies_by_date
+            .entry(anomaly.work_date)
+            .or_default()
+            .push(anomaly);
+    }
+
+    let mut days = Vec::new();
+    for work_date in dates_inclusive(query.from, query.to)? {
+        days.push(WorkScheduleCalendarDayResponse {
+            work_date,
+            resolved_workday: workdays_by_date.remove(&work_date),
+            attendance: attendance_by_date.remove(&work_date),
+            anomalies: anomalies_by_date.remove(&work_date).unwrap_or_default(),
+        });
+    }
+
+    Ok(Json(WorkScheduleCalendarResponse {
+        user_id,
+        from: query.from,
+        to: query.to,
+        days,
+    }))
+}
+
+pub async fn list_work_schedule_anomalies(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Query(query): Query<WorkScheduleAnomalyListQuery>,
+) -> Result<Json<WorkScheduleAnomalyListResponse>, AppError> {
+    require_manager(&user)?;
+    validate_range(query.from, query.to)?;
+    let user_ids = if let Some(user_id) = query.user_id {
+        let target =
+            UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+        authorize_scope(&state, &user, target).await?;
+        Some(vec![user_id])
+    } else {
+        None
+    };
+    let items = work_schedule::list_anomalies(state.read_pool(), user_ids, query.from, query.to)
+        .await
+        .map_err(map_repository_error)?;
+    Ok(Json(WorkScheduleAnomalyListResponse {
+        from: query.from,
+        to: query.to,
+        items,
+    }))
+}
+
+pub async fn bulk_create_work_schedule_assignments(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<BulkWorkScheduleAssignmentRequest>,
+) -> Result<Json<BulkWorkScheduleAssignmentResponse>, AppError> {
+    require_system_admin(&user)?;
+    if payload.targets.is_empty() {
+        return Err(invalid_work_schedule("targets must not be empty"));
+    }
+    if payload
+        .valid_until
+        .is_some_and(|until| until <= payload.valid_from)
+    {
+        return Err(invalid_work_schedule(
+            "valid_until must be later than valid_from",
+        ));
+    }
+    let schedule_id = parse_uuid(&payload.work_schedule_id, "work_schedule_id")?;
+    let mut created = Vec::new();
+    let mut failed = Vec::new();
+
+    for target in payload.targets {
+        let request = WorkScheduleAssignmentRequest {
+            work_schedule_id: payload.work_schedule_id.clone(),
+            target: target.clone(),
+            valid_from: payload.valid_from,
+            valid_until: payload.valid_until,
+        };
+        if let Err(error) = validate_assignment(&request) {
+            failed.push(failure(
+                target,
+                "INVALID_WORK_SCHEDULE",
+                format!("{error:?}"),
+            ));
+            continue;
+        }
+        match work_schedule::create_assignment(
+            &state.write_pool,
+            &request,
+            schedule_id,
+            &user.id.to_string(),
+        )
+        .await
+        {
+            Ok(response) => created.push(response),
+            Err(error) => {
+                let (code, message) = repository_error_code_message(&error);
+                failed.push(failure(target, code, message));
+            }
+        }
+    }
+
+    Ok(Json(BulkWorkScheduleAssignmentResponse { created, failed }))
+}
+
+pub async fn close_work_schedule_month(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<CloseWorkScheduleMonthRequest>,
+) -> Result<Json<CloseWorkScheduleMonthResponse>, AppError> {
+    require_system_admin(&user)?;
+    if !(1..=12).contains(&payload.month) {
+        return Err(invalid_work_schedule("month must be between 1 and 12"));
+    }
+    for user_id in &payload.user_ids {
+        UserId::from_str(user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    }
+    let reason = payload
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    if reason.is_some_and(|value| value.chars().count() > 500) {
+        return Err(invalid_work_schedule(
+            "reason must be at most 500 characters",
+        ));
+    }
+    let (from, to, locked_count) = work_schedule::close_month(
+        &state.write_pool,
+        payload.year,
+        payload.month,
+        &payload.user_ids,
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(CloseWorkScheduleMonthResponse {
+        year: payload.year,
+        month: payload.month,
+        from,
+        to,
+        locked_count,
+    }))
+}
+
 fn validate_version_definition(
     effective_from: chrono::NaiveDate,
     effective_until: Option<chrono::NaiveDate>,
@@ -437,6 +707,95 @@ fn map_repository_error(error: WorkScheduleRepositoryError) -> AppError {
         }
         WorkScheduleRepositoryError::Sqlx(error) => AppError::InternalServerError(error.into()),
     }
+}
+
+fn repository_error_code_message(error: &WorkScheduleRepositoryError) -> (&'static str, String) {
+    match error {
+        WorkScheduleRepositoryError::NotFound => (
+            "WORK_SCHEDULE_NOT_FOUND",
+            "Work schedule resource not found".into(),
+        ),
+        WorkScheduleRepositoryError::CodeConflict => (
+            "WORK_SCHEDULE_CODE_CONFLICT",
+            "Work schedule code already exists".into(),
+        ),
+        WorkScheduleRepositoryError::PeriodOverlap => (
+            "EFFECTIVE_PERIOD_OVERLAP",
+            "Effective period overlaps an existing record".into(),
+        ),
+        WorkScheduleRepositoryError::PublishedVersionImmutable => (
+            "PUBLISHED_VERSION_IMMUTABLE",
+            "Published work schedule version is immutable".into(),
+        ),
+        WorkScheduleRepositoryError::RevisionConflict => {
+            ("REVISION_CONFLICT", "Draft revision does not match".into())
+        }
+        WorkScheduleRepositoryError::RetiredSchedule => (
+            "WORK_SCHEDULE_RETIRED",
+            "Retired work schedule cannot be changed or assigned".into(),
+        ),
+        WorkScheduleRepositoryError::InvalidReference => (
+            "INVALID_WORK_SCHEDULE_REFERENCE",
+            "Referenced user or department does not exist".into(),
+        ),
+        WorkScheduleRepositoryError::CorruptData(message) => {
+            ("INVALID_WORK_SCHEDULE", message.clone())
+        }
+        WorkScheduleRepositoryError::Sqlx(error) => {
+            ("WORK_SCHEDULE_REPOSITORY_ERROR", error.to_string())
+        }
+    }
+}
+
+fn failure(
+    target: AssignmentTarget,
+    code: &str,
+    message: String,
+) -> BulkWorkScheduleAssignmentFailure {
+    BulkWorkScheduleAssignmentFailure {
+        target,
+        code: code.to_string(),
+        message,
+    }
+}
+
+async fn authorize_scope(state: &AppState, actor: &User, target: UserId) -> Result<(), AppError> {
+    if actor.is_system_admin() {
+        return Ok(());
+    }
+    if actor.is_manager()
+        && can_manager_approve(state.read_pool(), actor.id, target)
+            .await
+            .map_err(|error| AppError::InternalServerError(error.into()))?
+    {
+        return Ok(());
+    }
+    Err(AppError::Forbidden("Forbidden".to_string()))
+}
+
+fn validate_range(from: NaiveDate, to: NaiveDate) -> Result<(), AppError> {
+    if from > to {
+        return Err(invalid_work_schedule("from must be on or before to"));
+    }
+    if to.signed_duration_since(from).num_days() > 366 {
+        return Err(invalid_work_schedule(
+            "requested range exceeds the supported maximum",
+        ));
+    }
+    Ok(())
+}
+
+fn dates_inclusive(from: NaiveDate, to: NaiveDate) -> Result<Vec<NaiveDate>, AppError> {
+    validate_range(from, to)?;
+    let mut dates = Vec::new();
+    let mut current = from;
+    while current <= to {
+        dates.push(current);
+        current = current
+            .succ_opt()
+            .ok_or_else(|| AppError::InternalServerError(anyhow::anyhow!("date overflow")))?;
+    }
+    Ok(dates)
 }
 
 fn require_manager(user: &User) -> Result<(), AppError> {

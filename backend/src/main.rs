@@ -434,8 +434,16 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             get(handlers::admin::list_work_schedule_assignments),
         )
         .route(
+            "/api/admin/work-schedule-anomalies",
+            get(handlers::admin::list_work_schedule_anomalies),
+        )
+        .route(
             "/api/admin/users/{user_id}/resolved-workdays",
             get(handlers::admin::get_user_resolved_workdays),
+        )
+        .route(
+            "/api/admin/users/{user_id}/work-schedule-calendar",
+            get(handlers::admin::get_work_schedule_calendar),
         )
         .route(
             "/api/admin/users/{user_id}/workday-overrides/{date}",
@@ -552,6 +560,18 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/work-schedule-assignments",
             post(handlers::admin::create_work_schedule_assignment),
+        )
+        .route(
+            "/api/admin/work-schedule-assignments/bulk",
+            post(handlers::admin::bulk_create_work_schedule_assignments),
+        )
+        .route(
+            "/api/admin/work-schedule-projections/generate",
+            post(handlers::admin::generate_work_schedule_projections),
+        )
+        .route(
+            "/api/admin/work-schedule-closures/monthly",
+            post(handlers::admin::close_work_schedule_month),
         )
         .route(
             "/api/admin/work-schedule-assignments/{id}",
