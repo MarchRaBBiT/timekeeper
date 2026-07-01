@@ -7,12 +7,17 @@ use axum::{
 use chrono::{NaiveDate, NaiveTime, Utc};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use timekeeper_app::{
+    work_schedules::WorkdayOverrideKind,
+    workday_overrides::{NewWorkdayOverride, WorkdayOverrideError, WorkdayOverrideRepository},
+};
 use timekeeper_backend::{
     handlers::admin::workday_overrides as handlers,
     models::user::{User, UserRole},
     state::AppState,
     types::UserId,
 };
+use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -201,6 +206,39 @@ async fn use_schedule_override_requires_schedule_id() {
 }
 
 #[tokio::test]
+async fn system_admin_upserts_use_schedule_override() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, _) = seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let uri = format!(
+        "/api/admin/users/{}/workday-overrides/2026-07-15",
+        employee.id
+    );
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "PUT",
+        &uri,
+        Some(json!({
+            "kind": "use_schedule",
+            "work_schedule_id": schedule_id.to_string(),
+            "reason": "特別出勤"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["kind"], "use_schedule");
+    assert_eq!(body["work_schedule_id"], schedule_id.to_string());
+}
+
+#[tokio::test]
 async fn override_rejected_when_resolved_workday_locked() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
@@ -228,6 +266,157 @@ async fn override_rejected_when_resolved_workday_locked() {
 
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["code"], "RESOLVED_WORKDAY_LOCKED");
+}
+
+#[tokio::test]
+async fn repository_rejects_malformed_work_schedule_id() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let repository = WorkdayResolverPostgresRepository::new(pool);
+
+    let error = repository
+        .upsert_override(NewWorkdayOverride {
+            user_id: employee.id.to_string(),
+            work_date: date(),
+            kind: WorkdayOverrideKind::UseSchedule,
+            work_schedule_id: Some("not-a-uuid".to_string()),
+            reason: "invalid schedule".to_string(),
+            created_by: admin.id.to_string(),
+        })
+        .await
+        .expect_err("malformed schedule id should fail before SQL");
+
+    assert_eq!(
+        error,
+        WorkdayOverrideError::InvalidInput("work_schedule_id must be a valid UUID".to_string())
+    );
+}
+
+#[tokio::test]
+async fn repository_maps_missing_work_schedule_foreign_key() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let repository = WorkdayResolverPostgresRepository::new(pool);
+
+    let error = repository
+        .upsert_override(NewWorkdayOverride {
+            user_id: employee.id.to_string(),
+            work_date: date(),
+            kind: WorkdayOverrideKind::UseSchedule,
+            work_schedule_id: Some(Uuid::new_v4().to_string()),
+            reason: "missing schedule".to_string(),
+            created_by: admin.id.to_string(),
+        })
+        .await
+        .expect_err("missing work schedule should map FK violation");
+
+    assert_eq!(
+        error,
+        WorkdayOverrideError::InvalidInput(
+            "referenced user or work schedule does not exist".to_string()
+        )
+    );
+}
+
+#[tokio::test]
+async fn repository_maps_unclassified_upsert_database_error() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let repository = WorkdayResolverPostgresRepository::new(pool);
+
+    let error = repository
+        .upsert_override(NewWorkdayOverride {
+            user_id: employee.id.to_string(),
+            work_date: date(),
+            kind: WorkdayOverrideKind::NonWorkingDay,
+            work_schedule_id: None,
+            reason: "x".repeat(501),
+            created_by: admin.id.to_string(),
+        })
+        .await
+        .expect_err("unclassified check violation should use generic repository error");
+
+    assert_eq!(
+        error,
+        WorkdayOverrideError::Repository("upsert workday override failed".to_string())
+    );
+}
+
+#[tokio::test]
+async fn repository_maps_locked_trigger_errors() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, version_id) =
+        seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+    insert_resolved_workday(&pool, employee.id, date(), schedule_id, version_id, None).await;
+    let override_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workday_overrides \
+         (id, user_id, work_date, kind, reason, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(override_id)
+    .bind(employee.id.to_string())
+    .bind(date())
+    .bind("non_working_day")
+    .bind("pre-lock override")
+    .bind(admin.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("insert override before lock");
+    sqlx::query(
+        "UPDATE resolved_workdays SET locked_at = $3 WHERE user_id = $1 AND work_date = $2",
+    )
+    .bind(employee.id.to_string())
+    .bind(date())
+    .bind(Utc::now())
+    .execute(&pool)
+    .await
+    .expect("lock resolved workday");
+    let repository = WorkdayResolverPostgresRepository::new(pool);
+
+    let upsert_error = repository
+        .upsert_override(NewWorkdayOverride {
+            user_id: employee.id.to_string(),
+            work_date: date(),
+            kind: WorkdayOverrideKind::NonWorkingDay,
+            work_schedule_id: None,
+            reason: "locked upsert".to_string(),
+            created_by: admin.id.to_string(),
+        })
+        .await
+        .expect_err("locked trigger should reject direct repository upsert");
+    assert_eq!(upsert_error, WorkdayOverrideError::ResolvedWorkdayLocked);
+
+    let delete_error = repository
+        .delete_override(&employee.id.to_string(), date())
+        .await
+        .expect_err("locked trigger should reject direct repository delete");
+    assert_eq!(delete_error, WorkdayOverrideError::ResolvedWorkdayLocked);
 }
 
 #[tokio::test]

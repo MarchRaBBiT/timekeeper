@@ -27,7 +27,7 @@
 - [x] manager がスコープ外ユーザーへ override すると `403`
 - [x] `DELETE .../workday-overrides/{date}` は未ロック例外を削除し `204`、存在しなければ `404`
 - [x] resolver読み取り規則は変更せず、既存 resolve/clock-in/out 挙動が不変（attendance_work_schedule_integration 7 passed）
-- [~] 新規・変更モジュールの line coverage 80%以上: 全分岐をtestで網羅。cargo-llvm-cov 未導入で数値計測は保留
+- [x] 新規・変更モジュールの line coverage 80%以上: app 100%、infra-postgres 82.99%、backend handlers 89.41%、対象合算87.39%
 
 ## Constraints / Non-goals
 
@@ -59,7 +59,7 @@
 - [x] `bash scripts/harness.sh docs-check`
 - [x] `cargo fmt --all --check`
 - [x] `cargo clippy --workspace --all-targets -- -D warnings`
-- [~] changed-module line coverage: cargo-llvm-cov 未導入。新規ロジックの全分岐（範囲検証・kind/schedule整合・reason・locked・スコープ・not-found）を unit/integration test で網羅
+- [x] changed-module line coverage: app 100%、infra-postgres 82.99%、backend handlers 89.41%、対象合算87.39%（cargo-llvm-cov 0.8.7）
 
 ## Git Snapshot Log
 
@@ -73,3 +73,4 @@
 - 2026-06-22: app use case 3種を新規モジュール(`user_workdays`/`workday_overrides`)で実装しmock testで分岐固定。infra-postgres `management.rs` で範囲読み取り・override upsert/delete・locked事前チェックを実装。contract DTO追加、handler 4本とroute登録、OpenAPI doc.rs登録、API catalog/設計docのPhase 1完了反映まで実施。
 - 2026-06-22: 認可は既存パターン踏襲で system_admin バイパス + manager は `can_manager_approve` 部署スコープ。override は admin_routes(auth_admin=manager+) に置き、handler内でスコープ検証。locked判定は resolved_workdays.locked_at を gate にし DB trigger と二重防御。
 - 2026-06-22: app 12 / read API 6 / override API 8 / 回帰(admin 11, integration 7, docs 3) すべて green。fmt・workspace clippy・docs-check green。
+- 2026-07-02: cargo-llvm-cov 0.8.7 で保留coverageを実測。`workday_override_api` に use_schedule成功、repository error mapping（不正UUID、FK、unclassified DB error、locked trigger upsert/delete）を追加し、read API 7 / override API 15 / app use case 12 がgreen。changed target line coverageは app 78/78=100%、infra-postgres 283/341=82.99%、backend handlers 228/255=89.41%、合算589/674=87.39%。Phase 1 Done Criteriaのcoverage保留を解消し、Phase 2へ進める状態。
