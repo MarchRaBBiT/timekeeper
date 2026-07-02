@@ -27,6 +27,10 @@
 - [Audit Log Migration Guide](./migration/audit-log-migration-guide.md)
 - [Audit Log Migration Guide (JA)](./migration/audit-log-migration-guide_ja.md)
 
+## Reviews
+
+- [Work Schedule Phase2 Review (2026-07-02)](./reviews/2026-07-02-work-schedule-phase2-review.md)
+
 ## Issue Breakdowns
 
 - [Issue Documents](./issues)

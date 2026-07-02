@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use sqlx::{FromRow, PgPool};
@@ -176,6 +176,19 @@ pub async fn close_month(
     let from = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or_else(|| WorkScheduleRepositoryError::CorruptData("invalid close month".into()))?;
     let to = end_of_month(from)?;
+    let mut transaction = pool.begin().await?;
+    if !user_ids.is_empty() {
+        let requested_count = i64::try_from(user_ids.iter().collect::<HashSet<_>>().len())
+            .map_err(|_| WorkScheduleRepositoryError::CorruptData("too many user ids".into()))?;
+        let existing_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ANY($1)")
+                .bind(user_ids)
+                .fetch_one(&mut *transaction)
+                .await?;
+        if existing_count != requested_count {
+            return Err(WorkScheduleRepositoryError::InvalidReference);
+        }
+    }
     let rows_affected = if user_ids.is_empty() {
         sqlx::query(
             "UPDATE resolved_workdays SET locked_at = NOW() \
@@ -183,7 +196,7 @@ pub async fn close_month(
         )
         .bind(from)
         .bind(to)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await?
         .rows_affected()
     } else {
@@ -194,29 +207,37 @@ pub async fn close_month(
         .bind(user_ids)
         .bind(from)
         .bind(to)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await?
         .rows_affected()
     };
+    let locked_count = i64::try_from(rows_affected).map_err(|_| {
+        WorkScheduleRepositoryError::CorruptData("locked row count overflow".into())
+    })?;
 
-    sqlx::query(
-        "INSERT INTO work_schedule_monthly_closures \
-         (id, year, month, period_start, period_end, user_ids, locked_count, closed_by, reason) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-    )
-    .bind(Uuid::new_v4())
-    .bind(year)
-    .bind(i32::try_from(month).unwrap_or(0))
-    .bind(from)
-    .bind(to)
-    .bind(user_ids)
-    .bind(i64::try_from(rows_affected).unwrap_or(i64::MAX))
-    .bind(closed_by)
-    .bind(reason)
-    .execute(pool)
-    .await?;
+    if locked_count > 0 {
+        let month = i32::try_from(month)
+            .map_err(|_| WorkScheduleRepositoryError::CorruptData("invalid close month".into()))?;
+        sqlx::query(
+            "INSERT INTO work_schedule_monthly_closures \
+             (id, year, month, period_start, period_end, user_ids, locked_count, closed_by, reason) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(year)
+        .bind(month)
+        .bind(from)
+        .bind(to)
+        .bind(user_ids)
+        .bind(locked_count)
+        .bind(closed_by)
+        .bind(reason)
+        .execute(&mut *transaction)
+        .await?;
+    }
 
-    Ok((from, to, i64::try_from(rows_affected).unwrap_or(i64::MAX)))
+    transaction.commit().await?;
+    Ok((from, to, locked_count))
 }
 
 fn dates_inclusive(from: NaiveDate, to: NaiveDate) -> RepositoryResult<Vec<NaiveDate>> {

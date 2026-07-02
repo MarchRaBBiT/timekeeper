@@ -32,7 +32,7 @@ use crate::{
     error::AppError,
     handlers::work_schedules::resolved_workday_to_response,
     models::user::User,
-    repositories::department::can_manager_approve,
+    repositories::department::{can_manager_approve, list_subordinate_user_ids},
     repositories::work_schedule::{
         self, AssignmentListFilter, WorkScheduleListFilter, WorkScheduleRepositoryError,
     },
@@ -43,6 +43,8 @@ use crate::{
 const DEFAULT_PAGE: i64 = 1;
 const DEFAULT_PER_PAGE: i64 = 25;
 const MAX_PER_PAGE: i64 = 100;
+const MAX_PROJECTION_USERS: usize = 500;
+const MAX_BULK_ASSIGNMENT_TARGETS: usize = 500;
 
 pub async fn list_work_schedules(
     State(state): State<AppState>,
@@ -338,6 +340,11 @@ pub async fn generate_work_schedule_projections(
     if payload.user_ids.is_empty() {
         return Err(invalid_work_schedule("user_ids must not be empty"));
     }
+    if payload.user_ids.len() > MAX_PROJECTION_USERS {
+        return Err(invalid_work_schedule(
+            "user_ids exceeds the supported maximum",
+        ));
+    }
     for user_id in &payload.user_ids {
         UserId::from_str(user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
     }
@@ -376,12 +383,7 @@ pub async fn generate_work_schedule_projections(
                     });
                 }
                 Err(error) => {
-                    errors.push(WorkScheduleProjectionError {
-                        user_id: user_id.clone(),
-                        work_date,
-                        code: "WORK_SCHEDULE_PROJECTION_FAILED".to_string(),
-                        message: error.to_string(),
-                    });
+                    errors.push(projection_error(user_id, work_date, error));
                 }
             }
         }
@@ -478,8 +480,14 @@ pub async fn list_work_schedule_anomalies(
             UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
         authorize_scope(&state, &user, target).await?;
         Some(vec![user_id])
-    } else {
+    } else if user.is_system_admin() {
         None
+    } else {
+        Some(
+            list_subordinate_user_ids(state.read_pool(), user.id)
+                .await
+                .map_err(|error| AppError::InternalServerError(error.into()))?,
+        )
     };
     let items = work_schedule::list_anomalies(state.read_pool(), user_ids, query.from, query.to)
         .await
@@ -499,6 +507,11 @@ pub async fn bulk_create_work_schedule_assignments(
     require_system_admin(&user)?;
     if payload.targets.is_empty() {
         return Err(invalid_work_schedule("targets must not be empty"));
+    }
+    if payload.targets.len() > MAX_BULK_ASSIGNMENT_TARGETS {
+        return Err(invalid_work_schedule(
+            "targets exceeds the supported maximum",
+        ));
     }
     if payload
         .valid_until
@@ -554,6 +567,9 @@ pub async fn close_work_schedule_month(
     require_system_admin(&user)?;
     if !(1..=12).contains(&payload.month) {
         return Err(invalid_work_schedule("month must be between 1 and 12"));
+    }
+    if !(1900..=9999).contains(&payload.year) {
+        return Err(invalid_work_schedule("year must be between 1900 and 9999"));
     }
     for user_id in &payload.user_ids {
         UserId::from_str(user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
@@ -742,7 +758,44 @@ fn repository_error_code_message(error: &WorkScheduleRepositoryError) -> (&'stat
             ("INVALID_WORK_SCHEDULE", message.clone())
         }
         WorkScheduleRepositoryError::Sqlx(error) => {
-            ("WORK_SCHEDULE_REPOSITORY_ERROR", error.to_string())
+            tracing::error!(error = %error, "bulk work schedule assignment target failed");
+            (
+                "WORK_SCHEDULE_REPOSITORY_ERROR",
+                "internal error while processing this target".into(),
+            )
+        }
+    }
+}
+
+fn projection_error(
+    user_id: &str,
+    work_date: NaiveDate,
+    error: ResolveWorkdayError,
+) -> WorkScheduleProjectionError {
+    match error {
+        ResolveWorkdayError::WorkScheduleNotConfigured => WorkScheduleProjectionError {
+            user_id: user_id.to_string(),
+            work_date,
+            code: "WORK_SCHEDULE_NOT_CONFIGURED".to_string(),
+            message: "work schedule is not configured".to_string(),
+        },
+        ResolveWorkdayError::InvalidScheduleData(message) => {
+            tracing::error!(error = %message, "work schedule projection found invalid schedule data");
+            WorkScheduleProjectionError {
+                user_id: user_id.to_string(),
+                work_date,
+                code: "WORK_SCHEDULE_PROJECTION_FAILED".to_string(),
+                message: "internal error while generating this projection".to_string(),
+            }
+        }
+        ResolveWorkdayError::Repository(message) => {
+            tracing::error!(error = %message, "work schedule projection repository error");
+            WorkScheduleProjectionError {
+                user_id: user_id.to_string(),
+                work_date,
+                code: "WORK_SCHEDULE_PROJECTION_FAILED".to_string(),
+                message: "internal error while generating this projection".to_string(),
+            }
         }
     }
 }
@@ -886,5 +939,30 @@ mod tests {
     fn pagination_is_bounded() {
         assert_eq!(normalize_page(Some(0)), 1);
         assert_eq!(normalize_per_page(Some(500)), 100);
+    }
+
+    #[test]
+    fn repository_sql_errors_are_not_returned_to_bulk_clients() {
+        let error = WorkScheduleRepositoryError::Sqlx(sqlx::Error::Protocol(
+            "relation work_schedule_assignments leaked".to_string(),
+        ));
+
+        let (code, message) = repository_error_code_message(&error);
+
+        assert_eq!(code, "WORK_SCHEDULE_REPOSITORY_ERROR");
+        assert_eq!(message, "internal error while processing this target");
+    }
+
+    #[test]
+    fn projection_repository_errors_are_not_returned_to_clients() {
+        let error = ResolveWorkdayError::Repository("database table name leaked".to_string());
+
+        let projection_error = projection_error("user-1", chrono::NaiveDate::MIN, error);
+
+        assert_eq!(projection_error.code, "WORK_SCHEDULE_PROJECTION_FAILED");
+        assert_eq!(
+            projection_error.message,
+            "internal error while generating this projection"
+        );
     }
 }

@@ -10,9 +10,11 @@ use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::{work_schedules as handlers, workday_overrides},
     models::user::{User, UserRole},
+    repositories::work_schedule,
     state::AppState,
 };
 use tower::ServiceExt;
+use uuid::Uuid;
 
 mod support;
 
@@ -88,6 +90,28 @@ async fn request_json(
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+}
+
+async fn assign_manager_to_employee_department(pool: &PgPool, manager: &User, employee: &User) {
+    let department_id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&department_id)
+        .bind(format!("Department {department_id}"))
+        .execute(pool)
+        .await
+        .expect("insert department");
+    sqlx::query("UPDATE users SET department_id = $1 WHERE id = $2")
+        .bind(&department_id)
+        .bind(employee.id.to_string())
+        .execute(pool)
+        .await
+        .expect("assign employee department");
+    sqlx::query("INSERT INTO department_managers (department_id, user_id) VALUES ($1, $2)")
+        .bind(&department_id)
+        .bind(manager.id.to_string())
+        .execute(pool)
+        .await
+        .expect("assign manager");
 }
 
 #[tokio::test]
@@ -314,6 +338,38 @@ async fn anomaly_list_detects_not_configured_and_missing_clock_out() {
 }
 
 #[tokio::test]
+async fn manager_anomaly_list_without_user_id_is_limited_to_subordinates() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let manager = seed_user(&pool, UserRole::Manager, false).await;
+    let subordinate = seed_user(&pool, UserRole::Employee, false).await;
+    let outside_user = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &manager, &subordinate).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), manager),
+        "GET",
+        "/api/admin/work-schedule-anomalies?from=2026-07-01&to=2026-07-01",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let returned_user_ids: Vec<_> = body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| item["user_id"].as_str().expect("user_id"))
+        .collect();
+    assert!(returned_user_ids.contains(&subordinate.id.to_string().as_str()));
+    assert!(!returned_user_ids.contains(&outside_user.id.to_string().as_str()));
+}
+
+#[tokio::test]
 async fn bulk_assignment_reports_per_target_results() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
@@ -347,4 +403,256 @@ async fn bulk_assignment_reports_per_target_results() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["created"].as_array().expect("created").len(), 2);
     assert!(body["failed"].as_array().expect("failed").is_empty());
+}
+
+#[tokio::test]
+async fn bulk_assignment_rejects_too_many_targets() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_owner = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, _) =
+        seed_work_schedule_for_user(&pool, schedule_owner.id, "non_working").await;
+    let targets: Vec<_> = (0..501)
+        .map(|_| json!({ "type": "user", "user_id": Uuid::new_v4().to_string() }))
+        .collect();
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-assignments/bulk",
+        Some(json!({
+            "work_schedule_id": schedule_id.to_string(),
+            "targets": targets,
+            "valid_from": "2027-01-01",
+            "valid_until": null
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE");
+}
+
+#[tokio::test]
+async fn projection_generation_rejects_too_many_users() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let user_ids: Vec<_> = (0..501).map(|_| Uuid::new_v4().to_string()).collect();
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": user_ids,
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE");
+}
+
+#[tokio::test]
+async fn bulk_assignment_hides_database_error_details() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_owner = seed_user(&pool, UserRole::Employee, false).await;
+    let (schedule_id, _) =
+        seed_work_schedule_for_user(&pool, schedule_owner.id, "non_working").await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-assignments/bulk",
+        Some(json!({
+            "work_schedule_id": schedule_id.to_string(),
+            "targets": [
+                { "type": "user", "user_id": Uuid::new_v4().to_string() }
+            ],
+            "valid_from": "2027-01-01",
+            "valid_until": null
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["failed"][0]["code"], "INVALID_WORK_SCHEDULE_REFERENCE");
+    assert_eq!(
+        body["failed"][0]["message"],
+        "Referenced user or department does not exist"
+    );
+}
+
+#[tokio::test]
+async fn monthly_close_is_idempotent_when_month_is_already_locked() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let projection = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-03"
+        })),
+    )
+    .await;
+    assert_eq!(projection.0, StatusCode::OK);
+
+    for expected_locked_count in [3, 0] {
+        let (status, body) = request_json(
+            router(pool.clone(), admin.clone()),
+            "POST",
+            "/api/admin/work-schedule-closures/monthly",
+            Some(json!({
+                "year": 2026,
+                "month": 7,
+                "user_ids": [employee.id.to_string()],
+                "reason": "July payroll close"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["locked_count"], expected_locked_count);
+    }
+
+    let closure_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM work_schedule_monthly_closures \
+         WHERE year = 2026 AND month = 7 AND user_ids = $1",
+    )
+    .bind(vec![employee.id.to_string()])
+    .fetch_one(&pool)
+    .await
+    .expect("closure count");
+    assert_eq!(closure_count, 1);
+}
+
+#[tokio::test]
+async fn monthly_close_rejects_unknown_user_ids() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-closures/monthly",
+        Some(json!({
+            "year": 2026,
+            "month": 7,
+            "user_ids": [Uuid::new_v4().to_string()],
+            "reason": "invalid user"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE_REFERENCE");
+}
+
+#[tokio::test]
+async fn monthly_close_rejects_year_outside_supported_range() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-closures/monthly",
+        Some(json!({
+            "year": 10000,
+            "month": 7,
+            "user_ids": [],
+            "reason": "invalid year"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE");
+}
+
+#[tokio::test]
+async fn monthly_close_rolls_back_locks_when_closure_insert_fails() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let projection = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-03"
+        })),
+    )
+    .await;
+    assert_eq!(projection.0, StatusCode::OK);
+
+    let result = work_schedule::close_month(
+        &pool,
+        2026,
+        7,
+        &[employee.id.to_string()],
+        "missing-closed-by-user",
+        Some("should fail"),
+    )
+    .await;
+    assert!(result.is_err());
+
+    let locked_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM resolved_workdays \
+         WHERE user_id = $1 AND work_date BETWEEN $2 AND $3 AND locked_at IS NOT NULL",
+    )
+    .bind(employee.id.to_string())
+    .bind(date(2026, 7, 1))
+    .bind(date(2026, 7, 3))
+    .fetch_one(&pool)
+    .await
+    .expect("locked count");
+    assert_eq!(locked_count, 0);
 }

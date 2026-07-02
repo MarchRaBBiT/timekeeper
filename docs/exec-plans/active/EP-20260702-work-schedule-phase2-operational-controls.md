@@ -28,7 +28,7 @@
 - [x] system admin が複数targetへ一括割当でき、重複/不正参照を個別結果として確認できる
 - [x] system admin が月次締めを実行すると対象月のresolved workdayがlockされ、override upsert/deleteは409になる
 - [x] API catalogとOpenAPIが実装に同期している
-- [x] Phase2 SQL/repository line coverageが80%以上である — `operations.rs` 191/226 = 84.51%
+- [x] Phase2 SQL/repository line coverageが80%以上である — `operations.rs` 209/251 = 83.27%（review修正後再計測）
 
 ## Constraints
 
@@ -40,9 +40,9 @@
 
 ## Validation Plan
 
-- [x] `cargo test -p timekeeper-backend --test work_schedule_phase2_api` — 5 passed
+- [x] `cargo test -p timekeeper-backend --test work_schedule_phase2_api` — 13 passed（review修正分の回帰テスト込み）
 - [x] `cargo test -p timekeeper-backend --test docs_api` — 3 passed
-- [x] `cargo llvm-cov --no-clean -p timekeeper-backend --test work_schedule_phase2_api --summary-only` — `operations.rs` 84.51%
+- [x] `cargo llvm-cov --no-clean -p timekeeper-backend --test work_schedule_phase2_api --summary-only` — `operations.rs` 83.27%
 - [x] `bash scripts/harness.sh docs-check`
 - [x] `cargo fmt --all --check`
 - [x] `cargo clippy --workspace --all-targets -- -D warnings`
@@ -53,3 +53,10 @@
 - 2026-07-02: Phase2 backend MVPを実装。`047_create_work_schedule_monthly_closures.sql`、contract DTO、projection生成、anomaly一覧、管理者カレンダー、一括割当、月次締めlock routeを追加。frontend画面と常駐worker daemonはOutのまま。
 - 2026-07-02: `work_schedule_phase2_api` で projection生成、calendar表示、monthly close後のoverride 409、schedule_not_configured / missing_clock_in / missing_clock_out / unscheduled_work、bulk assignmentを検証。OpenAPI `docs_api`、docs-check、fmt、workspace clippyがgreen。
 - 2026-07-02: coverageは新規Phase2 repository `backend/src/repositories/work_schedule/operations.rs` が 191/226 = 84.51%。`backend/src/handlers/admin/work_schedules.rs` は既存Phase1管理handlerを含む巨大ファイルのため、Phase2 integrationのみではファイル全体31.46%。
+- 2026-07-02: rust-reviewer/database-reviewer/security-reviewer並列レビュー（`docs/reviews/2026-07-02-work-schedule-phase2-review.md`）でCritical 1件・High 4件を検出、全件修正。
+  - C1: manager が `user_id` 省略時に全社員anomalyを閲覧できる認可バイパスを修正。`list_subordinate_user_ids` で配下ユーザーに限定。
+  - H1: `generate_work_schedule_projections` / `bulk_create_work_schedule_assignments` に上限500件のバリデーションを追加（N+1・無制限クエリ発行の緩和）。
+  - H2: `close_month` を `pool.begin()` でトランザクション化し、UPDATE成功後のINSERT失敗時に監査ログ欠落しないよう修正。
+  - H3: `repository_error_code_message` / projection生成のエラー経路でDB内部エラー文字列を返さないよう汎用メッセージへマップし、詳細は `tracing::error!` に限定。
+  - H4: `close_month` が対象0件の場合に監査レコードを作成しないよう変更し、再実行時の重複蓄積を防止（存在しない `user_id` の事前検証も追加）。
+  - 修正内容は `work_schedule_phase2_api` に回帰テスト13件（5→13）として反映し、`operations.rs` coverageは209/251 = 83.27%を維持。`cargo fmt --all --check` / `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` はgreen。
