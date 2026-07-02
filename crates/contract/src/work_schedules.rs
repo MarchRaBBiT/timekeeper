@@ -457,3 +457,60 @@ pub struct CloseWorkScheduleMonthResponse {
     pub to: NaiveDate,
     pub locked_count: i64,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkScheduleType {
+    Fixed,
+    Flex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SettlementPeriodUnit {
+    Monthly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
+pub struct SettlementPeriodInput {
+    pub unit: SettlementPeriodUnit,
+    #[validate(range(min = 1))]
+    pub contracted_minutes_per_period: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct SettlementPeriodResponse {
+    pub unit: SettlementPeriodUnit,
+    pub contracted_minutes_per_period: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CoreTimeWindowInput {
+    pub weekday: u8,
+    pub start_time: NaiveTime,
+    pub start_day_offset: u8,
+    pub end_time: NaiveTime,
+    pub end_day_offset: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CoreTimeWindowResponse {
+    pub weekday: i16,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct FlexPolicyInput {
+    pub settlement_period: SettlementPeriodInput,
+    #[serde(default)]
+    pub core_time_windows: Vec<CoreTimeWindowInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct FlexPolicyResponse {
+    pub settlement_period: SettlementPeriodResponse,
+    pub core_time_windows: Vec<CoreTimeWindowResponse>,
+}

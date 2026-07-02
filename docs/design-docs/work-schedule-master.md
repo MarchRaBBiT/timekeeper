@@ -1,6 +1,6 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available
+**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period domain model is implemented (`crates/domain`, `crates/contract`); API/persistence wiring is not yet implemented.
 
 **Updated:** 2026-07-02
 
@@ -19,6 +19,10 @@
 予定取得と日別例外操作は部署スコープ認可に従い、locked済み勤務日の例外変更は `RESOLVED_WORKDAY_LOCKED` で拒否する。
 2026-07-02に Phase 2 backend MVP として、未来projection生成、未設定・予定外勤務・打刻漏れanomaly検出、
 管理者カレンダーAPI、一括割当、月次締めlockを追加した。frontend管理画面と常駐worker daemonは未実装。
+2026-07-02に Phase 3 の最初の増分として、`schedule_type`（Fixed/Flex）・コアタイム・清算期間の
+domain model（`crates/domain`）とcontract DTO（`crates/contract`）を追加した。`ScheduleDefinition`の
+`flex_policy`により、Fixed/Flexの相互排他、コアタイムの勤務区間内チェック、清算期間の妥当性を検証する。
+API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。
 
 ## Decision Summary
 
@@ -508,7 +512,7 @@ handlerへ解決規則やSQLを追加しない。
 
 ### Phase 3 — Advanced Work Arrangements
 
-- flex、core time、清算期間
+- flex、core time、清算期間（domain model実装済み。API/永続化配線は未実装）
 - 変形労働、複数勤務区間
 - シフト一括作成・交換
 - attendance calculation policyとの接続

@@ -86,12 +86,54 @@ impl WeekdayRule {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScheduleType {
+    Fixed,
+    Flex,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreTimeWindow {
+    pub weekday: u8,
+    pub start_time: NaiveTime,
+    pub start_day_offset: u8,
+    pub end_time: NaiveTime,
+    pub end_day_offset: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettlementPeriodUnit {
+    Monthly,
+}
+
+impl SettlementPeriodUnit {
+    fn max_minutes(self) -> i32 {
+        match self {
+            SettlementPeriodUnit::Monthly => 31 * 24 * 60,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SettlementPeriod {
+    pub unit: SettlementPeriodUnit,
+    pub contracted_minutes_per_period: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlexPolicy {
+    pub settlement_period: SettlementPeriod,
+    pub core_time_windows: Vec<CoreTimeWindow>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduleDefinition {
     pub effective_from: NaiveDate,
     pub effective_until: Option<NaiveDate>,
     pub timezone: String,
     pub workday_boundary: NaiveTime,
+    pub schedule_type: ScheduleType,
+    pub flex_policy: Option<FlexPolicy>,
     pub days: Vec<WeekdayRule>,
 }
 
@@ -115,8 +157,100 @@ impl ScheduleDefinition {
         for day in &self.days {
             validate_day(day)?;
         }
+
+        self.validate_flex_policy()?;
         Ok(())
     }
+
+    fn validate_flex_policy(&self) -> Result<(), ScheduleValidationError> {
+        match (self.schedule_type, &self.flex_policy) {
+            (ScheduleType::Fixed, None) => Ok(()),
+            (ScheduleType::Fixed, Some(_)) => {
+                Err(ScheduleValidationError::FlexPolicyNotAllowedForFixedSchedule)
+            }
+            (ScheduleType::Flex, None) => {
+                Err(ScheduleValidationError::FlexPolicyRequiredForFlexSchedule)
+            }
+            (ScheduleType::Flex, Some(policy)) => {
+                let minutes = policy.settlement_period.contracted_minutes_per_period;
+                if minutes <= 0 || minutes > policy.settlement_period.unit.max_minutes() {
+                    return Err(ScheduleValidationError::InvalidSettlementPeriod);
+                }
+
+                let mut seen_weekdays = BTreeSet::new();
+                let mut weekly_ranges: Vec<(u8, i64, i64)> = Vec::new();
+                for window in &policy.core_time_windows {
+                    if !seen_weekdays.insert(window.weekday) {
+                        return Err(ScheduleValidationError::DuplicateCoreTimeWeekday {
+                            weekday: window.weekday,
+                        });
+                    }
+                    let day = self
+                        .days
+                        .iter()
+                        .find(|day| day.weekday == window.weekday)
+                        .ok_or(ScheduleValidationError::CoreTimeWeekdayOutOfRange {
+                            weekday: window.weekday,
+                        })?;
+                    if day.day_kind != DayKind::WorkingDay {
+                        return Err(ScheduleValidationError::CoreTimeOnNonWorkingDay {
+                            weekday: window.weekday,
+                        });
+                    }
+                    validate_work_offsets(
+                        window.start_day_offset,
+                        window.end_day_offset,
+                        window.weekday,
+                    )?;
+                    let core_start = minute_index(window.start_time, window.start_day_offset);
+                    let core_end = minute_index(window.end_time, window.end_day_offset);
+                    if core_start >= core_end {
+                        return Err(ScheduleValidationError::InvalidCoreTimeWindow {
+                            weekday: window.weekday,
+                        });
+                    }
+                    let contains_core_time = day.work_intervals.iter().any(|interval| {
+                        let work_start =
+                            minute_index(interval.start_time, interval.start_day_offset);
+                        let work_end = minute_index(interval.end_time, interval.end_day_offset);
+                        core_start >= work_start && core_end <= work_end
+                    });
+                    if !contains_core_time {
+                        return Err(ScheduleValidationError::CoreTimeOutsideFlexBand {
+                            weekday: window.weekday,
+                        });
+                    }
+
+                    let week_start = i64::from(window.weekday - 1) * MINUTES_PER_DAY + core_start;
+                    let week_end = week_start + (core_end - core_start);
+                    weekly_ranges.push((window.weekday, week_start, week_end));
+                }
+
+                for i in 0..weekly_ranges.len() {
+                    for j in (i + 1)..weekly_ranges.len() {
+                        let (weekday_a, start_a, end_a) = weekly_ranges[i];
+                        let (weekday_b, start_b, end_b) = weekly_ranges[j];
+                        if weekly_ranges_overlap(start_a, end_a, start_b, end_b) {
+                            return Err(ScheduleValidationError::OverlappingCoreTimeWindows {
+                                weekday_a,
+                                weekday_b,
+                            });
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+const MINUTES_PER_WEEK: i64 = 7 * 24 * 60;
+const MINUTES_PER_DAY: i64 = 24 * 60;
+
+fn weekly_ranges_overlap(start_a: i64, end_a: i64, start_b: i64, end_b: i64) -> bool {
+    [-MINUTES_PER_WEEK, 0, MINUTES_PER_WEEK]
+        .iter()
+        .any(|shift| start_a < end_b + shift && start_b + shift < end_a)
 }
 
 fn validate_day(day: &WeekdayRule) -> Result<(), ScheduleValidationError> {
@@ -234,4 +368,24 @@ pub enum ScheduleValidationError {
     OverlappingBreaks { weekday: u8 },
     #[error("weekday {weekday} contains too many planned breaks")]
     TooManyBreaks { weekday: u8 },
+    #[error("flex_policy is not allowed for a fixed schedule")]
+    FlexPolicyNotAllowedForFixedSchedule,
+    #[error("flex_policy is required for a flex schedule")]
+    FlexPolicyRequiredForFlexSchedule,
+    #[error("settlement_period contracted_minutes_per_period is out of range")]
+    InvalidSettlementPeriod,
+    #[error("core time window for weekday {weekday} references a weekday outside the schedule")]
+    CoreTimeWeekdayOutOfRange { weekday: u8 },
+    #[error("core time window for weekday {weekday} falls on a non-working day")]
+    CoreTimeOnNonWorkingDay { weekday: u8 },
+    #[error("core time window for weekday {weekday} is invalid")]
+    InvalidCoreTimeWindow { weekday: u8 },
+    #[error("core time window for weekday {weekday} extends outside the flexible work band")]
+    CoreTimeOutsideFlexBand { weekday: u8 },
+    #[error("weekday {weekday} has more than one core time window")]
+    DuplicateCoreTimeWeekday { weekday: u8 },
+    #[error(
+        "core time windows for weekday {weekday_a} and weekday {weekday_b} overlap in real time"
+    )]
+    OverlappingCoreTimeWindows { weekday_a: u8, weekday_b: u8 },
 }

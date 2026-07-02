@@ -22,7 +22,7 @@ use timekeeper_contract::work_schedules::{
     WorkScheduleResponse, WorkScheduleVersionResponse,
 };
 use timekeeper_domain::work_schedules::{
-    DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, WeekdayRule,
+    DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, ScheduleType, WeekdayRule,
 };
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use uuid::Uuid;
@@ -628,6 +628,8 @@ fn validate_version_definition(
         effective_until,
         timezone: timezone.trim().to_string(),
         workday_boundary,
+        schedule_type: ScheduleType::Fixed,
+        flex_policy: None,
         days: days
             .iter()
             .map(|day| WeekdayRule {

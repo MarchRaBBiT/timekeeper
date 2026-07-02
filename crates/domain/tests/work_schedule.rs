@@ -1,7 +1,7 @@
 use chrono::{NaiveDate, NaiveTime};
 use timekeeper_domain::work_schedules::{
-    DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, ScheduleValidationError,
-    WeekdayRule,
+    DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, ScheduleType,
+    ScheduleValidationError, WeekdayRule,
 };
 
 fn time(hour: u32, minute: u32) -> NaiveTime {
@@ -42,6 +42,8 @@ fn definition() -> ScheduleDefinition {
         effective_until: None,
         timezone: "Asia/Tokyo".to_string(),
         workday_boundary: time(5, 0),
+        schedule_type: ScheduleType::Fixed,
+        flex_policy: None,
         days: (1..=7)
             .map(|weekday| {
                 if weekday <= 5 {
