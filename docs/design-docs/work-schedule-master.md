@@ -1,6 +1,6 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period domain model is implemented (`crates/domain`, `crates/contract`); API/persistence wiring is not yet implemented.
+**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period is implemented end-to-end for the Work Schedule Version API (`crates/domain`, `crates/contract`, `backend` handler/repository/migration); `ResolveWorkday` flex-aware output and settlement balance reconciliation are not yet implemented.
 
 **Updated:** 2026-07-02
 
@@ -23,6 +23,11 @@
 domain model（`crates/domain`）とcontract DTO（`crates/contract`）を追加した。`ScheduleDefinition`の
 `flex_policy`により、Fixed/Flexの相互排他、コアタイムの勤務区間内チェック、清算期間の妥当性を検証する。
 API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。
+2026-07-02にPhase 3のAPI配線として、`CreateWorkScheduleVersionRequest`/`ReplaceWorkScheduleVersionRequest`/`WorkScheduleVersionResponse`へ
+`schedule_type`（省略時`fixed`、後方互換）・`flex_policy`を追加し、`work_schedule_versions.schedule_type`カラムと
+`work_schedule_settlement_periods`/`work_schedule_core_time_windows`テーブル（migration `048_add_work_schedule_flex_policy.sql`）で永続化した。
+handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は未実装のまま
+（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。
 
 ## Decision Summary
 
@@ -512,7 +517,7 @@ handlerへ解決規則やSQLを追加しない。
 
 ### Phase 3 — Advanced Work Arrangements
 
-- flex、core time、清算期間（domain model実装済み。API/永続化配線は未実装）
+- flex、core time、清算期間（domain model・Work Schedule Version API配線は実装済み。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は未実装）
 - 変形労働、複数勤務区間
 - シフト一括作成・交換
 - attendance calculation policyとの接続

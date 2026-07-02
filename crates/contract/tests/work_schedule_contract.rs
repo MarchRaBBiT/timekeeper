@@ -29,6 +29,8 @@ fn version_payload_roundtrips_night_shift_offsets() {
         public_holiday_policy: PublicHolidayPolicy::NonWorking,
         late_grace_minutes: 0,
         early_leave_grace_minutes: 0,
+        schedule_type: Default::default(),
+        flex_policy: None,
         days: vec![WeekdayRuleInput {
             weekday: 1,
             day_kind: DayKind::WorkingDay,

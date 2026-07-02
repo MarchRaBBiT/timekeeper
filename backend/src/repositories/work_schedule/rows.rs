@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use sqlx::FromRow;
 use timekeeper_contract::work_schedules::{
-    AssignmentTarget, DayKind, PlannedBreakResponse, PlannedWorkIntervalResponse,
-    PublicHolidayPolicy, WeekdayRuleResponse, WorkScheduleAssignmentResponse, WorkScheduleResponse,
-    WorkScheduleStatus, WorkScheduleVersionResponse, WorkScheduleVersionStatus,
-    WorkScheduleVersionSummary,
+    AssignmentTarget, CoreTimeWindowResponse, DayKind, FlexPolicyResponse, PlannedBreakResponse,
+    PlannedWorkIntervalResponse, PublicHolidayPolicy, SettlementPeriodResponse,
+    SettlementPeriodUnit, WeekdayRuleResponse, WorkScheduleAssignmentResponse,
+    WorkScheduleResponse, WorkScheduleStatus, WorkScheduleType, WorkScheduleVersionResponse,
+    WorkScheduleVersionStatus, WorkScheduleVersionSummary,
 };
 use uuid::Uuid;
 
@@ -81,11 +82,27 @@ pub(super) struct VersionRow {
     pub public_holiday_policy: String,
     pub late_grace_minutes: i32,
     pub early_leave_grace_minutes: i32,
+    pub schedule_type: String,
     pub revision: i32,
     pub published_by: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct SettlementPeriodRow {
+    pub unit: String,
+    pub contracted_minutes_per_period: i32,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct CoreTimeWindowRow {
+    pub weekday: i16,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
 }
 
 #[derive(Debug, FromRow)]
@@ -150,6 +167,8 @@ pub(super) fn assemble_version(
     day_rows: Vec<DayRuleRow>,
     interval_rows: Vec<IntervalRow>,
     break_rows: Vec<IntervalRow>,
+    settlement_period_row: Option<SettlementPeriodRow>,
+    core_time_window_rows: Vec<CoreTimeWindowRow>,
 ) -> RepositoryResult<WorkScheduleVersionResponse> {
     let mut intervals: HashMap<Uuid, Vec<PlannedWorkIntervalResponse>> = HashMap::new();
     for row in interval_rows {
@@ -190,6 +209,37 @@ pub(super) fn assemble_version(
         })
         .collect::<RepositoryResult<Vec<_>>>()?;
 
+    let version_schedule_type = schedule_type(&version.schedule_type)?;
+    let flex_policy = match (version_schedule_type, settlement_period_row) {
+        (WorkScheduleType::Fixed, None) => None,
+        (WorkScheduleType::Fixed, Some(_)) => {
+            return Err(WorkScheduleRepositoryError::CorruptData(
+                "fixed work schedule version has a stored settlement period".to_string(),
+            ));
+        }
+        (WorkScheduleType::Flex, None) => {
+            return Err(WorkScheduleRepositoryError::CorruptData(
+                "flex work schedule version is missing its settlement period".to_string(),
+            ));
+        }
+        (WorkScheduleType::Flex, Some(settlement_period)) => Some(FlexPolicyResponse {
+            settlement_period: SettlementPeriodResponse {
+                unit: settlement_period_unit(&settlement_period.unit)?,
+                contracted_minutes_per_period: settlement_period.contracted_minutes_per_period,
+            },
+            core_time_windows: core_time_window_rows
+                .into_iter()
+                .map(|row| CoreTimeWindowResponse {
+                    weekday: row.weekday,
+                    start_time: row.start_time,
+                    start_day_offset: row.start_day_offset,
+                    end_time: row.end_time,
+                    end_day_offset: row.end_day_offset,
+                })
+                .collect(),
+        }),
+    };
+
     Ok(WorkScheduleVersionResponse {
         id: version.id.to_string(),
         work_schedule_id: version.work_schedule_id.to_string(),
@@ -202,6 +252,8 @@ pub(super) fn assemble_version(
         public_holiday_policy: holiday_policy(&version.public_holiday_policy)?,
         late_grace_minutes: version.late_grace_minutes,
         early_leave_grace_minutes: version.early_leave_grace_minutes,
+        schedule_type: version_schedule_type,
+        flex_policy,
         revision: version.revision,
         published_by: version.published_by,
         published_at: version.published_at,
@@ -233,6 +285,21 @@ fn holiday_policy(value: &str) -> RepositoryResult<PublicHolidayPolicy> {
         "non_working" => Ok(PublicHolidayPolicy::NonWorking),
         "follow_weekly_pattern" => Ok(PublicHolidayPolicy::FollowWeeklyPattern),
         other => Err(corrupt_enum("public holiday policy", other)),
+    }
+}
+
+fn schedule_type(value: &str) -> RepositoryResult<WorkScheduleType> {
+    match value {
+        "fixed" => Ok(WorkScheduleType::Fixed),
+        "flex" => Ok(WorkScheduleType::Flex),
+        other => Err(corrupt_enum("work schedule type", other)),
+    }
+}
+
+fn settlement_period_unit(value: &str) -> RepositoryResult<SettlementPeriodUnit> {
+    match value {
+        "monthly" => Ok(SettlementPeriodUnit::Monthly),
+        other => Err(corrupt_enum("settlement period unit", other)),
     }
 }
 

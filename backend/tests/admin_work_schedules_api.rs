@@ -115,8 +115,28 @@ fn version_payload() -> Value {
         "public_holiday_policy": "non_working",
         "late_grace_minutes": 0,
         "early_leave_grace_minutes": 0,
+        "schedule_type": "fixed",
         "days": days
     })
+}
+
+fn flex_version_payload() -> Value {
+    let mut payload = version_payload();
+    payload["schedule_type"] = json!("flex");
+    payload["flex_policy"] = json!({
+        "settlement_period": {
+            "unit": "monthly",
+            "contracted_minutes_per_period": 9600
+        },
+        "core_time_windows": [{
+            "weekday": 1,
+            "start_time": "10:00:00",
+            "start_day_offset": 0,
+            "end_time": "15:00:00",
+            "end_day_offset": 0
+        }]
+    });
+    payload
 }
 
 async fn request_json(
@@ -148,7 +168,10 @@ async fn request_json(
     let json = if bytes.is_empty() {
         Value::Null
     } else {
-        serde_json::from_slice(&bytes).expect("json body")
+        // axum's default `Json<T>` extractor rejection body (e.g. missing field errors)
+        // is plain text, not JSON, so fall back to a string value instead of panicking.
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
     };
     (status, json, location)
 }
@@ -527,4 +550,159 @@ async fn assignment_rejects_overlapping_period_for_same_target() {
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn flex_version_persists_schedule_type_and_flex_policy() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_id = create_master(&pool, &admin, &format!("flex-{}", Uuid::new_v4())).await;
+
+    let (status, created, _) = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions"),
+        Some(flex_version_payload()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["schedule_type"], "flex");
+    assert_eq!(
+        created["flex_policy"]["settlement_period"]["unit"],
+        "monthly"
+    );
+    assert_eq!(
+        created["flex_policy"]["settlement_period"]["contracted_minutes_per_period"],
+        9600
+    );
+    assert_eq!(created["flex_policy"]["core_time_windows"][0]["weekday"], 1);
+    let version_id = created["id"].as_str().expect("version id");
+
+    let (status, fetched, _) = request_json(
+        router(pool, admin),
+        "GET",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions/{version_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fetched["schedule_type"], "flex");
+    assert_eq!(
+        fetched["flex_policy"]["core_time_windows"][0]["start_time"],
+        "10:00:00"
+    );
+}
+
+#[tokio::test]
+async fn fixed_schedule_type_rejects_flex_policy_payload() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_id = create_master(&pool, &admin, &format!("fixflex-{}", Uuid::new_v4())).await;
+    let mut invalid = flex_version_payload();
+    invalid["schedule_type"] = json!("fixed");
+
+    let (status, body, _) = request_json(
+        router(pool, admin),
+        "POST",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions"),
+        Some(invalid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "INVALID_SCHEDULE_INTERVALS");
+}
+
+#[tokio::test]
+async fn existing_fixed_version_payload_defaults_schedule_type_to_fixed() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_id =
+        create_master(&pool, &admin, &format!("legacy-fixed-{}", Uuid::new_v4())).await;
+
+    let (status, created, _) = request_json(
+        router(pool, admin),
+        "POST",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions"),
+        Some(version_payload()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["schedule_type"], "fixed");
+    assert!(created["flex_policy"].is_null());
+}
+
+#[tokio::test]
+async fn replace_without_schedule_type_is_rejected_instead_of_silently_downgrading_flex() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let schedule_id = create_master(&pool, &admin, &format!("flexput-{}", Uuid::new_v4())).await;
+
+    let (status, created, _) = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions"),
+        Some(flex_version_payload()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let version_id = created["id"].as_str().expect("version id");
+
+    let mut legacy_replacement = version_payload();
+    legacy_replacement["revision"] = json!(1);
+    legacy_replacement
+        .as_object_mut()
+        .expect("object")
+        .remove("schedule_type");
+
+    let (status, body, _) = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions/{version_id}"),
+        Some(legacy_replacement),
+    )
+    .await;
+    // axum's default `Json<T>` extractor rejects a missing required field with
+    // 422 (plain-text body), the same status our own domain validation errors use.
+    // Assert on the body shape to make sure this is a deserialize rejection
+    // (no structured `code` field, and it names the missing field) rather than a
+    // request that was accepted and merely failed business validation.
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        body["code"].is_null(),
+        "expected a raw rejection body, not a structured AppError, got: {body}"
+    );
+    assert!(body
+        .as_str()
+        .is_some_and(|text| text.contains("schedule_type")));
+
+    let (status, unchanged, _) = request_json(
+        router(pool, admin),
+        "GET",
+        &format!("/api/admin/work-schedules/{schedule_id}/versions/{version_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unchanged["schedule_type"], "flex");
+    assert!(!unchanged["flex_policy"].is_null());
 }

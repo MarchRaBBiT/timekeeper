@@ -9,6 +9,14 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260702-work-schedule-phase3-flex-core-time
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md`](../docs/exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)
+
+# EP-20260702-work-schedule-phase3-api-wiring
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md`](../docs/exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)
+
 # EP-20260620-work-schedule-master-design
 
 **完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-design.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-design.md)

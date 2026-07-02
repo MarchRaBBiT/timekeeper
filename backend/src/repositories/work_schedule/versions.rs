@@ -1,7 +1,8 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use timekeeper_contract::work_schedules::{
-    CreateWorkScheduleVersionRequest, DayKind, PublicHolidayPolicy,
-    ReplaceWorkScheduleVersionRequest, WeekdayRuleInput, WorkScheduleVersionResponse,
+    CoreTimeWindowInput, CreateWorkScheduleVersionRequest, DayKind, FlexPolicyInput,
+    PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, SettlementPeriodUnit, WeekdayRuleInput,
+    WorkScheduleType, WorkScheduleVersionResponse,
 };
 use timekeeper_domain::work_schedules::{
     DayKind as DomainDayKind, PlannedBreak, PlannedWorkInterval, WeekdayRule,
@@ -10,13 +11,17 @@ use uuid::Uuid;
 
 use super::{
     map_database_error,
-    rows::{assemble_version, DayRuleRow, IntervalRow, VersionRow},
+    rows::{
+        assemble_version, CoreTimeWindowRow, DayRuleRow, IntervalRow, SettlementPeriodRow,
+        VersionRow,
+    },
     RepositoryResult, WorkScheduleRepositoryError,
 };
 
 const VERSION_COLUMNS: &str = "id, work_schedule_id, version_number, status, effective_from, \
     effective_until, timezone, workday_boundary, public_holiday_policy, late_grace_minutes, \
-    early_leave_grace_minutes, revision, published_by, published_at, created_at, updated_at";
+    early_leave_grace_minutes, schedule_type, revision, published_by, published_at, created_at, \
+    updated_at";
 
 pub async fn create_version(
     pool: &PgPool,
@@ -44,8 +49,8 @@ pub async fn create_version(
     sqlx::query(
         "INSERT INTO work_schedule_versions (id, work_schedule_id, version_number, \
          effective_from, effective_until, timezone, workday_boundary, public_holiday_policy, \
-         late_grace_minutes, early_leave_grace_minutes) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+         late_grace_minutes, early_leave_grace_minutes, schedule_type) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(version_id)
     .bind(schedule_id)
@@ -57,10 +62,12 @@ pub async fn create_version(
     .bind(holiday_policy_value(input.public_holiday_policy))
     .bind(input.late_grace_minutes)
     .bind(input.early_leave_grace_minutes)
+    .bind(schedule_type_value(input.schedule_type))
     .execute(&mut *transaction)
     .await
     .map_err(map_database_error)?;
     insert_days(&mut transaction, version_id, &input.days).await?;
+    insert_flex_policy(&mut transaction, version_id, input.flex_policy.as_ref()).await?;
     transaction.commit().await?;
     find_version(pool, schedule_id, version_id).await
 }
@@ -93,7 +100,7 @@ pub async fn replace_version(
     sqlx::query(
         "UPDATE work_schedule_versions SET effective_from = $3, effective_until = $4, \
          timezone = $5, workday_boundary = $6, public_holiday_policy = $7, \
-         late_grace_minutes = $8, early_leave_grace_minutes = $9, \
+         late_grace_minutes = $8, early_leave_grace_minutes = $9, schedule_type = $10, \
          revision = revision + 1, updated_at = NOW() WHERE id = $1 AND work_schedule_id = $2",
     )
     .bind(version_id)
@@ -105,13 +112,23 @@ pub async fn replace_version(
     .bind(holiday_policy_value(input.public_holiday_policy))
     .bind(input.late_grace_minutes)
     .bind(input.early_leave_grace_minutes)
+    .bind(schedule_type_value(input.schedule_type))
     .execute(&mut *transaction)
     .await?;
     sqlx::query("DELETE FROM work_schedule_day_rules WHERE version_id = $1")
         .bind(version_id)
         .execute(&mut *transaction)
         .await?;
+    sqlx::query("DELETE FROM work_schedule_settlement_periods WHERE version_id = $1")
+        .bind(version_id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM work_schedule_core_time_windows WHERE version_id = $1")
+        .bind(version_id)
+        .execute(&mut *transaction)
+        .await?;
     insert_days(&mut transaction, version_id, &input.days).await?;
+    insert_flex_policy(&mut transaction, version_id, input.flex_policy.as_ref()).await?;
     transaction.commit().await?;
     find_version(pool, schedule_id, version_id).await
 }
@@ -218,7 +235,28 @@ pub async fn find_version(
     .bind(version_id)
     .fetch_all(pool)
     .await?;
-    assemble_version(version, days, intervals, breaks)
+    let settlement_period = sqlx::query_as::<_, SettlementPeriodRow>(
+        "SELECT unit, contracted_minutes_per_period \
+         FROM work_schedule_settlement_periods WHERE version_id = $1",
+    )
+    .bind(version_id)
+    .fetch_optional(pool)
+    .await?;
+    let core_time_windows = sqlx::query_as::<_, CoreTimeWindowRow>(
+        "SELECT weekday, start_time, start_day_offset, end_time, end_day_offset \
+         FROM work_schedule_core_time_windows WHERE version_id = $1 ORDER BY weekday",
+    )
+    .bind(version_id)
+    .fetch_all(pool)
+    .await?;
+    assemble_version(
+        version,
+        days,
+        intervals,
+        breaks,
+        settlement_period,
+        core_time_windows,
+    )
 }
 
 async fn insert_days(
@@ -275,6 +313,50 @@ async fn insert_days(
     Ok(())
 }
 
+async fn insert_flex_policy(
+    transaction: &mut Transaction<'_, Postgres>,
+    version_id: Uuid,
+    flex_policy: Option<&FlexPolicyInput>,
+) -> RepositoryResult<()> {
+    let Some(policy) = flex_policy else {
+        return Ok(());
+    };
+    sqlx::query(
+        "INSERT INTO work_schedule_settlement_periods \
+         (version_id, unit, contracted_minutes_per_period) VALUES ($1, $2, $3)",
+    )
+    .bind(version_id)
+    .bind(settlement_period_unit_value(policy.settlement_period.unit))
+    .bind(policy.settlement_period.contracted_minutes_per_period)
+    .execute(&mut **transaction)
+    .await?;
+    for window in &policy.core_time_windows {
+        insert_core_time_window(transaction, version_id, window).await?;
+    }
+    Ok(())
+}
+
+async fn insert_core_time_window(
+    transaction: &mut Transaction<'_, Postgres>,
+    version_id: Uuid,
+    window: &CoreTimeWindowInput,
+) -> RepositoryResult<()> {
+    sqlx::query(
+        "INSERT INTO work_schedule_core_time_windows \
+         (version_id, weekday, start_time, start_day_offset, end_time, end_day_offset) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(version_id)
+    .bind(i16::from(window.weekday))
+    .bind(window.start_time)
+    .bind(i16::from(window.start_day_offset))
+    .bind(window.end_time)
+    .bind(i16::from(window.end_day_offset))
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
 fn domain_day(day: &WeekdayRuleInput) -> WeekdayRule {
     WeekdayRule {
         weekday: day.weekday,
@@ -322,5 +404,18 @@ fn day_kind_value(value: DayKind) -> &'static str {
     match value {
         DayKind::WorkingDay => "working_day",
         DayKind::NonWorkingDay => "non_working_day",
+    }
+}
+
+fn schedule_type_value(value: WorkScheduleType) -> &'static str {
+    match value {
+        WorkScheduleType::Fixed => "fixed",
+        WorkScheduleType::Flex => "flex",
+    }
+}
+
+fn settlement_period_unit_value(value: SettlementPeriodUnit) -> &'static str {
+    match value {
+        SettlementPeriodUnit::Monthly => "monthly",
     }
 }

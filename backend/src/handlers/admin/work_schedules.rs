@@ -13,16 +13,18 @@ use timekeeper_contract::work_schedules::{
     AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
     BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
     CloseWorkScheduleMonthResponse, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
-    GenerateWorkScheduleProjectionsRequest, GenerateWorkScheduleProjectionsResponse,
-    ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest, WorkScheduleAnomalyListQuery,
-    WorkScheduleAnomalyListResponse, WorkScheduleAssignmentListQuery,
-    WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
-    WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse, WorkScheduleDetailResponse,
-    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleProjectionError,
-    WorkScheduleResponse, WorkScheduleVersionResponse,
+    FlexPolicyInput, GenerateWorkScheduleProjectionsRequest,
+    GenerateWorkScheduleProjectionsResponse, ReplaceWorkScheduleVersionRequest,
+    UpdateWorkScheduleRequest, WorkScheduleAnomalyListQuery, WorkScheduleAnomalyListResponse,
+    WorkScheduleAssignmentListQuery, WorkScheduleAssignmentListResponse,
+    WorkScheduleAssignmentRequest, WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse,
+    WorkScheduleDetailResponse, WorkScheduleListQuery, WorkScheduleListResponse,
+    WorkScheduleProjectionError, WorkScheduleResponse, WorkScheduleType,
+    WorkScheduleVersionResponse,
 };
 use timekeeper_domain::work_schedules::{
-    DayKind, PlannedBreak, PlannedWorkInterval, ScheduleDefinition, ScheduleType, WeekdayRule,
+    CoreTimeWindow, DayKind, FlexPolicy, PlannedBreak, PlannedWorkInterval, ScheduleDefinition,
+    ScheduleType, SettlementPeriod, SettlementPeriodUnit, WeekdayRule,
 };
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use uuid::Uuid;
@@ -165,15 +167,17 @@ pub async fn create_work_schedule_version(
     Json(payload): Json<CreateWorkScheduleVersionRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     require_system_admin(&user)?;
-    validate_version_definition(
-        payload.effective_from,
-        payload.effective_until,
-        &payload.timezone,
-        payload.workday_boundary,
-        payload.late_grace_minutes,
-        payload.early_leave_grace_minutes,
-        &payload.days,
-    )?;
+    validate_version_definition(VersionDefinitionInput {
+        effective_from: payload.effective_from,
+        effective_until: payload.effective_until,
+        timezone: &payload.timezone,
+        workday_boundary: payload.workday_boundary,
+        late_grace_minutes: payload.late_grace_minutes,
+        early_leave_grace_minutes: payload.early_leave_grace_minutes,
+        schedule_type: payload.schedule_type,
+        flex_policy: payload.flex_policy.as_ref(),
+        days: &payload.days,
+    })?;
     let schedule_id = parse_uuid(&id, "work_schedule_id")?;
     let response = work_schedule::create_version(&state.write_pool, schedule_id, &payload)
         .await
@@ -211,15 +215,17 @@ pub async fn replace_work_schedule_version(
     if payload.revision < 1 {
         return Err(invalid_work_schedule("revision must be positive"));
     }
-    validate_version_definition(
-        payload.effective_from,
-        payload.effective_until,
-        &payload.timezone,
-        payload.workday_boundary,
-        payload.late_grace_minutes,
-        payload.early_leave_grace_minutes,
-        &payload.days,
-    )?;
+    validate_version_definition(VersionDefinitionInput {
+        effective_from: payload.effective_from,
+        effective_until: payload.effective_until,
+        timezone: &payload.timezone,
+        workday_boundary: payload.workday_boundary,
+        late_grace_minutes: payload.late_grace_minutes,
+        early_leave_grace_minutes: payload.early_leave_grace_minutes,
+        schedule_type: payload.schedule_type,
+        flex_policy: payload.flex_policy.as_ref(),
+        days: &payload.days,
+    })?;
     let schedule_id = parse_uuid(&id, "work_schedule_id")?;
     let version_id = parse_uuid(&version_id, "version_id")?;
     let response =
@@ -603,15 +609,30 @@ pub async fn close_work_schedule_month(
     }))
 }
 
-fn validate_version_definition(
+struct VersionDefinitionInput<'a> {
     effective_from: chrono::NaiveDate,
     effective_until: Option<chrono::NaiveDate>,
-    timezone: &str,
+    timezone: &'a str,
     workday_boundary: chrono::NaiveTime,
     late_grace_minutes: i32,
     early_leave_grace_minutes: i32,
-    days: &[timekeeper_contract::work_schedules::WeekdayRuleInput],
-) -> Result<(), AppError> {
+    schedule_type: WorkScheduleType,
+    flex_policy: Option<&'a FlexPolicyInput>,
+    days: &'a [timekeeper_contract::work_schedules::WeekdayRuleInput],
+}
+
+fn validate_version_definition(input: VersionDefinitionInput<'_>) -> Result<(), AppError> {
+    let VersionDefinitionInput {
+        effective_from,
+        effective_until,
+        timezone,
+        workday_boundary,
+        late_grace_minutes,
+        early_leave_grace_minutes,
+        schedule_type,
+        flex_policy,
+        days,
+    } = input;
     if timezone != timezone.trim() {
         return Err(invalid_work_schedule(
             "timezone must not contain surrounding whitespace",
@@ -628,8 +649,8 @@ fn validate_version_definition(
         effective_until,
         timezone: timezone.trim().to_string(),
         workday_boundary,
-        schedule_type: ScheduleType::Fixed,
-        flex_policy: None,
+        schedule_type: domain_schedule_type(schedule_type),
+        flex_policy: flex_policy.map(domain_flex_policy),
         days: days
             .iter()
             .map(|day| WeekdayRule {
@@ -669,6 +690,37 @@ fn validate_version_definition(
             message: error.to_string(),
             code: "INVALID_SCHEDULE_INTERVALS".to_string(),
         })
+}
+
+fn domain_schedule_type(value: WorkScheduleType) -> ScheduleType {
+    match value {
+        WorkScheduleType::Fixed => ScheduleType::Fixed,
+        WorkScheduleType::Flex => ScheduleType::Flex,
+    }
+}
+
+fn domain_flex_policy(policy: &FlexPolicyInput) -> FlexPolicy {
+    FlexPolicy {
+        settlement_period: SettlementPeriod {
+            unit: match policy.settlement_period.unit {
+                timekeeper_contract::work_schedules::SettlementPeriodUnit::Monthly => {
+                    SettlementPeriodUnit::Monthly
+                }
+            },
+            contracted_minutes_per_period: policy.settlement_period.contracted_minutes_per_period,
+        },
+        core_time_windows: policy
+            .core_time_windows
+            .iter()
+            .map(|window| CoreTimeWindow {
+                weekday: window.weekday,
+                start_time: window.start_time,
+                start_day_offset: window.start_day_offset,
+                end_time: window.end_time,
+                end_day_offset: window.end_day_offset,
+            })
+            .collect(),
+    }
 }
 
 fn validate_assignment(payload: &WorkScheduleAssignmentRequest) -> Result<(), AppError> {

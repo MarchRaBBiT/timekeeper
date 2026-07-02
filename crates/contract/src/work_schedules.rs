@@ -117,9 +117,16 @@ pub struct CreateWorkScheduleVersionRequest {
     pub public_holiday_policy: PublicHolidayPolicy,
     pub late_grace_minutes: i32,
     pub early_leave_grace_minutes: i32,
+    #[serde(default)]
+    pub schedule_type: WorkScheduleType,
+    #[serde(default)]
+    pub flex_policy: Option<FlexPolicyInput>,
     pub days: Vec<WeekdayRuleInput>,
 }
 
+/// `schedule_type` は意図的にデフォルトを持たない。この endpoint はバージョンの完全な置換
+/// (PUT semantics) であり、省略時にFixedへ暗黙変換すると既存のFlexバージョンを
+/// silentにFixedへdowngradeさせてしまうため、常に明示指定を必須とする。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ReplaceWorkScheduleVersionRequest {
     pub revision: i32,
@@ -131,6 +138,9 @@ pub struct ReplaceWorkScheduleVersionRequest {
     pub public_holiday_policy: PublicHolidayPolicy,
     pub late_grace_minutes: i32,
     pub early_leave_grace_minutes: i32,
+    pub schedule_type: WorkScheduleType,
+    #[serde(default)]
+    pub flex_policy: Option<FlexPolicyInput>,
     pub days: Vec<WeekdayRuleInput>,
 }
 
@@ -185,6 +195,8 @@ pub struct WorkScheduleVersionResponse {
     pub public_holiday_policy: PublicHolidayPolicy,
     pub late_grace_minutes: i32,
     pub early_leave_grace_minutes: i32,
+    pub schedule_type: WorkScheduleType,
+    pub flex_policy: Option<FlexPolicyResponse>,
     pub revision: i32,
     pub published_by: Option<String>,
     pub published_at: Option<DateTime<Utc>>,
@@ -458,9 +470,10 @@ pub struct CloseWorkScheduleMonthResponse {
     pub locked_count: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkScheduleType {
+    #[default]
     Fixed,
     Flex,
 }
