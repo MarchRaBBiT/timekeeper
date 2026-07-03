@@ -186,50 +186,50 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 - [x] focused host test 追加
 
 想定差分ファイル:
-- [ ] `frontend/Cargo.toml`
-- [ ] `frontend/locales/ja.yml`（新規）
-- [ ] `frontend/locales/en.yml`（新規）
-- [ ] `frontend/src/lib.rs`
-- [ ] `frontend/src/main.rs`
-- [ ] `frontend/src/router.rs`
-- [ ] `frontend/src/components/layout.rs`
-- [ ] `frontend/src/components/confirm_dialog.rs`
-- [ ] `frontend/src/components/error.rs`
-- [ ] `frontend/src/state/mod.rs`
-- [ ] `frontend/src/utils/storage.rs`
-- [ ] `frontend/src/test_support/mod.rs`
-- [ ] `frontend/src/test_support/ssr.rs`
-- [ ] `frontend/src/components/mod.rs`
-- [ ] `frontend/src/pages/mod.rs`
+- `frontend/Cargo.toml`
+- `frontend/locales/ja.yml`（新規）
+- `frontend/locales/en.yml`（新規）
+- `frontend/src/lib.rs`
+- `frontend/src/main.rs`
+- `frontend/src/router.rs`
+- `frontend/src/components/layout.rs`
+- `frontend/src/components/confirm_dialog.rs`
+- `frontend/src/components/error.rs`
+- `frontend/src/state/mod.rs`
+- `frontend/src/utils/storage.rs`
+- `frontend/src/test_support/mod.rs`
+- `frontend/src/test_support/ssr.rs`
+- `frontend/src/components/mod.rs`
+- `frontend/src/pages/mod.rs`
 
 波及候補:
-- [ ] `frontend/src/config.rs`
-- [ ] `frontend/src/state/config.rs`
-- [ ] `frontend/src/state/theme.rs`
-- [ ] `frontend/src/utils/mod.rs`
-- [ ] `frontend/index.html`
-- [ ] `frontend/index.html.template`
+- `frontend/src/config.rs`
+- `frontend/src/state/config.rs`
+- `frontend/src/state/theme.rs`
+- `frontend/src/utils/mod.rs`
+- `frontend/index.html`
+- `frontend/index.html.template`
 
 原則変更しないファイル:
-- [ ] `frontend/src/pages/attendance/**/*`
-- [ ] `frontend/src/pages/dashboard/**/*`
-- [ ] `frontend/src/pages/requests/**/*`
-- [ ] `frontend/src/pages/login/**/*`
-- [ ] `frontend/src/pages/forgot_password/**/*`
-- [ ] `frontend/src/pages/reset_password/**/*`
-- [ ] `frontend/src/pages/mfa/**/*`
-- [ ] `frontend/src/pages/settings/**/*`
-- [ ] `frontend/src/pages/admin/**/*`
-- [ ] `frontend/src/pages/admin_users/**/*`
-- [ ] `frontend/src/pages/admin_audit_logs/**/*`
-- [ ] `frontend/src/pages/admin_export/**/*`
-- [ ] `frontend/src/api/attendance.rs`
-- [ ] `frontend/src/api/requests.rs`
-- [ ] `frontend/src/api/auth.rs`
-- [ ] `frontend/src/api/audit_log.rs`
-- [ ] `frontend/src/api/subject_requests.rs`
-- [ ] `frontend/AGENTS.md`
-- [ ] `docs/manual/**/*`
+- `frontend/src/pages/attendance/**/*`
+- `frontend/src/pages/dashboard/**/*`
+- `frontend/src/pages/requests/**/*`
+- `frontend/src/pages/login/**/*`
+- `frontend/src/pages/forgot_password/**/*`
+- `frontend/src/pages/reset_password/**/*`
+- `frontend/src/pages/mfa/**/*`
+- `frontend/src/pages/settings/**/*`
+- `frontend/src/pages/admin/**/*`
+- `frontend/src/pages/admin_users/**/*`
+- `frontend/src/pages/admin_audit_logs/**/*`
+- `frontend/src/pages/admin_export/**/*`
+- `frontend/src/api/attendance.rs`
+- `frontend/src/api/requests.rs`
+- `frontend/src/api/auth.rs`
+- `frontend/src/api/audit_log.rs`
+- `frontend/src/api/subject_requests.rs`
+- `frontend/AGENTS.md`
+- `docs/manual/**/*`
 
 ### PR2: Core Pages
 
@@ -241,219 +241,219 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 以下のファイル一覧は実装前に作成した差分予測であり、PR2 の完了判定は上記チェック項目と Validation Plan を source of truth とする。
 
 想定差分ファイル:
-- [ ] `frontend/src/components/forms.rs`
-- [ ] `frontend/src/components/cards.rs`
-- [ ] `frontend/src/state/attendance.rs`
-- [ ] `frontend/src/api/client.rs`
-- [ ] `frontend/src/api/tests.rs`
-- [ ] `frontend/src/pages/attendance/panel.rs`
-- [ ] `frontend/src/pages/attendance/view_model.rs`
-- [ ] `frontend/src/pages/attendance/layout.rs`
-- [ ] `frontend/src/pages/attendance/utils.rs`
-- [ ] `frontend/src/pages/attendance/components/alerts.rs`
-- [ ] `frontend/src/pages/attendance/components/form.rs`
-- [ ] `frontend/src/pages/attendance/components/history.rs`
-- [ ] `frontend/src/pages/attendance/components/summary.rs`
-- [ ] `frontend/src/pages/dashboard/panel.rs`
-- [ ] `frontend/src/pages/dashboard/view_model.rs`
-- [ ] `frontend/src/pages/dashboard/layout.rs`
-- [ ] `frontend/src/pages/dashboard/utils.rs`
-- [ ] `frontend/src/pages/dashboard/components/activities.rs`
-- [ ] `frontend/src/pages/dashboard/components/alerts.rs`
-- [ ] `frontend/src/pages/dashboard/components/clock.rs`
-- [ ] `frontend/src/pages/dashboard/components/global_filters.rs`
-- [ ] `frontend/src/pages/dashboard/components/summary.rs`
-- [ ] `frontend/src/pages/requests/panel.rs`
-- [ ] `frontend/src/pages/requests/view_model.rs`
-- [ ] `frontend/src/pages/requests/layout.rs`
-- [ ] `frontend/src/pages/requests/utils.rs`
-- [ ] `frontend/src/pages/requests/types.rs`
-- [ ] `frontend/src/pages/requests/components/correction_form.rs`
-- [ ] `frontend/src/pages/requests/components/detail_modal.rs`
-- [ ] `frontend/src/pages/requests/components/filter.rs`
-- [ ] `frontend/src/pages/requests/components/leave_form.rs`
-- [ ] `frontend/src/pages/requests/components/list.rs`
-- [ ] `frontend/src/pages/requests/components/overtime_form.rs`
-- [ ] `frontend/src/pages/requests/components/status_label.rs`
-- [ ] `frontend/src/pages/login/panel.rs`
-- [ ] `frontend/src/pages/login/view_model.rs`
-- [ ] `frontend/src/pages/login/utils.rs`
-- [ ] `frontend/src/pages/login/components/form.rs`
-- [ ] `frontend/src/pages/login/components/messages.rs`
-- [ ] `frontend/src/pages/forgot_password/panel.rs`
-- [ ] `frontend/src/pages/forgot_password/view_model.rs`
-- [ ] `frontend/src/pages/reset_password/panel.rs`
-- [ ] `frontend/src/pages/reset_password/view_model.rs`
-- [ ] `frontend/src/pages/mfa/panel.rs`
-- [ ] `frontend/src/pages/mfa/view_model.rs`
-- [ ] `frontend/src/pages/mfa/utils.rs`
-- [ ] `frontend/src/pages/mfa/components/setup.rs`
-- [ ] `frontend/src/pages/mfa/components/verify.rs`
-- [ ] `frontend/src/pages/settings/panel.rs`
-- [ ] `frontend/src/pages/settings/view_model.rs`
-- [ ] `frontend/src/pages/home.rs`
+- `frontend/src/components/forms.rs`
+- `frontend/src/components/cards.rs`
+- `frontend/src/state/attendance.rs`
+- `frontend/src/api/client.rs`
+- `frontend/src/api/tests.rs`
+- `frontend/src/pages/attendance/panel.rs`
+- `frontend/src/pages/attendance/view_model.rs`
+- `frontend/src/pages/attendance/layout.rs`
+- `frontend/src/pages/attendance/utils.rs`
+- `frontend/src/pages/attendance/components/alerts.rs`
+- `frontend/src/pages/attendance/components/form.rs`
+- `frontend/src/pages/attendance/components/history.rs`
+- `frontend/src/pages/attendance/components/summary.rs`
+- `frontend/src/pages/dashboard/panel.rs`
+- `frontend/src/pages/dashboard/view_model.rs`
+- `frontend/src/pages/dashboard/layout.rs`
+- `frontend/src/pages/dashboard/utils.rs`
+- `frontend/src/pages/dashboard/components/activities.rs`
+- `frontend/src/pages/dashboard/components/alerts.rs`
+- `frontend/src/pages/dashboard/components/clock.rs`
+- `frontend/src/pages/dashboard/components/global_filters.rs`
+- `frontend/src/pages/dashboard/components/summary.rs`
+- `frontend/src/pages/requests/panel.rs`
+- `frontend/src/pages/requests/view_model.rs`
+- `frontend/src/pages/requests/layout.rs`
+- `frontend/src/pages/requests/utils.rs`
+- `frontend/src/pages/requests/types.rs`
+- `frontend/src/pages/requests/components/correction_form.rs`
+- `frontend/src/pages/requests/components/detail_modal.rs`
+- `frontend/src/pages/requests/components/filter.rs`
+- `frontend/src/pages/requests/components/leave_form.rs`
+- `frontend/src/pages/requests/components/list.rs`
+- `frontend/src/pages/requests/components/overtime_form.rs`
+- `frontend/src/pages/requests/components/status_label.rs`
+- `frontend/src/pages/login/panel.rs`
+- `frontend/src/pages/login/view_model.rs`
+- `frontend/src/pages/login/utils.rs`
+- `frontend/src/pages/login/components/form.rs`
+- `frontend/src/pages/login/components/messages.rs`
+- `frontend/src/pages/forgot_password/panel.rs`
+- `frontend/src/pages/forgot_password/view_model.rs`
+- `frontend/src/pages/reset_password/panel.rs`
+- `frontend/src/pages/reset_password/view_model.rs`
+- `frontend/src/pages/mfa/panel.rs`
+- `frontend/src/pages/mfa/view_model.rs`
+- `frontend/src/pages/mfa/utils.rs`
+- `frontend/src/pages/mfa/components/setup.rs`
+- `frontend/src/pages/mfa/components/verify.rs`
+- `frontend/src/pages/settings/panel.rs`
+- `frontend/src/pages/settings/view_model.rs`
+- `frontend/src/pages/home.rs`
 
 波及候補:
-- [ ] `frontend/src/pages/attendance/repository.rs`
-- [ ] `frontend/src/pages/dashboard/repository.rs`
-- [ ] `frontend/src/pages/requests/repository.rs`
-- [ ] `frontend/src/pages/login/repository.rs`
-- [ ] `frontend/src/pages/forgot_password/repository.rs`
-- [ ] `frontend/src/pages/reset_password/repository.rs`
-- [ ] `frontend/src/pages/mfa/repository.rs`
-- [ ] `frontend/src/pages/settings/repository.rs`
-- [ ] `frontend/src/api/auth.rs`
-- [ ] `frontend/src/api/attendance.rs`
-- [ ] `frontend/src/api/requests.rs`
-- [ ] `frontend/src/api/types.rs`
+- `frontend/src/pages/attendance/repository.rs`
+- `frontend/src/pages/dashboard/repository.rs`
+- `frontend/src/pages/requests/repository.rs`
+- `frontend/src/pages/login/repository.rs`
+- `frontend/src/pages/forgot_password/repository.rs`
+- `frontend/src/pages/reset_password/repository.rs`
+- `frontend/src/pages/mfa/repository.rs`
+- `frontend/src/pages/settings/repository.rs`
+- `frontend/src/api/auth.rs`
+- `frontend/src/api/attendance.rs`
+- `frontend/src/api/requests.rs`
+- `frontend/src/api/types.rs`
 
 原則変更しないファイル:
-- [ ] `frontend/src/pages/admin/**/*`
-- [ ] `frontend/src/pages/admin_users/**/*`
-- [ ] `frontend/src/pages/admin_audit_logs/**/*`
-- [ ] `frontend/src/pages/admin_export/**/*`
-- [ ] `frontend/src/api/audit_log.rs`
-- [ ] `frontend/src/api/subject_requests.rs`
-- [ ] `frontend/AGENTS.md`
-- [ ] `docs/manual/**/*`
-- [ ] `frontend/index.html`
-- [ ] `frontend/index.html.template`
+- `frontend/src/pages/admin/**/*`
+- `frontend/src/pages/admin_users/**/*`
+- `frontend/src/pages/admin_audit_logs/**/*`
+- `frontend/src/pages/admin_export/**/*`
+- `frontend/src/api/audit_log.rs`
+- `frontend/src/api/subject_requests.rs`
+- `frontend/AGENTS.md`
+- `docs/manual/**/*`
+- `frontend/index.html`
+- `frontend/index.html.template`
 
 ### PR3: Admin Pages
 
-- [ ] admin / admin_users / admin_audit_logs / admin_export 移行
-- [ ] admin 向け message / modal / feedback 文言の key 化
-- [ ] backend 自然言語エラーの境界確認
-- [ ] 英語文言の自然さレビュー
+- [x] admin / admin_users / admin_audit_logs / admin_export 移行
+- [x] admin 向け message / modal / feedback 文言の key 化
+- [x] backend 自然言語エラーの境界確認
+- [x] 英語文言の自然さレビュー
 
 想定差分ファイル:
-- [ ] `frontend/src/pages/admin/panel.rs`
-- [ ] `frontend/src/pages/admin/view_model.rs`
-- [ ] `frontend/src/pages/admin/layout.rs`
-- [ ] `frontend/src/pages/admin/utils.rs`
-- [ ] `frontend/src/pages/admin/components/attendance.rs`
-- [ ] `frontend/src/pages/admin/components/holidays.rs`
-- [ ] `frontend/src/pages/admin/components/requests.rs`
-- [ ] `frontend/src/pages/admin/components/subject_requests.rs`
-- [ ] `frontend/src/pages/admin/components/system_tools.rs`
-- [ ] `frontend/src/pages/admin/components/user_select.rs`
-- [ ] `frontend/src/pages/admin/components/weekly_holidays.rs`
-- [ ] `frontend/src/pages/admin_users/panel.rs`
-- [ ] `frontend/src/pages/admin_users/view_model.rs`
-- [ ] `frontend/src/pages/admin_users/layout.rs`
-- [ ] `frontend/src/pages/admin_users/utils.rs`
-- [ ] `frontend/src/pages/admin_users/components/archived_detail.rs`
-- [ ] `frontend/src/pages/admin_users/components/archived_list.rs`
-- [ ] `frontend/src/pages/admin_users/components/detail.rs`
-- [ ] `frontend/src/pages/admin_users/components/invite_form.rs`
-- [ ] `frontend/src/pages/admin_users/components/list.rs`
-- [ ] `frontend/src/pages/admin_audit_logs/panel.rs`
-- [ ] `frontend/src/pages/admin_audit_logs/view_model.rs`
-- [ ] `frontend/src/pages/admin_export/panel.rs`
-- [ ] `frontend/src/pages/admin_export/view_model.rs`
-- [ ] `frontend/src/api/audit_log.rs`
-- [ ] `frontend/src/api/subject_requests.rs`
-- [ ] `frontend/locales/en.yml`
-- [ ] `frontend/locales/ja.yml`
+- `frontend/src/pages/admin/panel.rs`
+- `frontend/src/pages/admin/view_model.rs`
+- `frontend/src/pages/admin/layout.rs`
+- `frontend/src/pages/admin/utils.rs`
+- `frontend/src/pages/admin/components/attendance.rs`
+- `frontend/src/pages/admin/components/holidays.rs`
+- `frontend/src/pages/admin/components/requests.rs`
+- `frontend/src/pages/admin/components/subject_requests.rs`
+- `frontend/src/pages/admin/components/system_tools.rs`
+- `frontend/src/pages/admin/components/user_select.rs`
+- `frontend/src/pages/admin/components/weekly_holidays.rs`
+- `frontend/src/pages/admin_users/panel.rs`
+- `frontend/src/pages/admin_users/view_model.rs`
+- `frontend/src/pages/admin_users/layout.rs`
+- `frontend/src/pages/admin_users/utils.rs`
+- `frontend/src/pages/admin_users/components/archived_detail.rs`
+- `frontend/src/pages/admin_users/components/archived_list.rs`
+- `frontend/src/pages/admin_users/components/detail.rs`
+- `frontend/src/pages/admin_users/components/invite_form.rs`
+- `frontend/src/pages/admin_users/components/list.rs`
+- `frontend/src/pages/admin_audit_logs/panel.rs`
+- `frontend/src/pages/admin_audit_logs/view_model.rs`
+- `frontend/src/pages/admin_export/panel.rs`
+- `frontend/src/pages/admin_export/view_model.rs`
+- `frontend/src/api/audit_log.rs`
+- `frontend/src/api/subject_requests.rs`
+- `frontend/locales/en.yml`
+- `frontend/locales/ja.yml`
 
 波及候補:
-- [ ] `frontend/src/pages/admin/repository.rs`
-- [ ] `frontend/src/pages/admin_users/repository.rs`
-- [ ] `frontend/src/pages/admin_export/repository.rs`
-- [ ] `frontend/src/api/client.rs`
-- [ ] `frontend/src/api/types.rs`
-- [ ] `frontend/src/api/tests.rs`
-- [ ] `frontend/src/components/empty_state.rs`
-- [ ] `frontend/src/components/common.rs`
+- `frontend/src/pages/admin/repository.rs`
+- `frontend/src/pages/admin_users/repository.rs`
+- `frontend/src/pages/admin_export/repository.rs`
+- `frontend/src/api/client.rs`
+- `frontend/src/api/types.rs`
+- `frontend/src/api/tests.rs`
+- `frontend/src/components/empty_state.rs`
+- `frontend/src/components/common.rs`
 
 原則変更しないファイル:
-- [ ] `frontend/src/pages/attendance/**/*`
-- [ ] `frontend/src/pages/dashboard/**/*`
-- [ ] `frontend/src/pages/requests/**/*`
-- [ ] `frontend/src/pages/login/**/*`
-- [ ] `frontend/src/pages/forgot_password/**/*`
-- [ ] `frontend/src/pages/reset_password/**/*`
-- [ ] `frontend/src/pages/mfa/**/*`
-- [ ] `frontend/src/pages/settings/**/*`
-- [ ] `frontend/src/components/forms.rs`
-- [ ] `frontend/src/components/cards.rs`
-- [ ] `frontend/AGENTS.md`
-- [ ] `docs/manual/**/*`
-- [ ] `frontend/index.html`
-- [ ] `frontend/index.html.template`
+- `frontend/src/pages/attendance/**/*`
+- `frontend/src/pages/dashboard/**/*`
+- `frontend/src/pages/requests/**/*`
+- `frontend/src/pages/login/**/*`
+- `frontend/src/pages/forgot_password/**/*`
+- `frontend/src/pages/reset_password/**/*`
+- `frontend/src/pages/mfa/**/*`
+- `frontend/src/pages/settings/**/*`
+- `frontend/src/components/forms.rs`
+- `frontend/src/components/cards.rs`
+- `frontend/AGENTS.md`
+- `docs/manual/**/*`
+- `frontend/index.html`
+- `frontend/index.html.template`
 
 ### PR4: Residual Cleanup
 
-- [ ] 残直書き scan の解消
-- [ ] docs / AGENTS 更新
-- [ ] 全体テストと lint
-- [ ] final validation
+- [x] 残直書き scan の解消
+- [x] docs / AGENTS 更新
+- [x] 全体テストと lint
+- [x] final validation
 
 想定差分ファイル:
-- [ ] `docs/generated/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
-- [ ] `frontend/AGENTS.md`
-- [ ] `docs/manual/frontend-i18n-rule.md`（新規、命名は調整可）
-- [ ] `frontend/locales/en.yml`
-- [ ] `frontend/locales/ja.yml`
-- [ ] residual scan で見つかった `frontend/src/**/*`
+- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `frontend/AGENTS.md`
+- `docs/manual/frontend-i18n-rule.md`（新規、命名は調整可）
+- `frontend/locales/en.yml`
+- `frontend/locales/ja.yml`
+- residual scan で見つかった `frontend/src/**/*`
 
 波及候補:
-- [ ] `docs/index.md`
-- [ ] `docs/design-docs/frontend-structure.md`
-- [ ] `frontend/src/api/tests.rs`
-- [ ] `frontend/src/test_support/**/*`
+- `docs/index.md`
+- `docs/design-docs/frontend-structure.md`
+- `frontend/src/api/tests.rs`
+- `frontend/src/test_support/**/*`
 
 原則変更しないファイル:
-- [ ] `frontend/Cargo.toml`（新規依存追加が残っていない限り）
-- [ ] `frontend/src/main.rs`
-- [ ] `frontend/src/lib.rs`
-- [ ] `frontend/src/router.rs`
-- [ ] `frontend/index.html`
-- [ ] `frontend/index.html.template`
-- [ ] `frontend/src/api/attendance.rs`
-- [ ] `frontend/src/api/requests.rs`
-- [ ] `frontend/src/api/auth.rs`
-- [ ] `frontend/src/api/audit_log.rs`
-- [ ] `frontend/src/api/subject_requests.rs`
+- `frontend/Cargo.toml`（新規依存追加が残っていない限り）
+- `frontend/src/main.rs`
+- `frontend/src/lib.rs`
+- `frontend/src/router.rs`
+- `frontend/index.html`
+- `frontend/index.html.template`
+- `frontend/src/api/attendance.rs`
+- `frontend/src/api/requests.rs`
+- `frontend/src/api/auth.rs`
+- `frontend/src/api/audit_log.rs`
+- `frontend/src/api/subject_requests.rs`
 
 ## Merge Conflict Watchlist
 
 複数 PR で再度触る可能性が高く、マージ競合を起こしやすいファイル:
 
-- [ ] `frontend/locales/ja.yml`
-- [ ] `frontend/locales/en.yml`
-- [ ] `frontend/src/components/layout.rs`
-- [ ] `frontend/src/api/client.rs`
-- [ ] `frontend/src/api/tests.rs`
-- [ ] `frontend/src/test_support/mod.rs`
-- [ ] `frontend/src/test_support/ssr.rs`
-- [ ] `frontend/AGENTS.md`
-- [ ] `docs/generated/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `frontend/locales/ja.yml`
+- `frontend/locales/en.yml`
+- `frontend/src/components/layout.rs`
+- `frontend/src/api/client.rs`
+- `frontend/src/api/tests.rs`
+- `frontend/src/test_support/mod.rs`
+- `frontend/src/test_support/ssr.rs`
+- `frontend/AGENTS.md`
+- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
 
 競合理由メモ:
 
-- [ ] `frontend/locales/ja.yml` / `frontend/locales/en.yml`
+- `frontend/locales/ja.yml` / `frontend/locales/en.yml`
   - 全 PR で key 追加が発生しやすい。key の並び順と階層構造を先に固定する
-- [ ] `frontend/src/components/layout.rs`
+- `frontend/src/components/layout.rs`
   - PR1 で locale switcher、PR2/PR3 で nav や共通ラベルの翻訳が追加されやすい
-- [ ] `frontend/src/api/client.rs`
+- `frontend/src/api/client.rs`
   - core/admin の内部生成エラー文言を両 PR で key 化する可能性がある
-- [ ] `frontend/src/api/tests.rs`
+- `frontend/src/api/tests.rs`
   - 文言 assertion の translation key 非依存化で複数 PR から更新が入りやすい
-- [ ] `frontend/src/test_support/mod.rs` / `frontend/src/test_support/ssr.rs`
+- `frontend/src/test_support/mod.rs` / `frontend/src/test_support/ssr.rs`
   - locale 初期化 helper や test harness 追加で共通基盤の追記が集中しやすい
-- [ ] `frontend/AGENTS.md`
+- `frontend/AGENTS.md`
   - docs 変更の一部を先行 PR で触ると PR4 と競合しやすい。原則 PR4 まで温存する
-- [ ] `docs/generated/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
   - 実施ログ更新が各 PR で重なりやすい。マージ時に最新状態へ手で整列する
 
 競合を減らす運用:
 
-- [ ] locale key は PR1 でトップレベル構造と並び順を先に定義する
-- [ ] `layout.rs` の共通 nav 文言は PR1 でできるだけ先取りして移行する
+- [x] locale key は PR1 でトップレベル構造と並び順を先に定義する
+- [x] `layout.rs` の共通 nav 文言は PR1 でできるだけ先取りして移行する
 - [x] `api/client.rs` の内部生成エラー key 化は PR2 でまとめて行い、PR3 では新規追加を避ける
 - [x] `api/tests.rs` は PR2 で translation key 非依存の assertion を整え、PR3 は追記中心にする
-- [ ] docs / AGENTS の運用ルール更新は PR4 に寄せる
+- [x] docs / AGENTS の運用ルール更新は PR4 に寄せる（`docs/manual/frontend-i18n-rule.md` 新設、`frontend/AGENTS.md` L88/95 に反映済みを確認）
 
 ## Locale Structure
 
@@ -591,3 +591,4 @@ key 配置の優先順:
 - 2026-06-20: PR2 Core Pages を完了。既存の shared/core page 移行を棚卸しし、home、API 内部生成エラー、dashboard の件数・単位、attendance の休憩時間表示に残っていた直書きを translation key 化した。core page の表示 assertion を `t!()` 解決結果へ更新し、`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (364 passed)、`cargo fmt --all --check`、`cargo clippy -p timekeeper-frontend --all-targets -- -D warnings` を確認。PR2 対象の production scan では、非対象の日付・曜日 format (`pages/dashboard/components/clock.rs`) のみ残存。
 - 2026-06-20: PR3 Admin Pages を完了。admin の勤怠、部署、祝日、申請、本人対応申請、MFA、週次休日の表示・validation・feedback を `admin_components.*` へ移行し、admin_users / admin_audit_logs / admin_export の既存移行も監査した。監査ログ event key は `ja` / `en` 双方で実解決を検証し、admin export の表示 assertion を `t!()` 基準へ更新した。focused admin tests、fmt、frontend clippy を確認し、`cb86170` を記録。
 - 2026-06-20: PR4 Residual Cleanup を完了。全 `frontend/src/**/*.rs` の日本語 scan を production と test/fixture/comment/backend message に分類し、production の残差は運用ルールで対象外とした `pages/dashboard/components/clock.rs` の日付・曜日 format のみであることを確認。残っていた翻訳済み文言の hardcoded assertion を `t!()` 基準へ更新した。`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` (365 passed)、`cargo fmt --all --check`、workspace `cargo clippy --all-targets -- -D warnings`、`bash scripts/harness.sh lint` を確認。
+- 2026-07-03: 完了照合ジョブ（Codex事前レビュー task-mr4mxcu9-bfggb7 の指摘反映）。`rg '[ぁ-んァ-ヶ一-龠々ー]' frontend/src -g '*.rs'` を再実行し、38件のヒットが全て `#[cfg(all(test, not(target_arch = "wasm32")))] mod host_tests` / `mod tests` 配下の fixture・assertion、または L21-23 に記録済みの許容例外（`pages/dashboard/components/clock.rs` の日付・曜日 format）であることを確認した。production code の未解消残件はない。`cargo test -p timekeeper-frontend --lib -- --nocapture --test-threads=1` を再実行し 365 passed（記録値と一致）。本EPは実質完了であり、未チェックだった211件は「想定差分ファイル」「波及候補」「原則変更しないファイル」「Merge Conflict Watchlist」「競合理由メモ」の参照用チェックリストの体裁によるものと判断し、実施記録でないため通常の箇条書きへ変換した（200件）。Suggested Delivery Split の PR3/PR4 サマリ行（Task Breakdown・Git Snapshot Log で完了裏付け済み）と「競合を減らす運用」の残り3件（locale key 構造、`layout.rs` 先取り移行、docs/AGENTS 更新——`docs/manual/frontend-i18n-rule.md` の実在と `frontend/AGENTS.md` L88/95 の反映を確認）は実施済みとして `[x]` にした。存在しない `docs/generated/exec-plans/...` への参照3箇所を現行パス `docs/exec-plans/active/...` へ修正した。`.agent/PLANS.md` に本EPと `EP-20260621-workday-override-and-schedule-read-api`（同様に全チェック済みだがポインタ未掲載だった）の完了済みポインタを追加した。

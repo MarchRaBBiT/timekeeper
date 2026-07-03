@@ -9,6 +9,14 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260311-frontend-rust-i18n-migration
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`](../docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md)
+
+# EP-20260621-workday-override-and-schedule-read-api
+
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-workday-override-and-schedule-read-api.md`](../docs/exec-plans/active/EP-20260621-workday-override-and-schedule-read-api.md)
+
 # EP-20260314-wildcard-cors-hardening
 
 **調査完了・実装未着手（Job1完了、Job2-4は後続タスク）** — 詳細: [`docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md`](../docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md)
