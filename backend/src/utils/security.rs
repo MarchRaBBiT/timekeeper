@@ -25,11 +25,14 @@ pub fn verify_request_origin(headers: &HeaderMap, config: &Config) -> Result<(),
         }
     };
 
-    // If config allows specific origins, check against them.
+    // Check against the explicit allowlist only. A wildcard entry is never
+    // trusted here, even as a defense-in-depth backstop against a Config
+    // that (by construction, per Config::load()) should never carry one.
+    let trimmed_origin = origin_str.trim_end_matches('/');
     if config
         .cors_allow_origins
         .iter()
-        .any(|o| o == "*" || o == origin_str.trim_end_matches('/'))
+        .any(|o| o != "*" && o == trimmed_origin)
     {
         Ok(())
     } else {

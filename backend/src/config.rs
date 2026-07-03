@@ -153,6 +153,14 @@ impl Config {
             .map(|origin| origin.trim().to_string())
             .filter(|origin| !origin.is_empty())
             .collect::<Vec<_>>();
+        if cors_allow_origins.iter().any(|origin| origin == "*") {
+            return Err(anyhow!(
+                "CORS_ALLOW_ORIGINS must not include a wildcard origin (\"*\"): \
+                 this API always enables credentialed requests, and combining \
+                 a wildcard origin with credentials is a severe security risk. \
+                 Configure an explicit comma-separated allowlist of origins instead."
+            ));
+        }
 
         let time_zone_name = env::var("APP_TIMEZONE").unwrap_or_else(|_| "UTC".to_string());
         let time_zone: Tz = time_zone_name

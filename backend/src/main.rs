@@ -11,7 +11,7 @@ use chrono::Utc;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{AllowOrigin, CorsLayer},
+    cors::CorsLayer,
     trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::Level;
@@ -623,11 +623,12 @@ fn log_config(config: &Config) {
     tracing::info!("CORS Allowed Origins: {:?}", config.cors_allow_origins);
 
     if config.cors_allow_origins.iter().any(|o| o == "*") {
-        if config.production_mode {
-            tracing::error!("SECURITY ERROR: CORS is configured to allow all origins ('*') in PRODUCTION MODE. This is a severe security risk. The server will refuse to start.");
-            panic!("Refusing to start due to insecure CORS configuration in production mode.");
-        }
-        tracing::warn!("SECURITY WARNING: CORS is configured to allow all origins ('*'). This is dangerous for production!");
+        // Fail closed regardless of PRODUCTION_MODE: Config::load() is
+        // expected to reject a wildcard origin before this point is ever
+        // reached in real operation. This check remains as a defense-in-depth
+        // backstop that must not depend on the environment's production flag.
+        tracing::error!("SECURITY ERROR: CORS is configured to allow all origins ('*'). This is a severe security risk. The server will refuse to start.");
+        panic!("Refusing to start due to insecure CORS configuration in production mode.");
     }
 }
 
@@ -644,16 +645,19 @@ fn cors_layer(config: &Config) -> CorsLayer {
         .allow_credentials(true)
         .max_age(Duration::from_secs(24 * 60 * 60));
 
-    if config.cors_allow_origins.contains(&"*".to_string()) {
-        layer = layer.allow_origin(AllowOrigin::predicate(|_, _| true));
-    } else {
-        let origins: Vec<HeaderValue> = config
-            .cors_allow_origins
-            .iter()
-            .map(|s| s.parse().expect("Invalid CORS origin"))
-            .collect();
-        layer = layer.allow_origin(origins);
-    }
+    // Config::load() rejects a wildcard origin outright, so this should be
+    // unreachable in real operation. Fail loudly rather than silently
+    // building an allow-all layer if it is ever reached anyway.
+    assert!(
+        !config.cors_allow_origins.contains(&"*".to_string()),
+        "cors_layer must never be built from a Config with a wildcard CORS origin"
+    );
+    let origins: Vec<HeaderValue> = config
+        .cors_allow_origins
+        .iter()
+        .map(|s| s.parse().expect("Invalid CORS origin"))
+        .collect();
+    layer = layer.allow_origin(origins);
 
     layer
 }

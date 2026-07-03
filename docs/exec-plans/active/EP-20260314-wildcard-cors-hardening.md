@@ -7,6 +7,12 @@
 - In: `backend/src/main.rs`, `backend/src/config.rs`, `backend/src/utils/security.rs`, `backend/src/middleware/csrf.rs` の変更 seam（挙動は変えないが影響を受ける）, 関連 config / startup / security / csrf tests, 必要に応じて docs
 - Out: CORS を使わない構成への全面移行、infra レベルの ALB/CDN 設定変更
 
+## Done Criteria (Observable)
+- [x] `allow_credentials(true)` を使う構成で `CORS_ALLOW_ORIGINS="*"` が安全側で拒否される（`Config::load()` が起動時に `Err` を返す。Job3で実装、`config_load_rejects_wildcard_cors_origin_*` 系テストで固定）
+- [x] `verify_request_origin` が wildcard を許容しない（Job3で実装、`verify_origin_rejects_wildcard_configuration` で固定。CSRF middleware経由でも `csrf_blocks_cookie_post_even_when_cors_allow_origins_contains_wildcard` で固定）
+- [x] `PRODUCTION_MODE` の値に依存せず、危険な組み合わせが起動時に弾かれる（`Config::load()` は PRODUCTION_MODE を一切参照せず拒否する。`log_config`・`cors_layer` も同様に production_mode非依存の防御的チェックへ変更済み）
+- [x] 設定異常時のエラーが test で固定されている（`config_load_wildcard_rejection_error_does_not_echo_configured_origins` でエラーメッセージが設定値を漏らさないことも固定）
+
 ## Current State（Job1 調査結果、2026-07-03）
 
 ### CORS 初期化の現行構造
@@ -74,23 +80,23 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
 
 ## Task Breakdown
 1. [x] 現行 CORS 初期化と `verify_request_origin` の wildcard 分岐を整理する（Job1、本ファイルの Current State 節に記録済み）
-2. [ ] credentials + wildcard を常時拒否する validation を config/startup に追加する（推奨: `Config::load()` 内、詳細は Current State の設計判断を参照）
-3. [ ] `verify_request_origin` から wildcard 許容を除去し、allowlist のみ許可する
+2. [x] credentials + wildcard を常時拒否する validation を config/startup に追加する（Job3。`Config::load()` 内に集約実装済み。本ファイルの Job3 節を参照）
+3. [x] `verify_request_origin` から wildcard 許容を除去し、allowlist のみ許可する（Job3）
 4. [x] config / startup / security helper / CSRF middleware の focused test を追加する（Job2、本ファイルの Job2 節に記録済み。既存テストの反転・調整は Current State の「既存テストの反転・調整対象」1・2・4を実施済み）
 
 ## Validation Plan
-- [ ] `bash scripts/harness.sh fmt-check`
-- [ ] `cargo test -p timekeeper-backend --test config_api -- --nocapture`
-- [ ] `cargo test -p timekeeper-backend --lib security`
-- [ ] `cargo test -p timekeeper-backend --lib` （main.rs 内の startup/cors テスト群を含む）
-- [ ] `cargo test -p timekeeper-backend --test csrf_protection_api`
-- [ ] `bash scripts/harness.sh backend-unit`
-- [ ] `bash scripts/harness.sh lint`
+- [x] `bash scripts/harness.sh fmt-check`
+- [x] `cargo test -p timekeeper-backend --test config_api -- --nocapture`
+- [x] `cargo test -p timekeeper-backend --lib security`
+- [x] `cargo test -p timekeeper-backend --lib` （main.rs 内の startup/cors テスト群を含む）
+- [x] `cargo test -p timekeeper-backend --test csrf_protection_api`
+- [x] `bash scripts/harness.sh backend-unit`
+- [x] `bash scripts/harness.sh lint`
 
 ## Git Checkpoint Log
-- [ ] `git status --short`
-- [ ] CORS/config focused tests pass
-- [ ] `git commit -m "fix(security): fail closed on wildcard cors with credentials"`
+- [x] `git status --short`
+- [x] CORS/config focused tests pass
+- [x] `git commit -m "fix(security): fail closed on wildcard cors with credentials"`（Job3実装commit。ハッシュはProgress Notes参照）
 
 ## Progress Notes
 - 2026-03-14: wildcard CORS finding を config / startup hardening の独立 ExecPlan として作成。
@@ -109,3 +115,12 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
   - **【副次的発見・修正】** `config.rs`の`env_guard()`（テスト間のenv var競合を防ぐMutex）が、RED化した新規テストの意図的な失敗（`assert!`パニック）でpoisonし、同一バイナリ内の無関係な既存テスト（`config_loads_aws_defaults`等）まで巻き込んで失敗させる問題を発見した。`env_guard()`を`lock().unwrap_or_else(|poisoned| poisoned.into_inner())`へ変更し、poisoning から復旧するようにした（ガードしている状態はenv varのみで、poisonから復旧しても安全なため）。この修正により既存テストの巻き込み失敗が解消した
   - 実行結果: `cargo test -p timekeeper-backend --lib config::` 5 RED / 8 green、`cargo test -p timekeeper-backend --bin timekeeper-backend`（main.rs単体テスト含む）381 passed・7 failed（すべて意図したRED）、`cargo test -p timekeeper-backend --test csrf_protection_api` 10 passed・1 failed（意図したRED）
   - `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` は継続green（RED状態のテストコードも構文・lint的には正しいことを確認）
+- 2026-07-03: Job3（fail-closed実装、GREEN化）を実施した。**本体ロジックの変更点は次の3ファイルのみ**（テストファイルは変更していない。Job2で追加したRED8件をすべてGREENにした）:
+  - `backend/src/config.rs`: `Config::load()` の `cors_allow_origins` パース直後に、`"*"` を1件でも含む場合は `anyhow!` の `Err` を返すバリデーションを追加した。エラーメッセージは設定された origin 一覧を一切echoしない固定文言（「wildcard origin は使えない。credentials は常時有効なため危険」旨）とした。`PRODUCTION_MODE` は一切参照しない（fail-closedを環境変数に依存させない）
+  - `backend/src/utils/security.rs`: `verify_request_origin` から `o == "*"` の分岐を除去し、`o != "*" && o == trimmed_origin` の完全一致のみへ変更した。`Config::load()` を経由しない直接構築されたConfig（テストや将来のコード経路）に対しても、wildcardを信用しないdefense-in-depthとして機能する
+  - `backend/src/main.rs`:
+    - `log_config`: wildcard検出時のpanicを `if config.production_mode` の外側へ出し、PRODUCTION_MODEの値に関わらず無条件でpanicするようにした（Job2で反転した`test_log_config_rejects_wildcard_with_read_database_regardless_of_production_mode`をGREEN化）
+    - `cors_layer`: wildcardを検出した場合に`AllowOrigin::predicate(|_, _| true)`で全origin許可するフォールバックを削除し、`assert!`で「ここに到達すること自体がバグ」として防御的にpanicするよう変更した（`Config::load()`が保証する不変条件の二重チェック。Job2のRED対象ではなかったが、EPのGoal「wildcard設定の危険な抜け道をなくす」に沿った追加的hardeningとして実施）。未使用となった`AllowOrigin`のimportを削除した
+  - 実行結果: `cargo test -p timekeeper-backend --lib config::` 13 passed（0 failed）、`cargo test -p timekeeper-backend --lib security::` 7 passed、`cargo test -p timekeeper-backend --bin timekeeper-backend` 388 passed（0 failed、main.rs単体テスト全件含む）、`cargo test -p timekeeper-backend --test csrf_protection_api` 11 passed（0 failed）、`cargo test -p timekeeper-backend --test config_api` 1 passed（回帰）
+  - `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / `bash scripts/harness.sh backend-unit`（379 passed）/ `bash scripts/harness.sh lint` すべてgreen
+  - `git status --short` で変更が `backend/src/config.rs` / `backend/src/main.rs` / `backend/src/utils/security.rs` の3ファイルのみに収まっていることを確認し、commit `240bd4e`（Job2）に続くJob3実装commitを作成した（ハッシュは次コミット後に記録）
