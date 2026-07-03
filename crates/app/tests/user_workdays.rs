@@ -5,7 +5,9 @@ use timekeeper_app::user_workdays::{
     ListUserWorkdays, ListUserWorkdaysCommand, ListUserWorkdaysError, UserWorkdayReadRepository,
     MAX_WORKDAY_RANGE_DAYS,
 };
-use timekeeper_app::work_schedules::{ResolvedDayKind, ResolvedWorkday, WorkScheduleSource};
+use timekeeper_app::work_schedules::{
+    ResolvedDayKind, ResolvedWorkday, ScheduleType, WorkScheduleSource,
+};
 
 #[derive(Default)]
 struct FakeReadRepository {
@@ -48,6 +50,8 @@ fn sample_workday(work_date: NaiveDate) -> ResolvedWorkday {
         expected_work_minutes: 480,
         work_intervals: Vec::new(),
         planned_breaks: Vec::new(),
+        schedule_type: ScheduleType::Fixed,
+        core_time_windows: Vec::new(),
         resolved_at: Utc::now(),
         locked_at: None,
     }

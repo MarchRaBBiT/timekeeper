@@ -332,6 +332,8 @@ pub struct ResolvedWorkdayResponse {
     pub expected_work_minutes: i32,
     pub work_intervals: Vec<ResolvedWorkIntervalResponse>,
     pub planned_breaks: Vec<ResolvedBreakResponse>,
+    pub schedule_type: WorkScheduleType,
+    pub core_time_windows: Vec<CoreTimeWindowResponse>,
     pub resolved_at: DateTime<Utc>,
     pub locked_at: Option<DateTime<Utc>>,
 }

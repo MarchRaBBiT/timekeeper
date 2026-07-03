@@ -8,11 +8,11 @@ use timekeeper_app::attendance::{ClockInError, ClockInWorkdayResolver};
 use timekeeper_app::work_schedules::{
     AssignmentTarget, NewResolvedWorkday, OrganizationHierarchy, PublicHolidayPolicy,
     ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday,
-    ScheduleAssignment, ScheduleDayRule, ScheduleVersion, WorkScheduleSource,
+    ScheduleAssignment, ScheduleDayRule, ScheduleType, ScheduleVersion, WorkScheduleSource,
     WorkdayHolidayCalendar, WorkdayOverride, WorkdayOverrideKind, WorkdayResolutionRepository,
 };
 use timekeeper_domain::{
-    work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval},
+    work_schedules::{CoreTimeWindow, DayKind, PlannedBreak, PlannedWorkInterval},
     WorkDate,
 };
 
@@ -23,6 +23,7 @@ struct FakeRepository {
     assignments: Mutex<HashMap<AssignmentTarget, ScheduleAssignment>>,
     versions: Mutex<HashMap<String, ScheduleVersion>>,
     rules: Mutex<HashMap<String, ScheduleDayRule>>,
+    core_time_windows: Mutex<HashMap<(String, u8), CoreTimeWindow>>,
     targets: Arc<Mutex<Vec<AssignmentTarget>>>,
     saved: Arc<Mutex<Vec<NewResolvedWorkday>>>,
 }
@@ -85,6 +86,19 @@ impl WorkdayResolutionRepository for FakeRepository {
             .lock()
             .expect("rules lock")
             .get(version_id)
+            .cloned())
+    }
+
+    async fn find_core_time_window(
+        &self,
+        version_id: &str,
+        weekday: u8,
+    ) -> Result<Option<CoreTimeWindow>, ResolveWorkdayError> {
+        Ok(self
+            .core_time_windows
+            .lock()
+            .expect("core time windows lock")
+            .get(&(version_id.to_string(), weekday))
             .cloned())
     }
 
@@ -153,6 +167,24 @@ fn version(schedule_id: &str, policy: PublicHolidayPolicy) -> ScheduleVersion {
         timezone: "Asia/Tokyo".to_string(),
         workday_boundary: NaiveTime::from_hms_opt(5, 0, 0).expect("boundary"),
         public_holiday_policy: policy,
+        schedule_type: ScheduleType::Fixed,
+    }
+}
+
+fn flex_version(schedule_id: &str, policy: PublicHolidayPolicy) -> ScheduleVersion {
+    ScheduleVersion {
+        schedule_type: ScheduleType::Flex,
+        ..version(schedule_id, policy)
+    }
+}
+
+fn core_time_window(weekday: u8) -> CoreTimeWindow {
+    CoreTimeWindow {
+        weekday,
+        start_time: NaiveTime::from_hms_opt(10, 0, 0).expect("core start"),
+        start_day_offset: 0,
+        end_time: NaiveTime::from_hms_opt(15, 0, 0).expect("core end"),
+        end_day_offset: 0,
     }
 }
 
@@ -182,6 +214,33 @@ fn configure_schedule(repository: &FakeRepository, schedule_id: &str, policy: Pu
         .lock()
         .expect("rules lock")
         .insert(version.id.clone(), night_rule());
+    repository
+        .versions
+        .lock()
+        .expect("versions lock")
+        .insert(schedule_id.to_string(), version);
+}
+
+fn configure_flex_schedule(
+    repository: &FakeRepository,
+    schedule_id: &str,
+    policy: PublicHolidayPolicy,
+    weekday_rule: u8,
+    core_time: Option<CoreTimeWindow>,
+) {
+    let version = flex_version(schedule_id, policy);
+    repository
+        .rules
+        .lock()
+        .expect("rules lock")
+        .insert(version.id.clone(), night_rule());
+    if let Some(window) = core_time {
+        repository
+            .core_time_windows
+            .lock()
+            .expect("core time windows lock")
+            .insert((version.id.clone(), weekday_rule), window);
+    }
     repository
         .versions
         .lock()
@@ -220,6 +279,8 @@ async fn returns_locked_projection_without_re_resolving() {
         expected_work_minutes: 480,
         work_intervals: vec![],
         planned_breaks: vec![],
+        schedule_type: ScheduleType::Fixed,
+        core_time_windows: vec![],
         resolved_at: resolved_at(),
         locked_at: Some(resolved_at()),
     };
@@ -337,6 +398,8 @@ async fn organization_fallback_can_follow_weekly_pattern_on_public_holiday() {
     assert_eq!(result.day_kind, ResolvedDayKind::ScheduledWorkday);
     assert_eq!(result.expected_work_minutes, 480);
     assert_eq!(result.planned_breaks.len(), 1);
+    assert_eq!(result.schedule_type, ScheduleType::Fixed);
+    assert!(result.core_time_windows.is_empty());
 }
 
 #[tokio::test]
@@ -521,4 +584,176 @@ async fn punch_without_any_schedule_returns_not_configured() {
         .expect_err("missing schedule");
 
     assert!(matches!(error, ClockInError::WorkScheduleNotConfigured));
+}
+
+#[tokio::test]
+async fn flex_schedule_snapshots_core_time_window_for_working_day() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-flex"),
+        );
+    configure_flex_schedule(
+        &repository,
+        "schedule-flex",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+        1,
+        Some(core_time_window(1)),
+    );
+
+    let result = resolver(repository, vec![], false)
+        .execute(command())
+        .await
+        .expect("resolved flex schedule");
+
+    assert_eq!(result.day_kind, ResolvedDayKind::ScheduledWorkday);
+    assert_eq!(result.schedule_type, ScheduleType::Flex);
+    assert_eq!(result.core_time_windows, vec![core_time_window(1)]);
+}
+
+#[tokio::test]
+async fn flex_schedule_without_core_time_resolves_full_flex_with_empty_windows() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-flex"),
+        );
+    configure_flex_schedule(
+        &repository,
+        "schedule-flex",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+        1,
+        None,
+    );
+
+    let result = resolver(repository, vec![], false)
+        .execute(command())
+        .await
+        .expect("resolved full-flex schedule");
+
+    assert_eq!(result.schedule_type, ScheduleType::Flex);
+    assert!(result.core_time_windows.is_empty());
+}
+
+#[tokio::test]
+async fn flex_schedule_non_working_override_has_no_core_time_snapshot() {
+    let repository = FakeRepository::default();
+    *repository.override_value.lock().expect("override lock") = Some(WorkdayOverride {
+        id: "override-1".to_string(),
+        kind: WorkdayOverrideKind::NonWorkingDay,
+        work_schedule_id: None,
+    });
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-flex"),
+        );
+    configure_flex_schedule(
+        &repository,
+        "schedule-flex",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+        1,
+        Some(core_time_window(1)),
+    );
+
+    let result = resolver(repository, vec![], false)
+        .execute(command())
+        .await
+        .expect("resolved non-working flex override");
+
+    assert_eq!(result.day_kind, ResolvedDayKind::ScheduledNonWorkingDay);
+    assert_eq!(result.schedule_type, ScheduleType::Flex);
+    assert!(result.core_time_windows.is_empty());
+}
+
+#[tokio::test]
+async fn flex_schedule_public_holiday_has_no_core_time_snapshot() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-flex"),
+        );
+    configure_flex_schedule(
+        &repository,
+        "schedule-flex",
+        PublicHolidayPolicy::NonWorking,
+        1,
+        Some(core_time_window(1)),
+    );
+
+    let result = resolver(repository, vec![], true)
+        .execute(command())
+        .await
+        .expect("resolved flex public holiday");
+
+    assert_eq!(result.day_kind, ResolvedDayKind::PublicHoliday);
+    assert_eq!(result.schedule_type, ScheduleType::Flex);
+    assert!(result.core_time_windows.is_empty());
+}
+
+#[tokio::test]
+async fn re_resolution_from_flex_working_day_to_non_working_clears_core_time_window() {
+    let repository = FakeRepository::default();
+    repository
+        .assignments
+        .lock()
+        .expect("assignments lock")
+        .insert(
+            AssignmentTarget::Organization,
+            assignment("assignment-org", "schedule-flex"),
+        );
+    configure_flex_schedule(
+        &repository,
+        "schedule-flex",
+        PublicHolidayPolicy::FollowWeeklyPattern,
+        1,
+        Some(core_time_window(1)),
+    );
+    let saved = Arc::clone(&repository.saved);
+    let resolver = resolver(repository, vec![], false);
+
+    let first = resolver
+        .execute(command())
+        .await
+        .expect("first flex resolution");
+    assert_eq!(first.core_time_windows, vec![core_time_window(1)]);
+
+    *resolver
+        .repository()
+        .override_value
+        .lock()
+        .expect("override lock") = Some(WorkdayOverride {
+        id: "override-1".to_string(),
+        kind: WorkdayOverrideKind::NonWorkingDay,
+        work_schedule_id: None,
+    });
+    let second = resolver
+        .execute(command())
+        .await
+        .expect("second resolution after override");
+
+    assert_eq!(second.day_kind, ResolvedDayKind::ScheduledNonWorkingDay);
+    assert!(second.core_time_windows.is_empty());
+    let saved_projections = saved.lock().expect("saved lock");
+    assert_eq!(saved_projections.len(), 2);
+    assert_eq!(
+        saved_projections[0].core_time_windows,
+        vec![core_time_window(1)]
+    );
+    assert!(saved_projections[1].core_time_windows.is_empty());
 }

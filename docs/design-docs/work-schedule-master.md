@@ -1,8 +1,8 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period is implemented end-to-end for the Work Schedule Version API (`crates/domain`, `crates/contract`, `backend` handler/repository/migration); `ResolveWorkday` flex-aware output and settlement balance reconciliation are not yet implemented.
+**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period is implemented end-to-end for the Work Schedule Version API (`crates/domain`, `crates/contract`, `backend` handler/repository/migration) and for `ResolveWorkday`/`ResolvedWorkday` projection output (`schedule_type` + per-day core time window snapshot, read via `/api/work-schedules/me`, admin resolved-workdays, and the calendar API); settlement balance reconciliation against actual attendance is not yet implemented.
 
-**Updated:** 2026-07-02
+**Updated:** 2026-07-03
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
 
@@ -22,12 +22,25 @@
 2026-07-02に Phase 3 の最初の増分として、`schedule_type`（Fixed/Flex）・コアタイム・清算期間の
 domain model（`crates/domain`）とcontract DTO（`crates/contract`）を追加した。`ScheduleDefinition`の
 `flex_policy`により、Fixed/Flexの相互排他、コアタイムの勤務区間内チェック、清算期間の妥当性を検証する。
-API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。
+API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は当時未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。**API配線・`ResolveWorkday`配線は後続エントリ（2026-07-02のAPI配線、2026-07-03のResolveWorkday flex対応）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
 2026-07-02にPhase 3のAPI配線として、`CreateWorkScheduleVersionRequest`/`ReplaceWorkScheduleVersionRequest`/`WorkScheduleVersionResponse`へ
 `schedule_type`（省略時`fixed`、後方互換）・`flex_policy`を追加し、`work_schedule_versions.schedule_type`カラムと
 `work_schedule_settlement_periods`/`work_schedule_core_time_windows`テーブル（migration `048_add_work_schedule_flex_policy.sql`）で永続化した。
-handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は未実装のまま
-（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。
+handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は当時未実装のまま
+（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。**`ResolveWorkday`のflex対応出力は次エントリ（2026-07-03）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
+2026-07-03に`ResolveWorkday`をflex対応にした（[`EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)）。
+`ScheduleVersion`へ`schedule_type`を追加し、flexかつ勤務日のときのみ該当曜日のコアタイムを
+`ResolvedWorkday.core_time_windows`へsnapshotする（非勤務日・fixedでは空）。migration
+`049_add_resolved_workday_flex.sql`で`resolved_workdays.schedule_type`カラムと
+`resolved_workday_core_time_windows`子テーブル（locked不変トリガー付き）を追加した。未locked projectionの
+再解決時は既存の`work_intervals`/`planned_breaks`と同様にコアタイムも同一transaction内でDELETE+INSERTにより
+置換し、古いsnapshotが残らないようにした。`ResolvedWorkdayResponse`へ`schedule_type`/`core_time_windows`を
+追加し、`/api/work-schedules/me`・`/api/admin/users/{user_id}/resolved-workdays`・work-schedule-calendarの
+3経路すべてで参照可能にした。**`expected_work_minutes`はflexでは区間（flex band）の最大稼働可能幅を表し、
+契約所定時間ではない**——この意味論は変更しておらず、anomaly検出・打刻接続（`day_kind`のみ参照）への
+誤用がないことを回帰テストで固定した。清算期間はprojectionへsnapshotせず、`work_schedule_version_id`
+経由でpublished version（DBトリガーにより不変）を参照する設計とした。清算期間残高の実績突合は
+「勤怠計算ポリシー」設計に依存するため引き続き未実装。
 
 ## Decision Summary
 
@@ -294,6 +307,9 @@ workday_overrides
 resolved_workdays
 resolved_workday_intervals
 resolved_workday_breaks
+work_schedule_settlement_periods       -- Phase3: version単位のflex清算期間（migration 048）
+work_schedule_core_time_windows        -- Phase3: version×曜日単位のコアタイム定義（migration 048）
+resolved_workday_core_time_windows     -- Phase3: 解決済み勤務日のコアタイムsnapshot（migration 049）
 ```
 
 主要制約:
@@ -517,7 +533,7 @@ handlerへ解決規則やSQLを追加しない。
 
 ### Phase 3 — Advanced Work Arrangements
 
-- flex、core time、清算期間（domain model・Work Schedule Version API配線は実装済み。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は未実装）
+- flex、core time、清算期間（domain model・Work Schedule Version API配線・`ResolveWorkday`のflex対応出力（`schedule_type`/コアタイムsnapshot）は実装済み。清算期間残高の実績突合は未実装）
 - 変形労働、複数勤務区間
 - シフト一括作成・交換
 - attendance calculation policyとの接続

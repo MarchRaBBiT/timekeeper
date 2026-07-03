@@ -401,6 +401,95 @@ pub async fn seed_work_schedule_for_user(
     (schedule_id, version_id)
 }
 
+/// weekday 3（水曜）に10:00-15:00のコアタイムを持つflexスケジュールを割り当てる。
+pub async fn seed_flex_work_schedule_for_user(pool: &PgPool, user_id: UserId) -> (Uuid, Uuid) {
+    let schedule_id = Uuid::new_v4();
+    let version_id = Uuid::new_v4();
+    let user_id = user_id.to_string();
+    sqlx::query("INSERT INTO work_schedules (id, code, name, created_by) VALUES ($1, $2, $3, $4)")
+        .bind(schedule_id)
+        .bind(format!("flex-{schedule_id}"))
+        .bind("Test flex work schedule")
+        .bind(&user_id)
+        .execute(pool)
+        .await
+        .expect("insert flex work schedule");
+    // Insert as draft first: the published-version flex-immutability trigger
+    // rejects INSERT into flex child tables once the parent is published.
+    sqlx::query(
+        "INSERT INTO work_schedule_versions \
+         (id, work_schedule_id, version_number, status, effective_from, timezone, \
+          workday_boundary, public_holiday_policy, schedule_type) \
+         VALUES ($1, $2, 1, 'draft', $3, 'Asia/Tokyo', $4, 'non_working', 'flex')",
+    )
+    .bind(version_id)
+    .bind(schedule_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("effective date"))
+    .bind(NaiveTime::from_hms_opt(5, 0, 0).expect("boundary"))
+    .execute(pool)
+    .await
+    .expect("insert draft flex work schedule version");
+    for weekday in 1_i16..=7 {
+        let day_rule_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO work_schedule_day_rules \
+             (id, version_id, weekday, day_kind, expected_work_minutes) \
+             VALUES ($1, $2, $3, 'working_day', 480)",
+        )
+        .bind(day_rule_id)
+        .bind(version_id)
+        .bind(weekday)
+        .execute(pool)
+        .await
+        .expect("insert flex day rule");
+        sqlx::query(
+            "INSERT INTO work_schedule_work_intervals \
+             (day_rule_id, sequence, start_time, start_day_offset, end_time, end_day_offset) \
+             VALUES ($1, 1, $2, 0, $3, 0)",
+        )
+        .bind(day_rule_id)
+        .bind(NaiveTime::from_hms_opt(9, 0, 0).expect("start time"))
+        .bind(NaiveTime::from_hms_opt(18, 0, 0).expect("end time"))
+        .execute(pool)
+        .await
+        .expect("insert flex interval");
+    }
+    sqlx::query(
+        "INSERT INTO work_schedule_core_time_windows \
+         (version_id, weekday, start_time, start_day_offset, end_time, end_day_offset) \
+         VALUES ($1, 3, $2, 0, $3, 0)",
+    )
+    .bind(version_id)
+    .bind(NaiveTime::from_hms_opt(10, 0, 0).expect("core start"))
+    .bind(NaiveTime::from_hms_opt(15, 0, 0).expect("core end"))
+    .execute(pool)
+    .await
+    .expect("insert core time window");
+    sqlx::query(
+        "UPDATE work_schedule_versions \
+         SET status = 'published', published_by = $2, published_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(version_id)
+    .bind(&user_id)
+    .execute(pool)
+    .await
+    .expect("publish flex work schedule version");
+    sqlx::query(
+        "INSERT INTO work_schedule_assignments \
+         (id, work_schedule_id, user_id, is_org_default, valid_from, created_by) \
+         VALUES ($1, $2, $3, FALSE, $4, $3)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(schedule_id)
+    .bind(&user_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("valid from"))
+    .execute(pool)
+    .await
+    .expect("insert flex work schedule assignment");
+    (schedule_id, version_id)
+}
+
 pub async fn seed_user_with_password(
     pool: &PgPool,
     role: UserRole,

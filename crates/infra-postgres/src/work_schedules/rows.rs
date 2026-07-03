@@ -2,10 +2,13 @@ use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use sqlx::FromRow;
 use timekeeper_app::work_schedules::{
     PublicHolidayPolicy, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday, ScheduleAssignment,
-    ScheduleDayRule, ScheduleVersion, WorkScheduleSource, WorkdayOverride, WorkdayOverrideKind,
+    ScheduleDayRule, ScheduleType, ScheduleVersion, WorkScheduleSource, WorkdayOverride,
+    WorkdayOverrideKind,
 };
 use timekeeper_app::workday_overrides::{StoredWorkdayOverride, WorkdayOverrideError};
-use timekeeper_domain::work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval};
+use timekeeper_domain::work_schedules::{
+    CoreTimeWindow, DayKind, PlannedBreak, PlannedWorkInterval,
+};
 use uuid::Uuid;
 
 #[derive(Debug, FromRow)]
@@ -21,6 +24,7 @@ pub(super) struct ResolvedWorkdayRow {
     pub timezone: String,
     pub workday_boundary: NaiveTime,
     pub expected_work_minutes: i32,
+    pub schedule_type: String,
     pub resolved_at: DateTime<Utc>,
     pub locked_at: Option<DateTime<Utc>>,
 }
@@ -56,6 +60,43 @@ pub(super) struct ResolvedBreakRow {
     pub start_day_offset: i16,
     pub end_time: NaiveTime,
     pub end_day_offset: i16,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct CoreTimeWindowRow {
+    pub weekday: i16,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
+}
+
+#[derive(Debug, FromRow)]
+pub(super) struct ResolvedCoreTimeWindowRow {
+    pub resolved_workday_id: Uuid,
+    pub weekday: i16,
+    pub start_time: NaiveTime,
+    pub start_day_offset: i16,
+    pub end_time: NaiveTime,
+    pub end_day_offset: i16,
+}
+
+impl TryFrom<CoreTimeWindowRow> for CoreTimeWindow {
+    type Error = ResolveWorkdayError;
+
+    fn try_from(row: CoreTimeWindowRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            weekday: weekday(row.weekday)?,
+            start_time: row.start_time,
+            start_day_offset: offset(row.start_day_offset)?,
+            end_time: row.end_time,
+            end_day_offset: offset(row.end_day_offset)?,
+        })
+    }
+}
+
+fn weekday(value: i16) -> Result<u8, ResolveWorkdayError> {
+    u8::try_from(value).map_err(|_| corrupt("weekday", &value.to_string()))
 }
 
 #[derive(Debug, FromRow)]
@@ -112,6 +153,7 @@ pub(super) struct VersionRow {
     pub timezone: String,
     pub workday_boundary: NaiveTime,
     pub public_holiday_policy: String,
+    pub schedule_type: String,
 }
 
 #[derive(Debug, FromRow)]
@@ -125,6 +167,7 @@ pub(super) fn assemble_resolved_workday(
     row: ResolvedWorkdayRow,
     interval_rows: Vec<IntervalRow>,
     break_rows: Vec<IntervalRow>,
+    core_time_window_rows: Vec<CoreTimeWindowRow>,
 ) -> Result<ResolvedWorkday, ResolveWorkdayError> {
     let work_intervals = interval_rows
         .into_iter()
@@ -148,6 +191,24 @@ pub(super) fn assemble_resolved_workday(
             })
         })
         .collect::<Result<Vec<_>, ResolveWorkdayError>>()?;
+    let schedule_type = schedule_type_value(&row.schedule_type)?;
+    let day_kind = resolved_day_kind(&row.day_kind)?;
+    if schedule_type == ScheduleType::Fixed && !core_time_window_rows.is_empty() {
+        return Err(corrupt(
+            "resolved workday core time windows",
+            "present on a fixed-schedule projection",
+        ));
+    }
+    if day_kind != ResolvedDayKind::ScheduledWorkday && !core_time_window_rows.is_empty() {
+        return Err(corrupt(
+            "resolved workday core time windows",
+            "present on a non-workday projection",
+        ));
+    }
+    let core_time_windows = core_time_window_rows
+        .into_iter()
+        .map(CoreTimeWindow::try_from)
+        .collect::<Result<Vec<_>, ResolveWorkdayError>>()?;
     Ok(ResolvedWorkday {
         id: row.id.to_string(),
         user_id: row.user_id,
@@ -156,12 +217,14 @@ pub(super) fn assemble_resolved_workday(
         work_schedule_version_id: row.work_schedule_version_id.to_string(),
         source: source(&row.source)?,
         source_id: row.source_id.to_string(),
-        day_kind: resolved_day_kind(&row.day_kind)?,
+        day_kind,
         timezone: row.timezone,
         workday_boundary: row.workday_boundary,
         expected_work_minutes: row.expected_work_minutes,
         work_intervals,
         planned_breaks,
+        schedule_type,
+        core_time_windows,
         resolved_at: row.resolved_at,
         locked_at: row.locked_at,
     })
@@ -208,7 +271,16 @@ impl TryFrom<VersionRow> for ScheduleVersion {
             timezone: row.timezone,
             workday_boundary: row.workday_boundary,
             public_holiday_policy,
+            schedule_type: schedule_type_value(&row.schedule_type)?,
         })
+    }
+}
+
+fn schedule_type_value(value: &str) -> Result<ScheduleType, ResolveWorkdayError> {
+    match value {
+        "fixed" => Ok(ScheduleType::Fixed),
+        "flex" => Ok(ScheduleType::Flex),
+        other => Err(corrupt("work schedule type", other)),
     }
 }
 

@@ -18,7 +18,10 @@ use uuid::Uuid;
 
 mod support;
 
-use support::{seed_user, seed_work_schedule_for_user, test_config, test_pool};
+use support::{
+    seed_flex_work_schedule_for_user, seed_user, seed_work_schedule_for_user, test_config,
+    test_pool,
+};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -239,6 +242,62 @@ async fn system_admin_reads_any_user_resolved_workdays() {
     assert_eq!(
         body["items"].as_array().expect("items")[1]["work_date"],
         "2026-07-02"
+    );
+}
+
+#[tokio::test]
+async fn employee_reads_flex_schedule_type_and_core_time_windows_via_me_endpoint() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_flex_work_schedule_for_user(&pool, employee.id).await;
+
+    let (status, body) = get_json(
+        me_router(pool.clone(), employee.clone()),
+        "/api/work-schedules/me?from=2026-07-01&to=2026-07-01",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let items = body["items"].as_array().expect("items array");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["schedule_type"], "flex");
+    let windows = items[0]["core_time_windows"]
+        .as_array()
+        .expect("core time windows array");
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0]["weekday"], 3);
+    assert_eq!(windows[0]["start_time"], "10:00:00");
+    assert_eq!(windows[0]["end_time"], "15:00:00");
+}
+
+#[tokio::test]
+async fn employee_reads_fixed_schedule_with_empty_core_time_windows_via_me_endpoint() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let (status, body) = get_json(
+        me_router(pool.clone(), employee.clone()),
+        "/api/work-schedules/me?from=2026-07-01&to=2026-07-01",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let items = body["items"].as_array().expect("items array");
+    assert_eq!(items[0]["schedule_type"], "fixed");
+    assert_eq!(
+        items[0]["core_time_windows"].as_array().expect("array"),
+        &Vec::<Value>::new()
     );
 }
 

@@ -8,14 +8,15 @@ use timekeeper_app::user_workdays::{
 };
 use timekeeper_app::work_schedules::{
     ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday,
-    WorkScheduleSource,
+    ScheduleType, WorkScheduleSource,
 };
 use timekeeper_contract::work_schedules::{
-    ResolvedBreakResponse, ResolvedDayKind as ContractResolvedDayKind,
+    CoreTimeWindowResponse, ResolvedBreakResponse, ResolvedDayKind as ContractResolvedDayKind,
     ResolvedWorkIntervalResponse, ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery,
     ResolvedWorkdayResponse, WorkScheduleSource as ContractWorkScheduleSource,
+    WorkScheduleType as ContractWorkScheduleType,
 };
-use timekeeper_domain::work_schedules::{PlannedBreak, PlannedWorkInterval};
+use timekeeper_domain::work_schedules::{CoreTimeWindow, PlannedBreak, PlannedWorkInterval};
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 
 use crate::{error::AppError, models::user::User, state::AppState};
@@ -127,6 +128,12 @@ pub(crate) fn resolved_workday_to_response(workday: ResolvedWorkday) -> Resolved
             .into_iter()
             .map(break_to_response)
             .collect(),
+        schedule_type: schedule_type_to_response(workday.schedule_type),
+        core_time_windows: workday
+            .core_time_windows
+            .into_iter()
+            .map(core_time_window_to_response)
+            .collect(),
         resolved_at: workday.resolved_at,
         locked_at: workday.locked_at,
     }
@@ -164,5 +171,22 @@ fn day_kind_to_response(day_kind: ResolvedDayKind) -> ContractResolvedDayKind {
         ResolvedDayKind::ScheduledWorkday => ContractResolvedDayKind::ScheduledWorkday,
         ResolvedDayKind::ScheduledNonWorkingDay => ContractResolvedDayKind::ScheduledNonWorkingDay,
         ResolvedDayKind::PublicHoliday => ContractResolvedDayKind::PublicHoliday,
+    }
+}
+
+fn schedule_type_to_response(schedule_type: ScheduleType) -> ContractWorkScheduleType {
+    match schedule_type {
+        ScheduleType::Fixed => ContractWorkScheduleType::Fixed,
+        ScheduleType::Flex => ContractWorkScheduleType::Flex,
+    }
+}
+
+fn core_time_window_to_response(window: CoreTimeWindow) -> CoreTimeWindowResponse {
+    CoreTimeWindowResponse {
+        weekday: i16::from(window.weekday),
+        start_time: window.start_time,
+        start_day_offset: i16::from(window.start_day_offset),
+        end_time: window.end_time,
+        end_day_offset: i16::from(window.end_day_offset),
     }
 }

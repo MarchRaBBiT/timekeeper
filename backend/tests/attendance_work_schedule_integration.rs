@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 mod support;
 
-use support::{seed_user, seed_work_schedule_for_user, test_pool};
+use support::{
+    seed_flex_work_schedule_for_user, seed_user, seed_work_schedule_for_user, test_pool,
+};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -317,4 +319,52 @@ async fn clock_in_attaches_workday_to_existing_empty_attendance() {
     .expect("linked attendance");
     assert!(linked.0.is_some());
     assert_eq!(linked.1, Some(recorded_at()));
+}
+
+#[tokio::test]
+async fn clock_in_attaches_to_flex_schedule_workday_using_day_kind_only() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_flex_work_schedule_for_user(&pool, employee.id).await;
+    let resolver_repository = WorkdayResolverPostgresRepository::new(pool.clone());
+    let resolver = ResolveWorkday::new(
+        resolver_repository.clone(),
+        resolver_repository.clone(),
+        resolver_repository,
+    );
+    let attendance_repository = AttendanceWorkflowRepository::new(pool.clone());
+    let clock_in = ClockIn::new(attendance_repository, resolver);
+    // 2026-07-01 is a Wednesday, matching the flex core time window seeded by
+    // seed_flex_work_schedule_for_user. Clock-in derivation must key off
+    // day_kind alone, not the flex band's expected_work_minutes.
+    let punch_time = NaiveDate::from_ymd_opt(2026, 7, 1)
+        .expect("punch date")
+        .and_hms_opt(9, 0, 0)
+        .expect("clock in time");
+
+    let clocked_in = clock_in
+        .execute(ClockInCommand {
+            user_id: employee.id.to_string(),
+            requested_work_date: None,
+            clock_in_time: punch_time,
+            recorded_at: recorded_at(),
+        })
+        .await
+        .expect("flex clock in");
+
+    assert_eq!(clocked_in.work_date.to_string(), "2026-07-01");
+    let schedule_type: String = sqlx::query_scalar(
+        "SELECT r.schedule_type FROM attendance a \
+         JOIN resolved_workdays r ON r.id = a.resolved_workday_id WHERE a.id = $1",
+    )
+    .bind(&clocked_in.attendance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("resolved workday schedule type");
+    assert_eq!(schedule_type, "flex");
 }

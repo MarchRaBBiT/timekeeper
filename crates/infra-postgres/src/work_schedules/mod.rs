@@ -11,17 +11,20 @@ use timekeeper_app::work_schedules::{
     ResolvedWorkday, ScheduleAssignment, ScheduleDayRule, ScheduleVersion, WorkdayHolidayCalendar,
     WorkdayOverride, WorkdayResolutionRepository,
 };
+use timekeeper_domain::work_schedules::CoreTimeWindow;
 use uuid::Uuid;
 
 use rows::{
-    assemble_day_rule, assemble_resolved_workday, AssignmentRow, DayRuleRow, IntervalRow,
-    OverrideRow, ResolvedBreakRow, ResolvedIntervalRow, ResolvedWorkdayRow, VersionRow,
+    assemble_day_rule, assemble_resolved_workday, AssignmentRow, CoreTimeWindowRow, DayRuleRow,
+    IntervalRow, OverrideRow, ResolvedBreakRow, ResolvedCoreTimeWindowRow, ResolvedIntervalRow,
+    ResolvedWorkdayRow, VersionRow,
 };
 
 const RESOLVED_COLUMNS: &str = "id, user_id, work_date, work_schedule_id, \
     work_schedule_version_id, source, source_id, day_kind, timezone, workday_boundary, \
-    expected_work_minutes, resolved_at, locked_at";
+    expected_work_minutes, schedule_type, resolved_at, locked_at";
 const INTERVAL_COLUMNS: &str = "sequence, start_time, start_day_offset, end_time, end_day_offset";
+const CORE_TIME_COLUMNS: &str = "weekday, start_time, start_day_offset, end_time, end_day_offset";
 
 #[derive(Debug, Clone)]
 pub struct WorkdayResolverPostgresRepository {
@@ -115,9 +118,10 @@ impl WorkdayResolutionRepository for WorkdayResolverPostgresRepository {
     ) -> Result<Option<ScheduleVersion>, ResolveWorkdayError> {
         let schedule_id = parse_uuid(work_schedule_id, "work_schedule_id")?;
         let row = sqlx::query_as::<_, VersionRow>(
-            "SELECT id, work_schedule_id, timezone, workday_boundary, public_holiday_policy \
-             FROM work_schedule_versions WHERE work_schedule_id = $1 AND status = 'published' \
-             AND effective_from <= $2 AND (effective_until IS NULL OR $2 < effective_until) \
+            "SELECT id, work_schedule_id, timezone, workday_boundary, public_holiday_policy, \
+             schedule_type FROM work_schedule_versions WHERE work_schedule_id = $1 \
+             AND status = 'published' AND effective_from <= $2 \
+             AND (effective_until IS NULL OR $2 < effective_until) \
              ORDER BY effective_from DESC LIMIT 1",
         )
         .bind(schedule_id)
@@ -165,6 +169,25 @@ impl WorkdayResolutionRepository for WorkdayResolverPostgresRepository {
             .await
             .map_err(|_| database_error("load planned breaks"))?;
         assemble_day_rule(row, intervals, breaks).map(Some)
+    }
+
+    async fn find_core_time_window(
+        &self,
+        version_id: &str,
+        weekday: u8,
+    ) -> Result<Option<CoreTimeWindow>, ResolveWorkdayError> {
+        let version_id = parse_uuid(version_id, "work_schedule_version_id")?;
+        let sql = format!(
+            "SELECT {CORE_TIME_COLUMNS} FROM work_schedule_core_time_windows \
+             WHERE version_id = $1 AND weekday = $2"
+        );
+        let row = sqlx::query_as::<_, CoreTimeWindowRow>(&sql)
+            .bind(version_id)
+            .bind(i16::from(weekday))
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|_| database_error("load work schedule core time window"))?;
+        row.map(CoreTimeWindow::try_from).transpose()
     }
 
     async fn save_projection(
@@ -244,7 +267,16 @@ async fn load_resolved(
         .fetch_all(pool)
         .await
         .map_err(|_| database_error("load resolved planned breaks"))?;
-    assemble_resolved_workday(row, intervals, breaks).map(Some)
+    let core_time_sql = format!(
+        "SELECT {CORE_TIME_COLUMNS} FROM resolved_workday_core_time_windows \
+         WHERE resolved_workday_id = $1"
+    );
+    let core_time_windows = sqlx::query_as::<_, CoreTimeWindowRow>(&core_time_sql)
+        .bind(row.id)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| database_error("load resolved core time windows"))?;
+    assemble_resolved_workday(row, intervals, breaks, core_time_windows).map(Some)
 }
 
 pub(super) async fn load_resolved_in_range(
@@ -287,6 +319,15 @@ pub(super) async fn load_resolved_in_range(
         .fetch_all(pool)
         .await
         .map_err(|_| database_error("load resolved planned breaks"))?;
+    let core_time_sql = format!(
+        "SELECT resolved_workday_id, {CORE_TIME_COLUMNS} FROM resolved_workday_core_time_windows \
+         WHERE resolved_workday_id = ANY($1)"
+    );
+    let core_time_rows = sqlx::query_as::<_, ResolvedCoreTimeWindowRow>(&core_time_sql)
+        .bind(&resolved_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| database_error("load resolved core time windows"))?;
 
     let mut intervals_by_workday: HashMap<_, Vec<IntervalRow>> = HashMap::new();
     for row in interval_rows {
@@ -314,11 +355,28 @@ pub(super) async fn load_resolved_in_range(
             });
     }
 
+    let mut core_time_windows_by_workday: HashMap<_, Vec<CoreTimeWindowRow>> = HashMap::new();
+    for row in core_time_rows {
+        core_time_windows_by_workday
+            .entry(row.resolved_workday_id)
+            .or_default()
+            .push(CoreTimeWindowRow {
+                weekday: row.weekday,
+                start_time: row.start_time,
+                start_day_offset: row.start_day_offset,
+                end_time: row.end_time,
+                end_day_offset: row.end_day_offset,
+            });
+    }
+
     let mut workdays = Vec::with_capacity(rows.len());
     for row in rows {
         let intervals = intervals_by_workday.remove(&row.id).unwrap_or_default();
         let breaks = breaks_by_workday.remove(&row.id).unwrap_or_default();
-        let workday = assemble_resolved_workday(row, intervals, breaks)
+        let core_time_windows = core_time_windows_by_workday
+            .remove(&row.id)
+            .unwrap_or_default();
+        let workday = assemble_resolved_workday(row, intervals, breaks, core_time_windows)
             .map_err(|error| ResolveWorkdayError::Repository(error.to_string()))?;
         workdays.push(workday);
     }

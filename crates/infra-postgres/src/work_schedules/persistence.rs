@@ -1,8 +1,8 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use timekeeper_app::work_schedules::{
-    NewResolvedWorkday, ResolveWorkdayError, ResolvedDayKind, WorkScheduleSource,
+    NewResolvedWorkday, ResolveWorkdayError, ResolvedDayKind, ScheduleType, WorkScheduleSource,
 };
-use timekeeper_domain::work_schedules::{PlannedBreak, PlannedWorkInterval};
+use timekeeper_domain::work_schedules::{CoreTimeWindow, PlannedBreak, PlannedWorkInterval};
 use uuid::Uuid;
 
 use super::{database_error, parse_uuid};
@@ -24,8 +24,9 @@ pub(super) async fn upsert_projection(
     let resolved_workday_id: Option<Uuid> = sqlx::query_scalar(
         "INSERT INTO resolved_workdays \
          (id, user_id, work_date, work_schedule_id, work_schedule_version_id, source, source_id, \
-          day_kind, timezone, workday_boundary, expected_work_minutes, resolved_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
+          day_kind, timezone, workday_boundary, expected_work_minutes, schedule_type, \
+          resolved_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
          ON CONFLICT (user_id, work_date) DO UPDATE SET \
              work_schedule_id = EXCLUDED.work_schedule_id, \
              work_schedule_version_id = EXCLUDED.work_schedule_version_id, \
@@ -33,6 +34,7 @@ pub(super) async fn upsert_projection(
              day_kind = EXCLUDED.day_kind, timezone = EXCLUDED.timezone, \
              workday_boundary = EXCLUDED.workday_boundary, \
              expected_work_minutes = EXCLUDED.expected_work_minutes, \
+             schedule_type = EXCLUDED.schedule_type, \
              resolved_at = EXCLUDED.resolved_at \
          WHERE resolved_workdays.locked_at IS NULL \
          RETURNING id",
@@ -48,6 +50,7 @@ pub(super) async fn upsert_projection(
     .bind(&projection.timezone)
     .bind(projection.workday_boundary)
     .bind(projection.expected_work_minutes)
+    .bind(schedule_type_value(projection.schedule_type))
     .bind(projection.resolved_at)
     .fetch_optional(&mut *transaction)
     .await
@@ -65,6 +68,7 @@ pub(super) async fn upsert_projection(
         resolved_workday_id,
         &projection.work_intervals,
         &projection.planned_breaks,
+        &projection.core_time_windows,
     )
     .await?;
     transaction
@@ -78,6 +82,7 @@ async fn replace_children(
     resolved_workday_id: Uuid,
     intervals: &[PlannedWorkInterval],
     breaks: &[PlannedBreak],
+    core_time_windows: &[CoreTimeWindow],
 ) -> Result<(), ResolveWorkdayError> {
     sqlx::query("DELETE FROM resolved_workday_intervals WHERE resolved_workday_id = $1")
         .bind(resolved_workday_id)
@@ -89,6 +94,11 @@ async fn replace_children(
         .execute(&mut **transaction)
         .await
         .map_err(|_| database_error("replace resolved planned breaks"))?;
+    sqlx::query("DELETE FROM resolved_workday_core_time_windows WHERE resolved_workday_id = $1")
+        .bind(resolved_workday_id)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|_| database_error("replace resolved core time windows"))?;
     for (index, interval) in intervals.iter().enumerate() {
         sqlx::query(
             "INSERT INTO resolved_workday_intervals \
@@ -121,6 +131,22 @@ async fn replace_children(
         .await
         .map_err(|_| database_error("insert resolved planned break"))?;
     }
+    for window in core_time_windows {
+        sqlx::query(
+            "INSERT INTO resolved_workday_core_time_windows \
+             (resolved_workday_id, weekday, start_time, start_day_offset, \
+              end_time, end_day_offset) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(resolved_workday_id)
+        .bind(i16::from(window.weekday))
+        .bind(window.start_time)
+        .bind(i16::from(window.start_day_offset))
+        .bind(window.end_time)
+        .bind(i16::from(window.end_day_offset))
+        .execute(&mut **transaction)
+        .await
+        .map_err(|_| database_error("insert resolved core time window"))?;
+    }
     Ok(())
 }
 
@@ -143,5 +169,12 @@ fn day_kind_value(day_kind: ResolvedDayKind) -> &'static str {
         ResolvedDayKind::ScheduledWorkday => "scheduled_workday",
         ResolvedDayKind::ScheduledNonWorkingDay => "scheduled_non_working_day",
         ResolvedDayKind::PublicHoliday => "public_holiday",
+    }
+}
+
+fn schedule_type_value(schedule_type: ScheduleType) -> &'static str {
+    match schedule_type {
+        ScheduleType::Fixed => "fixed",
+        ScheduleType::Flex => "flex",
     }
 }

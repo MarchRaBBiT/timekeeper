@@ -1,7 +1,8 @@
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use timekeeper_contract::work_schedules::{
-    CoreTimeWindowInput, CreateWorkScheduleVersionRequest, FlexPolicyInput, PublicHolidayPolicy,
-    ReplaceWorkScheduleVersionRequest, SettlementPeriodInput, SettlementPeriodUnit,
+    CoreTimeWindowInput, CoreTimeWindowResponse, CreateWorkScheduleVersionRequest, FlexPolicyInput,
+    PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, ResolvedDayKind,
+    ResolvedWorkdayResponse, SettlementPeriodInput, SettlementPeriodUnit, WorkScheduleSource,
     WorkScheduleType,
 };
 use validator::Validate;
@@ -152,4 +153,62 @@ fn replace_version_request_requires_explicit_schedule_type() {
         "replace must reject a payload without schedule_type rather than silently \
          downgrading an existing flex version to fixed"
     );
+}
+
+fn sample_resolved_workday(
+    schedule_type: WorkScheduleType,
+    core_time_windows: Vec<CoreTimeWindowResponse>,
+) -> ResolvedWorkdayResponse {
+    ResolvedWorkdayResponse {
+        id: "resolved-1".to_string(),
+        user_id: "user-1".to_string(),
+        work_date: NaiveDate::from_ymd_opt(2026, 7, 6).expect("valid date"),
+        work_schedule_id: "schedule-1".to_string(),
+        work_schedule_version_id: "version-1".to_string(),
+        source: WorkScheduleSource::Organization,
+        day_kind: ResolvedDayKind::ScheduledWorkday,
+        timezone: "Asia/Tokyo".to_string(),
+        workday_boundary: time(5, 0),
+        expected_work_minutes: 480,
+        work_intervals: vec![],
+        planned_breaks: vec![],
+        schedule_type,
+        core_time_windows,
+        resolved_at: DateTime::<Utc>::from_timestamp(1_783_296_000, 0).expect("valid timestamp"),
+        locked_at: None,
+    }
+}
+
+#[test]
+fn resolved_workday_response_defaults_to_fixed_with_empty_core_time_windows() {
+    let response = sample_resolved_workday(WorkScheduleType::Fixed, vec![]);
+
+    let json = serde_json::to_value(&response).expect("serialize");
+    assert_eq!(json["schedule_type"], "fixed");
+    assert_eq!(json["core_time_windows"], serde_json::json!([]));
+
+    let roundtripped: ResolvedWorkdayResponse = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(roundtripped, response);
+}
+
+#[test]
+fn resolved_workday_response_roundtrips_flex_schedule_type_and_core_time_windows() {
+    let response = sample_resolved_workday(
+        WorkScheduleType::Flex,
+        vec![CoreTimeWindowResponse {
+            weekday: 1,
+            start_time: time(10, 0),
+            start_day_offset: 0,
+            end_time: time(15, 0),
+            end_day_offset: 0,
+        }],
+    );
+
+    let json = serde_json::to_value(&response).expect("serialize");
+    assert_eq!(json["schedule_type"], "flex");
+    assert_eq!(json["core_time_windows"][0]["weekday"], 1);
+    assert_eq!(json["core_time_windows"][0]["start_time"], "10:00:00");
+
+    let roundtripped: ResolvedWorkdayResponse = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(roundtripped, response);
 }

@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
 use thiserror::Error;
-use timekeeper_domain::work_schedules::{DayKind, PlannedBreak, PlannedWorkInterval};
+use timekeeper_domain::work_schedules::{
+    CoreTimeWindow, DayKind, PlannedBreak, PlannedWorkInterval,
+};
 
 pub use timekeeper_domain::work_schedules::{
-    PublicHolidayPolicy, ResolvedDayKind, WorkScheduleSource,
+    PublicHolidayPolicy, ResolvedDayKind, ScheduleType, WorkScheduleSource,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +49,7 @@ pub struct ScheduleVersion {
     pub timezone: String,
     pub workday_boundary: NaiveTime,
     pub public_holiday_policy: PublicHolidayPolicy,
+    pub schedule_type: ScheduleType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +74,8 @@ pub struct NewResolvedWorkday {
     pub expected_work_minutes: i32,
     pub work_intervals: Vec<PlannedWorkInterval>,
     pub planned_breaks: Vec<PlannedBreak>,
+    pub schedule_type: ScheduleType,
+    pub core_time_windows: Vec<CoreTimeWindow>,
     pub resolved_at: DateTime<Utc>,
 }
 
@@ -89,6 +94,8 @@ pub struct ResolvedWorkday {
     pub expected_work_minutes: i32,
     pub work_intervals: Vec<PlannedWorkInterval>,
     pub planned_breaks: Vec<PlannedBreak>,
+    pub schedule_type: ScheduleType,
+    pub core_time_windows: Vec<CoreTimeWindow>,
     pub resolved_at: DateTime<Utc>,
     pub locked_at: Option<DateTime<Utc>>,
 }
@@ -109,6 +116,8 @@ impl ResolvedWorkday {
             expected_work_minutes: projection.expected_work_minutes,
             work_intervals: projection.work_intervals,
             planned_breaks: projection.planned_breaks,
+            schedule_type: projection.schedule_type,
+            core_time_windows: projection.core_time_windows,
             resolved_at: projection.resolved_at,
             locked_at: None,
         }
@@ -156,6 +165,12 @@ pub trait WorkdayResolutionRepository: Send + Sync {
         version_id: &str,
         weekday: u8,
     ) -> Result<Option<ScheduleDayRule>, ResolveWorkdayError>;
+
+    async fn find_core_time_window(
+        &self,
+        version_id: &str,
+        weekday: u8,
+    ) -> Result<Option<CoreTimeWindow>, ResolveWorkdayError>;
 
     async fn save_projection(
         &self,
@@ -262,6 +277,15 @@ where
             .resolve_day_kind(command.work_date, day_override.as_ref(), &version, &rule)
             .await?;
         let is_working_day = day_kind == ResolvedDayKind::ScheduledWorkday;
+        let core_time_windows = if is_working_day && version.schedule_type == ScheduleType::Flex {
+            self.repository
+                .find_core_time_window(&version.id, weekday)
+                .await?
+                .into_iter()
+                .collect()
+        } else {
+            Vec::new()
+        };
         let projection = NewResolvedWorkday {
             user_id: command.user_id,
             work_date: command.work_date,
@@ -287,6 +311,8 @@ where
             } else {
                 Vec::new()
             },
+            schedule_type: version.schedule_type,
+            core_time_windows,
             resolved_at: command.resolved_at,
         };
         self.repository.save_projection(projection).await

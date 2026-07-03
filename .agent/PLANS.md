@@ -11,7 +11,7 @@
 
 # EP-20260703-work-schedule-phase3-resolve-workday-flex
 
-**計画段階（未着手）** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)
 
 # EP-20260702-work-schedule-phase3-flex-core-time
 

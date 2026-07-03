@@ -18,7 +18,10 @@ use uuid::Uuid;
 
 mod support;
 
-use support::{seed_attendance, seed_user, seed_work_schedule_for_user, test_config, test_pool};
+use support::{
+    seed_attendance, seed_flex_work_schedule_for_user, seed_user, seed_work_schedule_for_user,
+    test_config, test_pool,
+};
 
 async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
     static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -335,6 +338,60 @@ async fn anomaly_list_detects_not_configured_and_missing_clock_out() {
     .await;
     assert_eq!(unscheduled_status, StatusCode::OK);
     assert_eq!(unscheduled["items"][0]["kind"], "unscheduled_work");
+}
+
+#[tokio::test]
+async fn anomaly_list_detects_missing_clock_out_for_flex_schedule_regardless_of_expected_minutes() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let flex_user = seed_user(&pool, UserRole::Employee, false).await;
+    seed_flex_work_schedule_for_user(&pool, flex_user.id).await;
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [flex_user.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+    seed_attendance(
+        &pool,
+        flex_user.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        None,
+    )
+    .await;
+
+    // The flex projection's expected_work_minutes represents the flex band
+    // (max possible span), not a contracted duration. Anomaly detection must
+    // still flag the missing clock-out based on day_kind alone, not misread
+    // the flex band as an unmet contracted-time shortfall.
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        &format!(
+            "/api/admin/work-schedule-anomalies?user_id={}&from=2026-07-01&to=2026-07-01",
+            flex_user.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["items"][0]["kind"], "missing_clock_out");
 }
 
 #[tokio::test]
