@@ -816,7 +816,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_router_builds() {
-        let config = test_config(vec!["*".to_string()]);
+        // Not a CORS test: this fixture only needs a working Config to build
+        // an AppState. Use an explicit origin rather than a wildcard so this
+        // test doesn't read as validating wildcard CORS behavior.
+        let config = test_config(vec!["http://localhost:8000".to_string()]);
         let state = test_state_with_config(config);
 
         let mut app = Router::new()
@@ -837,7 +840,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_admin_and_system_routes_require_auth() {
-        let state = test_state_with_config(test_config(vec!["*".to_string()]));
+        // Not a CORS test: see test_app_router_builds for why this uses an
+        // explicit origin instead of a wildcard fixture.
+        let state = test_state_with_config(test_config(vec!["http://localhost:8000".to_string()]));
 
         let mut user_app = Router::new()
             .merge(user_routes(state.clone()))
@@ -877,7 +882,15 @@ mod tests {
     }
 
     #[test]
-    fn test_log_config_with_read_database_and_wildcard_in_non_production() {
+    #[should_panic(
+        expected = "Refusing to start due to insecure CORS configuration in production mode"
+    )]
+    fn test_log_config_rejects_wildcard_with_read_database_regardless_of_production_mode() {
+        // Reversed from the prior "wildcard is only a warning outside
+        // production mode" expectation: a dangerous CORS + credentials
+        // combination must be refused unconditionally, not gated on
+        // PRODUCTION_MODE. This is a defense-in-depth check at the
+        // log_config level, independent of the Config::load() startup gate.
         let mut config = test_config(vec!["*".to_string()]);
         config.read_database_url = Some("postgres://read-db".to_string());
         config.production_mode = false;
@@ -895,7 +908,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_spawn_cleanup_skips_when_retention_disabled() {
-        let config = test_config(vec!["*".to_string()]);
+        // Not a CORS test: see test_app_router_builds for why this uses an
+        // explicit origin instead of a wildcard fixture.
+        let config = test_config(vec!["http://localhost:8000".to_string()]);
         let pool = PgPoolOptions::new()
             .max_connections(1)
             .connect_lazy(&config.database_url)

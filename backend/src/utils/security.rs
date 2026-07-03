@@ -155,11 +155,17 @@ mod tests {
     }
 
     #[test]
-    fn verify_origin_success_wildcard() {
+    fn verify_origin_rejects_wildcard_configuration() {
+        // Even if a Config somehow carries a wildcard entry (Config::load()
+        // is expected to reject this at startup), verify_request_origin must
+        // not trust it as a defense-in-depth backstop.
         let config = test_config(vec!["*".into()]);
         let mut headers = HeaderMap::new();
         headers.insert("Origin", "http://anywhere.com".parse().unwrap());
-        assert!(verify_request_origin(&headers, &config).is_ok());
+        assert!(
+            verify_request_origin(&headers, &config).is_err(),
+            "verify_request_origin must not accept a wildcard cors_allow_origins entry"
+        );
     }
 
     #[test]

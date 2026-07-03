@@ -343,10 +343,15 @@ mod tests {
 
     fn env_guard() -> std::sync::MutexGuard<'static, ()> {
         static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        // Recover from poisoning: the guarded state is just process env vars,
+        // not an invariant that a prior panicking test (e.g. a failing
+        // assertion in another env-mutating test) could leave corrupted.
+        // Without this, one failing test in this module poisons the mutex
+        // for the rest of the binary run and fails unrelated sibling tests.
         ENV_MUTEX
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .expect("lock env")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn snapshot_env(keys: &[&str]) -> Vec<Option<String>> {
@@ -546,5 +551,121 @@ mod tests {
 
         assert_eq!(policy, AuditLogRetentionPolicy::Days(30));
         assert_eq!(policy.retention_days(), Some(30));
+    }
+
+    fn set_cors_env(cors_allow_origins: &str, production_mode: Option<&str>) {
+        env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
+        env::set_var("CORS_ALLOW_ORIGINS", cors_allow_origins);
+        match production_mode {
+            Some(value) => env::set_var("PRODUCTION_MODE", value),
+            None => env::remove_var("PRODUCTION_MODE"),
+        }
+    }
+
+    #[test]
+    fn config_load_rejects_wildcard_cors_origin_when_production_mode_unset() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("*", None);
+
+        let result = Config::load();
+        assert!(
+            result.is_err(),
+            "Config::load() must reject a wildcard CORS origin even when \
+             PRODUCTION_MODE is unset (fail-closed, not just production mode)"
+        );
+
+        restore_env(&keys, original);
+    }
+
+    #[test]
+    fn config_load_rejects_wildcard_cors_origin_in_production_mode() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("*", Some("true"));
+
+        let result = Config::load();
+        assert!(
+            result.is_err(),
+            "Config::load() must reject a wildcard CORS origin in production mode"
+        );
+
+        restore_env(&keys, original);
+    }
+
+    #[test]
+    fn config_load_rejects_wildcard_cors_origin_in_non_production_mode() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("*", Some("false"));
+
+        let result = Config::load();
+        assert!(
+            result.is_err(),
+            "Config::load() must reject a wildcard CORS origin regardless of \
+             PRODUCTION_MODE's value, not only when it is true"
+        );
+
+        restore_env(&keys, original);
+    }
+
+    #[test]
+    fn config_load_rejects_wildcard_mixed_with_explicit_origins() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("http://localhost:8000,*", None);
+
+        let result = Config::load();
+        assert!(
+            result.is_err(),
+            "Config::load() must reject a wildcard origin even when other \
+             explicit origins are configured alongside it"
+        );
+
+        restore_env(&keys, original);
+    }
+
+    #[test]
+    fn config_load_wildcard_rejection_error_does_not_echo_configured_origins() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("http://internal-admin.example.com,*", None);
+
+        let error = Config::load().expect_err("wildcard origin must be rejected");
+        let message = error.to_string();
+        assert!(
+            !message.contains("internal-admin"),
+            "error message must not echo the configured origin list back \
+             verbatim: {message}"
+        );
+
+        restore_env(&keys, original);
+    }
+
+    #[test]
+    fn config_load_allows_explicit_origins_without_wildcard() {
+        let _guard = env_guard();
+        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+        let original = snapshot_env(&keys);
+
+        set_cors_env("https://app.example.com", None);
+
+        let config = Config::load().expect("explicit origin without wildcard must load");
+        assert_eq!(
+            config.cors_allow_origins,
+            vec!["https://app.example.com".to_string()]
+        );
+
+        restore_env(&keys, original);
     }
 }

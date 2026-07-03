@@ -76,7 +76,7 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
 1. [x] 現行 CORS 初期化と `verify_request_origin` の wildcard 分岐を整理する（Job1、本ファイルの Current State 節に記録済み）
 2. [ ] credentials + wildcard を常時拒否する validation を config/startup に追加する（推奨: `Config::load()` 内、詳細は Current State の設計判断を参照）
 3. [ ] `verify_request_origin` から wildcard 許容を除去し、allowlist のみ許可する
-4. [ ] config / startup / security helper / CSRF middleware の focused test を追加する（既存テストの反転・調整は Current State の「既存テストの反転・調整対象」1・4を参照）
+4. [x] config / startup / security helper / CSRF middleware の focused test を追加する（Job2、本ファイルの Job2 節に記録済み。既存テストの反転・調整は Current State の「既存テストの反転・調整対象」1・2・4を実施済み）
 
 ## Validation Plan
 - [ ] `bash scripts/harness.sh fmt-check`
@@ -100,3 +100,12 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
   - `verify_request_origin` が CSRF middleware（`csrf_check`）の中核であり、CORS wildcard設定がCSRF allowlistも無効化してしまう結合関係を確認した。Task 4 に CSRF middleware 経由のテストを追加する必要がある
   - 反転・調整が必要な既存テスト5件（`verify_origin_success_wildcard`、`test_production_mode_wildcard_cors_panics`、`test_production_mode_specific_cors_allows`、`test_log_config_with_read_database_and_wildcard_in_non_production`、および `test_config(vec!["*"])` を無関係目的で流用している2テスト）を列挙した
   - `SETUP_GUIDE.md` の本番環境変数ガイダンスが明示originを前提としており、wildcard依存の本番デプロイ証跡が無いことを確認した（ただし実際のデプロイ環境変数値は未確認としてRisksに残した）
+- 2026-07-03: Job2（RED テスト追加）を実施した。**コード実装（config.rs/security.rs/main.rsの本体ロジック）は変更していない**。追加・変更したテストは以下（すべて意図どおり RED であることを実行して確認済み）:
+  - `backend/src/config.rs`: `Config::load()` が wildcard を拒否することを固定する新規テスト5件（`config_load_rejects_wildcard_cors_origin_when_production_mode_unset`／`_in_production_mode`／`_in_non_production_mode`／`config_load_rejects_wildcard_mixed_with_explicit_origins`／`config_load_wildcard_rejection_error_does_not_echo_configured_origins`）と、既存動作の回帰ロック1件（`config_load_allows_explicit_origins_without_wildcard`）を追加した。全5件RED、回帰ロックはgreen
+  - `backend/src/utils/security.rs`: 既存 `verify_origin_success_wildcard`（wildcard成功を固定）を `verify_origin_rejects_wildcard_configuration`（wildcard拒否を固定）へ反転した。RED
+  - `backend/src/main.rs`: 既存 `test_log_config_with_read_database_and_wildcard_in_non_production`（non-production時のwildcard許容を固定）を `test_log_config_rejects_wildcard_with_read_database_regardless_of_production_mode`（`#[should_panic]`、PRODUCTION_MODE非依存の拒否を固定）へ反転した。RED。`test_production_mode_wildcard_cors_panics`／`test_production_mode_specific_cors_allows`／`test_cors_layer_accepts_specific_origins` は既存動作の回帰ロックとしてそのまま維持し、green を確認した
+  - `backend/src/main.rs`: CORS/wildcard自体の検証が目的ではなくfixtureとして`vec!["*".to_string()]`を流用していた3テスト（`test_app_router_builds`／`test_user_admin_and_system_routes_require_auth`／`test_spawn_cleanup_skips_when_retention_disabled`）を明示origin（`http://localhost:8000`）へ差し替えた（Job1調査項目5への対応）。挙動非変更のfixture hygieneであり、green のまま
+  - `backend/tests/csrf_protection_api.rs`: `cors_allow_origins=["*"]`を持つConfigでも `verify_request_origin`／`csrf_check` がwildcardを信用せず拒否することを固定する新規テスト `csrf_blocks_cookie_post_even_when_cors_allow_origins_contains_wildcard` を追加した（Job1で発見したCSRF結合への対応）。RED
+  - **【副次的発見・修正】** `config.rs`の`env_guard()`（テスト間のenv var競合を防ぐMutex）が、RED化した新規テストの意図的な失敗（`assert!`パニック）でpoisonし、同一バイナリ内の無関係な既存テスト（`config_loads_aws_defaults`等）まで巻き込んで失敗させる問題を発見した。`env_guard()`を`lock().unwrap_or_else(|poisoned| poisoned.into_inner())`へ変更し、poisoning から復旧するようにした（ガードしている状態はenv varのみで、poisonから復旧しても安全なため）。この修正により既存テストの巻き込み失敗が解消した
+  - 実行結果: `cargo test -p timekeeper-backend --lib config::` 5 RED / 8 green、`cargo test -p timekeeper-backend --bin timekeeper-backend`（main.rs単体テスト含む）381 passed・7 failed（すべて意図したRED）、`cargo test -p timekeeper-backend --test csrf_protection_api` 10 passed・1 failed（意図したRED）
+  - `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` は継続green（RED状態のテストコードも構文・lint的には正しいことを確認）

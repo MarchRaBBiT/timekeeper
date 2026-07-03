@@ -11,6 +11,7 @@ use axum::{
 };
 use serde_json::json;
 use timekeeper_backend::{
+    config::Config,
     middleware::{csrf::csrf_check, request_id::RequestId},
     models::user::{User, UserRole},
     services::audit_log::{AuditLogService, AuditLogServiceTrait},
@@ -33,6 +34,31 @@ fn csrf_test_router(pool: sqlx::PgPool) -> Router {
     }
 
     let config = support::test_config();
+    let state = AppState::new(pool.clone(), None, None, None, config);
+
+    Router::new()
+        .route("/api/test/mutation", post(ok_handler))
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            csrf_check,
+        ))
+        .layer(Extension(dummy_user()))
+        .with_state(state)
+}
+
+/// A router built with a wildcard `cors_allow_origins` entry, mirroring a
+/// Config that (per the RED tests in `config.rs`) `Config::load()` should
+/// never actually produce. This exercises CSRF's own origin check as a
+/// defense-in-depth backstop, independent of that startup-time gate.
+fn csrf_test_router_with_wildcard_cors(pool: sqlx::PgPool) -> Router {
+    async fn ok_handler(Extension(_user): Extension<User>) -> StatusCode {
+        StatusCode::OK
+    }
+
+    let config = Config {
+        cors_allow_origins: vec!["*".into()],
+        ..support::test_config()
+    };
     let state = AppState::new(pool.clone(), None, None, None, config);
 
     Router::new()
@@ -301,4 +327,30 @@ async fn logout_csrf_passes_with_correct_origin() {
 
     // Not 403 (CSRF) – handler runs and returns 200 or other business status
     assert_ne!(response.status(), StatusCode::FORBIDDEN);
+}
+
+/// Cookie-auth POST with a mismatched Origin must still be rejected (403)
+/// even when `cors_allow_origins` contains a wildcard entry. CSRF's own
+/// origin check must not treat a wildcard as "any origin is trusted" —
+/// that is a CORS-layer concern (and `Config::load()` should prevent such a
+/// config from existing at all), not a CSRF bypass.
+#[tokio::test]
+async fn csrf_blocks_cookie_post_even_when_cors_allow_origins_contains_wildcard() {
+    let pool = support::test_pool().await;
+    let app = csrf_test_router_with_wildcard_cors(pool);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/test/mutation")
+                .header("Origin", "http://evil.example.com")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
