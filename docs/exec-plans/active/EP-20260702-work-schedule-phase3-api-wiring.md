@@ -19,6 +19,16 @@
   - frontend
   - 変形労働・複数勤務区間（split shift）、シフト一括作成・交換
 
+## Done Criteria (Observable)
+
+- [x] `POST /api/admin/work-schedules/{id}/versions` で `schedule_type: "flex"` + `flex_policy` を送るとflexバージョンが作成され、`GET` で `flex_policy`（settlement_period / core_time_windows）が返る（統合テスト: flexハッピーパス）
+- [x] `schedule_type: "fixed"`（または省略）× `flex_policy` 送信は `422 INVALID_SCHEDULE_INTERVALS` で拒否される
+- [x] `POST` で `schedule_type` 未送信の既存fixedペイロードは従来どおり成功し、レスポンスは `schedule_type: "fixed"` / `flex_policy: null` になる（後方互換）
+- [x] `PUT`（replace）は `schedule_type` を明示必須とし、未送信は422で拒否される（flex→Fixedへのsilent downgrade経路がない）
+- [x] published version のflex子テーブル（settlement_periods / core_time_windows）はDBトリガーでINSERT/UPDATE/DELETEが拒否される
+- [x] `schedule_type` と settlement_period 行の存在有無が不整合なDBデータは読み出し時に `CorruptData` エラーになる（silentな欠落にならない）
+- [x] 既存統合テスト（`admin_work_schedules_api.rs` / `work_schedule_phase2_api.rs` / `work_schedule_read_api.rs` / `attendance_work_schedule_integration.rs`）に回帰がない
+
 ## Constraints / Non-goals
 
 - 既存Fixedスケジュールの挙動・既存テスト（`admin_work_schedules_api.rs`等）を壊さない。`schedule_type`未送信時は`Fixed`として扱う
@@ -36,7 +46,7 @@
 6. [x] backend integration test: flexバージョン作成→取得のハッピーパス、Fixed×flex_policy送信時の422、既存fixedフローの回帰なし確認
 7. [x] `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / `cargo test -p timekeeper-contract` / `cargo test -p timekeeper-backend --lib` / `cargo test -p timekeeper-backend --test admin_work_schedules_api`
 8. [x] Codexへadversarial reviewを依頼
-9. [ ] git commit、Progress Notes更新
+9. [x] git commit、Progress Notes更新（実装: `af8ff92`、Progress Notes: `6ead0e6`）
 
 ## Validation Plan
 
@@ -45,6 +55,7 @@
 - [x] `cargo test -p timekeeper-backend --test admin_work_schedules_api`（testcontainers/podman経由）
 - [x] `cargo fmt --all --check`
 - [x] `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] `bash scripts/harness.sh docs-check`（`backend-api-catalog.md` / `work-schedule-master.md` 更新に伴う）
 - [x] Codex adversarial review
 
 ## Progress Notes
@@ -64,3 +75,4 @@
   - 対応: (1) `ReplaceWorkScheduleVersionRequest.schedule_type`から`#[serde(default)]`を除去し必須化。full-replace（PUT）セマンティクスでは`days`同様に明示必須とするのが正しいという理由をコード上のコメントで明記した。バックエンドはこの機能追加前からfrontendがwork schedule master APIを未使用（`docs/design-docs/work-schedule-master.md`のPhase2 Statusで frontend未実装と明記済み）のため、この必須化による実クライアントへの破壊的影響は無い。contractのround-tripテスト（`replace_version_request_requires_explicit_schedule_type`）とbackend統合テスト（`replace_without_schedule_type_is_rejected_instead_of_silently_downgrading_flex`）を追加して固定した。テスト実装中に、axumの`Json<T>`extractorはmissing field相当のdeserialize失敗を422（plain textボディ）で返す（malformed JSON構文エラーのみ400）ことが判明したため、`request_json`ヘルパーを非JSONレスポンスボディも扱えるよう拡張し、テストの期待値・アサーションをステータスだけでなくボディ形状（構造化`code`フィールドの有無）でも判別するよう修正した。(2) `rows.rs`の`assemble_version`に`schedule_type`と`settlement_period_row`存在有無の整合性チェックを追加し、不整合時は`WorkScheduleRepositoryError::CorruptData`を返すようにした。(3) migration `048_...`に`work_schedule_settlement_periods`/`work_schedule_core_time_windows`向けの`prevent_published_work_schedule_flex_mutation`トリガー（親versionの`status`を参照してpublished時のINSERT/UPDATE/DELETEを拒否）を追加した。
   - 修正後: `cargo test -p timekeeper-contract`（8 passed、新規1件）、`cargo test -p timekeeper-backend --lib`（373 passed）、`cargo test -p timekeeper-backend --test admin_work_schedules_api`（15 passed、新規1件）、既存3統合テストファイル（27件）回帰なし、`cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / `docs-check` 継続green。
 - 2026-07-02: `git commit`（`af8ff92`）作成、`.agent/PLANS.md`にEPポインタ追加済み。
+- 2026-07-03: ExecPlanレビュー。実態（commit `af8ff92`/`6ead0e6`）と食い違っていたTask 9のチェック漏れを修正し、テンプレート必須の「Done Criteria (Observable)」節を実測済みの観測可能条件で追記、Validation Planに実施済みだった`docs-check`を追記した。`cargo test -p timekeeper-domain -p timekeeper-contract`をレビュー時点で再実行しgreenを確認。本EPはこれで完了状態。Out節に記載のとおり`ResolveWorkday`のflex対応出力（清算期間残高計算含む）は未着手であり、Phase3後続EPの新規作成が必要。

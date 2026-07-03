@@ -20,15 +20,15 @@
 
 ## Done Criteria (Observable)
 
-- [ ] `schedule_type = Fixed` のとき `flex_policy` は `None` でなければならず、`Some` を渡すと拒否される
-- [ ] `schedule_type = Flex` のとき `flex_policy` は `Some` 必須であり、`None` を渡すと拒否される
-- [ ] `SettlementPeriod.contracted_minutes_per_period` は正の値かつ unit の上限（Monthly = 31日分 = 44640分）を超えない
-- [ ] `CoreTimeWindow` は対応する曜日の `WeekdayRule.work_intervals` の範囲内に完全に収まらなければならない
-- [ ] `CoreTimeWindow` は `NonWorkingDay` の曜日、または `ScheduleDefinition.days` に存在しない曜日には設定できない
-- [ ] 同一曜日への `CoreTimeWindow` 重複登録は拒否される
-- [ ] `core_time_windows` が空（コアタイムなしのフルフレックス）は許可される
-- [ ] 既存 Fixed schedule の `validate()` 結果・既存domainテスト・既存backendテストが変化しない（回帰なし）
-- [ ] contract DTO（`SettlementPeriodInput/Response`、`CoreTimeWindowInput/Response`、`FlexPolicyInput/Response`）のJSON round-tripが一致する
+- [x] `schedule_type = Fixed` のとき `flex_policy` は `None` でなければならず、`Some` を渡すと拒否される
+- [x] `schedule_type = Flex` のとき `flex_policy` は `Some` 必須であり、`None` を渡すと拒否される
+- [x] `SettlementPeriod.contracted_minutes_per_period` は正の値かつ unit の上限（Monthly = 31日分 = 44640分）を超えない
+- [x] `CoreTimeWindow` は対応する曜日の `WeekdayRule.work_intervals` の範囲内に完全に収まらなければならない
+- [x] `CoreTimeWindow` は `NonWorkingDay` の曜日、または `ScheduleDefinition.days` に存在しない曜日には設定できない
+- [x] 同一曜日への `CoreTimeWindow` 重複登録は拒否される
+- [x] `core_time_windows` が空（コアタイムなしのフルフレックス）は許可される
+- [x] 既存 Fixed schedule の `validate()` 結果・既存domainテスト・既存backendテストが変化しない（回帰なし）
+- [x] contract DTO（`SettlementPeriodInput/Response`、`CoreTimeWindowInput/Response`、`FlexPolicyInput/Response`）のJSON round-tripが一致する
 - [x] `validate_flex_policy` の全分岐（エラー9バリアント: `FlexPolicyNotAllowedForFixedSchedule`、`FlexPolicyRequiredForFlexSchedule`、`InvalidSettlementPeriod`、`CoreTimeWeekdayOutOfRange`、`CoreTimeOnNonWorkingDay`、`InvalidDayOffset`(core time再利用分)、`InvalidCoreTimeWindow`、`CoreTimeOutsideFlexBand`、`DuplicateCoreTimeWeekday`、`OverlappingCoreTimeWindows` + 成功系複数パターン）に対応するテストが1つずつ存在する（実測coverageは62%程度に留まるが、これは`ScheduleValidationError`の`thiserror::Error`導出`Display`実装がdomainテストから一度も`.to_string()`呼び出しされない既存の構造的特性によるもので、Phase3追加分に限った未検証分岐ではない。詳細はProgress Notes参照）
 - [x] 曜日をまたいで実時刻が重複するコアタイム（日跨ぎoffsetを含む、週境界のラップアラウンドを含む）は`OverlappingCoreTimeWindows`で拒否される（Codex adversarial review Highの指摘に対応）
 - [x] コアタイムの`start_day_offset`/`end_day_offset`は`PlannedWorkInterval`と同じ規則（start=0、end∈{0,1}）で検証される（Codex adversarial review Medium#2に付随して発見した抜けを修正）
@@ -84,3 +84,4 @@
   - **Low**: ExecPlanの「エラー6バリアント」という記載が実際のバリアント数と食い違っていた。
   - 対応: (1) `validate_flex_policy`に週全体の絶対分（`(weekday-1)*1440 + minute_index(...)`、日跨ぎとSunday→Monday週境界のラップアラウンドを±10080分シフトで判定）でコアタイムの重複を検出する`OverlappingCoreTimeWindows`エラーを追加し、月曜→火曜の通常ケースと日曜→月曜の週境界ラップアラウンドケースの両方をテストで固定した。(2) コアタイムの`start_day_offset`/`end_day_offset`に`PlannedWorkInterval`と同じ`validate_work_offsets`を適用し、不正なoffset（例: start_day_offset=1）を`InvalidDayOffset`で拒否するようにし、テストを追加した。(3) 日跨ぎコアタイムが正しく検証される回帰テスト（有効な日跨ぎケース、無効なoffsetケース）を追加した。(4) Medium#1はAPI配線が本EPのOut of scopeであるため、後続EPへの明示的な申し送り事項としてConstraints節に記載した。(5) ExecPlanのバリアント数記載を実際の9バリアントに修正した。
   - 修正後: `cargo test -p timekeeper-domain --test work_schedule_flex` 18 passed（13→18、Codex指摘分5件追加）、`cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` 継続green。
+- 2026-07-03: ExecPlanレビュー。Done Criteria先頭9項目が実装・テスト完了済み（commit `81da483`、後続の`af8ff92`でAPI配線済み）にもかかわらず未チェックのままだったため、`cargo test -p timekeeper-domain -p timekeeper-contract`をレビュー時点で再実行してgreen（domain 18 passed含む）を確認したうえでチェックを反映した。Constraints節の申し送り事項（silent-ignore防止）は後続EP [`EP-20260702-work-schedule-phase3-api-wiring.md`](./EP-20260702-work-schedule-phase3-api-wiring.md) で対応済み（`ReplaceWorkScheduleVersionRequest.schedule_type`必須化）。本EPはこれで完了状態。
