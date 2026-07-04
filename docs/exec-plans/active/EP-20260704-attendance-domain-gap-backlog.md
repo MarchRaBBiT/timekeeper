@@ -163,3 +163,4 @@
 
 - 2026-07-04: 実装調査（有給残高・区分集計・遅刻早退判定・申請実績連動・通知・締めワークフローの不在を grep / API catalog / migration 一覧で確認）に基づき G1–G15 を登録。P1 = G1–G4、P2 = G5–G12、P3 = G13–G15 とした
 - 2026-07-04: G1–G14 を実装タスク T-01〜T-19 へ分解し、担当エージェント向け指示（前提タスク・目的・ゴール・次タスク・共通作業規約）を [attendance-domain-gap-tasks.md](../attendance-domain-gap-tasks.md) として登録。依存関係を Phase 0–3 に整理（G15 はタスク化せず要件発生時に再登録）
+- 2026-07-04: Phase 0 を並列実行。T-01（勤怠計算ポリシー design doc、40e10b8）、T-02（有給台帳 design doc、5ec584b）、T-19（保存期間 policy design doc、8d5101a）完了。相互整合レビュー済み（休暇日 = 労働 0 分・別軸カウンタで T-01/T-02 一致、settlement-balance 既存決定と無矛盾）。T-16（通知基盤汎用化）は実装進行中

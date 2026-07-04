@@ -50,6 +50,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   3. Follow-up Designs 1 の具体化であることを `work-schedule-master.md` に相互リンクで明記する
 - **ゴール（Observable）:** design doc が存在し、上記論点すべてに決定が書かれている。`bash scripts/harness.sh docs-check` green。個別 EP 作成・commit 済み
 - **次の関連タスク:** T-03（この doc を実装する）、T-06 / T-09 / T-10 / T-12（休暇日・判定猶予・警告扱いの決定を参照する）
+- **Status:** 完了（2026-07-04、[EP-20260704-attendance-calculation-policy-design](./active/EP-20260704-attendance-calculation-policy-design.md) / commit 40e10b8。成果物: [attendance-calculation-policy.md](../design-docs/attendance-calculation-policy.md)）
 
 ### T-02: 有給休暇付与・残高台帳 design doc（G2 設計）
 
@@ -67,6 +68,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
      - `LeaveType::Annual` 以外（sick / personal / other）は残高非連動として扱う（種別マスタ化は T-11）
 - **ゴール:** design doc が存在し上記が決定済み。docs-check green。EP 作成・commit 済み
 - **次の関連タスク:** T-04（実装）、T-11（単位拡張の前提）
+- **Status:** 完了（2026-07-04、[EP-20260704-leave-entitlement-design](./active/EP-20260704-leave-entitlement-design.md) / commit 5ec584b。成果物: [leave-entitlement.md](../design-docs/leave-entitlement.md)）
 
 ### T-16: 汎用通知サービス基盤（G12 前半）
 
@@ -91,6 +93,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 実装（自動 purge バッチ等）は本タスクに含めない。方針確定後に別 EP として親 EP へ追記する
 - **ゴール:** design doc が存在し、分類別の保存方針と subject request 例外規定が決定済み。docs-check green
 - **次の関連タスク:** なし（実装 EP は方針確定後に起票）
+- **Status:** 完了（2026-07-04、[EP-20260704-data-retention-policy](./active/EP-20260704-data-retention-policy.md) / commit 8d5101a。成果物: [data-retention.md](../design-docs/data-retention.md)。subject request approve が実データに触れない事実と crypto-shredding 不可の判断を記録済み）
 
 ---
 

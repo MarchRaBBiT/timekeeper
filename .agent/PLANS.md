@@ -9,6 +9,18 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260704-attendance-calculation-policy-design
+
+**完了済み (40e10b8)** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md`](../docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md)。成果物: [`docs/design-docs/attendance-calculation-policy.md`](../docs/design-docs/attendance-calculation-policy.md)（T-01、実装は T-03）
+
+# EP-20260704-leave-entitlement-design
+
+**完了済み (5ec584b)** — 詳細: [`docs/exec-plans/active/EP-20260704-leave-entitlement-design.md`](../docs/exec-plans/active/EP-20260704-leave-entitlement-design.md)。成果物: [`docs/design-docs/leave-entitlement.md`](../docs/design-docs/leave-entitlement.md)（T-02、実装は T-04/T-05）
+
+# EP-20260704-data-retention-policy
+
+**完了済み (8d5101a)** — 詳細: [`docs/exec-plans/active/EP-20260704-data-retention-policy.md`](../docs/exec-plans/active/EP-20260704-data-retention-policy.md)。成果物: [`docs/design-docs/data-retention.md`](../docs/design-docs/data-retention.md)（T-19、purge 実装は方針確定済み・別 EP）
+
 # EP-20260704-attendance-domain-gap-backlog
 
 **バックログ登録済み（棚卸し完了・個別 EP 分解は未着手）** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
