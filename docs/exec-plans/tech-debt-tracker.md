@@ -44,11 +44,15 @@
 | 12 | allowed_user_ids 関心漏れ | 未返済 → rebuild の use case 層で解消見込み、rebuild へ委譲 |
 | 13 | CreateUser serde 非対称 | 未返済（現状維持を確認） |
 | 14 | departments_resource リフレッシュ | 未返済（key は `bool` のまま） |
+| 15 | 既存 failing integration test 6 件 | 新規（2026-07-04 登録）。`main` 相当で backend-integration が red。PR #456 への test 未追従が原因 |
+| 16 | 勤怠修正承認の管理 UI 未配線 | 新規（2026-07-04 登録）。approve/reject が API 直叩きでしか実行できない |
 
 ## Priority Queue
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
+| P1 | 既存 failing integration test 6 件（#15） | `backend/tests/admin_requests_api.rs`, `backend/tests/user_update_api.rs` | `main` 相当で backend-integration が red のままだと、gate として「今回差分の失敗」を検知できない |
+| P2 | 勤怠修正承認の管理 UI 未配線（#16） | `/admin` 画面 + `frontend/src/api/client.rs` | 勤怠修正の承認/却下が API 直叩きでしか実行できず、RUNBOOK が curl 手順に依存している |
 | P2 | 最上位マネージャー自己申請 pending 中長期対応（#11 残） | 代理承認者 / system_admin 自動エスカレーション | RUNBOOK 追記（quick win）は返済済み。残るのは仕様検討を要する中長期対応のみ |
 | P2 | Docs source-of-truth drift 残作業（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` の stale line count | agent が誤った見積もりをする。削除だけで済む quick win |
 | P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
@@ -666,6 +670,84 @@ Recommended Fix 1-4 を次のとおり返済した。
 
 ---
 
+### 15. P1: 既存 failing integration test 6 件（PR #456 への test 未追従）
+
+**発生時期:** 発見は 2026-07-04（item #5 返済の検証中）。混入は PR #456（部署階層 & マネージャー承認）と推定
+
+**Status (2026-07-04)**
+
+- 新規登録。`main` 相当コードで `backend-integration` が恒常的に red（1314 passed / 6 failed）
+- 6 件とも item #5 の返済とは無関係の既存 failure であることを、diff 適用前ファイルへの巻き戻し再実行で確認済み
+- 2026-07-04 に該当 2 バイナリを単体再実行し、原因を診断済み（下記）。**いずれも製品バグではなく test 側の陳腐化**
+
+**Symptoms**
+
+- `admin_requests_api.rs` の 3 件が 403 で fail:
+  - `test_admin_can_approve_leave_request`（403 vs 期待 200）
+  - `test_admin_can_reject_leave_request`（403 vs 期待 200）
+  - `test_approve_already_processed_request_fails`（403 vs 期待 404）
+- `user_update_api.rs` の 3 件が seed helper 内で panic:
+  - `test_admin_update_user_email` — `invalid value "admin" for enum UserRole`
+  - `test_email_uniqueness_check` — `ColumnNotFound("department_id")`
+  - `test_user_update_own_profile` — `ColumnNotFound("department_id")`
+
+**Evidence**
+
+- [backend/tests/admin_requests_api.rs](../../backend/tests/admin_requests_api.rs) — 承認者を `seed_user(&pool, UserRole::Manager, false)`（`is_system_admin = false`、申請者の部署と無関係）で作成している
+- [backend/tests/user_update_api.rs](../../backend/tests/user_update_api.rs) — file 独自の seed helper（151 行目付近）が現行スキーマとずれている
+- [backend/src/handlers/admin/common.rs](../../backend/src/handlers/admin/common.rs) — `check_approval_authorization`
+
+**Likely Root Cause**
+
+- PR #456 で承認認可が「system_admin または申請者部署チェーンの manager」に厳格化されたが、`admin_requests_api.rs` は旧モデル（Manager role なら誰でも承認可）の前提のまま。部署スコープ外の Manager が 403 になるのは現行仕様どおり
+- 同 PR で `users` テーブルに `department_id` が追加されたが、`user_update_api.rs` の file 独自 seed helper は共有 `support::seed_user` を使わず生 SQL のままで、スキーマ変更に追従していない
+
+**Impact**
+
+- `backend-integration` が gate として機能しない。「今回差分による失敗」と「既知の失敗」の切り分け説明が PR ごとに必要になる
+- item #1（Build Health）で返済したはずの「red が恒常化して新規負債の混入検知が遅れる」状態が integration 層で再発している
+
+**Recommended Fix**
+
+1. `admin_requests_api.rs` の 3 test を現行認可モデルに追従させる（承認者を system_admin にするか、申請者部署の manager として配属したうえで期待値を検証する。スコープ外 Manager が 403 になるケースは別 test として明示的に固定する）
+2. `user_update_api.rs` の file 独自 seed helper を廃止し、共有 `support` の seed に統一する（`department_id` / `UserRole` の decode を現行スキーマに合わせる）
+3. 返済後、`bash scripts/harness.sh backend-integration` が 0 failed であることを確認し、以降は red を「既知」として放置しない
+
+---
+
+### 16. P2: 勤怠修正承認の管理 UI 未配線（API 直叩きのみ）
+
+**発生時期:** 発見は 2026-07-04（item #11 返済の実装確認中）
+
+**Status (2026-07-04)**
+
+- 新規登録。backend の承認/却下エンドポイントは実装済みだが、それを呼ぶ管理画面 UI が存在しない
+
+**Symptoms**
+
+- `/api/admin/attendance-corrections/{id}/approve` / `/reject` は `ApproveCorrectionUseCase` / `RejectCorrectionUseCase` 経由で実装済み（system_admin オーバーライド含む）
+- しかし `/admin` 画面のどのセクションからも勤怠修正申請の一覧・承認・却下に到達できない（route 未配線）
+- 有給・残業申請（`AdminRequestsSection`）には UI があるため、申請種別によって運用手順が非対称
+
+**Evidence**
+
+- [backend/src/handlers/admin/attendance_correction_requests.rs](../../backend/src/handlers/admin/attendance_correction_requests.rs)
+- [frontend/src/pages/admin/panel.rs](../../frontend/src/pages/admin/panel.rs) — 勤怠修正セクションなし
+- [docs/manual/RUNBOOK.md](../manual/RUNBOOK.md) — "Top-Level Manager Self-Approval" の Notes が「API を直接呼ぶ」手順に依存している
+
+**Impact**
+
+- 勤怠修正申請の承認運用が API 直叩き（認証済み session での curl 等）に依存し、操作ミス・監査可能性の面で弱い
+- item #9（部署管理 UI 未完成）と同型の「backend 先行・frontend 未配線」debt で、放置パターンが定着しつつある
+
+**Recommended Fix**
+
+1. `/admin` 画面に勤怠修正申請の承認セクション（一覧 + 承認/却下）を追加する（`AdminRequestsSection` の構成を踏襲）
+2. `frontend/src/api/client.rs` に対応する client メソッドを追加する（rebuild 進行中のため、現行側は最小限の配線に留める）
+3. UI 配線後、RUNBOOK の該当 Notes を UI 手順へ書き換える
+
+---
+
 ## Suggested Execution Order
 
 2026-07-04 トリアージ後の実行順:
@@ -673,16 +755,18 @@ Recommended Fix 1-4 を次のとおり返済した。
 1. ~~P0 Build health debt~~（返済済み 2026-03-11）
 2. ~~P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記~~（一次返済済み・本コミット。中長期対応は P2 #11 残 へ降格）
 3. ~~P1 Test harness fragility（#5）~~（返済済み 2026-07-04。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage / suite execution model を追加。follow-up は P2 #5 残 へ）
-4. P2 最上位マネージャー自己申請 pending 中長期対応（#11 残）— 代理承認者 / 自動エスカレーション検討
-5. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
-6. P2 ユーザー編集フォームの department 選択（#10 残り半分）
-7. P2 部署管理 UI 未完成（#9）
-8. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
-9. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
-10. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
-11. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
-12. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
-13. P2 Test harness fragility 残 follow-up（#5 残）— docker-cli 重複 / sync guard 統合 / profile 統一の残作業
+4. P1 既存 failing integration test 6 件（#15）— PR #456 への test 追従。backend-integration を 0 failed に戻す
+5. P2 最上位マネージャー自己申請 pending 中長期対応（#11 残）— 代理承認者 / 自動エスカレーション検討
+6. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
+7. P2 ユーザー編集フォームの department 選択（#10 残り半分）
+8. P2 部署管理 UI 未完成（#9）
+9. P2 勤怠修正承認の管理 UI 未配線（#16）— #9 と同型のため合わせて計画してよい
+10. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
+11. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
+12. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
+13. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
+14. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
+15. P2 Test harness fragility 残 follow-up（#5 残）— docker-cli 重複 / sync guard 統合 / profile 統一の残作業
 
 ## Notes
 
@@ -699,5 +783,8 @@ Recommended Fix 1-4 を次のとおり返済した。
   `docs/manual/HARNESS.md` の "Suite Execution Model" に明文化。検証中、`admin_requests_api.rs` の 3 test（`test_admin_can_approve_leave_request` 等、
   本 diff 適用前の同ファイルでも再現）と `user_update_api.rs` の 3 test（`UserRole` enum decode 不具合。本返済では未変更のファイル）が
   本タスクと無関係に `main` 相当のコードで既に failing であることを確認した。これら既知の failing test は
-  本 tracker のスコープ外（承認認可ロジック / テスト seed helper の不具合であり、item #5 の対象である harness/fixture 側の問題ではない）のため、別 issue 化が必要
-  （未追加。次回トリアージで item 化する）
+  本 tracker のスコープ外（承認認可ロジック / テスト seed helper の不具合であり、item #5 の対象である harness/fixture 側の問題ではない）のため、
+  item #15 として登録済み
+- **2026-07-04 追加**: items 15–16 を登録。#15 は #5 返済検証中に確定した既存 failing integration test 6 件
+  （単体再実行で原因診断済み — 6 件とも製品バグではなく PR #456 への test 未追従）。
+  #16 は #11 返済中に発見された勤怠修正承認の管理 UI 未配線（approve/reject が API 直叩きのみ）
