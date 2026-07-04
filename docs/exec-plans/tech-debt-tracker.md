@@ -23,7 +23,7 @@
 - **rebuild が実質的な返済経路になる項目**（#2, #3, #4, #12）は、現行 `backend/` / `frontend/`
   での大規模分割リファクタを凍結し、「これ以上肥大化させない」ガードに切り替える。
   現行側での分割作業は rebuild と semantic conflict を起こすため優先度を P2 に下げる。
-- **rebuild 期間中も現行 harness が gate であり続ける項目**（#5）は P1 を維持する。
+- **rebuild 期間中も現行 harness が gate であり続ける項目**（#5）は P1 を維持する。2026-07-04 に本体を返済済み（詳細はセクション #5 参照）。
 - **運用実害がある quick win**（#11 runbook 追記、#6 残作業の stale line-count 削除）を先に処理する。
 
 各項目の実測ステータス（詳細は各セクションの Status 参照）:
@@ -34,7 +34,7 @@
 | 2 | Backend god modules | 未着手・悪化（auth.rs 2059 / main.rs 1139 / audit_log.rs 1060 行）→ rebuild へ委譲、P2 降格 |
 | 3 | Frontend god modules | 未着手・悪化（client.rs 1121 / holidays.rs 1659 行）→ rebuild へ委譲、P2 降格 |
 | 4 | Repository / handler duplication | 未着手 → rebuild の use case 分割 EP 群が返済経路、P2 降格 |
-| 5 | Test harness fragility | 未返済（env mutation / file-local guard 残存）→ P1 維持 |
+| 5 | Test harness fragility | 返済済み（2026-07-04）。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage を追加。follow-up は残るが P1 as-was の懸念は解消 |
 | 6 | Docs source-of-truth drift | 部分解消（plan 配置は `docs/exec-plans/` に統一済み。AGENTS.md の line count は stale のまま） |
 | 7 | Queue / worker operational debt | 未返済（RUNBOOK 未記載、`worker-once` stage なし）→ rebuild `apps/worker` と統合検討 |
 | 8 | Frontend i18n follow-up | 未返済（`rust-i18n 4.0.0-preview1` のまま。EP-20260311 が 3 ヶ月停滞、生死判定要） |
@@ -49,7 +49,6 @@
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
-| P1 | Test harness fragility（#5） | integration tests, env mutation, live smoke | rebuild 期間中も現行 harness が唯一の gate |
 | P2 | 最上位マネージャー自己申請 pending 中長期対応（#11 残） | 代理承認者 / system_admin 自動エスカレーション | RUNBOOK 追記（quick win）は返済済み。残るのは仕様検討を要する中長期対応のみ |
 | P2 | Docs source-of-truth drift 残作業（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` の stale line count | agent が誤った見積もりをする。削除だけで済む quick win |
 | P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
@@ -59,6 +58,7 @@
 | P2 | Backend / Frontend god modules（#2, #3） | 現行側は肥大化ガードのみ | 分割は rebuild（`crates/`, `apps/web`）で実現 |
 | P2 | Repository / handler duplication（#4）, allowed_user_ids（#12） | rebuild use case 層 | rebuild EP 群が実質的な返済経路 |
 | P2 | CreateUser serde 非対称（#13）, departments_resource リフレッシュ（#14） | frontend 小物 | 実害軽微。関連画面を触る PR に同乗させる |
+| P2 | Test harness fragility 残 follow-up（#5 残） | `rate_limit_redis_integration.rs` の docker-cli 重複、`admin_holiday_list.rs` の sync guard、~40 ファイルの `profile::db_only()` 統一 | 本体（Fix 1-4）は 2026-07-04 に返済済み。残りは実害軽微な追従作業 |
 
 ## Detailed Items
 
@@ -232,12 +232,69 @@
 
 ### 5. P1: Test Harness Fragility
 
-**Status (2026-07-04)**
+**Status (2026-07-04, 返済実施)**
 
-- 未返済・P1 維持。`set_var` / `remove_var` は `backend/tests/` に残存（`support/mod.rs` 12 箇所、`auth_lockout_redis_integration.rs` 7 箇所ほか）
-- `integration_guard()` は依然 file-local（例: `attendance_api.rs`）で cross-file 競合リスクが残る
-- `scripts/harness.sh` に `backend-security-smoke` / `worker-once` 相当の focused stage は未追加
-- rebuild 期間中も現行 harness が唯一の validation gate であるため、優先度は下げない
+ExecPlan: [EP-20260704-test-harness-fragility](./completed/EP-20260704-test-harness-fragility.md)（完了）
+
+Recommended Fix 1-4 を次のとおり返済した。
+
+1. **Fix 1（fixture profile）— 部分返済**: `backend/tests/support/mod.rs` に `pub mod profile` を新設し、
+   `db_only()` / `db_and_redis()` / `db_and_smtp_skip()` / `db_and_smtp_failure()` の named profile を追加した。
+   `auth_lockout_redis_integration.rs` の単純な db+redis テスト 4 件と `password_reset_api.rs` の全 7 テストを
+   実際にこの profile へ移行した。残る ~40 ファイルは `support::test_pool()` 直接呼び出しのままで、暗黙に
+   `db-only` profile に従っている（強制リネームはしていない）。**follow-up**: 残りのファイルを
+   `profile::db_only()` へ機械的に統一するかどうかは実害が出た時点で判断する
+2. **Fix 2（env mutation helper）— 返済**: `support::EnvVarGuard`（RAII、snapshot/restore 保証）を追加し、
+   `auth_lockout_redis_integration.rs` の自前 `EnvGuard`（44 行）と `password_reset_api.rs` の
+   `configure_email_skip()`（一度 set したら restore しない直書き `env::set_var`）を置き換えた。
+   `support/mod.rs` 内部の `#[cfg(test)] mod tests` も手動 `restore_env` から `EnvVarGuard` へ置換した。
+   `ensure_docker_cli()` / `allocate_ephemeral_port()` も `support::` の pub 関数へ統合し、
+   `auth_lockout_redis_integration.rs` の重複コピーを削除した。**例外**: `rate_limit_redis_integration.rs` は
+   意図的に `mod support;` を追加していない（`support` は `#[ctor]` で Postgres testcontainers を起動するため、
+   Postgres を必要としないこのテストに起動コストを強制することになるため）。ここでは重複を残し follow-up 化した
+3. **Fix 3（cross-file / cross-invocation 対策）— 返済**: 47 ファイルに重複していた file-local
+   `async fn integration_guard()`（ほぼ同一ボイラープレートが 2 variant + 1 個別実装）を
+   `support::integration_guard()` への `use support::integration_guard;` 参照に統一した
+   （`admin_holiday_list.rs` の独自 sync 版は対象外、follow-up）。
+   その上で **実行モデルを実測**した: 2 本の probe test binary（3 秒 sleep）を
+   `cargo test -p timekeeper-backend --test A --test B` で実行し、test binary は**逐次実行**され重ならないことを
+   確認した。したがって単一の `cargo test --tests` invocation 内では file-local mutex で十分であり、
+   実際のリスクは「別々の `cargo test` invocation が `scripts/test_backend_integrated.sh` 経由で同じ共有 Postgres
+   （127.0.0.1:55432）を同時に指す」場合に限られる。この cross-invocation 競合に対して、
+   `scripts/harness.sh` の `backend-integration` / `backend-security-smoke` に `flock` ベースの
+   `BACKEND_INTEGRATION_LOCK`（既定 `target/harness-locks/backend-integration.lock`）を追加し、
+   同じロックファイルを共有させることで直列化した。方針は `docs/manual/HARNESS.md` の
+   "Suite Execution Model" に明文化した
+4. **Fix 4（focused harness stage）— 返済**: `scripts/harness.sh` に `backend-security-smoke` stage を追加した。
+   `auth_flow_api`, `auth_lockout_redis_integration`, `rate_limit_redis_integration`, `password_api`,
+   `password_reset_api`, `mfa_api`, `session_api`, `active_session_repo` の 8 ファイル・88 test を対象にする。
+   `--list` / `docs/manual/HARNESS.md` / ルート `AGENTS.md` の Validation Ladder を整合させた
+
+**実行した検証（実測、2026-07-04）**
+
+- `bash scripts/harness.sh doctor`: pass（podman あり、podman.socket active）
+- `cargo fmt --all --check`: pass
+- `cargo test -p timekeeper-backend --lib`: pass（379 passed; 0 failed）
+- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`: pass（0 warnings）
+- `bash scripts/harness.sh docs-check`: pass
+- `bash scripts/harness.sh backend-security-smoke`: pass（8 ファイル・88 test すべて green。testcontainers 経由で
+  Postgres/Redis を実際に起動して実行した実測結果）
+- `bash scripts/harness.sh backend-integration`（live Postgres/Redis, 全 test file, `--no-fail-fast`）:
+  **1314 passed / 6 failed**。failed 6 件は 2 binary に集中し、いずれも本返済と無関係の既存 failure:
+  - `admin_requests_api.rs` 3 件（`test_admin_can_approve_leave_request` 等、403 vs 200/404）。
+    本 diff 適用前の HEAD 版ファイルに一時的に戻して再実行しても同一 failure を再現（既存問題と確定）
+  - `user_update_api.rs` 3 件（`invalid value \"admin\" for enum UserRole` — テスト自身の seed helper の decode 不具合）。
+    このファイルは本返済で一切変更していない（`integration_guard` を持たず移行対象外）
+  それ以外の binary（本返済で変更した 48 ファイルを含む）はすべて green
+
+**未着手・follow-up として tracker に残す項目**
+
+- 残り ~40 ファイルの `support::test_pool()` 直呼び出しを `profile::db_only()` へ統一するか（実害なし、優先度低）
+- `rate_limit_redis_integration.rs` の docker-cli-ensure 重複解消（`support` の ctor 副作用を避けるため未着手）
+- `admin_holiday_list.rs` の独自 sync `integration_guard()` の統合可否検討
+- Fix 1 で言及されていた `db+smtp-failure` 実運用テストは `auth_lockout_redis_integration.rs` 内で
+  引き続き手動の `EnvVarGuard` 直接操作を使っている（プロファイル化していない）。動的に SMTP 状態を
+  トグルする必要があるテストのため、固定形状の `profile::db_and_smtp_failure()` にそのまま当てはめられなかった
 
 **Symptoms**
 
@@ -615,7 +672,7 @@
 
 1. ~~P0 Build health debt~~（返済済み 2026-03-11）
 2. ~~P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記~~（一次返済済み・本コミット。中長期対応は P2 #11 残 へ降格）
-3. P1 Test harness fragility（#5）— rebuild 期間中も現行 harness が gate
+3. ~~P1 Test harness fragility（#5）~~（返済済み 2026-07-04。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage / suite execution model を追加。follow-up は P2 #5 残 へ）
 4. P2 最上位マネージャー自己申請 pending 中長期対応（#11 残）— 代理承認者 / 自動エスカレーション検討
 5. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
 6. P2 ユーザー編集フォームの department 選択（#10 残り半分）
@@ -625,6 +682,7 @@
 10. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
 11. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
 12. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
+13. P2 Test harness fragility 残 follow-up（#5 残）— docker-cli 重複 / sync guard 統合 / profile 統一の残作業
 
 ## Notes
 
@@ -634,3 +692,12 @@
 - **2026-03-16 追加**: EP-20260316-frontend-invite-department レビューにより items 13–14 を追加
 - **2026-07-04 トリアージ**: rebuild mode 始動（2026-06-10）を反映。#2/#3/#4/#12 は rebuild へ委譲して P2 降格、#10 は招待フォーム側を返済済みに更新、god module の実測行数を更新
 - **2026-07-04 追加返済**: #11 の Recommended Fix 1（RUNBOOK 追記）を実施し一次返済。承認フロー（`/admin` 画面、`GET/PUT /api/admin/requests...`）を実装で確認した上で `docs/manual/RUNBOOK.md` に手順を追記。Recommended Fix 2（代理承認者 / 自動エスカレーション）は未着手のため P2 として残存
+- **2026-07-04 追加返済**: #5「Test Harness Fragility」の Recommended Fix 1-4 を返済（[EP-20260704-test-harness-fragility](./completed/EP-20260704-test-harness-fragility.md)）。
+  `backend/tests/support/mod.rs` に `EnvVarGuard` / `integration_guard()` / `profile::{db_only, db_and_redis, db_and_smtp_skip, db_and_smtp_failure}` を追加し、
+  47 ファイルに重複していた file-local `integration_guard()` を共有関数へ統一、`scripts/harness.sh` に `backend-security-smoke` stage と
+  cross-invocation 用 `flock` lock（`BACKEND_INTEGRATION_LOCK`）を追加した。実行モデルの実測（test binary は逐次実行される）を
+  `docs/manual/HARNESS.md` の "Suite Execution Model" に明文化。検証中、`admin_requests_api.rs` の 3 test（`test_admin_can_approve_leave_request` 等、
+  本 diff 適用前の同ファイルでも再現）と `user_update_api.rs` の 3 test（`UserRole` enum decode 不具合。本返済では未変更のファイル）が
+  本タスクと無関係に `main` 相当のコードで既に failing であることを確認した。これら既知の failing test は
+  本 tracker のスコープ外（承認認可ロジック / テスト seed helper の不具合であり、item #5 の対象である harness/fixture 側の問題ではない）のため、別 issue 化が必要
+  （未追加。次回トリアージで item 化する）

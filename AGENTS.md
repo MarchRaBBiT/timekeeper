@@ -73,17 +73,19 @@
    - `cargo test -p timekeeper-backend --lib`
 5. `backend-integration`
    - `cargo test -p timekeeper-backend --tests`
-6. `clippy-backend`
+6. `backend-security-smoke`
+   - auth / lockout / rate-limit / password / mfa / session の focused `cargo test`（詳細: [docs/manual/HARNESS.md](./docs/manual/HARNESS.md)）
+7. `clippy-backend`
    - `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`
-7. `clippy-frontend`
+8. `clippy-frontend`
    - `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
-8. `lint`
+9. `lint`
    - `docs-check + fmt-check + clippy-backend + clippy-frontend`
-9. `api-smoke`
+10. `api-smoke`
    - live backend に対する API スモーク
-10. `frontend-login`
+11. `frontend-login`
    - live frontend に対する Playwright login smoke
-11. `full`
+12. `full`
    - 上記を束ねた統合実行
 
 共通入口:
@@ -94,6 +96,7 @@ bash scripts/harness.sh doctor
 bash scripts/harness.sh docs-check
 bash scripts/harness.sh fmt-check
 bash scripts/harness.sh backend-unit
+bash scripts/harness.sh backend-security-smoke
 bash scripts/harness.sh lint
 bash scripts/harness.sh smoke
 bash scripts/harness.sh full
