@@ -35,6 +35,7 @@
   - ヘッダーが欠落または設定済み allowed origin と不一致の場合は `403 Forbidden` を返します。
   - `Authorization: Bearer ...` ヘッダーを持つリクエストはプログラマティッククライアントとみなし、CSRF チェックをスキップします。
   - `POST /api/auth/refresh` は cookie 経由で refresh token が届く場合のみ上記と同様の CSRF チェックを行います。JSON body で `refresh_token` を渡すプログラマティッククライアントはチェックの対象外です。
+  - 照合先の allowlist は環境変数 `CORS_ALLOW_ORIGINS`（サーバー起動時にロードされる `Config.cors_allow_origins`）そのものであり、CSRF と CORS は同じ設定値を共有します。ワイルドカード (`*`) はこの allowlist に設定できず、起動時に拒否されます（`Config::load()` が fail-closed で `Err` を返す）。
 
 ## Public
 

@@ -628,7 +628,7 @@ fn log_config(config: &Config) {
         // reached in real operation. This check remains as a defense-in-depth
         // backstop that must not depend on the environment's production flag.
         tracing::error!("SECURITY ERROR: CORS is configured to allow all origins ('*'). This is a severe security risk. The server will refuse to start.");
-        panic!("Refusing to start due to insecure CORS configuration in production mode.");
+        panic!("Refusing to start due to insecure CORS configuration.");
     }
 }
 
@@ -802,9 +802,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Refusing to start due to insecure CORS configuration in production mode"
-    )]
+    #[should_panic(expected = "Refusing to start due to insecure CORS configuration")]
     fn test_production_mode_wildcard_cors_panics() {
         let mut config = test_config(vec!["*".to_string()]);
         config.production_mode = true;
@@ -886,9 +884,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Refusing to start due to insecure CORS configuration in production mode"
-    )]
+    #[should_panic(expected = "Refusing to start due to insecure CORS configuration")]
     fn test_log_config_rejects_wildcard_with_read_database_regardless_of_production_mode() {
         // Reversed from the prior "wildcard is only a warning outside
         // production mode" expectation: a dangerous CORS + credentials

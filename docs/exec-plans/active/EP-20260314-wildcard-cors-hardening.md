@@ -92,6 +92,7 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
 - [x] `cargo test -p timekeeper-backend --test csrf_protection_api`
 - [x] `bash scripts/harness.sh backend-unit`
 - [x] `bash scripts/harness.sh lint`
+- [x] Codex adversarial review（Job4。Approve、Low 4件はすべて反映済み）
 
 ## Git Checkpoint Log
 - [x] `git status --short`
@@ -124,3 +125,11 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
   - 実行結果: `cargo test -p timekeeper-backend --lib config::` 13 passed（0 failed）、`cargo test -p timekeeper-backend --lib security::` 7 passed、`cargo test -p timekeeper-backend --bin timekeeper-backend` 388 passed（0 failed、main.rs単体テスト全件含む）、`cargo test -p timekeeper-backend --test csrf_protection_api` 11 passed（0 failed）、`cargo test -p timekeeper-backend --test config_api` 1 passed（回帰）
   - `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / `bash scripts/harness.sh backend-unit`（379 passed）/ `bash scripts/harness.sh lint` すべてgreen
   - `git status --short` で変更が `backend/src/config.rs` / `backend/src/main.rs` / `backend/src/utils/security.rs` の3ファイルのみに収まっていることを確認し、commit `240bd4e`（Job2）に続き `eb925f1`（Job3実装commit）を作成した
+- 2026-07-04: Job4（Codexレビュー・検証・最終commit）を実施した。Codex（`codex:codex-rescue`エージェント経由、backgroundタスク`task-mr5mz8dr-rzdzgh`、所要2分14秒）に実装（commit `eb925f1`）のadversarial reviewを依頼した。結果は **Approve**（High/Medium指摘なし、Low 4件）。Codexが確認した内容と対応は以下:
+  - **確認済み（指摘なし）**: fail-closed完全性（`" * "`や混在origin表記も検出）、`cors_layer`の`assert!`は本番の唯一の呼び出し経路（`main()`内、`Config::load()`後）を`rg`で確認済みで本番クラッシュリスクなし、CSRF結合（Bearer経由は影響なし、`csrf_blocks_cookie_post_even_when_cors_allow_origins_contains_wildcard`で固定済み）、既存の正当なorigin設定への非影響、EP Done Criteria 4項目すべて充足
+  - **Low#1**: `config_load_wildcard_rejection_error_does_not_echo_configured_origins`の assertion が `!message.contains("internal-admin")` のみで弱い。→ エラーメッセージを`WILDCARD_REJECTION_MESSAGE`定数として固定文言と`assert_eq!`で完全一致させ、`http://`/`https://`を含まないことも追加assertした
+  - **Low#2**: `env_guard()`のpoison復旧はテスト隔離としては不完全（panic発生時にrestore_envが実行されず、次のテストが汚染されたenvのまま進む可能性）。→ `env_guard`/`snapshot_env`/`restore_env`を`Drop`で自動復元する`EnvVarGuard`（RAIIガード）へ置き換え、config.rs内の全10件のenv操作テストを移行した。panicでもRustのunwindで`Drop`が実行されるため、以後env状態が保証される
+  - **Low#3**: `docs/design-docs/backend-api-catalog.md`のCSRF保護節に、照合先が`CORS_ALLOW_ORIGINS`でありwildcardが起動時拒否される旨の結合関係が明記されていなかった。→ 1行追記した
+  - **Low#4**: `log_config`のpanicメッセージ・`#[should_panic]`のexpected文言に古い`in production mode`表記が残っていた（実装はPRODUCTION_MODE非依存のため意味が古い）。→ `backend/src/main.rs`のpanicメッセージと2箇所の`#[should_panic(expected = ...)]`から`in production mode`を除去した
+  - 修正後: `cargo test -p timekeeper-backend --lib config::`（13 passed、エラーメッセージ厳格一致テスト含む）、`cargo test -p timekeeper-backend --bin timekeeper-backend`（388 passed）、`cargo test -p timekeeper-backend --test csrf_protection_api --test config_api`（11+1 passed）、`cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`bash scripts/harness.sh docs-check`、`bash scripts/harness.sh backend-unit`（379 passed）すべてgreen
+  - `backend/src/config.rs` / `backend/src/main.rs` / `docs/design-docs/backend-api-catalog.md` / 本EPファイルの変更をcommit

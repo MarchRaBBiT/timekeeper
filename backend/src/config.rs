@@ -349,7 +349,7 @@ mod tests {
     use chrono_tz::UTC;
     use std::sync::{Mutex, OnceLock};
 
-    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
         // Recover from poisoning: the guarded state is just process env vars,
         // not an invariant that a prior panicking test (e.g. a failing
@@ -362,15 +362,36 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn snapshot_env(keys: &[&str]) -> Vec<Option<String>> {
-        keys.iter().map(|key| env::var(key).ok()).collect()
+    /// Holds the process-env mutex and a snapshot of the given keys for the
+    /// guard's lifetime, restoring them on drop. Restoration runs even if the
+    /// test body panics (Rust unwinds and runs destructors on panic), so one
+    /// failing assertion mid-test can no longer leak mutated env vars into
+    /// whichever sibling test runs next.
+    struct EnvVarGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        keys: &'static [&'static str],
+        original: Vec<Option<String>>,
     }
 
-    fn restore_env(keys: &[&str], values: Vec<Option<String>>) {
-        for (key, value) in keys.iter().zip(values.into_iter()) {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
+    impl EnvVarGuard {
+        fn new(keys: &'static [&'static str]) -> Self {
+            let lock = env_lock();
+            let original = keys.iter().map(|key| env::var(key).ok()).collect();
+            Self {
+                _lock: lock,
+                keys,
+                original,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.keys.iter().zip(self.original.drain(..)) {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
             }
         }
     }
@@ -427,8 +448,7 @@ mod tests {
 
     #[test]
     fn config_loads_audit_log_retention_defaults() {
-        let _guard = env_guard();
-        let keys = [
+        let _guard = EnvVarGuard::new(&[
             "JWT_SECRET",
             "AUDIT_LOG_RETENTION_DAYS",
             "AUDIT_LOG_RETENTION_FOREVER",
@@ -438,8 +458,7 @@ mod tests {
             "AWS_AUDIT_LOG_BUCKET",
             "AWS_REGION",
             "AWS_CLOUDTRAIL_ENABLED",
-        ];
-        let original = snapshot_env(&keys);
+        ]);
 
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::remove_var("AUDIT_LOG_RETENTION_DAYS");
@@ -458,14 +477,11 @@ mod tests {
         assert!(!config.consent_log_retention_forever);
         assert_eq!(config.aws_kms_key_id, "");
         assert_eq!(config.aws_audit_log_bucket, "");
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_loads_aws_defaults() {
-        let _guard = env_guard();
-        let keys = [
+        let _guard = EnvVarGuard::new(&[
             "JWT_SECRET",
             "AWS_KMS_KEY_ID",
             "AWS_AUDIT_LOG_BUCKET",
@@ -473,8 +489,7 @@ mod tests {
             "AWS_CLOUDTRAIL_ENABLED",
             "CONSENT_LOG_RETENTION_DAYS",
             "CONSENT_LOG_RETENTION_FOREVER",
-        ];
-        let original = snapshot_env(&keys);
+        ]);
 
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::remove_var("AWS_REGION");
@@ -487,15 +502,11 @@ mod tests {
         assert!(config.aws_cloudtrail_enabled);
         assert_eq!(config.aws_kms_key_id, "");
         assert_eq!(config.aws_audit_log_bucket, "");
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_aws_kms_key_id_is_optional() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(&["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"]);
 
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::remove_var("AWS_KMS_KEY_ID");
@@ -504,15 +515,11 @@ mod tests {
         let config = Config::load().expect("config should load without kms key");
         assert_eq!(config.aws_kms_key_id, "");
         assert_eq!(config.aws_audit_log_bucket, "timekeeper-audit-logs");
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_aws_audit_log_bucket_is_optional() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(&["JWT_SECRET", "AWS_KMS_KEY_ID", "AWS_AUDIT_LOG_BUCKET"]);
 
         env::set_var("JWT_SECRET", "a_secure_token_that_is_long_enough_123");
         env::set_var("AWS_KMS_KEY_ID", "alias/timekeeper-test");
@@ -521,8 +528,6 @@ mod tests {
         let config = Config::load().expect("config should load without audit bucket");
         assert_eq!(config.aws_kms_key_id, "alias/timekeeper-test");
         assert_eq!(config.aws_audit_log_bucket, "");
-
-        restore_env(&keys, original);
     }
 
     #[test]
@@ -570,11 +575,20 @@ mod tests {
         }
     }
 
+    const CORS_ENV_KEYS: &[&str] = &["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
+
+    /// The exact wildcard-rejection message, asserted verbatim in
+    /// `config_load_wildcard_rejection_error_does_not_echo_configured_origins`
+    /// so any accidental interpolation of the configured origin list would
+    /// fail this equality check, not just a substring-absence check.
+    const WILDCARD_REJECTION_MESSAGE: &str = "CORS_ALLOW_ORIGINS must not include a wildcard \
+         origin (\"*\"): this API always enables credentialed requests, and combining \
+         a wildcard origin with credentials is a severe security risk. \
+         Configure an explicit comma-separated allowlist of origins instead.";
+
     #[test]
     fn config_load_rejects_wildcard_cors_origin_when_production_mode_unset() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("*", None);
 
@@ -584,15 +598,11 @@ mod tests {
             "Config::load() must reject a wildcard CORS origin even when \
              PRODUCTION_MODE is unset (fail-closed, not just production mode)"
         );
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_load_rejects_wildcard_cors_origin_in_production_mode() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("*", Some("true"));
 
@@ -601,15 +611,11 @@ mod tests {
             result.is_err(),
             "Config::load() must reject a wildcard CORS origin in production mode"
         );
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_load_rejects_wildcard_cors_origin_in_non_production_mode() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("*", Some("false"));
 
@@ -619,15 +625,11 @@ mod tests {
             "Config::load() must reject a wildcard CORS origin regardless of \
              PRODUCTION_MODE's value, not only when it is true"
         );
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_load_rejects_wildcard_mixed_with_explicit_origins() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("http://localhost:8000,*", None);
 
@@ -637,34 +639,29 @@ mod tests {
             "Config::load() must reject a wildcard origin even when other \
              explicit origins are configured alongside it"
         );
-
-        restore_env(&keys, original);
     }
 
     #[test]
     fn config_load_wildcard_rejection_error_does_not_echo_configured_origins() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("http://internal-admin.example.com,*", None);
 
         let error = Config::load().expect_err("wildcard origin must be rejected");
         let message = error.to_string();
-        assert!(
-            !message.contains("internal-admin"),
-            "error message must not echo the configured origin list back \
-             verbatim: {message}"
+        assert_eq!(
+            message, WILDCARD_REJECTION_MESSAGE,
+            "error message must be the fixed rejection text, not interpolate \
+             any part of the configured origin list"
         );
-
-        restore_env(&keys, original);
+        assert!(!message.contains("internal-admin"));
+        assert!(!message.contains("http://"));
+        assert!(!message.contains("https://"));
     }
 
     #[test]
     fn config_load_allows_explicit_origins_without_wildcard() {
-        let _guard = env_guard();
-        let keys = ["JWT_SECRET", "CORS_ALLOW_ORIGINS", "PRODUCTION_MODE"];
-        let original = snapshot_env(&keys);
+        let _guard = EnvVarGuard::new(CORS_ENV_KEYS);
 
         set_cors_env("https://app.example.com", None);
 
@@ -673,7 +670,5 @@ mod tests {
             config.cors_allow_origins,
             vec!["https://app.example.com".to_string()]
         );
-
-        restore_env(&keys, original);
     }
 }
