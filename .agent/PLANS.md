@@ -9,6 +9,12 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260704-attendance-domain-gap-backlog
+
+**バックログ登録済み（棚卸し完了・個別 EP 分解は未着手）** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
+
+勤怠管理システムとしての機能不足観点 G1–G15 を優先度付きで棚卸しした親 EP。P1 = 労働時間の法令区分集計（G1）、有給付与・残高台帳（G2）、承認済み申請と実績の連動（G3）、36協定上限監視（G4）。
+
 # EP-20260311-frontend-rust-i18n-migration
 
 **完了済み** — 詳細: [`docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`](../docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md)
