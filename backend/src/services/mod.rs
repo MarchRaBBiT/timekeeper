@@ -4,4 +4,5 @@ pub mod holiday;
 pub mod holiday_exception;
 pub mod lockout_notification_queue;
 pub mod lockout_notification_worker;
+pub mod notification_queue;
 pub mod token_cache;

@@ -46,6 +46,7 @@ Usage:
   bash scripts/harness.sh backend-unit
   bash scripts/harness.sh backend-integration
   bash scripts/harness.sh backend-security-smoke
+  bash scripts/harness.sh worker-once
   bash scripts/harness.sh clippy-backend
   bash scripts/harness.sh clippy-frontend
   bash scripts/harness.sh lint
@@ -59,12 +60,22 @@ Environment:
   BACKEND_READINESS_PATH default: /api/config/timezone
   FRONTEND_BASE_URL  default: https://localhost:8080
   BACKEND_INTEGRATION_LOCK default: target/harness-locks/backend-integration.lock
+  DATABASE_URL       required for worker-once (live Postgres)
+  REDIS_URL          required for worker-once (live Redis)
+  JWT_SECRET         required for worker-once (>=32 chars, same as backend runtime)
 EOF
 }
 
 require_cmd() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1 || die "missing command: $cmd"
+}
+
+require_env() {
+  local name="$1"
+  if [[ -z "${!name:-}" ]]; then
+    die "missing environment variable: $name (see docs/manual/HARNESS.md, worker-once section)"
+  fi
 }
 
 check_url() {
@@ -186,6 +197,22 @@ run_backend_security_smoke() {
   with_backend_integration_lock "cd '$ROOT_DIR' && cargo test -p timekeeper-backend ${test_args[*]} --no-fail-fast"
 }
 
+run_worker_once() {
+  log "stage=worker-once"
+  # lockout_notification_worker connects directly to a live Postgres + Redis (no HTTP server
+  # involved), so this stage needs the same env vars the binary itself requires: DATABASE_URL /
+  # JWT_SECRET (via Config::load()) and REDIS_URL (the worker exits with an error if it is
+  # unset — see backend/src/bin/lockout_notification_worker.rs). `--once` makes the worker drain
+  # at most one due retry batch, process at most one queued job (if any), then exit instead of
+  # looping forever, which is what makes this usable as a bounded harness smoke stage. See
+  # docs/manual/RUNBOOK.md "Notification Worker Operations" for the operational model this stage
+  # exercises (retry / DLQ / drain boundaries, tech-debt-tracker.md item #7).
+  require_env DATABASE_URL
+  require_env REDIS_URL
+  require_env JWT_SECRET
+  (cd "$ROOT_DIR" && cargo run --bin lockout_notification_worker -- --once)
+}
+
 run_clippy_backend() {
   log "stage=clippy-backend"
   (cd "$ROOT_DIR" && cargo clean -p utoipa-swagger-ui)
@@ -248,6 +275,7 @@ fmt-check
 backend-unit
 backend-integration
 backend-security-smoke
+worker-once
 clippy-backend
 clippy-frontend
 lint
@@ -277,6 +305,9 @@ EOF
     ;;
   backend-security-smoke)
     run_backend_security_smoke
+    ;;
+  worker-once)
+    run_worker_once
     ;;
   clippy-backend)
     run_clippy_backend

@@ -73,6 +73,28 @@ bash scripts/harness.sh backend-security-smoke
 
 auth / lockout / rate-limit / password / mfa / session まわりの focused integration test だけを実行します（`scripts/harness.sh` の `BACKEND_SECURITY_SMOKE_TESTS` 参照: `auth_flow_api`, `auth_lockout_redis_integration`, `rate_limit_redis_integration`, `password_api`, `password_reset_api`, `mfa_api`, `session_api`, `active_session_repo`）。`backend-integration` full suite より短時間で認証/セキュリティ系の regression を検知したい場合に使います。`backend-integration` と同じ `BACKEND_INTEGRATION_LOCK` を使うため、両者を同時に走らせても cross-invocation の DB 競合は起きません。
 
+### `worker-once`
+
+```bash
+DATABASE_URL=postgres://... REDIS_URL=redis://... JWT_SECRET=... \
+  bash scripts/harness.sh worker-once
+```
+
+`lockout_notification_worker` バイナリ（`backend/src/bin/lockout_notification_worker.rs`）を
+`--once` フラグ付きで 1 回だけ起動する smoke stage です（tech-debt-tracker.md item #7
+「Queue / Worker Operational Debt」Recommended Fix 3）。他の smoke stage（`api-smoke` /
+`frontend-login`）と違い、HTTP 経由ではなく worker が直接 Postgres / Redis へ接続するため、
+testcontainers の代わりに **live な** `DATABASE_URL` / `REDIS_URL` / `JWT_SECRET`
+（`Config::load()` が要求する 32 文字以上の secret）が事前に必要です。未設定の場合は
+`require_env` が該当する環境変数名を添えて即座に fail します。
+
+`--once` は「起動時に due な retry を 1 バッチだけ queue へ戻し、queue から 1 件だけ job を
+処理し（何もなければ何もしない）、その後ループせず終了する」という drain 境界を持ちます
+（通常運用のループモードとの違いは [RUNBOOK.md](./RUNBOOK.md) の
+"Notification Worker Operations" を参照）。queue が空でも `Ok(None)` を返して正常終了するため、
+このステージは「新しい lockout イベントが飼っているかどうか」ではなく「worker バイナリが
+設定済みの Postgres / Redis に対して実際に起動・終了できるか」を検証するものです。
+
 ### `clippy-backend`
 
 ```bash

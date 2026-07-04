@@ -36,7 +36,7 @@
 | 4 | Repository / handler duplication | 未着手 → rebuild の use case 分割 EP 群が返済経路、P2 降格 |
 | 5 | Test harness fragility | 返済済み（2026-07-04）。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage を追加。follow-up は残るが P1 as-was の懸念は解消 |
 | 6 | Docs source-of-truth drift | 部分解消（plan 配置は `docs/exec-plans/` に統一済み。AGENTS.md の line count は stale のまま） |
-| 7 | Queue / worker operational debt | 未返済（RUNBOOK 未記載、`worker-once` stage なし）→ rebuild `apps/worker` と統合検討 |
+| 7 | Queue / worker operational debt | 返済済み（2026-07-04）。Recommended Fix 1–3 を T-16（汎用通知サービス基盤）と統合して返済: RUNBOOK 追記・`worker-once` stage 追加・queue メッセージ型の一般化 |
 | 8 | Frontend i18n follow-up | 未返済（`rust-i18n 4.0.0-preview1` のまま。EP-20260311 が 3 ヶ月停滞、生死判定要） |
 | 9 | 部署管理 UI 未完成 | 未返済（`#[allow(dead_code)]` 3 メソッド残存） |
 | 10 | ユーザー管理 department_id 選択 | 部分解消（招待フォームは実装済み: f3677c6。編集フォームは未実装） |
@@ -58,7 +58,7 @@
 | P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
 | P2 | 部署管理 UI 未完成（#9） | department 編集 / manager 割当 UI | dead_code 3 件の温床 |
 | P2 | Frontend i18n follow-up（#8） | EP-20260311 の再開 or クローズ判定 | preview 依存が 4 ヶ月継続。停滞 EP の生死判定が先 |
-| P2 | Queue / worker operational debt（#7） | RUNBOOK, harness stage | rebuild `apps/worker` の設計に運用境界を織り込む好機 |
+| ~~P2~~ 返済済み | Queue / worker operational debt（#7） | RUNBOOK, harness stage | T-16 と統合して 2026-07-04 に返済（RUNBOOK 追記 / `worker-once` stage / queue メッセージ型一般化） |
 | P2 | Backend / Frontend god modules（#2, #3） | 現行側は肥大化ガードのみ | 分割は rebuild（`crates/`, `apps/web`）で実現 |
 | P2 | Repository / handler duplication（#4）, allowed_user_ids（#12） | rebuild use case 層 | rebuild EP 群が実質的な返済経路 |
 | P2 | CreateUser serde 非対称（#13）, departments_resource リフレッシュ（#14） | frontend 小物 | 実害軽微。関連画面を触る PR に同乗させる |
@@ -373,14 +373,50 @@ Recommended Fix 1-4 を次のとおり返済した。
 
 ---
 
-### 7. P2: Queue / Worker Operational Debt
+### 7. P2→返済済み: Queue / Worker Operational Debt
 
-**Status (2026-07-04)**
+**Status (2026-07-04, 返済実施)**
 
-- 未返済。`docs/manual/RUNBOOK.md` に worker 運用の記載なし、harness に `worker-once` stage なし
-- rebuild target に `apps/worker` が存在するため、運用境界（queue depth / DLQ 観測、drain 手順）は rebuild 側の設計に織り込むのが効率的
+ExecPlan: [EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md)（T-16 と統合して実施）
 
-**Symptoms**
+Recommended Fix 1–3 を次のとおり返済した。
+
+1. **Fix 1（worker runbook）— 返済**: `docs/manual/RUNBOOK.md` に "Notification Worker Operations"
+   節を追加した。アーキテクチャ概要、Redis key 一覧（queue/retry/DLQ + idempotency marker）、
+   retry backoff（2s/4s/8s/16s → DLQ）の実際の計算根拠、worker の起動方法（loop / `--once`）、
+   DLQ の手動 replay/破棄手順を明文化した
+2. **Fix 2（queue depth 等の観測項目）— 返済**: 同節に `redis-cli LLEN` /
+   `redis-cli ZCARD` / `redis-cli ZCOUNT` による queue depth / retry depth / 期限超過 retry 件数 /
+   DLQ depth の具体コマンドを記載した
+3. **Fix 3（`worker-once` harness stage）— 返済**: `scripts/harness.sh` に `worker-once` stage を
+   追加した。`lockout_notification_worker --once` を live Postgres/Redis（testcontainers ではなく
+   `DATABASE_URL` / `REDIS_URL` / `JWT_SECRET` で指定された実環境）に対して 1 回実行し、
+   起動・終了できることを確認する。`--list` / `docs/manual/HARNESS.md` / ルート `AGENTS.md` の
+   Validation Ladder（`backend-security-smoke` の次、item 7）を同期した
+
+これに加えて、tech-debt-tracker には明示されていなかったが親タスク T-16 の指示 1 として、
+queue のメッセージ型を `notification_kind` + payload の internally-tagged enum
+（`backend/src/services/notification_queue.rs::NotificationJob`）へ一般化した。
+既存 lockout 通知の Redis key 名・関数シグネチャ・JSON 直接デコード互換は変更していない
+（`notification_kind` フィールドは追加されるが、`serde` は未知フィールドを無視するため
+`LockoutNotificationJob` への直接デコードは影響を受けない。unit test で固定済み）。
+
+**実行した検証（実測、2026-07-04）**
+
+- `cargo fmt --all --check`: pass
+- `cargo test -p timekeeper-backend --lib`: pass（384 passed; 0 failed。うち 5 件が本タスクで
+  追加した `notification_queue` / `lockout_notification_queue` の新規 unit test）
+- `cargo test -p timekeeper-backend --test auth_lockout_redis_integration`（live Postgres/Redis,
+  testcontainers）: pass（10 passed; 0 failed）
+- `cargo test -p timekeeper-backend --test auth_flow_api`（live Postgres, testcontainers）:
+  pass（24 passed; 0 failed）
+- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`: pass（0 warnings）
+- `bash scripts/harness.sh worker-once`（live Postgres/Redis を podman で用意し、
+  `DATABASE_URL` / `REDIS_URL` / `JWT_SECRET` を実際に設定して実行）: pass（exit 0）。
+  必須環境変数未設定時に `die` で即座に fail することも確認済み
+- `bash scripts/harness.sh docs-check`: pass
+
+**Symptoms（返済前）**
 
 - lockout notification worker は実装されたが、運用境界が doc と harness にまだ十分現れていない
 - queue semantics は implicit で、FIFO/LIFO や drain strategy が operator 向けに明文化されていない
@@ -391,18 +427,22 @@ Recommended Fix 1-4 を次のとおり返済した。
 - [backend/src/bin/lockout_notification_worker.rs](../../backend/src/bin/lockout_notification_worker.rs)
 - [backend/src/services/lockout_notification_queue.rs](../../backend/src/services/lockout_notification_queue.rs)
 - [backend/src/services/lockout_notification_worker.rs](../../backend/src/services/lockout_notification_worker.rs)
+- [backend/src/services/notification_queue.rs](../../backend/src/services/notification_queue.rs)（新規、本返済で追加）
 - [docs/manual/RUNBOOK.md](../manual/RUNBOOK.md)
+- [docs/manual/HARNESS.md](../manual/HARNESS.md)
+- [scripts/harness.sh](../../scripts/harness.sh)
 
-**Impact**
+**Impact（返済前）**
 
 - 本番障害時に「worker が落ちているのか、queue が溜まっているのか、SMTP が失敗しているのか」を素早く分けにくい
 - security feature は実装済みでも運用 readiness がまだ薄い
 
-**Recommended Fix**
+**Constraints / Non-goals（本返済のスコープ外）**
 
-1. worker runbook を追加する
-2. queue depth / retry depth / DLQ depth の観測項目を定義する
-3. harness に `worker-once` smoke stage を追加する
+- T-17（申請提出/承認/却下・打刻漏れ通知の実配線）は行っていない。`notification_queue.rs` は
+  拡張点のみを用意した
+- rebuild target の `apps/worker` 設計そのものへの反映は別途判断する（現行 `backend/` 側の
+  運用ドキュメント・harness stage の整備を先に済ませた）
 
 ---
 
@@ -762,7 +802,7 @@ Recommended Fix 1-4 を次のとおり返済した。
 8. P2 部署管理 UI 未完成（#9）
 9. P2 勤怠修正承認の管理 UI 未配線（#16）— #9 と同型のため合わせて計画してよい
 10. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
-11. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
+11. ~~P2 Queue / worker operational debt（#7）~~（返済済み 2026-07-04。T-16 と統合。RUNBOOK 追記 / `worker-once` stage / queue メッセージ型一般化）
 12. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
 13. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
 14. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
@@ -788,3 +828,13 @@ Recommended Fix 1-4 を次のとおり返済した。
 - **2026-07-04 追加**: items 15–16 を登録。#15 は #5 返済検証中に確定した既存 failing integration test 6 件
   （単体再実行で原因診断済み — 6 件とも製品バグではなく PR #456 への test 未追従）。
   #16 は #11 返済中に発見された勤怠修正承認の管理 UI 未配線（approve/reject が API 直叩きのみ）
+- **2026-07-04 追加返済**: #7「Queue / Worker Operational Debt」の Recommended Fix 1–3 を、
+  `docs/exec-plans/attendance-domain-gap-tasks.md` T-16（汎用通知サービス基盤）と統合して返済
+  （[EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md)）。
+  `docs/manual/RUNBOOK.md` に "Notification Worker Operations" 節（queue/retry/DLQ 観測コマンド、
+  drain/replay 手順）を追加し、`scripts/harness.sh` に `worker-once` stage（live Postgres/Redis に
+  対する `lockout_notification_worker --once` smoke）を追加した。加えて T-16 の指示に基づき、
+  queue のメッセージ型を `notification_kind` + payload の internally-tagged enum
+  （`backend/src/services/notification_queue.rs`）へ一般化し、既存 lockout 通知の Redis key・
+  関数シグネチャ・JSON 直接デコード互換（`LockoutNotificationJob` への直接デシリアライズ）を
+  維持したまま T-17（申請提出/承認・却下・打刻漏れ通知）が同じ queue 基盤に乗れる拡張点を用意した
