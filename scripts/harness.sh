@@ -5,6 +5,27 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_BASE_URL="${BACKEND_BASE_URL:-http://localhost:3000}"
 FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-https://localhost:8080}"
 BACKEND_READINESS_PATH="${BACKEND_READINESS_PATH:-/api/config/timezone}"
+# Suite-level serial execution policy (tech-debt-tracker.md item #5, Recommended Fix 3):
+# every backend integration test file compiles into its own `cargo test` binary, and a single
+# `cargo test --tests` invocation already runs those binaries one at a time (verified: two
+# probe test binaries executed sequentially, never overlapping). The remaining race window is
+# *cross-invocation*: two separate `cargo test` / harness.sh runs (e.g. two terminals, or
+# `backend-integration` and `backend-security-smoke` launched at the same time) pointed at the
+# same shared external Postgres (docker-compose test-db on 127.0.0.1:55432, as used by
+# scripts/test_backend_integrated.sh). This lock file serializes exactly that case.
+BACKEND_INTEGRATION_LOCK="${BACKEND_INTEGRATION_LOCK:-$ROOT_DIR/target/harness-locks/backend-integration.lock}"
+# Focused files for the `backend-security-smoke` stage: auth / lockout / rate-limit / mfa /
+# session hardening surfaces (tech-debt-tracker.md item #5, Recommended Fix 4).
+BACKEND_SECURITY_SMOKE_TESTS=(
+  auth_flow_api
+  auth_lockout_redis_integration
+  rate_limit_redis_integration
+  password_api
+  password_reset_api
+  mfa_api
+  session_api
+  active_session_repo
+)
 
 log() {
   printf '[harness] %s\n' "$*"
@@ -24,6 +45,7 @@ Usage:
   bash scripts/harness.sh fmt-check
   bash scripts/harness.sh backend-unit
   bash scripts/harness.sh backend-integration
+  bash scripts/harness.sh backend-security-smoke
   bash scripts/harness.sh clippy-backend
   bash scripts/harness.sh clippy-frontend
   bash scripts/harness.sh lint
@@ -36,6 +58,7 @@ Environment:
   BACKEND_BASE_URL   default: http://localhost:3000
   BACKEND_READINESS_PATH default: /api/config/timezone
   FRONTEND_BASE_URL  default: https://localhost:8080
+  BACKEND_INTEGRATION_LOCK default: target/harness-locks/backend-integration.lock
 EOF
 }
 
@@ -117,8 +140,7 @@ run_backend_unit() {
   (cd "$ROOT_DIR" && cargo test -p timekeeper-backend --lib)
 }
 
-run_backend_integration() {
-  log "stage=backend-integration"
+ensure_podman_socket() {
   # Podman socket が未起動の場合は activate する（Docker 未導入環境向け）
   if command -v systemctl &>/dev/null && command -v podman &>/dev/null; then
     if ! systemctl --user is-active --quiet podman.socket 2>/dev/null; then
@@ -126,7 +148,42 @@ run_backend_integration() {
     fi
     export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
   fi
-  (cd "$ROOT_DIR" && cargo test -p timekeeper-backend --tests)
+}
+
+# Runs "$@" as a command line, serialized against BACKEND_INTEGRATION_LOCK so that concurrent
+# harness/cargo-test invocations against a shared external test database cannot race on
+# TRUNCATE-based fixtures (see the "Suite Execution Model" note near the top of this file and
+# docs/manual/HARNESS.md).
+with_backend_integration_lock() {
+  mkdir -p "$(dirname "$BACKEND_INTEGRATION_LOCK")"
+  if command -v flock >/dev/null 2>&1; then
+    flock "$BACKEND_INTEGRATION_LOCK" -c "$*"
+  else
+    log "flock not available; running without cross-invocation DB lock (see docs/manual/HARNESS.md)"
+    (cd "$ROOT_DIR" && eval "$*")
+  fi
+}
+
+run_backend_integration() {
+  log "stage=backend-integration"
+  ensure_podman_socket
+  # --no-fail-fast: without it, cargo stops running further *.rs test binaries as soon as one
+  # binary reports a failure, which (given ~50 independent test binaries) hides most of the
+  # suite's signal behind a single unrelated failure. Fragility of the harness is exactly what
+  # this stage exists to reduce, so we always run every test binary and report the full set of
+  # failures in one pass.
+  with_backend_integration_lock "cd '$ROOT_DIR' && cargo test -p timekeeper-backend --tests --no-fail-fast"
+}
+
+run_backend_security_smoke() {
+  log "stage=backend-security-smoke"
+  ensure_podman_socket
+  local test_args=()
+  local name
+  for name in "${BACKEND_SECURITY_SMOKE_TESTS[@]}"; do
+    test_args+=(--test "$name")
+  done
+  with_backend_integration_lock "cd '$ROOT_DIR' && cargo test -p timekeeper-backend ${test_args[*]} --no-fail-fast"
 }
 
 run_clippy_backend() {
@@ -190,6 +247,7 @@ docs-check
 fmt-check
 backend-unit
 backend-integration
+backend-security-smoke
 clippy-backend
 clippy-frontend
 lint
@@ -216,6 +274,9 @@ EOF
     ;;
   backend-integration)
     run_backend_integration
+    ;;
+  backend-security-smoke)
+    run_backend_security_smoke
     ;;
   clippy-backend)
     run_clippy_backend
