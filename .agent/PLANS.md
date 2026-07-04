@@ -19,7 +19,7 @@
 
 # EP-20260314-wildcard-cors-hardening
 
-**調査完了・実装未着手（Job1完了、Job2-4は後続タスク）** — 詳細: [`docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md`](../docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md)
+**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md`](../docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md)
 
 # EP-20260703-work-schedule-phase3-settlement-balance
 
