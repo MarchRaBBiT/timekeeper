@@ -40,7 +40,7 @@
 | 8 | Frontend i18n follow-up | 未返済（`rust-i18n 4.0.0-preview1` のまま。EP-20260311 が 3 ヶ月停滞、生死判定要） |
 | 9 | 部署管理 UI 未完成 | 未返済（`#[allow(dead_code)]` 3 メソッド残存） |
 | 10 | ユーザー管理 department_id 選択 | 部分解消（招待フォームは実装済み: f3677c6。編集フォームは未実装） |
-| 11 | 最上位マネージャー自己申請 pending | 未返済（RUNBOOK 未追記）→ quick win として最優先 |
+| 11 | 最上位マネージャー自己申請 pending | 一次返済済み（RUNBOOK 追記・本コミット）。中長期対応（代理承認者/自動エスカレーション）は P2 で残存 |
 | 12 | allowed_user_ids 関心漏れ | 未返済 → rebuild の use case 層で解消見込み、rebuild へ委譲 |
 | 13 | CreateUser serde 非対称 | 未返済（現状維持を確認） |
 | 14 | departments_resource リフレッシュ | 未返済（key は `bool` のまま） |
@@ -49,8 +49,8 @@
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
-| P1 | 最上位マネージャー自己申請 pending（#11） | RUNBOOK 追記 | 運用実害があり、doc 追記だけで一次対応できる quick win |
 | P1 | Test harness fragility（#5） | integration tests, env mutation, live smoke | rebuild 期間中も現行 harness が唯一の gate |
+| P2 | 最上位マネージャー自己申請 pending 中長期対応（#11 残） | 代理承認者 / system_admin 自動エスカレーション | RUNBOOK 追記（quick win）は返済済み。残るのは仕様検討を要する中長期対応のみ |
 | P2 | Docs source-of-truth drift 残作業（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` の stale line count | agent が誤った見積もりをする。削除だけで済む quick win |
 | P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
 | P2 | 部署管理 UI 未完成（#9） | department 編集 / manager 割当 UI | dead_code 3 件の温床 |
@@ -480,14 +480,24 @@
 
 **Status (2026-07-04)**
 
-- 未返済・P1 維持。`docs/manual/RUNBOOK.md` に最上位マネージャー申請の承認手順は未追記
-- 運用実害があり、Recommended Fix 1（runbook 追記）は doc のみで完了する quick win のため最優先とする
+- 一次返済済み（本コミットで返済）。Recommended Fix 1（RUNBOOK 追記）を実施した
+- `docs/manual/RUNBOOK.md` に「Top-Level Manager Self-Approval (Requests Stuck in `pending`)」節を追加。
+  実装を確認した上で、system_admin が `/admin`（申請承認ページ、`AdminRequestsSection`）から
+  `GET /api/admin/requests` でユーザー/ステータス絞り込みを行い、
+  `PUT /api/admin/requests/{id}/approve` または `/reject` で承認・却下する具体手順と、
+  system_admin の request 一覧は `allowed_user_ids` によるスコープ制限を受けない（`list_requests`）ため
+  最上位マネージャー自身の申請も見える、という実装上の根拠を明記した
+- 勤怠修正申請（`/api/admin/attendance-corrections/{id}/approve|reject`）にも同様の
+  `is_system_admin` 救済経路があるが、対応する admin UI セクションが未配線であるため、
+  現状は API 直接呼び出しでの対応が必要である旨も runbook に注記した
+- Recommended Fix 2（代理承認者の指定 / system_admin への自動エスカレーション）は未着手のため **P2 に降格**して残す。
+  Priority Queue と Suggested Execution Order を実測に合わせて更新済み
 
 **Symptoms**
 
 - 最上位部署（`parent_id = NULL`）のマネージャーが有給・残業等を申請すると、
   承認できる上位マネージャーが存在しないため申請が `pending` のまま残る
-- `is_system_admin` が手動で承認する運用が必要だが、その手順が runbook に記載されていない
+- `is_system_admin` が手動で承認する運用が必要だったが、その手順は runbook 未記載だった（本コミットで追記済み）
 
 **Evidence**
 
@@ -501,8 +511,8 @@
 
 **Recommended Fix**
 
-1. `docs/manual/RUNBOOK.md` に「最上位マネージャーの申請承認手順」を追記
-2. 中長期的には「代理承認者の指定」または「system_admin への自動エスカレーション」を検討
+1. ~~`docs/manual/RUNBOOK.md` に「最上位マネージャーの申請承認手順」を追記~~（完了・本コミット）
+2. （未着手・P2）中長期的には「代理承認者の指定」または「system_admin への自動エスカレーション」を検討
 
 ---
 
@@ -604,16 +614,17 @@
 2026-07-04 トリアージ後の実行順:
 
 1. ~~P0 Build health debt~~（返済済み 2026-03-11）
-2. P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記が quick win
+2. ~~P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記~~（一次返済済み・本コミット。中長期対応は P2 #11 残 へ降格）
 3. P1 Test harness fragility（#5）— rebuild 期間中も現行 harness が gate
-4. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
-5. P2 ユーザー編集フォームの department 選択（#10 残り半分）
-6. P2 部署管理 UI 未完成（#9）
-7. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
-8. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
-9. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
-10. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
-11. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
+4. P2 最上位マネージャー自己申請 pending 中長期対応（#11 残）— 代理承認者 / 自動エスカレーション検討
+5. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
+6. P2 ユーザー編集フォームの department 選択（#10 残り半分）
+7. P2 部署管理 UI 未完成（#9）
+8. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
+9. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
+10. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
+11. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
+12. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
 
 ## Notes
 
@@ -622,3 +633,4 @@
 - **2026-03-15 追加**: PR #456（部署階層 & マネージャー承認）により items 9–12 を追加
 - **2026-03-16 追加**: EP-20260316-frontend-invite-department レビューにより items 13–14 を追加
 - **2026-07-04 トリアージ**: rebuild mode 始動（2026-06-10）を反映。#2/#3/#4/#12 は rebuild へ委譲して P2 降格、#10 は招待フォーム側を返済済みに更新、god module の実測行数を更新
+- **2026-07-04 追加返済**: #11 の Recommended Fix 1（RUNBOOK 追記）を実施し一次返済。承認フロー（`/admin` 画面、`GET/PUT /api/admin/requests...`）を実装で確認した上で `docs/manual/RUNBOOK.md` に手順を追記。Recommended Fix 2（代理承認者 / 自動エスカレーション）は未着手のため P2 として残存
