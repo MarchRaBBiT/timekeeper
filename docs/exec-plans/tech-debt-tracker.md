@@ -3,7 +3,7 @@
 ## Purpose
 
 このファイルは、現行コードと設計に存在する技術的負債を「後で読むメモ」ではなく、優先順位付きの実行バックログとして残すための tracker です。  
-対象は 2026-03-10 時点の `main` 相当コードベースです。
+初版は 2026-03-10 時点の `main` 相当コードベースを対象とし、最終トリアージは 2026-07-04 です。
 
 ## Summary
 
@@ -13,17 +13,52 @@
 2. repository / handler / test support / docs の source-of-truth が分散し、変更 1 件あたりの追従コストが高い
 3. harness / fixture の fragile point が残っている
 
+## Triage 2026-07-04
+
+前回更新（2026-03-16）以降の最大の環境変化は、2026-06-10 に rebuild mode
+（[docs/design-docs/rebuild-architecture.md](../design-docs/rebuild-architecture.md)、
+`crates/` + `apps/` workspace、多数の active ExecPlan）が始動したことです。
+これを踏まえた再優先順位付けの原則:
+
+- **rebuild が実質的な返済経路になる項目**（#2, #3, #4, #12）は、現行 `backend/` / `frontend/`
+  での大規模分割リファクタを凍結し、「これ以上肥大化させない」ガードに切り替える。
+  現行側での分割作業は rebuild と semantic conflict を起こすため優先度を P2 に下げる。
+- **rebuild 期間中も現行 harness が gate であり続ける項目**（#5）は P1 を維持する。
+- **運用実害がある quick win**（#11 runbook 追記、#6 残作業の stale line-count 削除）を先に処理する。
+
+各項目の実測ステータス（詳細は各セクションの Status 参照）:
+
+| # | Debt | 2026-07-04 status |
+|---|---|---|
+| 1 | P0 Build health | 返済済み（2026-03-11） |
+| 2 | Backend god modules | 未着手・悪化（auth.rs 2059 / main.rs 1139 / audit_log.rs 1060 行）→ rebuild へ委譲、P2 降格 |
+| 3 | Frontend god modules | 未着手・悪化（client.rs 1121 / holidays.rs 1659 行）→ rebuild へ委譲、P2 降格 |
+| 4 | Repository / handler duplication | 未着手 → rebuild の use case 分割 EP 群が返済経路、P2 降格 |
+| 5 | Test harness fragility | 未返済（env mutation / file-local guard 残存）→ P1 維持 |
+| 6 | Docs source-of-truth drift | 部分解消（plan 配置は `docs/exec-plans/` に統一済み。AGENTS.md の line count は stale のまま） |
+| 7 | Queue / worker operational debt | 未返済（RUNBOOK 未記載、`worker-once` stage なし）→ rebuild `apps/worker` と統合検討 |
+| 8 | Frontend i18n follow-up | 未返済（`rust-i18n 4.0.0-preview1` のまま。EP-20260311 が 3 ヶ月停滞、生死判定要） |
+| 9 | 部署管理 UI 未完成 | 未返済（`#[allow(dead_code)]` 3 メソッド残存） |
+| 10 | ユーザー管理 department_id 選択 | 部分解消（招待フォームは実装済み: f3677c6。編集フォームは未実装） |
+| 11 | 最上位マネージャー自己申請 pending | 未返済（RUNBOOK 未追記）→ quick win として最優先 |
+| 12 | allowed_user_ids 関心漏れ | 未返済 → rebuild の use case 層で解消見込み、rebuild へ委譲 |
+| 13 | CreateUser serde 非対称 | 未返済（現状維持を確認） |
+| 14 | departments_resource リフレッシュ | 未返済（key は `bool` のまま） |
+
 ## Priority Queue
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
-| P1 | Backend god modules | `handlers/auth.rs`, `main.rs`, `middleware/audit_log.rs`, `handlers/attendance.rs` | review / rebase / regression isolation が重い |
-| P1 | Frontend god modules | `api/client.rs`, `pages/admin/components/holidays.rs` | UI 変更で unrelated diff が混ざりやすい |
-| P1 | Repository / handler duplication | attendance, correction requests, request repos | 挙動変更の適用点が複数に分散 |
-| P1 | Test harness fragility | integration tests, env mutation, live smoke | flaky / slow / local-only failure を生みやすい |
-| P2 | Docs source-of-truth drift | `AGENTS.md`, `docs/*`, plan placement | 実装ルールと実際の repo 状態がずれる |
-| P2 | Queue / worker operational debt | lockout notification worker | いまは動くが運用境界がまだ薄い |
-| P2 | Frontend i18n follow-up debt | locale foundation, shared/core page localization | PR #430 / #431 で merge-blocking ではない residual review item が残っている |
+| P1 | 最上位マネージャー自己申請 pending（#11） | RUNBOOK 追記 | 運用実害があり、doc 追記だけで一次対応できる quick win |
+| P1 | Test harness fragility（#5） | integration tests, env mutation, live smoke | rebuild 期間中も現行 harness が唯一の gate |
+| P2 | Docs source-of-truth drift 残作業（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` の stale line count | agent が誤った見積もりをする。削除だけで済む quick win |
+| P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
+| P2 | 部署管理 UI 未完成（#9） | department 編集 / manager 割当 UI | dead_code 3 件の温床 |
+| P2 | Frontend i18n follow-up（#8） | EP-20260311 の再開 or クローズ判定 | preview 依存が 4 ヶ月継続。停滞 EP の生死判定が先 |
+| P2 | Queue / worker operational debt（#7） | RUNBOOK, harness stage | rebuild `apps/worker` の設計に運用境界を織り込む好機 |
+| P2 | Backend / Frontend god modules（#2, #3） | 現行側は肥大化ガードのみ | 分割は rebuild（`crates/`, `apps/web`）で実現 |
+| P2 | Repository / handler duplication（#4）, allowed_user_ids（#12） | rebuild use case 層 | rebuild EP 群が実質的な返済経路 |
+| P2 | CreateUser serde 非対称（#13）, departments_resource リフレッシュ（#14） | frontend 小物 | 実害軽微。関連画面を触る PR に同乗させる |
 
 ## Detailed Items
 
@@ -74,7 +109,13 @@
 
 ---
 
-### 2. P1: Backend God Modules
+### 2. P1→P2: Backend God Modules
+
+**Status (2026-07-04)**
+
+- 未着手・悪化。実測: `auth.rs` 1993→2059 行、`main.rs` 992→1139 行、`audit_log.rs` 874→1060 行。`attendance.rs` のみ 869→721 行に改善
+- rebuild mode（`crates/app` / `crates/domain` への use case 分割）が実質的な返済経路になったため、現行 `backend/` 側での大規模分割は凍結し、P2 に降格
+- 現行側の方針は「これ以上肥大化させない」レビューガードのみ
 
 **Symptoms**
 
@@ -110,7 +151,12 @@
 
 ---
 
-### 3. P1: Frontend God Modules
+### 3. P1→P2: Frontend God Modules
+
+**Status (2026-07-04)**
+
+- 未着手・悪化。実測: `api/client.rs` 942→1121 行、`holidays.rs` 1574→1659 行
+- rebuild target の `apps/web/src/features/<feature>/api.rs` 分割が返済経路。現行側は P2 に降格し、肥大化ガードのみ
 
 **Symptoms**
 
@@ -143,7 +189,12 @@
 
 ---
 
-### 4. P1: Repository / Handler Duplication
+### 4. P1→P2: Repository / Handler Duplication
+
+**Status (2026-07-04)**
+
+- 未着手。rebuild の attendance / correction / request 系 use case EP 群（EP-20260612〜EP-20260613）が実質的な返済経路
+- 現行側での service 抽出は rebuild と二重投資になるため P2 に降格
 
 **Symptoms**
 
@@ -180,6 +231,13 @@
 ---
 
 ### 5. P1: Test Harness Fragility
+
+**Status (2026-07-04)**
+
+- 未返済・P1 維持。`set_var` / `remove_var` は `backend/tests/` に残存（`support/mod.rs` 12 箇所、`auth_lockout_redis_integration.rs` 7 箇所ほか）
+- `integration_guard()` は依然 file-local（例: `attendance_api.rs`）で cross-file 競合リスクが残る
+- `scripts/harness.sh` に `backend-security-smoke` / `worker-once` 相当の focused stage は未追加
+- rebuild 期間中も現行 harness が唯一の validation gate であるため、優先度は下げない
 
 **Symptoms**
 
@@ -218,6 +276,13 @@
 
 ### 6. P2: Docs Source-Of-Truth Drift
 
+**Status (2026-07-04)**
+
+- 部分解消。exec plan の配置は `docs/exec-plans/{active,completed}` に統一済み（`docs/generated/exec-plans` は消滅）
+- 未解消: `backend/AGENTS.md` / `frontend/AGENTS.md` の line count は依然 stale
+  （例: `client.rs` 記載 692 行 / 実測 1121 行、`auth.rs` 記載 642 行 / 実測 2059 行）
+- 残作業は Recommended Fix 1（変化しやすい line-count metadata の削除）のみで、quick win
+
 **Symptoms**
 
 - `AGENTS.md` / subdirectory `AGENTS.md` のサイズ・記述が current code とずれている
@@ -249,6 +314,11 @@
 
 ### 7. P2: Queue / Worker Operational Debt
 
+**Status (2026-07-04)**
+
+- 未返済。`docs/manual/RUNBOOK.md` に worker 運用の記載なし、harness に `worker-once` stage なし
+- rebuild target に `apps/worker` が存在するため、運用境界（queue depth / DLQ 観測、drain 手順）は rebuild 側の設計に織り込むのが効率的
+
 **Symptoms**
 
 - lockout notification worker は実装されたが、運用境界が doc と harness にまだ十分現れていない
@@ -276,6 +346,11 @@
 ---
 
 ### 8. P2: Frontend I18n Follow-up Debt
+
+**Status (2026-07-04)**
+
+- 未返済。`frontend/Cargo.toml` は `rust-i18n = "4.0.0-preview1"` のまま
+- [EP-20260311-frontend-rust-i18n-migration](./active/EP-20260311-frontend-rust-i18n-migration.md) が active に残っているが約 4 ヶ月停滞。まず EP の再開かクローズかを判定する
 
 **Status (2026-03-12)**
 
@@ -337,6 +412,10 @@
 
 **発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
 
+**Status (2026-07-04)**
+
+- 未返済。`admin_update_department` / `admin_assign_manager` / `admin_remove_manager` は依然 `#[allow(dead_code)]` 付きで `frontend/src/api/client.rs` に残存
+
 **Symptoms**
 
 - `admin_update_department`、`admin_assign_manager`、`admin_remove_manager` の 3 メソッドが `frontend/src/api/client.rs` に `#[allow(dead_code)]` で存在する
@@ -367,6 +446,11 @@
 
 **発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
 
+**Status (2026-07-04)**
+
+- 部分解消。招待フォームは `AdminDepartmentSelect` で部署選択を実装済み（commit f3677c6、EP-20260316-frontend-invite-department）
+- 未解消: ユーザー編集フォーム（`admin_users/components/detail.rs`）は `department_id: None` 固定のままで、既存ユーザーの部署変更は依然 UI からできない
+
 **Symptoms**
 
 - バックエンドの `create_user` / `update_user` は `department_id` を受け入れるが、
@@ -394,6 +478,11 @@
 
 **発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
 
+**Status (2026-07-04)**
+
+- 未返済・P1 維持。`docs/manual/RUNBOOK.md` に最上位マネージャー申請の承認手順は未追記
+- 運用実害があり、Recommended Fix 1（runbook 追記）は doc のみで完了する quick win のため最優先とする
+
 **Symptoms**
 
 - 最上位部署（`parent_id = NULL`）のマネージャーが有給・残業等を申請すると、
@@ -420,6 +509,11 @@
 ### 12. P2: `allowed_user_ids` によるハンドラ → リポジトリへの関心漏れ（PR #456 由来）
 
 **発生時期:** 2026-03-15（部署階層 & マネージャー承認 PR #456）
+
+**Status (2026-07-04)**
+
+- 未返済。`allowed_user_ids` は `repositories/request.rs` と `handlers/admin/requests.rs` に残存
+- rebuild の use case 層（`crates/app`）で認可スコープ組み立てが handler から分離される見込みのため、現行側での service 層新設はせず rebuild へ委譲
 
 **Symptoms**
 
@@ -449,6 +543,10 @@
 
 **発生時期:** 2026-03-16（EP-20260316-frontend-invite-department）
 
+**Status (2026-07-04)**
+
+- 未返済。`is_system_admin` は `#[serde(default)]`、`department_id` は `skip_serializing_if` のまま非対称。実害は未発生のため、`types.rs` を触る PR に同乗させる
+
 **Symptoms**
 
 - `CreateUser` struct 内で `is_system_admin` と `department_id` の serde シリアライズ戦略が異なる
@@ -476,6 +574,10 @@
 
 **発生時期:** 2026-03-16（EP-20260316-frontend-invite-department）
 
+**Status (2026-07-04)**
+
+- 未返済。`departments_resource` の key は `bool` 単体のまま。#9 / #10 の UI 実装時に同乗させる
+
 **Symptoms**
 
 - `departments_resource` のキーが `bool` 単体のため、他リソースのような手動リフレッシュ（タプルの第2要素を変化させる）ができない
@@ -499,20 +601,19 @@
 
 ## Suggested Execution Order
 
-1. P0 Build health debt
-2. P1 Backend god modules
-3. P1 Frontend god modules
-4. P1 Repository / handler duplication
-5. P1 Test harness fragility
-6. **P1 最上位マネージャーの自己申請 pending（新: #11）**
-7. P2 Docs source-of-truth drift
-8. P2 Queue / worker operational debt
-9. P2 Frontend i18n follow-up debt
-10. **P2 部署管理 UI 未完成（新: #9）**
-11. **P2 ユーザー管理 UI に department_id 選択なし（新: #10）**
-12. **P2 allowed_user_ids のハンドラ→リポジトリ関心漏れ（新: #12）**
-13. **P2 CreateUser serde 属性非対称性（新: #13）**
-14. **P2 departments_resource 手動リフレッシュ不可（新: #14）**
+2026-07-04 トリアージ後の実行順:
+
+1. ~~P0 Build health debt~~（返済済み 2026-03-11）
+2. P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記が quick win
+3. P1 Test harness fragility（#5）— rebuild 期間中も現行 harness が gate
+4. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
+5. P2 ユーザー編集フォームの department 選択（#10 残り半分）
+6. P2 部署管理 UI 未完成（#9）
+7. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
+8. P2 Queue / worker operational debt（#7）— rebuild `apps/worker` 設計に織り込む
+9. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
+10. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲
+11. P2 CreateUser serde 非対称（#13）+ departments_resource リフレッシュ（#14）— 関連 PR に同乗
 
 ## Notes
 
@@ -520,3 +621,4 @@
 - まずは P0 を返済しないと harness gate の信頼性が上がらない
 - **2026-03-15 追加**: PR #456（部署階層 & マネージャー承認）により items 9–12 を追加
 - **2026-03-16 追加**: EP-20260316-frontend-invite-department レビューにより items 13–14 を追加
+- **2026-07-04 トリアージ**: rebuild mode 始動（2026-06-10）を反映。#2/#3/#4/#12 は rebuild へ委譲して P2 降格、#10 は招待フォーム側を返済済みに更新、god module の実測行数を更新
