@@ -1,19 +1,13 @@
 use chrono::{Duration as ChronoDuration, Utc};
-use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{consent_log::ConsentLog, user::UserRole},
     repositories::consent_log,
 };
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 #[tokio::test]
 async fn consent_log_repo_deletes_logs_before_cutoff() {

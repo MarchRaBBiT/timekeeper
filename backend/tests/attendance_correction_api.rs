@@ -19,18 +19,11 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 mod support;
+use support::integration_guard;
 
 use support::{
     create_test_token, seed_attendance, seed_break_record, seed_user, test_config, test_pool,
 };
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
-}
 
 fn user_router(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());

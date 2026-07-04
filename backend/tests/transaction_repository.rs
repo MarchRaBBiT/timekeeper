@@ -1,18 +1,12 @@
 use chrono::{Duration as ChronoDuration, Utc};
-use std::sync::OnceLock;
 use timekeeper_backend::utils::encryption::{encrypt_pii, hash_email};
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use timekeeper_backend::{models::user::UserRole, repositories::transaction};
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_tables(pool: &sqlx::PgPool) {
     sqlx::query("TRUNCATE users RESTART IDENTITY CASCADE")

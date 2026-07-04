@@ -6,7 +6,6 @@ use axum::{
 };
 use chrono::Utc;
 use sqlx::PgPool;
-use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::attendance,
     models::{attendance::Attendance, break_record::BreakRecord, user::UserRole},
@@ -17,16 +16,11 @@ use timekeeper_backend::{
     },
     state::AppState,
 };
-use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_attendance_tables(pool: &PgPool) {
     sqlx::query("TRUNCATE break_records, attendance CASCADE")

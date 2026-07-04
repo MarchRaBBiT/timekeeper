@@ -9,16 +9,9 @@ use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository
 use uuid::Uuid;
 
 mod support;
+use support::integration_guard;
 
 use support::{seed_user, test_pool};
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
-}
 
 #[derive(Clone, Copy)]
 struct SeededSchedule {

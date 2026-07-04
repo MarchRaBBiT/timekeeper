@@ -1,20 +1,14 @@
 use chrono::{NaiveDate, Utc};
-use std::sync::OnceLock;
 use timekeeper_backend::{
     error::AppError,
     models::{holiday::WeeklyHoliday, user::UserRole},
     repositories::{repository::Repository, WeeklyHolidayRepository},
     types::WeeklyHolidayId,
 };
-use tokio::sync::Mutex;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_tables(pool: &sqlx::PgPool) {
     sqlx::query("TRUNCATE weekly_holidays, users RESTART IDENTITY CASCADE")

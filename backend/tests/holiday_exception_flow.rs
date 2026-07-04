@@ -33,11 +33,7 @@ use {
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 #[tokio::test]
 async fn repository_prevents_duplicate_exceptions_for_same_user_and_date() {

@@ -8,11 +8,7 @@ use bb8_redis::redis;
 use chrono::Utc;
 use sqlx::PgPool;
 use std::{
-    env, fs,
-    net::TcpListener,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::{Arc, Mutex, MutexGuard, OnceLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use testcontainers::{clients::Cli, core::WaitFor, GenericImage, RunnableImage};
@@ -32,124 +28,13 @@ use timekeeper_backend::{
 use tower::ServiceExt;
 
 mod support;
-
-static DOCKER_WRAPPER_DIR: OnceLock<PathBuf> = OnceLock::new();
-
-fn env_mutex() -> &'static Mutex<()> {
-    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-    ENV_MUTEX.get_or_init(|| Mutex::new(()))
-}
-
-struct EnvGuard {
-    _lock: MutexGuard<'static, ()>,
-    original: Vec<(&'static str, Option<String>)>,
-}
-
-impl EnvGuard {
-    fn new() -> Self {
-        const KEYS: [&str; 5] = [
-            "SMTP_SKIP_SEND",
-            "SMTP_HOST",
-            "SMTP_PORT",
-            "SMTP_USERNAME",
-            "SMTP_PASSWORD",
-        ];
-        let lock = env_mutex().lock().expect("lock env");
-        let original = KEYS.iter().map(|&key| (key, env::var(key).ok())).collect();
-        Self {
-            _lock: lock,
-            original,
-        }
-    }
-
-    fn set(&self, key: &'static str, value: impl AsRef<str>) {
-        env::set_var(key, value.as_ref());
-    }
-
-    fn remove(&self, key: &'static str) {
-        env::remove_var(key);
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (key, value) in &self.original {
-            match value {
-                Some(value) => env::set_var(key, value),
-                None => env::remove_var(key),
-            }
-        }
-    }
-}
-
-fn allocate_ephemeral_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind ephemeral port")
-        .local_addr()
-        .expect("read socket addr")
-        .port()
-}
-
-fn ensure_docker_cli() {
-    if env::var("DOCKER_HOST").is_err() {
-        let podman_socket = Path::new("/run/podman/podman.sock");
-        if podman_socket.exists() {
-            env::set_var("DOCKER_HOST", "unix:///run/podman/podman.sock");
-        } else if let Ok(runtime_dir) = env::var("XDG_RUNTIME_DIR") {
-            let path = Path::new(&runtime_dir).join("podman/podman.sock");
-            if path.exists() {
-                if let Some(path_str) = path.to_str() {
-                    env::set_var("DOCKER_HOST", format!("unix://{}", path_str));
-                }
-            }
-        }
-    }
-
-    if Command::new("docker").arg("--version").output().is_ok() {
-        return;
-    }
-    if Command::new("podman").arg("--version").output().is_err() {
-        return;
-    }
-
-    let dir = DOCKER_WRAPPER_DIR.get_or_init(|| {
-        let dir = env::temp_dir().join("timekeeper-testcontainers-docker");
-        let _ = fs::create_dir_all(&dir);
-        dir
-    });
-    let docker_path = dir.join("docker");
-    if !docker_path.exists() {
-        let script = "#!/usr/bin/env sh\nexec podman \"$@\"\n";
-        let _ = fs::write(&docker_path, script);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(metadata) = fs::metadata(&docker_path) {
-                let mut perms = metadata.permissions();
-                perms.set_mode(0o755);
-                let _ = fs::set_permissions(&docker_path, perms);
-            }
-        }
-    }
-
-    let path = env::var("PATH").unwrap_or_default();
-    let new_path = format!("{}:{}", dir.display(), path);
-    env::set_var("PATH", new_path);
-}
+use support::integration_guard;
 
 async fn migrate_db(pool: &PgPool) {
     sqlx::migrate!("./migrations")
         .run(pool)
         .await
         .expect("run migrations");
-}
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
 }
 
 fn test_config(redis_url: String) -> Config {
@@ -299,18 +184,11 @@ async fn measure_lockout_request_duration(
 #[tokio::test]
 async fn login_failures_stay_in_redis_until_threshold_is_reached() {
     let _guard = integration_guard().await;
-    ensure_docker_cli();
-    let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
-    let image = GenericImage::new("redis", "7-alpine")
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
-    let _container = docker.run(image);
-
-    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    let fixture = support::profile::db_and_redis().await;
+    let redis_url = fixture.redis_url.clone();
     flush_redis(&redis_url).await;
 
-    let pool = support::test_pool().await;
+    let pool = fixture.pool.clone();
     migrate_db(&pool).await;
     let user =
         support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
@@ -379,18 +257,11 @@ async fn login_failures_stay_in_redis_until_threshold_is_reached() {
 #[tokio::test]
 async fn successful_login_clears_redis_failure_counter() {
     let _guard = integration_guard().await;
-    ensure_docker_cli();
-    let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
-    let image = GenericImage::new("redis", "7-alpine")
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
-    let _container = docker.run(image);
-
-    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    let fixture = support::profile::db_and_redis().await;
+    let redis_url = fixture.redis_url.clone();
     flush_redis(&redis_url).await;
 
-    let pool = support::test_pool().await;
+    let pool = fixture.pool.clone();
     migrate_db(&pool).await;
     let password = "Correct123!";
     let user = support::seed_user_with_password(&pool, UserRole::Employee, false, password).await;
@@ -447,9 +318,9 @@ async fn successful_login_clears_redis_failure_counter() {
 #[tokio::test]
 async fn login_falls_back_to_database_when_redis_becomes_unavailable() {
     let _guard = integration_guard().await;
-    ensure_docker_cli();
+    support::ensure_docker_cli();
     let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
+    let host_port = support::allocate_ephemeral_port();
     let image = GenericImage::new("redis", "7-alpine")
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
     let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
@@ -499,18 +370,11 @@ async fn login_falls_back_to_database_when_redis_becomes_unavailable() {
 #[tokio::test]
 async fn redis_lockout_uses_decayed_history_after_quiet_period() {
     let _guard = integration_guard().await;
-    ensure_docker_cli();
-    let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
-    let image = GenericImage::new("redis", "7-alpine")
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
-    let _container = docker.run(image);
-
-    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    let fixture = support::profile::db_and_redis().await;
+    let redis_url = fixture.redis_url.clone();
     flush_redis(&redis_url).await;
 
-    let pool = support::test_pool().await;
+    let pool = fixture.pool.clone();
     migrate_db(&pool).await;
     let user =
         support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
@@ -557,18 +421,11 @@ async fn redis_lockout_uses_decayed_history_after_quiet_period() {
 #[tokio::test]
 async fn lockout_notification_is_enqueued_in_redis() {
     let _guard = integration_guard().await;
-    ensure_docker_cli();
-    let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
-    let image = GenericImage::new("redis", "7-alpine")
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-    let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
-    let _container = docker.run(image);
-
-    let redis_url = format!("redis://127.0.0.1:{host_port}");
+    let fixture = support::profile::db_and_redis().await;
+    let redis_url = fixture.redis_url.clone();
     flush_redis(&redis_url).await;
 
-    let pool = support::test_pool().await;
+    let pool = fixture.pool.clone();
     migrate_db(&pool).await;
     let user =
         support::seed_user_with_password(&pool, UserRole::Employee, false, "Correct123!").await;
@@ -604,11 +461,11 @@ async fn lockout_notification_is_enqueued_in_redis() {
 #[tokio::test]
 async fn worker_sends_enqueued_lockout_notification_job() {
     let _guard = integration_guard().await;
-    let env = EnvGuard::new();
+    let env = support::EnvVarGuard::new(&support::profile::SMTP_ENV_KEYS);
     env.set("SMTP_SKIP_SEND", "true");
-    ensure_docker_cli();
+    support::ensure_docker_cli();
     let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
+    let host_port = support::allocate_ephemeral_port();
     let image = GenericImage::new("redis", "7-alpine")
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
     let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
@@ -659,13 +516,13 @@ async fn worker_sends_enqueued_lockout_notification_job() {
 #[tokio::test]
 async fn worker_moves_exhausted_notification_to_dlq() {
     let _guard = integration_guard().await;
-    let env = EnvGuard::new();
+    let env = support::EnvVarGuard::new(&support::profile::SMTP_ENV_KEYS);
     env.remove("SMTP_SKIP_SEND");
     env.set("SMTP_HOST", "127.0.0.1");
-    env.set("SMTP_PORT", allocate_ephemeral_port().to_string());
-    ensure_docker_cli();
+    env.set("SMTP_PORT", support::allocate_ephemeral_port().to_string());
+    support::ensure_docker_cli();
     let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
+    let host_port = support::allocate_ephemeral_port();
     let image = GenericImage::new("redis", "7-alpine")
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
     let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
@@ -701,10 +558,10 @@ async fn worker_moves_exhausted_notification_to_dlq() {
 #[tokio::test]
 async fn lockout_enqueue_latency_is_stable_even_when_worker_smtp_fails() {
     let _guard = integration_guard().await;
-    let env = EnvGuard::new();
-    ensure_docker_cli();
+    let env = support::EnvVarGuard::new(&support::profile::SMTP_ENV_KEYS);
+    support::ensure_docker_cli();
     let docker = Cli::default();
-    let host_port = allocate_ephemeral_port();
+    let host_port = support::allocate_ephemeral_port();
     let image = GenericImage::new("redis", "7-alpine")
         .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
     let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
@@ -759,7 +616,7 @@ async fn lockout_enqueue_latency_is_stable_even_when_worker_smtp_fails() {
         flush_redis(&redis_url).await;
         env.remove("SMTP_SKIP_SEND");
         env.set("SMTP_HOST", "127.0.0.1");
-        env.set("SMTP_PORT", allocate_ephemeral_port().to_string());
+        env.set("SMTP_PORT", support::allocate_ephemeral_port().to_string());
 
         let user = support::seed_user_with_password(
             &pool,

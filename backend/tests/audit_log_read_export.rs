@@ -10,7 +10,6 @@ use axum::{
 use chrono::{DateTime, Duration, Utc};
 use serde_json::json;
 use sqlx::{types::Json, PgPool};
-use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::admin::{
         export_audit_logs, get_audit_log_detail, list_audit_logs, AuditLogListResponse,
@@ -20,17 +19,12 @@ use timekeeper_backend::{
     state::AppState,
     types::{AuditLogId, UserId},
 };
-use tokio::sync::Mutex;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_audit_logs(pool: &PgPool) {
     sqlx::query("TRUNCATE audit_logs")

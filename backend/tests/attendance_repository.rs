@@ -1,5 +1,4 @@
 use chrono::{NaiveDate, Utc};
-use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{
         attendance::{Attendance, AttendanceStatus},
@@ -11,15 +10,10 @@ use timekeeper_backend::{
         BreakRecordRepository,
     },
 };
-use tokio::sync::Mutex;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 #[tokio::test]
 async fn attendance_repository_roundtrip() {

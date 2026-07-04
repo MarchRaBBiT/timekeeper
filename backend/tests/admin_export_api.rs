@@ -7,23 +7,17 @@ use axum::{
 use chrono::{NaiveDate, Utc};
 use serde_json::Value;
 use sqlx::PgPool;
-use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::admin::export_data,
     models::{attendance::Attendance, user::UserRole},
     repositories::{attendance::AttendanceRepository, AttendanceRepositoryTrait},
     state::AppState,
 };
-use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_attendance_tables(pool: &PgPool) {
     sqlx::query(

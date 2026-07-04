@@ -27,20 +27,13 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 mod support;
+use support::integration_guard;
 
 async fn migrate_db(pool: &PgPool) {
     sqlx::migrate!("./migrations")
         .run(pool)
         .await
         .expect("run migrations");
-}
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
 }
 
 fn auth_router_with_config(pool: PgPool, config: Config) -> Router {

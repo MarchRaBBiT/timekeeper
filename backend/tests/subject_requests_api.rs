@@ -8,7 +8,6 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
-use std::sync::OnceLock;
 use timekeeper_backend::{
     handlers::{admin, subject_requests},
     models::{
@@ -20,16 +19,11 @@ use timekeeper_backend::{
     state::AppState,
 };
 use timekeeper_contract::subject_requests::DataSubjectRequestType as ContractDataSubjectRequestType;
-use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_subject_requests(pool: &PgPool) {
     sqlx::query("TRUNCATE subject_requests")

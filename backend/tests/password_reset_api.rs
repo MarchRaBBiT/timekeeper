@@ -7,7 +7,6 @@ use axum::{
 use chrono::Utc;
 use serde_json::json;
 use sqlx::PgPool;
-use std::{env, sync::OnceLock};
 use timekeeper_backend::{
     handlers,
     models::user::{User, UserRole},
@@ -19,29 +18,17 @@ use timekeeper_backend::{
         security::generate_token,
     },
 };
-use tokio::sync::Mutex;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 mod support;
+use support::integration_guard;
 
 async fn migrate_db(pool: &PgPool) {
     sqlx::migrate!("./migrations")
         .run(pool)
         .await
         .expect("run migrations");
-}
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
-
-fn configure_email_skip() {
-    static EMAIL_SKIP: OnceLock<()> = OnceLock::new();
-    EMAIL_SKIP.get_or_init(|| {
-        env::set_var("SMTP_SKIP_SEND", "true");
-    });
 }
 
 async fn reset_password_resets(pool: &PgPool) {
@@ -54,8 +41,8 @@ async fn reset_password_resets(pool: &PgPool) {
 #[tokio::test]
 async fn test_password_reset_full_flow() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -115,8 +102,8 @@ async fn test_password_reset_full_flow() {
 #[tokio::test]
 async fn test_expired_token_cleanup() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -152,8 +139,8 @@ async fn test_expired_token_cleanup() {
 #[tokio::test]
 async fn test_invalid_token_returns_none() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -199,8 +186,8 @@ async fn create_test_user(pool: &PgPool, email: &str, password: &str) -> User {
 #[tokio::test]
 async fn request_password_reset_creates_token_record() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -247,8 +234,8 @@ async fn request_password_reset_creates_token_record() {
 #[tokio::test]
 async fn create_password_reset_invalidates_previous_unused_tokens() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -303,8 +290,8 @@ async fn create_password_reset_invalidates_previous_unused_tokens() {
 #[tokio::test]
 async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 
@@ -375,8 +362,8 @@ async fn reset_password_endpoint_marks_token_used_and_rejects_reuse() {
 #[tokio::test]
 async fn reset_password_endpoint_allows_only_one_concurrent_success() {
     let _guard = integration_guard().await;
-    configure_email_skip();
-    let pool = support::test_pool().await;
+    let _smtp_fixture = support::profile::db_and_smtp_skip().await;
+    let pool = _smtp_fixture.pool.clone();
     migrate_db(&pool).await;
     reset_password_resets(&pool).await;
 

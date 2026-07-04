@@ -13,18 +13,11 @@ use timekeeper_infra_postgres::{
 use uuid::Uuid;
 
 mod support;
+use support::integration_guard;
 
 use support::{
     seed_flex_work_schedule_for_user, seed_user, seed_work_schedule_for_user, test_pool,
 };
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
-}
 
 fn recorded_at() -> DateTime<Utc> {
     DateTime::from_timestamp(1_783_396_800, 0).expect("recorded at")

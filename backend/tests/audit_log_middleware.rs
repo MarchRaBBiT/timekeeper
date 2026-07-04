@@ -21,14 +21,7 @@ use uuid::Uuid;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
-}
+use support::integration_guard;
 
 async fn ok_handler() -> impl IntoResponse {
     StatusCode::OK

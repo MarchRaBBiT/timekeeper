@@ -1,18 +1,12 @@
 use chrono::NaiveDate;
-use std::sync::OnceLock;
 use timekeeper_backend::{
     models::{holiday_exception::HolidayException, user::UserRole},
     repositories::holiday_exception as holiday_exception_repo,
 };
-use tokio::sync::Mutex;
 
 #[path = "support/mod.rs"]
 mod support;
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: OnceLock<Mutex<()>> = OnceLock::new();
-    GUARD.get_or_init(|| Mutex::new(())).lock().await
-}
+use support::integration_guard;
 
 async fn reset_tables(pool: &sqlx::PgPool) {
     sqlx::query("TRUNCATE holiday_exceptions, users RESTART IDENTITY CASCADE")

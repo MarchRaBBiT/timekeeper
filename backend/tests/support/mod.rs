@@ -51,6 +51,69 @@ fn env_guard() -> std::sync::MutexGuard<'static, ()> {
         .expect("lock env")
 }
 
+/// Canonical cross-test serialization guard for a single `backend/tests/*.rs` binary.
+///
+/// Every integration test file compiles into its own binary (`tests/*.rs` -> one binary each),
+/// so this `Mutex` only serializes `#[tokio::test]` functions that live in the *same* file.
+/// It intentionally replaces the ~47 file-local copies of this exact function that used to be
+/// pasted into every integration test file (tech-debt-tracker.md item #5).
+///
+/// It does **not**, and cannot, serialize across separate `cargo test` invocations (e.g. two
+/// terminals both running `scripts/test_backend_integrated.sh` against the same shared
+/// docker-compose Postgres). See "Suite Execution Model" in `docs/manual/HARNESS.md` for the
+/// cross-invocation policy (`flock`-based serialization in `scripts/harness.sh`).
+pub async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static GUARD: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    GUARD
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
+}
+
+/// RAII helper that snapshots the current value of the given env var keys under a shared
+/// process-wide mutex, and restores every key to its original value (set or absent) when the
+/// guard is dropped.
+///
+/// This replaces the direct `env::set_var` / `env::remove_var` call sites that used to be
+/// scattered across integration test files with no guaranteed restore path
+/// (tech-debt-tracker.md item #5, Recommended Fix 2).
+pub struct EnvVarGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    original: Vec<(&'static str, Option<String>)>,
+}
+
+impl EnvVarGuard {
+    /// Snapshot the given keys' current values while holding the shared env mutex for the
+    /// lifetime of the returned guard.
+    pub fn new(keys: &[&'static str]) -> Self {
+        let lock = env_guard();
+        let original = keys.iter().map(|&key| (key, env::var(key).ok())).collect();
+        Self {
+            _lock: lock,
+            original,
+        }
+    }
+
+    pub fn set(&self, key: &'static str, value: impl AsRef<str>) {
+        env::set_var(key, value.as_ref());
+    }
+
+    pub fn remove(&self, key: &'static str) {
+        env::remove_var(key);
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        for (key, value) in &self.original {
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
+        }
+    }
+}
+
 fn start_testcontainer_postgres() -> String {
     let url = TESTCONTAINERS_DB_URL.get().cloned().unwrap_or_else(|| {
         ensure_docker_cli();
@@ -97,7 +160,12 @@ fn shutdown_testcontainer_postgres() {
     }
 }
 
-fn ensure_docker_cli() {
+/// Points `DOCKER_HOST` at a reachable podman/docker socket and, if only `podman` is
+/// installed, installs a `docker` shim script on `PATH` so `testcontainers` (which shells out
+/// to a `docker` binary) can drive it. Shared by every test file that spins up an ephemeral
+/// Redis/Postgres container, replacing several near-identical copies of this function
+/// (tech-debt-tracker.md item #5, Recommended Fix 2).
+pub fn ensure_docker_cli() {
     if env::var("DOCKER_HOST").is_err() {
         let system_socket = Path::new("/run/podman/podman.sock");
         let user_socket = env::var("XDG_RUNTIME_DIR")
@@ -261,12 +329,115 @@ fn test_database_url() -> String {
         .unwrap_or_else(|_| start_testcontainer_postgres())
 }
 
-fn allocate_ephemeral_port() -> u16 {
+/// Binds an ephemeral local port and immediately releases it, for tests that need to hand a
+/// free host port to a testcontainers image (Redis, etc.) before it starts.
+pub fn allocate_ephemeral_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .expect("bind ephemeral port")
         .local_addr()
         .expect("read socket addr")
         .port()
+}
+
+/// Named fixture profiles for backend integration tests.
+///
+/// Each profile makes an integration test's real external dependency explicit instead of
+/// leaving Postgres/Redis/SMTP availability as an implicit assumption baked ad hoc into each
+/// test file (tech-debt-tracker.md item #5, Recommended Fix 1).
+///
+/// - `db_only`: the default profile: only the shared Postgres fixture.
+/// - `db_and_redis`: Postgres plus an ephemeral Redis 7 testcontainer.
+/// - `db_and_smtp_skip`: Postgres plus outbound SMTP disabled (`SMTP_SKIP_SEND=true`), for
+///   tests that assert on side effects that don't require an actual send.
+/// - `db_and_smtp_failure`: Postgres plus a guaranteed SMTP send failure (points `SMTP_HOST`
+///   at an unused local port), for tests that assert on failure/retry/DLQ behavior.
+///
+/// Not every existing test has been migrated onto these helpers yet; see
+/// `docs/exec-plans/tech-debt-tracker.md` item #5 for the follow-up list.
+pub mod profile {
+    use super::{allocate_ephemeral_port, ensure_docker_cli, test_pool, EnvVarGuard};
+    use sqlx::PgPool;
+    use testcontainers::{clients::Cli, core::WaitFor, Container, GenericImage, RunnableImage};
+
+    /// `db-only`: only requires the shared Postgres fixture. This is the implicit profile
+    /// already used by the majority of `backend/tests/*.rs` files via `support::test_pool()`.
+    pub async fn db_only() -> PgPool {
+        test_pool().await
+    }
+
+    static REDIS_DOCKER: std::sync::OnceLock<&'static Cli> = std::sync::OnceLock::new();
+
+    fn redis_docker_client() -> &'static Cli {
+        REDIS_DOCKER.get_or_init(|| Box::leak(Box::new(Cli::default())))
+    }
+
+    /// `db+redis` fixture: owns the Postgres pool and an ephemeral Redis 7 container bound to
+    /// a random host port. The container is torn down when the fixture is dropped.
+    pub struct DbRedisFixture {
+        pub pool: PgPool,
+        pub redis_url: String,
+        _container: Container<'static, GenericImage>,
+    }
+
+    pub async fn db_and_redis() -> DbRedisFixture {
+        ensure_docker_cli();
+        let docker = redis_docker_client();
+        let host_port = allocate_ephemeral_port();
+        let image = GenericImage::new("redis", "7-alpine")
+            .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
+        let image = RunnableImage::from(image).with_mapped_port((host_port, 6379));
+        let container = docker.run(image);
+        DbRedisFixture {
+            pool: test_pool().await,
+            redis_url: format!("redis://127.0.0.1:{host_port}"),
+            _container: container,
+        }
+    }
+
+    /// SMTP env var keys that influence whether the outbound mailer succeeds. Shared so every
+    /// SMTP-touching fixture snapshots/restores the exact same key set.
+    pub const SMTP_ENV_KEYS: [&str; 5] = [
+        "SMTP_SKIP_SEND",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+    ];
+
+    /// `db+smtp-skip` fixture: Postgres plus outbound SMTP disabled entirely via
+    /// `SMTP_SKIP_SEND=true`. The original SMTP env state is restored when dropped.
+    pub struct DbSmtpSkipFixture {
+        pub pool: PgPool,
+        _env: EnvVarGuard,
+    }
+
+    pub async fn db_and_smtp_skip() -> DbSmtpSkipFixture {
+        let env = EnvVarGuard::new(&SMTP_ENV_KEYS);
+        env.set("SMTP_SKIP_SEND", "true");
+        DbSmtpSkipFixture {
+            pool: test_pool().await,
+            _env: env,
+        }
+    }
+
+    /// `db+smtp-failure` fixture: Postgres plus a guaranteed SMTP send failure (SMTP_HOST
+    /// points at an unused local port, so delivery can never succeed). The original SMTP env
+    /// state is restored when dropped.
+    pub struct DbSmtpFailureFixture {
+        pub pool: PgPool,
+        _env: EnvVarGuard,
+    }
+
+    pub async fn db_and_smtp_failure() -> DbSmtpFailureFixture {
+        let env = EnvVarGuard::new(&SMTP_ENV_KEYS);
+        env.remove("SMTP_SKIP_SEND");
+        env.set("SMTP_HOST", "127.0.0.1");
+        env.set("SMTP_PORT", allocate_ephemeral_port().to_string());
+        DbSmtpFailureFixture {
+            pool: test_pool().await,
+            _env: env,
+        }
+    }
 }
 
 async fn insert_user_with_password_hash(
@@ -943,33 +1114,19 @@ pub fn assert_status(response: &Response, expected: StatusCode) {
 mod tests {
     use super::*;
 
-    fn restore_env(original: (Option<String>, Option<String>)) {
-        match original.0 {
-            Some(value) => env::set_var("TEST_DATABASE_URL", value),
-            None => env::remove_var("TEST_DATABASE_URL"),
-        }
-        match original.1 {
-            Some(value) => env::set_var("DATABASE_URL", value),
-            None => env::remove_var("DATABASE_URL"),
-        }
-    }
+    const ENV_KEYS: [&str; 2] = ["TEST_DATABASE_URL", "DATABASE_URL"];
 
     #[test]
     fn test_config_uses_database_url_from_env() {
         if env::var("TEST_DATABASE_URL").is_ok() {
             return;
         }
-        let _guard = env_guard();
-        let original = (
-            env::var("TEST_DATABASE_URL").ok(),
-            env::var("DATABASE_URL").ok(),
-        );
-        env::set_var("TEST_DATABASE_URL", "postgres://override/testdb");
+        let env = EnvVarGuard::new(&ENV_KEYS);
+        env.set("TEST_DATABASE_URL", "postgres://override/testdb");
 
         let config = test_config();
 
         assert_eq!(config.database_url, "postgres://override/testdb");
-        restore_env(original);
     }
 
     #[test]
@@ -977,17 +1134,12 @@ mod tests {
         if env::var("TEST_DATABASE_URL").is_ok() {
             return;
         }
-        let _guard = env_guard();
-        let original = (
-            env::var("TEST_DATABASE_URL").ok(),
-            env::var("DATABASE_URL").ok(),
-        );
-        env::remove_var("TEST_DATABASE_URL");
+        let env = EnvVarGuard::new(&ENV_KEYS);
+        env.remove("TEST_DATABASE_URL");
 
         let config = test_config();
         let expected = env::var("DATABASE_URL").expect("database url set");
 
         assert_eq!(config.database_url, expected);
-        restore_env(original);
     }
 }

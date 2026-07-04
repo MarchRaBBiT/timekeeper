@@ -8,16 +8,9 @@ use timekeeper_backend::{middleware, models::user::UserRole, state::AppState};
 use tower::ServiceExt;
 
 mod support;
+use support::integration_guard;
 
 use support::{create_test_token, seed_user, test_config, test_pool};
-
-async fn integration_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    static GUARD: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    GUARD
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await
-}
 
 #[tokio::test]
 async fn test_invalid_json_payload_returns_bad_request() {
