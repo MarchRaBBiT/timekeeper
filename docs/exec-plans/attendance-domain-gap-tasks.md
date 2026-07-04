@@ -81,6 +81,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 完了時に tech-debt-tracker #7 の Status を実測で更新する
 - **ゴール:** 汎用化された queue で lockout 通知の既存 integration test が green。`worker-once` stage が green。RUNBOOK に worker 運用節が存在する
 - **次の関連タスク:** T-17（申請・打刻イベントの配線）
+- **Status:** 完了（2026-07-04、[EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md) / commit 92ca21a。generic `NotificationJob` envelope + legacy fallback decode、`worker-once` stage 新設、tech-debt #7 返済。検証実測: unit 387 / lockout integration 10 / clippy 0 warnings / worker-once pass）
 
 ### T-19: 勤怠記録の保存期間 retention policy design doc（G14）
 

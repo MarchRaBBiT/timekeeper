@@ -9,6 +9,10 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260704-notification-service-generalization
+
+**完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）
+
 # EP-20260704-attendance-calculation-policy-design
 
 **完了済み (40e10b8)** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md`](../docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md)。成果物: [`docs/design-docs/attendance-calculation-policy.md`](../docs/design-docs/attendance-calculation-policy.md)（T-01、実装は T-03）

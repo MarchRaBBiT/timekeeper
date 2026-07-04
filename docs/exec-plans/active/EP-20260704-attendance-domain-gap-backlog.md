@@ -143,7 +143,7 @@
 1. [x] 現状カバレッジ調査（backend-api-catalog / migrations 001–049 / handlers / services / active EP / Follow-up Designs / tech-debt-tracker）
 2. [x] gap inventory の文書化・優先順位付け（本ファイル）
 3. [x] 実装タスクリストの作成（前提・目的・ゴール・次タスク付き。G1→T-01/T-03、G2→T-02/T-04/T-05、G3→T-06/T-07、G4→T-08、G5→T-09、G6→T-10、G7→T-11、G8→T-12、G9→T-13、G10→T-14、G11→T-15、G12→T-16/T-17、G13→T-18、G14→T-19）
-4. [ ] Phase 0（T-01, T-02, T-16, T-19）の着手・個別 EP 化
+4. [x] Phase 0（T-01, T-02, T-16, T-19）の着手・個別 EP 化（2026-07-04 完了。commits 40e10b8 / 5ec584b / 8d5101a / 92ca21a）
 5. [ ] Phase 1（T-03, T-04, T-06）の着手・個別 EP 化
 6. [ ] Phase 2（T-05, T-07, T-08, T-09, T-10, T-12, T-17）の着手・個別 EP 化
 7. [ ] Phase 3（T-11, T-13, T-14, T-15, T-18）の着手・個別 EP 化、G15 の再評価
@@ -164,3 +164,4 @@
 - 2026-07-04: 実装調査（有給残高・区分集計・遅刻早退判定・申請実績連動・通知・締めワークフローの不在を grep / API catalog / migration 一覧で確認）に基づき G1–G15 を登録。P1 = G1–G4、P2 = G5–G12、P3 = G13–G15 とした
 - 2026-07-04: G1–G14 を実装タスク T-01〜T-19 へ分解し、担当エージェント向け指示（前提タスク・目的・ゴール・次タスク・共通作業規約）を [attendance-domain-gap-tasks.md](../attendance-domain-gap-tasks.md) として登録。依存関係を Phase 0–3 に整理（G15 はタスク化せず要件発生時に再登録）
 - 2026-07-04: Phase 0 を並列実行。T-01（勤怠計算ポリシー design doc、40e10b8）、T-02（有給台帳 design doc、5ec584b）、T-19（保存期間 policy design doc、8d5101a）完了。相互整合レビュー済み（休暇日 = 労働 0 分・別軸カウンタで T-01/T-02 一致、settlement-balance 既存決定と無矛盾）。T-16（通知基盤汎用化）は実装進行中
+- 2026-07-04: T-16 完了（92ca21a）。レビューで検出した「デプロイ跨ぎの legacy 形式 in-flight job 消失」エッジを fallback decode + 互換テスト 3 件で修正済み。Phase 0 全 4 タスク完了。次は Phase 1（T-03 / T-04 / T-06）
