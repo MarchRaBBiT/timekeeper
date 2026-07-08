@@ -17,6 +17,10 @@
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md`](../docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md)。T-05（G2 実装 後半）: annual 申請の残高不足 reject、承認時 FIFO consume、承認済み annual 取消時 release。pending は引当せず承認時に同一 DB transaction で再検証する。annual 以外は残高非連動を維持
 
+# EP-20260709-leave-attendance-integration
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-leave-attendance-integration.md`](../docs/exec-plans/active/EP-20260709-leave-attendance-integration.md)。T-06（G3 前半）: 承認済み休暇を attendance read path / summary / CSV / work-schedule calendar へ read-time join で反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
+
 # EP-20260704-notification-service-generalization
 
 **完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）

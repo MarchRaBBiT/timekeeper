@@ -11,7 +11,9 @@ pub use master::{
     create_work_schedule, find_work_schedule, get_work_schedule_detail, list_work_schedules,
     retire_work_schedule, update_work_schedule, WorkScheduleListFilter,
 };
-pub use operations::{close_month, list_anomalies, list_user_attendance_calendar};
+pub use operations::{
+    close_month, list_anomalies, list_user_attendance_calendar, list_user_leave_calendar,
+};
 pub use versions::{
     create_version, delete_version, find_version, publish_version, replace_version,
 };

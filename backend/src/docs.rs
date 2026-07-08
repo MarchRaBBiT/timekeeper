@@ -17,8 +17,8 @@ use crate::{
     },
     models::{
         attendance::{
-            AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest,
-            ClockInRequest, ClockOutRequest,
+            AttendanceLeaveResponse, AttendanceResponse, AttendanceSummary, BreakEndRequest,
+            BreakStartRequest, ClockInRequest, ClockOutRequest,
         },
         attendance_correction_request::{
             AttendanceCorrectionResponse, AttendanceCorrectionSnapshot, CorrectionBreakItem,
@@ -73,11 +73,11 @@ use timekeeper_contract::work_schedules::{
     WorkScheduleAnomalyListResponse, WorkScheduleAnomalyResponse, WorkScheduleAssignmentListQuery,
     WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
     WorkScheduleAssignmentResponse, WorkScheduleCalendarAttendanceResponse,
-    WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse, WorkScheduleDetailResponse,
-    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleProjectionError,
-    WorkScheduleResponse, WorkScheduleSource, WorkScheduleStatus, WorkScheduleVersionResponse,
-    WorkScheduleVersionStatus, WorkScheduleVersionSummary, WorkdayOverrideKind,
-    WorkdayOverrideResponse,
+    WorkScheduleCalendarDayResponse, WorkScheduleCalendarLeaveResponse,
+    WorkScheduleCalendarResponse, WorkScheduleDetailResponse, WorkScheduleListQuery,
+    WorkScheduleListResponse, WorkScheduleProjectionError, WorkScheduleResponse,
+    WorkScheduleSource, WorkScheduleStatus, WorkScheduleVersionResponse, WorkScheduleVersionStatus,
+    WorkScheduleVersionSummary, WorkdayOverrideKind, WorkdayOverrideResponse,
 };
 use utoipa::{
     openapi::security::{Http, HttpAuthScheme, SecurityScheme},
@@ -237,6 +237,7 @@ struct RequestCancellationResponse {
             BreakStartRequest,
             BreakEndRequest,
             AttendanceResponse,
+            AttendanceLeaveResponse,
             AttendanceSummary,
             AttendanceStatusResponse,
             DailyClassificationResponse,
@@ -359,6 +360,7 @@ struct RequestCancellationResponse {
             WorkScheduleAnomalyResponse,
             WorkScheduleAnomalyListResponse,
             WorkScheduleCalendarAttendanceResponse,
+            WorkScheduleCalendarLeaveResponse,
             WorkScheduleCalendarDayResponse,
             WorkScheduleCalendarResponse,
             CloseWorkScheduleMonthRequest,

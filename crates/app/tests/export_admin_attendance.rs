@@ -2,15 +2,18 @@ use std::sync::Mutex;
 
 use chrono::{NaiveDate, NaiveDateTime};
 use timekeeper_app::attendance::{
-    AdminAttendanceExportFilters, AdminAttendanceExportRow, ExportAdminAttendance,
-    ExportAdminAttendanceError, ExportAdminAttendanceQuery, ExportAdminAttendanceRepository,
+    AdminAttendanceExportFilters, AdminAttendanceExportRow, AdminLeaveDayRow,
+    ExportAdminAttendance, ExportAdminAttendanceError, ExportAdminAttendanceQuery,
+    ExportAdminAttendanceRepository, ON_LEAVE_STATUS,
 };
 
 #[derive(Default)]
 struct RecordingAdminExportRepository {
     subordinate_ids: Mutex<Vec<String>>,
     rows: Mutex<Vec<AdminAttendanceExportRow>>,
+    leave_days: Mutex<Vec<AdminLeaveDayRow>>,
     captured_filters: Mutex<Option<AdminAttendanceExportFilters>>,
+    captured_leave_filters: Mutex<Option<AdminAttendanceExportFilters>>,
 }
 
 #[async_trait::async_trait]
@@ -33,6 +36,17 @@ impl ExportAdminAttendanceRepository for RecordingAdminExportRepository {
         *self.captured_filters.lock().expect("captured filters lock") = Some(filters);
         Ok(self.rows.lock().expect("rows lock").clone())
     }
+
+    async fn list_admin_leave_days(
+        &self,
+        filters: AdminAttendanceExportFilters,
+    ) -> Result<Vec<AdminLeaveDayRow>, ExportAdminAttendanceError> {
+        *self
+            .captured_leave_filters
+            .lock()
+            .expect("captured leave filters lock") = Some(filters);
+        Ok(self.leave_days.lock().expect("leave days lock").clone())
+    }
 }
 
 fn date() -> NaiveDate {
@@ -52,6 +66,16 @@ fn export_row() -> AdminAttendanceExportRow {
         clock_out_time: Some(time(18)),
         total_work_hours: Some(8.0),
         status: "present".to_string(),
+        leave_type: None,
+    }
+}
+
+fn leave_day(day: u32, leave_type: &str) -> AdminLeaveDayRow {
+    AdminLeaveDayRow {
+        username: "employee".to_string(),
+        full_name_encrypted: "encrypted-name".to_string(),
+        date: NaiveDate::from_ymd_opt(2026, 6, day).expect("date"),
+        leave_type: leave_type.to_string(),
     }
 }
 
@@ -124,4 +148,67 @@ async fn manager_export_is_scoped_to_subordinates_and_masked() {
         Some(vec!["user-1".to_string(), "user-2".to_string()])
     );
     assert_eq!(filters.username.as_deref(), Some("employee"));
+
+    let leave_filters = use_case
+        .repository()
+        .captured_leave_filters
+        .lock()
+        .expect("captured leave filters lock")
+        .clone()
+        .expect("leave filters captured");
+    assert_eq!(leave_filters, filters);
+}
+
+#[tokio::test]
+async fn export_includes_leave_type_column_and_derived_leave_rows() {
+    let repository = RecordingAdminExportRepository::default();
+    *repository.rows.lock().expect("rows lock") = vec![export_row()];
+    *repository.leave_days.lock().expect("leave days lock") = vec![leave_day(15, "annual")];
+    let use_case = ExportAdminAttendance::new(repository);
+
+    let export = use_case
+        .execute(ExportAdminAttendanceQuery {
+            requester_is_system_admin: true,
+            ..query()
+        })
+        .await
+        .expect("export succeeds");
+
+    assert_eq!(export.rows.len(), 2);
+    assert_eq!(
+        export.rows[0].date,
+        NaiveDate::from_ymd_opt(2026, 6, 15).expect("date")
+    );
+    assert_eq!(export.rows[0].status, ON_LEAVE_STATUS);
+    assert_eq!(export.rows[0].leave_type.as_deref(), Some("annual"));
+    assert_eq!(export.rows[0].clock_in_time, None);
+    assert_eq!(export.rows[0].clock_out_time, None);
+    assert_eq!(export.rows[0].total_work_hours, None);
+    assert_eq!(export.rows[1].date, date());
+    assert_eq!(export.rows[1].status, "present");
+    assert_eq!(export.rows[1].leave_type, None);
+}
+
+#[tokio::test]
+async fn export_attaches_leave_type_to_punched_day_without_replacing_actuals() {
+    let repository = RecordingAdminExportRepository::default();
+    *repository.rows.lock().expect("rows lock") = vec![export_row()];
+    *repository.leave_days.lock().expect("leave days lock") = vec![leave_day(13, "sick")];
+    let use_case = ExportAdminAttendance::new(repository);
+
+    let export = use_case
+        .execute(ExportAdminAttendanceQuery {
+            requester_is_system_admin: true,
+            ..query()
+        })
+        .await
+        .expect("export succeeds");
+
+    assert_eq!(export.rows.len(), 1);
+    assert_eq!(export.rows[0].date, date());
+    assert_eq!(export.rows[0].status, "present");
+    assert_eq!(export.rows[0].clock_in_time, Some(time(9)));
+    assert_eq!(export.rows[0].clock_out_time, Some(time(18)));
+    assert_eq!(export.rows[0].total_work_hours, Some(8.0));
+    assert_eq!(export.rows[0].leave_type.as_deref(), Some("sick"));
 }

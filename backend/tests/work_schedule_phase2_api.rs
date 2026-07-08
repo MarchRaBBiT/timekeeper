@@ -9,7 +9,10 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::{work_schedules as handlers, workday_overrides},
-    models::user::{User, UserRole},
+    models::{
+        leave_request::LeaveType,
+        user::{User, UserRole},
+    },
     repositories::work_schedule,
     state::AppState,
 };
@@ -20,8 +23,8 @@ mod support;
 use support::integration_guard;
 
 use support::{
-    seed_attendance, seed_flex_work_schedule_for_user, seed_user, seed_work_schedule_for_user,
-    test_config, test_pool,
+    seed_attendance, seed_flex_work_schedule_for_user, seed_leave_request, seed_user,
+    seed_work_schedule_for_user, test_config, test_pool,
 };
 
 fn router(pool: PgPool, user: User) -> Router {
@@ -385,6 +388,136 @@ async fn anomaly_list_detects_missing_clock_out_for_flex_schedule_regardless_of_
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["items"][0]["kind"], "missing_clock_out");
+}
+
+#[tokio::test]
+async fn approved_leave_surfaces_in_calendar_and_clock_in_conflict_anomaly() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    let leave_date = date(2026, 7, 1);
+    let leave = seed_leave_request(
+        &pool,
+        employee.id,
+        LeaveType::Annual,
+        leave_date,
+        leave_date,
+    )
+    .await;
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+         WHERE id = $2",
+    )
+    .bind(admin.id.to_string())
+    .bind(leave.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("approve leave");
+
+    let (calendar_status, calendar) = request_json(
+        router(pool.clone(), admin.clone()),
+        "GET",
+        &format!(
+            "/api/admin/users/{}/work-schedule-calendar?from=2026-07-01&to=2026-07-01",
+            employee.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(calendar_status, StatusCode::OK);
+    assert_eq!(calendar["days"][0]["leave"]["leave_type"], "annual");
+    assert_eq!(
+        calendar["days"][0]["leave"]["leave_request_id"],
+        leave.id.to_string()
+    );
+
+    let (leave_only_status, leave_only_anomalies) = request_json(
+        router(pool.clone(), admin.clone()),
+        "GET",
+        &format!(
+            "/api/admin/work-schedule-anomalies?user_id={}&from=2026-07-01&to=2026-07-01",
+            employee.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(leave_only_status, StatusCode::OK);
+    assert!(leave_only_anomalies["items"]
+        .as_array()
+        .expect("anomaly items")
+        .is_empty());
+
+    seed_attendance(
+        &pool,
+        employee.id,
+        leave_date,
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T18:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (conflict_status, conflict) = request_json(
+        router(pool.clone(), admin.clone()),
+        "GET",
+        &format!(
+            "/api/admin/work-schedule-anomalies?user_id={}&from=2026-07-01&to=2026-07-01",
+            employee.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(conflict_status, StatusCode::OK);
+    assert_eq!(conflict["items"][0]["kind"], "leave_conflict");
+
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+         WHERE id = $1",
+    )
+    .bind(leave.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("cancel leave");
+
+    let (after_cancel_status, after_cancel) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        &format!(
+            "/api/admin/users/{}/work-schedule-calendar?from=2026-07-01&to=2026-07-01",
+            employee.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(after_cancel_status, StatusCode::OK);
+    assert_eq!(after_cancel["days"][0]["leave"], Value::Null);
 }
 
 #[tokio::test]

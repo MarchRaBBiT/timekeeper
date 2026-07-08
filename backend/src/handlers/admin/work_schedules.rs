@@ -439,6 +439,10 @@ pub async fn get_work_schedule_calendar(
     )
     .await
     .map_err(map_repository_error)?;
+    let mut leave_by_date =
+        work_schedule::list_user_leave_calendar(state.read_pool(), &user_id, query.from, query.to)
+            .await
+            .map_err(map_repository_error)?;
     let anomalies = work_schedule::list_anomalies(
         state.read_pool(),
         Some(vec![user_id.clone()]),
@@ -463,6 +467,7 @@ pub async fn get_work_schedule_calendar(
             resolved_workday: workdays_by_date.remove(&work_date),
             attendance: attendance_by_date.remove(&work_date),
             anomalies: anomalies_by_date.remove(&work_date).unwrap_or_default(),
+            leave: leave_by_date.remove(&work_date),
         });
     }
 

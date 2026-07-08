@@ -133,6 +133,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-06: 休暇承認→勤怠反映と打刻矛盾検知（G3 前半）
 
 - **前提タスク:** T-01（休暇日の集計上の扱いの決定に従う）。T-02 / T-04 とは独立（残高と勤怠反映は別関心）
+- **ExecPlan:** [EP-20260709-leave-attendance-integration](./active/EP-20260709-leave-attendance-integration.md)
+- **Status:** 完了（2026-07-09、[EP-20260709-leave-attendance-integration](./active/EP-20260709-leave-attendance-integration.md) / commit: `feat(attendance): surface approved leave in read paths`）。承認済み休暇を read-time join で attendance 一覧・月次サマリ・本人/管理者 CSV・work schedule calendar に反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
 - **目的:** 承認済み休暇が出勤簿に一切現れない分断を解消し、「休暇日」を欠測日と区別できるようにする
 - **指示:**
   1. 承認済み leave request を日次ステータス（休暇区分付き）として読み取り経路へ反映する: `GET /api/attendance/me`、月次サマリ、本人/管理者 CSV export、`work-schedule-calendar`。反映は read 時 join（導出）を第一候補とし、resolved workday への書き込みは T-01 の決定がある場合のみ行う

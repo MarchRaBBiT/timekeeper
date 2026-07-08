@@ -106,6 +106,7 @@ pub async fn export_data(
                     .map(|hours| format!("{hours:.2}"))
                     .unwrap_or_else(|| "0.00".to_string()),
                 status: row.status,
+                leave_type: row.leave_type,
             }
         })
         .collect::<Vec<_>>();

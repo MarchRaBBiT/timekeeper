@@ -52,6 +52,16 @@ pub mod attendance {
         pub total_work_hours: f64,
         pub total_work_days: i32,
         pub average_daily_hours: f64,
+        /// Number of days in the month covered by an approved leave request.
+        /// Leave days are counted separately from work-hour totals.
+        #[serde(default)]
+        pub leave_days: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    pub struct AttendanceLeaveResponse {
+        pub leave_request_id: String,
+        pub leave_type: String,
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -64,6 +74,8 @@ pub mod attendance {
         pub status: String,
         pub total_work_hours: Option<f64>,
         pub break_records: Vec<BreakRecordResponse>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub leave: Option<AttendanceLeaveResponse>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

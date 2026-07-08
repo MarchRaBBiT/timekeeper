@@ -4,6 +4,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use sqlx::{FromRow, PgPool};
 use timekeeper_contract::work_schedules::{
     WorkScheduleAnomalyKind, WorkScheduleAnomalyResponse, WorkScheduleCalendarAttendanceResponse,
+    WorkScheduleCalendarLeaveResponse,
 };
 use uuid::Uuid;
 
@@ -24,6 +25,14 @@ struct ResolvedStateRow {
     user_id: String,
     work_date: NaiveDate,
     day_kind: String,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct ApprovedLeaveCalendarRow {
+    user_id: String,
+    date: NaiveDate,
+    leave_request_id: String,
+    leave_type: String,
 }
 
 pub async fn list_user_attendance_calendar(
@@ -55,6 +64,25 @@ pub async fn list_user_attendance_calendar(
             )
         })
         .collect())
+}
+
+pub async fn list_user_leave_calendar(
+    pool: &PgPool,
+    user_id: &str,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> RepositoryResult<HashMap<NaiveDate, WorkScheduleCalendarLeaveResponse>> {
+    let rows = list_approved_leave_calendar_rows(pool, &[user_id.to_string()], from, to).await?;
+    let mut leave_by_date = HashMap::new();
+    for row in rows {
+        leave_by_date
+            .entry(row.date)
+            .or_insert(WorkScheduleCalendarLeaveResponse {
+                leave_request_id: row.leave_request_id,
+                leave_type: row.leave_type,
+            });
+    }
+    Ok(leave_by_date)
 }
 
 pub async fn list_anomalies(
@@ -103,6 +131,15 @@ pub async fn list_anomalies(
         .map(|row| ((row.user_id.clone(), row.date), row))
         .collect();
 
+    let leave_rows = list_approved_leave_calendar_rows(pool, &users, from, to).await?;
+    let mut leave_by_user_date: HashMap<(String, NaiveDate), ApprovedLeaveCalendarRow> =
+        HashMap::new();
+    for row in leave_rows {
+        leave_by_user_date
+            .entry((row.user_id.clone(), row.date))
+            .or_insert(row);
+    }
+
     let mut items = Vec::new();
     for user_id in users {
         for work_date in dates_inclusive(from, to)? {
@@ -124,6 +161,18 @@ pub async fn list_anomalies(
                     WorkScheduleAnomalyKind::UnscheduledWork,
                     "attendance was recorded on an unscheduled workday",
                 ));
+            }
+            let has_approved_leave = leave_by_user_date.contains_key(&key);
+            if has_approved_leave {
+                if attendance.is_some_and(|row| row.clock_in_time.is_some()) {
+                    items.push(anomaly(
+                        &user_id,
+                        work_date,
+                        WorkScheduleAnomalyKind::LeaveConflict,
+                        "clock-in was recorded on an approved leave day",
+                    ));
+                }
+                continue;
             }
             if day_kind == "scheduled_workday" {
                 match attendance {
@@ -163,6 +212,35 @@ pub async fn list_anomalies(
             ))
     });
     Ok(items)
+}
+
+async fn list_approved_leave_calendar_rows(
+    pool: &PgPool,
+    user_ids: &[String],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> RepositoryResult<Vec<ApprovedLeaveCalendarRow>> {
+    if user_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query_as::<_, ApprovedLeaveCalendarRow>(
+        "SELECT lr.user_id, d.day::date AS date, lr.id AS leave_request_id, lr.leave_type
+         FROM leave_requests lr
+         CROSS JOIN LATERAL generate_series(
+             lr.start_date::timestamp, lr.end_date::timestamp, interval '1 day'
+         ) AS d(day)
+         WHERE lr.user_id = ANY($1)
+           AND lr.status = 'approved'
+           AND d.day::date BETWEEN $2 AND $3
+         ORDER BY lr.user_id, d.day::date, lr.created_at, lr.id",
+    )
+    .bind(user_ids)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
 }
 
 pub async fn close_month(
@@ -288,5 +366,6 @@ fn anomaly_rank(kind: WorkScheduleAnomalyKind) -> u8 {
         WorkScheduleAnomalyKind::UnscheduledWork => 1,
         WorkScheduleAnomalyKind::MissingClockIn => 2,
         WorkScheduleAnomalyKind::MissingClockOut => 3,
+        WorkScheduleAnomalyKind::LeaveConflict => 4,
     }
 }

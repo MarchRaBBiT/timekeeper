@@ -249,6 +249,7 @@ fn attendance_page_item_to_response(
             .into_iter()
             .map(break_period_to_response)
             .collect(),
+        leave: None,
     }
 }
 

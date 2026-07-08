@@ -226,6 +226,7 @@ mod host_tests {
                 break_end_time: Some(today_datetime(12, 30)),
                 duration_minutes: Some(30),
             }],
+            leave: None,
         };
         let status = AttendanceStatusResponse {
             status: "clocked_in".into(),

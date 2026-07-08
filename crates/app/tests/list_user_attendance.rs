@@ -4,8 +4,8 @@ use chrono::{NaiveDate, NaiveDateTime};
 use timekeeper_app::attendance::{
     AttendanceRecord, BreakPeriod, EffectiveAttendanceCorrection, ExportUserAttendance,
     ExportUserAttendanceQuery, GetUserAttendanceSummary, GetUserAttendanceSummaryQuery,
-    ListUserAttendance, ListUserAttendanceError, ListUserAttendanceQuery,
-    ListUserAttendanceRepository,
+    LeaveDayRecord, ListUserAttendance, ListUserAttendanceError, ListUserAttendanceQuery,
+    ListUserAttendanceRepository, ON_LEAVE_STATUS,
 };
 
 #[derive(Default)]
@@ -13,6 +13,7 @@ struct RecordingUserAttendanceRepository {
     attendances: Mutex<Vec<AttendanceRecord>>,
     break_periods: Mutex<Vec<BreakPeriod>>,
     corrections: Mutex<Vec<EffectiveAttendanceCorrection>>,
+    leave_days: Mutex<Vec<LeaveDayRecord>>,
 }
 
 #[async_trait::async_trait]
@@ -51,6 +52,23 @@ impl ListUserAttendanceRepository for RecordingUserAttendanceRepository {
         _to: Option<NaiveDate>,
     ) -> Result<Vec<AttendanceRecord>, ListUserAttendanceError> {
         Ok(self.attendances.lock().expect("attendances lock").clone())
+    }
+
+    async fn approved_leave_days(
+        &self,
+        _user_id: &str,
+        _from: Option<NaiveDate>,
+        _to: Option<NaiveDate>,
+    ) -> Result<Vec<LeaveDayRecord>, ListUserAttendanceError> {
+        Ok(self.leave_days.lock().expect("leave days lock").clone())
+    }
+}
+
+fn leave_day(request_id: &str, day: u32, leave_type: &str) -> LeaveDayRecord {
+    LeaveDayRecord {
+        leave_request_id: request_id.to_string(),
+        date: date(day),
+        leave_type: leave_type.to_string(),
     }
 }
 
@@ -256,4 +274,122 @@ async fn exports_effective_correction_values() {
     assert_eq!(export.rows[0].clock_in_time, Some(time(12, 10)));
     assert_eq!(export.rows[0].clock_out_time, Some(time(12, 17)));
     assert_eq!(export.rows[0].total_work_hours, Some(6.0));
+}
+
+#[tokio::test]
+async fn lists_derived_on_leave_day_when_no_punches_exist() {
+    let repository = RecordingUserAttendanceRepository::default();
+    *repository.attendances.lock().expect("attendances lock") =
+        vec![attendance_record("attendance-1", 12)];
+    *repository.leave_days.lock().expect("leave days lock") =
+        vec![leave_day("request-1", 15, "annual")];
+    let use_case = ListUserAttendance::new(repository);
+
+    let days = use_case
+        .execute(ListUserAttendanceQuery {
+            user_id: "user-1".to_string(),
+            from: date(1),
+            to: date(30),
+        })
+        .await
+        .expect("list succeeds");
+
+    assert_eq!(days.len(), 2);
+    assert_eq!(days[0].attendance.date, date(15));
+    assert_eq!(days[0].attendance.status, ON_LEAVE_STATUS);
+    assert_eq!(
+        days[0].attendance.attendance_id,
+        "leave:request-1:2026-06-15"
+    );
+    assert_eq!(days[0].attendance.user_id, "user-1");
+    assert_eq!(days[0].attendance.total_work_hours, None);
+    assert!(days[0].break_periods.is_empty());
+    assert_eq!(days[0].leave, Some(leave_day("request-1", 15, "annual")));
+    assert_eq!(days[1].attendance.attendance_id, "attendance-1");
+    assert_eq!(days[1].attendance.status, "present");
+    assert!(days[1].leave.is_none());
+}
+
+#[tokio::test]
+async fn attaches_leave_designation_to_punched_day_without_replacing_actuals() {
+    let repository = RecordingUserAttendanceRepository::default();
+    *repository.attendances.lock().expect("attendances lock") =
+        vec![attendance_record("attendance-1", 12)];
+    *repository.leave_days.lock().expect("leave days lock") =
+        vec![leave_day("request-1", 12, "annual")];
+    let use_case = ListUserAttendance::new(repository);
+
+    let days = use_case
+        .execute(ListUserAttendanceQuery {
+            user_id: "user-1".to_string(),
+            from: date(1),
+            to: date(30),
+        })
+        .await
+        .expect("list succeeds");
+
+    assert_eq!(days.len(), 1);
+    assert_eq!(days[0].attendance.attendance_id, "attendance-1");
+    assert_eq!(days[0].attendance.status, "present");
+    assert_eq!(days[0].attendance.clock_in_time, Some(time(12, 9)));
+    assert_eq!(days[0].attendance.total_work_hours, Some(8.0));
+    assert_eq!(days[0].leave, Some(leave_day("request-1", 12, "annual")));
+}
+
+#[tokio::test]
+async fn summary_counts_leave_days_without_touching_work_totals() {
+    let repository = RecordingUserAttendanceRepository::default();
+    *repository.attendances.lock().expect("attendances lock") =
+        vec![attendance_record("attendance-1", 12)];
+    *repository.leave_days.lock().expect("leave days lock") = vec![
+        leave_day("request-1", 15, "annual"),
+        leave_day("request-1", 16, "annual"),
+    ];
+    let use_case = GetUserAttendanceSummary::new(repository);
+
+    let summary = use_case
+        .execute(GetUserAttendanceSummaryQuery {
+            user_id: "user-1".to_string(),
+            year: 2026,
+            month: 6,
+            from: date(1),
+            to: date(30),
+        })
+        .await
+        .expect("summary succeeds");
+
+    assert_eq!(summary.total_work_hours, 8.0);
+    assert_eq!(summary.total_work_days, 1);
+    assert_eq!(summary.average_daily_hours, 8.0);
+    assert_eq!(summary.leave_days, 2);
+}
+
+#[tokio::test]
+async fn export_includes_leave_type_column_and_derived_leave_rows() {
+    let repository = RecordingUserAttendanceRepository::default();
+    *repository.attendances.lock().expect("attendances lock") =
+        vec![attendance_record("attendance-1", 12)];
+    *repository.leave_days.lock().expect("leave days lock") =
+        vec![leave_day("request-1", 15, "sick")];
+    let use_case = ExportUserAttendance::new(repository);
+
+    let export = use_case
+        .execute(ExportUserAttendanceQuery {
+            user_id: "user-1".to_string(),
+            username: "employee".to_string(),
+            full_name: "Test User".to_string(),
+            from: None,
+            to: None,
+        })
+        .await
+        .expect("export succeeds");
+
+    assert_eq!(export.rows.len(), 2);
+    assert_eq!(export.rows[0].date, date(15));
+    assert_eq!(export.rows[0].status, ON_LEAVE_STATUS);
+    assert_eq!(export.rows[0].leave_type.as_deref(), Some("sick"));
+    assert_eq!(export.rows[0].clock_in_time, None);
+    assert_eq!(export.rows[1].date, date(12));
+    assert_eq!(export.rows[1].status, "present");
+    assert_eq!(export.rows[1].leave_type, None);
 }

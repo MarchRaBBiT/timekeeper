@@ -124,6 +124,22 @@ pub mod attendance {
         pub break_periods: Vec<BreakPeriod>,
     }
 
+    pub const ON_LEAVE_STATUS: &str = "on_leave";
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct LeaveDayRecord {
+        pub leave_request_id: String,
+        pub date: NaiveDate,
+        pub leave_type: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct UserAttendanceDay {
+        pub attendance: AttendanceRecord,
+        pub break_periods: Vec<BreakPeriod>,
+        pub leave: Option<LeaveDayRecord>,
+    }
+
     #[derive(Debug, Clone, PartialEq)]
     pub struct AttendancePage {
         pub items: Vec<AttendancePageItem>,
@@ -161,6 +177,7 @@ pub mod attendance {
         pub total_work_hours: f64,
         pub total_work_days: i32,
         pub average_daily_hours: f64,
+        pub leave_days: i32,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,6 +203,7 @@ pub mod attendance {
         pub clock_out_time: Option<NaiveDateTime>,
         pub total_work_hours: Option<f64>,
         pub status: String,
+        pub leave_type: Option<String>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +231,15 @@ pub mod attendance {
         pub clock_out_time: Option<NaiveDateTime>,
         pub total_work_hours: Option<f64>,
         pub status: String,
+        pub leave_type: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct AdminLeaveDayRow {
+        pub username: String,
+        pub full_name_encrypted: String,
+        pub date: NaiveDate,
+        pub leave_type: String,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -920,6 +947,13 @@ pub mod attendance {
             from: Option<NaiveDate>,
             to: Option<NaiveDate>,
         ) -> Result<Vec<AttendanceRecord>, ListUserAttendanceError>;
+
+        async fn approved_leave_days(
+            &self,
+            user_id: &str,
+            from: Option<NaiveDate>,
+            to: Option<NaiveDate>,
+        ) -> Result<Vec<LeaveDayRecord>, ListUserAttendanceError>;
     }
 
     #[async_trait]
@@ -933,6 +967,11 @@ pub mod attendance {
             &self,
             filters: AdminAttendanceExportFilters,
         ) -> Result<Vec<AdminAttendanceExportRow>, ExportAdminAttendanceError>;
+
+        async fn list_admin_leave_days(
+            &self,
+            filters: AdminAttendanceExportFilters,
+        ) -> Result<Vec<AdminLeaveDayRow>, ExportAdminAttendanceError>;
     }
 
     #[async_trait]
@@ -1588,8 +1627,8 @@ pub mod attendance {
         pub async fn execute(
             &self,
             query: ListUserAttendanceQuery,
-        ) -> Result<Vec<AttendancePageItem>, ListUserAttendanceError> {
-            list_user_attendance_items(&self.repository, query).await
+        ) -> Result<Vec<UserAttendanceDay>, ListUserAttendanceError> {
+            list_user_attendance_days(&self.repository, query).await
         }
     }
 
@@ -1605,7 +1644,7 @@ pub mod attendance {
             &self,
             query: GetUserAttendanceSummaryQuery,
         ) -> Result<UserAttendanceSummary, ListUserAttendanceError> {
-            let items = list_user_attendance_items(
+            let days = list_user_attendance_days(
                 &self.repository,
                 ListUserAttendanceQuery {
                     user_id: query.user_id,
@@ -1614,14 +1653,14 @@ pub mod attendance {
                 },
             )
             .await?;
-            let total_work_hours = items
+            let total_work_hours = days
                 .iter()
-                .filter_map(|item| item.attendance.total_work_hours)
+                .filter_map(|day| day.attendance.total_work_hours)
                 .filter(|hours| *hours > 0.0)
                 .sum::<f64>();
-            let total_work_days = items
+            let total_work_days = days
                 .iter()
-                .filter_map(|item| item.attendance.total_work_hours)
+                .filter_map(|day| day.attendance.total_work_hours)
                 .filter(|hours| *hours > 0.0)
                 .count() as i32;
             let average_daily_hours = if total_work_days > 0 {
@@ -1629,6 +1668,7 @@ pub mod attendance {
             } else {
                 0.0
             };
+            let leave_days = days.iter().filter(|day| day.leave.is_some()).count() as i32;
 
             Ok(UserAttendanceSummary {
                 month: query.month,
@@ -1636,6 +1676,7 @@ pub mod attendance {
                 total_work_hours,
                 total_work_days,
                 average_daily_hours,
+                leave_days,
             })
         }
     }
@@ -1657,16 +1698,22 @@ pub mod attendance {
                 .list_user_attendance_with_optional_range(&query.user_id, query.from, query.to)
                 .await?;
             let items = attendance_items_from_records(&self.repository, attendances).await?;
-            let rows = items
+            let leave_days = self
+                .repository
+                .approved_leave_days(&query.user_id, query.from, query.to)
+                .await?;
+            let days = merge_attendance_with_leave(&query.user_id, items, leave_days);
+            let rows = days
                 .into_iter()
-                .map(|item| UserAttendanceExportRow {
+                .map(|day| UserAttendanceExportRow {
                     username: query.username.clone(),
                     full_name: query.full_name.clone(),
-                    date: item.attendance.date,
-                    clock_in_time: item.attendance.clock_in_time,
-                    clock_out_time: item.attendance.clock_out_time,
-                    total_work_hours: item.attendance.total_work_hours,
-                    status: item.attendance.status,
+                    date: day.attendance.date,
+                    clock_in_time: day.attendance.clock_in_time,
+                    clock_out_time: day.attendance.clock_out_time,
+                    total_work_hours: day.attendance.total_work_hours,
+                    status: day.attendance.status,
+                    leave_type: day.leave.map(|leave| leave.leave_type),
                 })
                 .collect();
 
@@ -1705,15 +1752,18 @@ pub mod attendance {
                 None
             };
 
+            let filters = AdminAttendanceExportFilters {
+                username: query.username,
+                from: query.from,
+                to: query.to,
+                allowed_user_ids,
+            };
             let rows = self
                 .repository
-                .list_admin_attendance_export(AdminAttendanceExportFilters {
-                    username: query.username,
-                    from: query.from,
-                    to: query.to,
-                    allowed_user_ids,
-                })
+                .list_admin_attendance_export(filters.clone())
                 .await?;
+            let leave_days = self.repository.list_admin_leave_days(filters).await?;
+            let rows = merge_admin_export_with_leave(rows, leave_days);
 
             Ok(AdminAttendanceExport {
                 rows,
@@ -2224,6 +2274,125 @@ pub mod attendance {
                 }
             })
             .collect())
+    }
+
+    async fn list_user_attendance_days<R>(
+        repository: &R,
+        query: ListUserAttendanceQuery,
+    ) -> Result<Vec<UserAttendanceDay>, ListUserAttendanceError>
+    where
+        R: ListUserAttendanceRepository,
+    {
+        let user_id = query.user_id;
+        let from = query.from;
+        let to = query.to;
+        let items = list_user_attendance_items(
+            repository,
+            ListUserAttendanceQuery {
+                user_id: user_id.clone(),
+                from,
+                to,
+            },
+        )
+        .await?;
+        let leave_days = repository
+            .approved_leave_days(&user_id, Some(from), Some(to))
+            .await?;
+        Ok(merge_attendance_with_leave(&user_id, items, leave_days))
+    }
+
+    fn synthetic_leave_attendance_id(leave: &LeaveDayRecord) -> String {
+        format!("leave:{}:{}", leave.leave_request_id, leave.date)
+    }
+
+    fn derived_leave_day(user_id: &str, leave: LeaveDayRecord) -> UserAttendanceDay {
+        UserAttendanceDay {
+            attendance: AttendanceRecord {
+                attendance_id: synthetic_leave_attendance_id(&leave),
+                user_id: user_id.to_string(),
+                date: leave.date,
+                clock_in_time: None,
+                clock_out_time: None,
+                status: ON_LEAVE_STATUS.to_string(),
+                total_work_hours: None,
+            },
+            break_periods: Vec::new(),
+            leave: Some(leave),
+        }
+    }
+
+    fn merge_attendance_with_leave(
+        user_id: &str,
+        items: Vec<AttendancePageItem>,
+        leave_days: Vec<LeaveDayRecord>,
+    ) -> Vec<UserAttendanceDay> {
+        let mut leave_by_date: HashMap<NaiveDate, LeaveDayRecord> = HashMap::new();
+        for leave in leave_days {
+            leave_by_date.entry(leave.date).or_insert(leave);
+        }
+
+        let mut days = items
+            .into_iter()
+            .map(|item| {
+                let leave = leave_by_date.remove(&item.attendance.date);
+                UserAttendanceDay {
+                    attendance: item.attendance,
+                    break_periods: item.break_periods,
+                    leave,
+                }
+            })
+            .collect::<Vec<_>>();
+        days.extend(
+            leave_by_date
+                .into_values()
+                .map(|leave| derived_leave_day(user_id, leave)),
+        );
+        days.sort_by(|left, right| right.attendance.date.cmp(&left.attendance.date));
+        days
+    }
+
+    fn merge_admin_export_with_leave(
+        rows: Vec<AdminAttendanceExportRow>,
+        leave_days: Vec<AdminLeaveDayRow>,
+    ) -> Vec<AdminAttendanceExportRow> {
+        let mut leave_by_user_date: HashMap<(String, NaiveDate), AdminLeaveDayRow> = HashMap::new();
+        for leave in leave_days {
+            leave_by_user_date
+                .entry((leave.username.clone(), leave.date))
+                .or_insert(leave);
+        }
+
+        let mut merged = rows
+            .into_iter()
+            .map(|row| {
+                let leave = leave_by_user_date.remove(&(row.username.clone(), row.date));
+                AdminAttendanceExportRow {
+                    leave_type: leave.map(|leave| leave.leave_type),
+                    ..row
+                }
+            })
+            .collect::<Vec<_>>();
+        merged.extend(
+            leave_by_user_date
+                .into_values()
+                .map(|leave| AdminAttendanceExportRow {
+                    username: leave.username,
+                    full_name_encrypted: leave.full_name_encrypted,
+                    date: leave.date,
+                    clock_in_time: None,
+                    clock_out_time: None,
+                    total_work_hours: None,
+                    status: ON_LEAVE_STATUS.to_string(),
+                    leave_type: Some(leave.leave_type),
+                }),
+        );
+        merged.sort_by(|left, right| {
+            right
+                .date
+                .cmp(&left.date)
+                .then_with(|| left.username.cmp(&right.username))
+        });
+        merged
     }
 
     fn replacement_break_from_input(input: UpsertBreakInput) -> ReplacementBreak {

@@ -31,6 +31,7 @@ pub struct AdminAttendanceExportCsvRow {
     pub clock_out: String,
     pub total_hours: String,
     pub status: String,
+    pub leave_type: Option<String>,
 }
 
 pub fn render_admin_attendance_export_csv(rows: &[AdminAttendanceExportCsvRow]) -> String {
@@ -48,6 +49,7 @@ pub fn render_admin_attendance_export_csv(rows: &[AdminAttendanceExportCsvRow]) 
                 row.clock_out.clone(),
                 row.total_hours.clone(),
                 row.status.clone(),
+                row.leave_type.clone().unwrap_or_default(),
             ],
         );
     }
@@ -78,6 +80,7 @@ pub fn render_user_attendance_export_csv(
                     .map(|hours| format!("{hours:.2}"))
                     .unwrap_or_else(|| "0.00".to_string()),
                 row.status.clone(),
+                row.leave_type.clone().unwrap_or_default(),
             ],
         );
     }
@@ -94,6 +97,7 @@ fn attendance_export_headers() -> Vec<String> {
         "Clock Out".to_string(),
         "Total Hours".to_string(),
         "Status".to_string(),
+        "Leave Type".to_string(),
     ]
 }
 
@@ -133,13 +137,14 @@ mod tests {
             clock_out_time: Some(date.and_hms_opt(18, 0, 0).expect("clock out")),
             total_work_hours: Some(8.0),
             status: "present".to_string(),
+            leave_type: Some("annual".to_string()),
         };
 
         let csv = render_user_attendance_export_csv(&[row]);
 
         assert!(csv.contains("\"Username\",\"Full Name\",\"Date\""));
         assert!(csv.contains("\"employee\",\"Test User\",\"2026-06-13\""));
-        assert!(csv.contains("\"09:00:00\",\"18:00:00\",\"8.00\",\"present\""));
+        assert!(csv.contains("\"09:00:00\",\"18:00:00\",\"8.00\",\"present\",\"annual\""));
     }
 
     #[test]
@@ -152,12 +157,13 @@ mod tests {
             clock_out: "18:00:00".to_string(),
             total_hours: "8.00".to_string(),
             status: "present".to_string(),
+            leave_type: Some("sick".to_string()),
         };
 
         let csv = render_admin_attendance_export_csv(&[row]);
 
         assert!(csv.contains("\"Username\",\"Full Name\",\"Date\""));
         assert!(csv.contains("\"employee\",\"Masked\",\"2026-06-13\""));
-        assert!(csv.contains("\"09:00:00\",\"18:00:00\",\"8.00\",\"present\""));
+        assert!(csv.contains("\"09:00:00\",\"18:00:00\",\"8.00\",\"present\",\"sick\""));
     }
 }

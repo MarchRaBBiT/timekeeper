@@ -249,6 +249,7 @@ mod host_tests {
                 break_end_time: Some(date.and_hms_opt(12, 30, 0).unwrap()),
                 duration_minutes: Some(30),
             }],
+            leave: None,
         }
     }
 

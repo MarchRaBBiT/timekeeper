@@ -1,12 +1,12 @@
 use chrono::{NaiveDate, TimeZone, Utc};
 use timekeeper_contract::attendance::{
     AttendanceCorrectionDecisionPayload, AttendanceCorrectionResponse,
-    AttendanceCorrectionSnapshot, AttendanceCorrectionStatus, AttendanceResponse,
-    AttendanceStatusResponse, AttendanceSummary, BreakEndRequest, BreakRecordResponse,
-    BreakStartRequest, ClassificationTotalsResponse, ClockInRequest, ClockOutRequest,
-    CorrectionBreakItem, CreateAttendanceCorrectionRequest, DailyClassificationResponse,
-    FlexPeriodClassificationResponse, FlexPeriodStatusResponse, MonthlyClassificationResponse,
-    UpdateAttendanceCorrectionRequest,
+    AttendanceCorrectionSnapshot, AttendanceCorrectionStatus, AttendanceLeaveResponse,
+    AttendanceResponse, AttendanceStatusResponse, AttendanceSummary, BreakEndRequest,
+    BreakRecordResponse, BreakStartRequest, ClassificationTotalsResponse, ClockInRequest,
+    ClockOutRequest, CorrectionBreakItem, CreateAttendanceCorrectionRequest,
+    DailyClassificationResponse, FlexPeriodClassificationResponse, FlexPeriodStatusResponse,
+    MonthlyClassificationResponse, UpdateAttendanceCorrectionRequest,
 };
 use timekeeper_contract::work_schedules::{ResolvedDayKind, WorkScheduleType};
 
@@ -107,6 +107,7 @@ fn attendance_summary_serializes_current_wire_format() {
         total_work_hours: 160.5,
         total_work_days: 20,
         average_daily_hours: 8.025,
+        leave_days: 2,
     };
 
     let json = serde_json::to_value(summary).expect("serialize summary");
@@ -118,9 +119,24 @@ fn attendance_summary_serializes_current_wire_format() {
             "year": 2026,
             "total_work_hours": 160.5,
             "total_work_days": 20,
-            "average_daily_hours": 8.025
+            "average_daily_hours": 8.025,
+            "leave_days": 2
         })
     );
+}
+
+#[test]
+fn attendance_summary_deserializes_legacy_payload_without_leave_days() {
+    let summary: AttendanceSummary = serde_json::from_value(serde_json::json!({
+        "month": 6,
+        "year": 2026,
+        "total_work_hours": 160.5,
+        "total_work_days": 20,
+        "average_daily_hours": 8.025
+    }))
+    .expect("deserialize legacy summary");
+
+    assert_eq!(summary.leave_days, 0);
 }
 
 #[test]
@@ -141,6 +157,7 @@ fn attendance_response_serializes_current_wire_format() {
             break_end_time: Some(date.and_hms_opt(13, 0, 0).expect("break end")),
             duration_minutes: Some(60),
         }],
+        leave: None,
     };
 
     let json = serde_json::to_value(response).expect("serialize response");
@@ -151,6 +168,54 @@ fn attendance_response_serializes_current_wire_format() {
     assert_eq!(json["status"], "present");
     assert_eq!(json["break_records"][0]["id"], "break-1");
     assert_eq!(json["break_records"][0]["attendance_id"], "attendance-1");
+    assert!(
+        json.get("leave").is_none(),
+        "leave must be omitted when absent to keep the legacy wire format"
+    );
+}
+
+#[test]
+fn attendance_response_roundtrips_leave_designation() {
+    let date = NaiveDate::from_ymd_opt(2026, 7, 6).expect("date");
+    let response = AttendanceResponse {
+        id: "leave:request-1:2026-07-06".to_string(),
+        user_id: "user-1".to_string(),
+        date,
+        clock_in_time: None,
+        clock_out_time: None,
+        status: "on_leave".to_string(),
+        total_work_hours: None,
+        break_records: Vec::new(),
+        leave: Some(AttendanceLeaveResponse {
+            leave_request_id: "request-1".to_string(),
+            leave_type: "annual".to_string(),
+        }),
+    };
+
+    let json = serde_json::to_value(&response).expect("serialize response");
+    assert_eq!(json["status"], "on_leave");
+    assert_eq!(json["leave"]["leave_request_id"], "request-1");
+    assert_eq!(json["leave"]["leave_type"], "annual");
+
+    let roundtrip: AttendanceResponse = serde_json::from_value(json).expect("deserialize response");
+    assert_eq!(roundtrip, response);
+}
+
+#[test]
+fn attendance_response_deserializes_legacy_payload_without_leave() {
+    let response: AttendanceResponse = serde_json::from_value(serde_json::json!({
+        "id": "attendance-1",
+        "user_id": "user-1",
+        "date": "2026-06-12",
+        "clock_in_time": "2026-06-12T09:00:00",
+        "clock_out_time": "2026-06-12T18:00:00",
+        "status": "present",
+        "total_work_hours": 8.0,
+        "break_records": []
+    }))
+    .expect("deserialize legacy response");
+
+    assert!(response.leave.is_none());
 }
 
 #[test]

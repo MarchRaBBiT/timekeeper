@@ -2,7 +2,8 @@ use chrono::{NaiveDate, NaiveTime};
 use timekeeper_contract::work_schedules::{
     AssignmentTarget, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest, DayKind,
     PlannedBreakInput, PlannedWorkIntervalInput, PublicHolidayPolicy, WeekdayRuleInput,
-    WorkScheduleAssignmentRequest,
+    WorkScheduleAnomalyKind, WorkScheduleAssignmentRequest, WorkScheduleCalendarDayResponse,
+    WorkScheduleCalendarLeaveResponse,
 };
 
 #[test]
@@ -69,4 +70,56 @@ fn assignment_target_is_explicitly_tagged() {
     let json = serde_json::to_value(request).expect("serialize");
     assert_eq!(json["target"]["type"], "department");
     assert_eq!(json["target"]["department_id"], "department-1");
+}
+
+#[test]
+fn anomaly_kind_leave_conflict_uses_snake_case_wire_format() {
+    let json =
+        serde_json::to_value(WorkScheduleAnomalyKind::LeaveConflict).expect("serialize kind");
+    assert_eq!(json, serde_json::json!("leave_conflict"));
+
+    let kind: WorkScheduleAnomalyKind =
+        serde_json::from_value(serde_json::json!("leave_conflict")).expect("deserialize kind");
+    assert_eq!(kind, WorkScheduleAnomalyKind::LeaveConflict);
+}
+
+#[test]
+fn calendar_day_roundtrips_leave_designation() {
+    let day = WorkScheduleCalendarDayResponse {
+        work_date: NaiveDate::from_ymd_opt(2026, 7, 6).expect("date"),
+        resolved_workday: None,
+        attendance: None,
+        anomalies: Vec::new(),
+        leave: Some(WorkScheduleCalendarLeaveResponse {
+            leave_request_id: "request-1".to_string(),
+            leave_type: "annual".to_string(),
+        }),
+    };
+
+    let json = serde_json::to_value(&day).expect("serialize day");
+    assert_eq!(json["leave"]["leave_request_id"], "request-1");
+    assert_eq!(json["leave"]["leave_type"], "annual");
+
+    let roundtrip: WorkScheduleCalendarDayResponse =
+        serde_json::from_value(json).expect("deserialize day");
+    assert_eq!(roundtrip, day);
+}
+
+#[test]
+fn calendar_day_deserializes_legacy_payload_without_leave() {
+    let day: WorkScheduleCalendarDayResponse = serde_json::from_value(serde_json::json!({
+        "work_date": "2026-07-06",
+        "resolved_workday": null,
+        "attendance": null,
+        "anomalies": []
+    }))
+    .expect("deserialize legacy day");
+
+    assert!(day.leave.is_none());
+
+    let json = serde_json::to_value(&day).expect("serialize day");
+    assert!(
+        json.get("leave").is_none(),
+        "leave must be omitted when absent to keep the legacy wire format"
+    );
 }

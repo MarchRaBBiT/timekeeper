@@ -31,9 +31,9 @@ use timekeeper_app::attendance_classification::{
 };
 use timekeeper_app::work_schedules::ResolveWorkday;
 use timekeeper_contract::attendance::{
-    AttendanceStatusResponse, ClassificationTotalsResponse, DailyClassificationResponse,
-    FlexPeriodClassificationResponse, FlexPeriodStatusResponse, MonthlyClassificationQueryParams,
-    MonthlyClassificationResponse,
+    AttendanceLeaveResponse, AttendanceStatusResponse, ClassificationTotalsResponse,
+    DailyClassificationResponse, FlexPeriodClassificationResponse, FlexPeriodStatusResponse,
+    MonthlyClassificationQueryParams, MonthlyClassificationResponse,
 };
 use timekeeper_contract::work_schedules::{
     ResolvedDayKind as ContractResolvedDayKind, WorkScheduleType as ContractWorkScheduleType,
@@ -89,18 +89,22 @@ fn break_periods_to_response(periods: Vec<UseCaseBreakPeriod>) -> Vec<BreakRecor
     periods.into_iter().map(break_period_to_response).collect()
 }
 
-fn attendance_page_item_to_response(
-    item: timekeeper_app::attendance::AttendancePageItem,
+fn user_attendance_day_to_response(
+    day: timekeeper_app::attendance::UserAttendanceDay,
 ) -> AttendanceResponse {
     AttendanceResponse {
-        id: item.attendance.attendance_id,
-        user_id: item.attendance.user_id,
-        date: item.attendance.date,
-        clock_in_time: item.attendance.clock_in_time,
-        clock_out_time: item.attendance.clock_out_time,
-        status: item.attendance.status,
-        total_work_hours: item.attendance.total_work_hours,
-        break_records: break_periods_to_response(item.break_periods),
+        id: day.attendance.attendance_id,
+        user_id: day.attendance.user_id,
+        date: day.attendance.date,
+        clock_in_time: day.attendance.clock_in_time,
+        clock_out_time: day.attendance.clock_out_time,
+        status: day.attendance.status,
+        total_work_hours: day.attendance.total_work_hours,
+        break_records: break_periods_to_response(day.break_periods),
+        leave: day.leave.map(|leave| AttendanceLeaveResponse {
+            leave_request_id: leave.leave_request_id,
+            leave_type: leave.leave_type,
+        }),
     }
 }
 
@@ -113,6 +117,7 @@ fn user_attendance_summary_to_response(
         total_work_hours: summary.total_work_hours,
         total_work_days: summary.total_work_days,
         average_daily_hours: summary.average_daily_hours,
+        leave_days: summary.leave_days,
     }
 }
 
@@ -539,7 +544,7 @@ pub async fn get_my_attendance(
         .await
         .map_err(list_user_attendance_error_to_app_error)?
         .into_iter()
-        .map(attendance_page_item_to_response)
+        .map(user_attendance_day_to_response)
         .collect();
 
     Ok(Json(responses))
@@ -679,6 +684,7 @@ pub(crate) fn build_attendance_response(
         status: attendance.status.db_value().to_string(),
         total_work_hours: attendance.total_work_hours,
         break_records,
+        leave: None,
     }
 }
 
@@ -815,6 +821,7 @@ mod tests {
             total_work_hours: 160.5,
             total_work_days: 20,
             average_daily_hours: 8.0,
+            leave_days: 0,
         };
         assert_eq!(summary.month, 1);
         assert_eq!(summary.year, 2024);

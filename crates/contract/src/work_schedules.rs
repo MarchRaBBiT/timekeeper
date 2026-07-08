@@ -405,6 +405,7 @@ pub enum WorkScheduleAnomalyKind {
     UnscheduledWork,
     MissingClockIn,
     MissingClockOut,
+    LeaveConflict,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -438,11 +439,19 @@ pub struct WorkScheduleCalendarAttendanceResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct WorkScheduleCalendarLeaveResponse {
+    pub leave_request_id: String,
+    pub leave_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WorkScheduleCalendarDayResponse {
     pub work_date: NaiveDate,
     pub resolved_workday: Option<ResolvedWorkdayResponse>,
     pub attendance: Option<WorkScheduleCalendarAttendanceResponse>,
     pub anomalies: Vec<WorkScheduleAnomalyResponse>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leave: Option<WorkScheduleCalendarLeaveResponse>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

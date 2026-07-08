@@ -9,7 +9,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::admin::export_data,
-    models::{attendance::Attendance, user::UserRole},
+    models::{attendance::Attendance, leave_request::LeaveType, user::UserRole},
     repositories::{attendance::AttendanceRepository, AttendanceRepositoryTrait},
     state::AppState,
 };
@@ -24,6 +24,7 @@ async fn reset_attendance_tables(pool: &PgPool) {
         "TRUNCATE attendance_correction_effective_values, \
          attendance_correction_requests, \
          break_records, \
+         leave_requests, \
          attendance RESTART IDENTITY CASCADE",
     )
     .execute(pool)
@@ -105,6 +106,65 @@ async fn admin_export_includes_date_strings() {
         .unwrap_or("");
 
     assert!(csv_data.contains("\"2026-01-15\""));
+}
+
+#[tokio::test]
+async fn admin_export_includes_approved_leave_rows_and_leave_type_column() {
+    let _guard = integration_guard().await;
+    let pool = support::test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    reset_attendance_tables(&pool).await;
+
+    let admin = support::seed_user(&pool, UserRole::Manager, false).await;
+    let employee = support::seed_user(&pool, UserRole::Employee, false).await;
+    setup_manager_scope(&pool, &admin.id.to_string(), &employee.id.to_string()).await;
+
+    let date = NaiveDate::from_ymd_opt(2026, 1, 20).expect("valid date");
+    let leave =
+        support::seed_leave_request(&pool, employee.id, LeaveType::Annual, date, date).await;
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+         WHERE id = $2",
+    )
+    .bind(admin.id.to_string())
+    .bind(leave.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("approve leave");
+
+    let state = AppState::new(pool.clone(), None, None, None, support::test_config());
+    let app = Router::new()
+        .route("/api/admin/export", get(export_data))
+        .layer(Extension(admin))
+        .with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/export?from=2026-01-20&to=2026-01-20")
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("call app");
+
+    assert!(response.status().is_success());
+    let body = to_bytes(response.into_body(), 1024 * 64)
+        .await
+        .expect("read body");
+    let payload: Value = serde_json::from_slice(&body).expect("parse response");
+    let csv_data = payload
+        .get("csv_data")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+
+    assert!(csv_data.contains("\"Leave Type\""));
+    assert!(csv_data.contains("\"2026-01-20\""));
+    assert!(csv_data.contains("\"on_leave\",\"annual\""));
 }
 
 #[tokio::test]

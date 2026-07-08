@@ -4,15 +4,16 @@ use serde::Deserialize;
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder, Row as _};
 use timekeeper_app::attendance::{
-    ActiveBreakSummary, AdminAttendanceExportFilters, AdminAttendanceExportRow, AttendanceDay,
-    AttendanceRecord, AttendanceReplacement, AttendanceRepository, AttendanceStatusError,
-    AttendanceStatusReadRepository, BreakEndError, BreakEndRepository, BreakPeriod, ClockInError,
-    ClockOutError, ClockOutRepository, EffectiveAttendanceCorrection, EndedBreakPeriod,
-    ExistingClockIn, ExistingClockOut, ExportAdminAttendanceError, ExportAdminAttendanceRepository,
-    GetBreaksByAttendanceError, GetBreaksByAttendanceRepository, ListActiveBreaksError,
-    ListActiveBreaksRepository, ListAttendancePageError, ListAttendancePageRepository,
-    ListUserAttendanceError, ListUserAttendanceRepository, NewBreakPeriod, NewClockIn,
-    StartBreakError, StartBreakRepository, UpsertAttendanceError, UpsertAttendanceRepository,
+    ActiveBreakSummary, AdminAttendanceExportFilters, AdminAttendanceExportRow, AdminLeaveDayRow,
+    AttendanceDay, AttendanceRecord, AttendanceReplacement, AttendanceRepository,
+    AttendanceStatusError, AttendanceStatusReadRepository, BreakEndError, BreakEndRepository,
+    BreakPeriod, ClockInError, ClockOutError, ClockOutRepository, EffectiveAttendanceCorrection,
+    EndedBreakPeriod, ExistingClockIn, ExistingClockOut, ExportAdminAttendanceError,
+    ExportAdminAttendanceRepository, GetBreaksByAttendanceError, GetBreaksByAttendanceRepository,
+    LeaveDayRecord, ListActiveBreaksError, ListActiveBreaksRepository, ListAttendancePageError,
+    ListAttendancePageRepository, ListUserAttendanceError, ListUserAttendanceRepository,
+    NewBreakPeriod, NewClockIn, StartBreakError, StartBreakRepository, UpsertAttendanceError,
+    UpsertAttendanceRepository,
 };
 use timekeeper_domain::WorkDate;
 use uuid::Uuid;
@@ -94,6 +95,21 @@ struct AdminAttendanceExportRowData {
     status: String,
 }
 
+#[derive(Debug, Clone, FromRow)]
+struct LeaveDayRowData {
+    leave_request_id: String,
+    date: NaiveDate,
+    leave_type: String,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct AdminLeaveDayRowData {
+    username: String,
+    full_name: String,
+    date: NaiveDate,
+    leave_type: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct CorrectionBreakItemRow {
     break_start_time: NaiveDateTime,
@@ -119,6 +135,16 @@ impl ExportAdminAttendanceRepository for AttendanceWorkflowRepository {
         list_admin_attendance_export(&self.pool, filters)
             .await
             .map(|rows| rows.into_iter().map(admin_export_row_to_app).collect())
+            .map_err(export_admin_repository_error)
+    }
+
+    async fn list_admin_leave_days(
+        &self,
+        filters: AdminAttendanceExportFilters,
+    ) -> Result<Vec<AdminLeaveDayRow>, ExportAdminAttendanceError> {
+        list_admin_leave_days(&self.pool, filters)
+            .await
+            .map(|rows| rows.into_iter().map(admin_leave_day_row_to_app).collect())
             .map_err(export_admin_repository_error)
     }
 }
@@ -415,6 +441,19 @@ impl ListUserAttendanceRepository for AttendanceWorkflowRepository {
         list_user_attendance_with_optional_range(&self.pool, user_id, from, to)
             .await
             .map(|items| items.into_iter().map(attendance_record_to_app).collect())
+            .map_err(list_user_attendance_repository_error)
+    }
+
+    async fn approved_leave_days(
+        &self,
+        user_id: &str,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> Result<Vec<LeaveDayRecord>, ListUserAttendanceError> {
+        validate_uuid(user_id).map_err(list_user_attendance_invalid_user_id)?;
+        list_approved_leave_days(&self.pool, user_id, from, to)
+            .await
+            .map(|rows| rows.into_iter().map(leave_day_row_to_app).collect())
             .map_err(list_user_attendance_repository_error)
     }
 }
@@ -722,6 +761,31 @@ async fn list_user_attendance_with_optional_range(
     .await
 }
 
+async fn list_approved_leave_days(
+    pool: &PgPool,
+    user_id: &str,
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+) -> Result<Vec<LeaveDayRowData>, sqlx::Error> {
+    sqlx::query_as::<_, LeaveDayRowData>(
+        "SELECT lr.id AS leave_request_id, d.day::date AS date, lr.leave_type
+         FROM leave_requests lr
+         CROSS JOIN LATERAL generate_series(
+             lr.start_date::timestamp, lr.end_date::timestamp, interval '1 day'
+         ) AS d(day)
+         WHERE lr.user_id = $1
+           AND lr.status = 'approved'
+           AND ($2::date IS NULL OR d.day::date >= $2)
+           AND ($3::date IS NULL OR d.day::date <= $3)
+         ORDER BY d.day::date, lr.created_at, lr.id",
+    )
+    .bind(user_id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+}
+
 async fn find_breaks_by_attendance_ids(
     pool: &PgPool,
     attendance_ids: &[String],
@@ -835,6 +899,60 @@ async fn list_admin_attendance_export(
         },
     );
     builder.push(" ORDER BY a.date DESC, u.username");
+
+    builder.build_query_as().fetch_all(pool).await
+}
+
+async fn list_admin_leave_days(
+    pool: &PgPool,
+    filters: AdminAttendanceExportFilters,
+) -> Result<Vec<AdminLeaveDayRowData>, sqlx::Error> {
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        "SELECT u.username,
+                COALESCE(u.full_name_enc, '') AS full_name,
+                d.day::date AS date,
+                lr.leave_type
+         FROM leave_requests lr
+         JOIN users u ON lr.user_id = u.id
+         CROSS JOIN LATERAL generate_series(
+             lr.start_date::timestamp, lr.end_date::timestamp, interval '1 day'
+         ) AS d(day)
+         WHERE lr.status = 'approved'",
+    );
+    let mut has_clause = true;
+    push_where_clause(
+        &mut builder,
+        &mut has_clause,
+        filters.username.as_ref(),
+        |builder, value| {
+            builder.push("u.username = ").push_bind(value);
+        },
+    );
+    push_where_clause(
+        &mut builder,
+        &mut has_clause,
+        filters.allowed_user_ids.as_ref(),
+        |builder, value| {
+            builder.push("u.id = ANY(").push_bind(value).push(")");
+        },
+    );
+    push_where_clause(
+        &mut builder,
+        &mut has_clause,
+        filters.from.as_ref(),
+        |builder, value| {
+            builder.push("d.day::date >= ").push_bind(value);
+        },
+    );
+    push_where_clause(
+        &mut builder,
+        &mut has_clause,
+        filters.to.as_ref(),
+        |builder, value| {
+            builder.push("d.day::date <= ").push_bind(value);
+        },
+    );
+    builder.push(" ORDER BY d.day::date DESC, u.username, lr.created_at, lr.id");
 
     builder.build_query_as().fetch_all(pool).await
 }
@@ -1019,6 +1137,24 @@ fn admin_export_row_to_app(row: AdminAttendanceExportRowData) -> AdminAttendance
         clock_out_time: row.clock_out_time,
         total_work_hours: row.total_work_hours,
         status: row.status,
+        leave_type: None,
+    }
+}
+
+fn leave_day_row_to_app(row: LeaveDayRowData) -> LeaveDayRecord {
+    LeaveDayRecord {
+        leave_request_id: row.leave_request_id,
+        date: row.date,
+        leave_type: row.leave_type,
+    }
+}
+
+fn admin_leave_day_row_to_app(row: AdminLeaveDayRowData) -> AdminLeaveDayRow {
+    AdminLeaveDayRow {
+        username: row.username,
+        full_name_encrypted: row.full_name,
+        date: row.date,
+        leave_type: row.leave_type,
     }
 }
 

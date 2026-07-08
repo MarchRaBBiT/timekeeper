@@ -3,12 +3,13 @@ use axum::{
     http::{Request, StatusCode},
     Extension, Router,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use timekeeper_backend::{
     handlers::attendance,
     models::{
         attendance::{ClockInRequest, ClockOutRequest},
+        leave_request::LeaveType,
         user::{User, UserRole},
     },
     state::AppState,
@@ -21,8 +22,8 @@ mod support;
 use support::integration_guard;
 
 use support::{
-    create_test_token, seed_attendance, seed_break_record, seed_public_holiday, seed_user,
-    seed_work_schedule_for_user, test_config, test_pool,
+    create_test_token, seed_attendance, seed_break_record, seed_leave_request, seed_public_holiday,
+    seed_user, seed_work_schedule_for_user, test_config, test_pool,
 };
 
 fn test_router_with_state(pool: PgPool, user: User) -> Router {
@@ -73,6 +74,23 @@ async fn seed_scheduled_employee(pool: &PgPool) -> User {
     let employee = seed_user(pool, UserRole::Employee, false).await;
     seed_work_schedule_for_user(pool, employee.id, "non_working").await;
     employee
+}
+
+async fn approve_leave_request(
+    pool: &PgPool,
+    request_id: impl ToString,
+    approver_id: impl ToString,
+) {
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+         WHERE id = $2",
+    )
+    .bind(approver_id.to_string())
+    .bind(request_id.to_string())
+    .execute(pool)
+    .await
+    .expect("approve leave request");
 }
 
 #[tokio::test]
@@ -505,6 +523,118 @@ async fn test_export_my_attendance_returns_csv_payload() {
         .as_str()
         .unwrap_or_default()
         .starts_with("my_attendance_export_"));
+}
+
+#[tokio::test]
+async fn approved_leave_surfaces_in_attendance_reads_and_cancel_reverts() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+
+    let employee = seed_scheduled_employee(&pool).await;
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let leave_date = chrono::NaiveDate::from_ymd_opt(2026, 2, 4).expect("date");
+    let leave = seed_leave_request(
+        &pool,
+        employee.id,
+        LeaveType::Annual,
+        leave_date,
+        leave_date,
+    )
+    .await;
+    approve_leave_request(&pool, leave.id, admin.id).await;
+
+    let token = create_test_token(employee.id, employee.role.clone());
+    let app = test_router_with_state(pool.clone(), employee.clone());
+
+    let list_request = Request::builder()
+        .uri("/api/attendance/me?from=2026-02-04&to=2026-02-04")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build list request");
+    let list_response = app
+        .clone()
+        .oneshot(list_request)
+        .await
+        .expect("list attendance");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(list_response.into_body(), usize::MAX)
+        .await
+        .expect("read list body");
+    let list_body: Value = serde_json::from_slice(&body).expect("list json");
+    assert_eq!(list_body[0]["status"], "on_leave");
+    assert_eq!(list_body[0]["leave"]["leave_type"], "annual");
+    assert_eq!(list_body[0]["clock_in_time"], Value::Null);
+
+    let summary_request = Request::builder()
+        .uri("/api/attendance/me/summary?year=2026&month=2")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build summary request");
+    let summary_response = app
+        .clone()
+        .oneshot(summary_request)
+        .await
+        .expect("summary attendance");
+    assert_eq!(summary_response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(summary_response.into_body(), usize::MAX)
+        .await
+        .expect("read summary body");
+    let summary_body: Value = serde_json::from_slice(&body).expect("summary json");
+    assert_eq!(summary_body["leave_days"], 1);
+    assert_eq!(summary_body["total_work_days"], 0);
+
+    let export_request = Request::builder()
+        .uri("/api/attendance/export?from=2026-02-04&to=2026-02-04")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build export request");
+    let export_response = app
+        .clone()
+        .oneshot(export_request)
+        .await
+        .expect("export attendance");
+    assert_eq!(export_response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(export_response.into_body(), usize::MAX)
+        .await
+        .expect("read export body");
+    let export_body: Value = serde_json::from_slice(&body).expect("export json");
+    let csv = export_body["csv_data"].as_str().expect("csv data");
+    assert!(csv.contains("\"Leave Type\""));
+    assert!(csv.contains("\"on_leave\",\"annual\""));
+
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+         WHERE id = $1",
+    )
+    .bind(leave.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("cancel leave");
+
+    let list_after_cancel = Request::builder()
+        .uri("/api/attendance/me?from=2026-02-04&to=2026-02-04")
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("build list after cancel");
+    let list_after_cancel_response = app
+        .clone()
+        .oneshot(list_after_cancel)
+        .await
+        .expect("list after cancel");
+    assert_eq!(list_after_cancel_response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(list_after_cancel_response.into_body(), usize::MAX)
+        .await
+        .expect("read list after cancel body");
+    let list_after_cancel_body: Value = serde_json::from_slice(&body).expect("list json");
+    assert!(list_after_cancel_body
+        .as_array()
+        .expect("attendance array")
+        .is_empty());
 }
 
 #[tokio::test]

@@ -5,8 +5,8 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 pub use timekeeper_contract::attendance::{
-    AttendanceResponse, AttendanceSummary, BreakEndRequest, BreakStartRequest, ClockInRequest,
-    ClockOutRequest,
+    AttendanceLeaveResponse, AttendanceResponse, AttendanceSummary, BreakEndRequest,
+    BreakStartRequest, ClockInRequest, ClockOutRequest,
 };
 use utoipa::ToSchema;
 
@@ -71,6 +71,7 @@ impl From<Attendance> for AttendanceResponse {
             status: a.status.db_value().to_string(),
             total_work_hours: a.total_work_hours,
             break_records: Vec::new(),
+            leave: None,
         }
     }
 }
