@@ -3,6 +3,7 @@ use std::fmt;
 use chrono::NaiveDate;
 
 pub mod attendance_classification;
+pub mod leave_ledger;
 pub mod work_schedules;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

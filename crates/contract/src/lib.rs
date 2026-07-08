@@ -225,6 +225,7 @@ pub mod attendance {
     }
 }
 
+pub mod leave;
 pub mod work_schedules;
 
 pub mod requests {

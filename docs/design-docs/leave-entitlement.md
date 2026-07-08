@@ -64,6 +64,7 @@
 | 6.5 年以上 | 20 |
 
 - **基準日（grant base date）**は入社日 + 6 ヶ月を最初の基準日とし、以後 1 年ごとに更新する（一律基準日方式＝全社同一日への統一は拡張点。第一増分は個人別入社日起算）。
+- **入社日の source of truth は `users.hire_date`（T-04 で `DATE NULL` 列として追加）**とする。System Admin が `PUT /api/admin/users/{user_id}/hire-date` で投入し、`hire_date` 未設定のユーザーは付与実行で `hire_date_not_set` として skip する（対象者選定を運用入力とする本節の決定の具体化）。月末入社の基準日は暦月加算（月末クランプ。例: 8/31 入社 + 6 ヶ月 = 2/28）で決定的にする。
 - 付与実行は**管理者起動の実行 API**（T-04 の `POST /api/admin/leave-grants/run`、基準日指定・dry-run 付き）とする。cron 常駐は含めない。
 - **出勤率 8 割要件**の自動判定は第一増分では行わない。付与実行時に対象者を選定する入力（全員 / 明示リスト / 除外リスト）を受け、8 割未満での付与除外は運用判断とする。自動判定は勤怠実績（T-03 read-model）を入力とする拡張点として `Grant Rules Extension Points` に記す。
 
@@ -215,7 +216,8 @@ CREATE UNIQUE INDEX uq_leave_ledger_expire   ON leave_ledger_entries (lot_id) WH
 | `GET` | `/api/leave-balances/me` | user | 本人の残高・時効予定・年5日義務の消化状況 |
 | `GET` | `/api/admin/users/{user_id}/leave-balances` | scoped manager+ | 配下ユーザーの同上（既存 resolved-workdays と同じ部署スコープ認可） |
 | `POST` | `/api/admin/leave-grants/run` | system admin | 基準日指定の付与実行（dry-run オプション）。T-04 |
-| （調整） | 初期移行 `adjust` 投入 | system admin | 管理 API または CLI。T-04 |
+| `POST` | `/api/admin/leave-ledger/adjust` | system admin | 初期移行・手動調整の `adjust` 投入（dry-run 照合付き）。T-04 |
+| `PUT` | `/api/admin/users/{user_id}/hire-date` | system admin | 付与基準日の起点となる入社日（`users.hire_date`）の投入。T-04 |
 
 - 残高 read の応答は分（integer）を正とし、日数は `day_equivalent_minutes` から導出した表示値を併記する。
 - 計算不可・境界（例: 付与ルール未設定、種別が非連動）は settlement balance と同様に **tagged union / 明示ステータス**で表現し、リクエスト不正（400）と区別する（実装時に contract round-trip / OpenAPI へ固定）。

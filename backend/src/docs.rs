@@ -53,6 +53,13 @@ use timekeeper_contract::attendance::{
     DailyClassificationResponse, FlexPeriodClassificationResponse, FlexPeriodStatusResponse,
     MonthlyClassificationQueryParams, MonthlyClassificationResponse,
 };
+use timekeeper_contract::leave::{
+    HireDateResponse, LeaveBalanceQuery, LeaveBalanceResponse, LeaveExpiryBackfillResponse,
+    LeaveExpiryScheduleResponse, LeaveGrantResultResponse, LeaveGrantRunRequest,
+    LeaveGrantRunResponse, LeaveGrantSkipReason, LeaveGrantSkipResponse, LeaveLedgerAdjustRequest,
+    LeaveLedgerAdjustResponse, LeaveLedgerEntryResponse, LeaveLedgerKind, LeaveLotResponse,
+    LeaveObligationStatus, LeaveObligationWindowResponse, SetHireDateRequest,
+};
 use timekeeper_contract::work_schedules::{
     AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
     BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
@@ -127,6 +134,7 @@ struct RequestCancellationResponse {
         my_requests_doc,
         update_request_doc,
         cancel_request_doc,
+        leave_balance_me_doc,
         record_consent_doc,
         list_my_consents_doc,
         create_subject_request_doc,
@@ -196,8 +204,12 @@ struct RequestCancellationResponse {
         work_schedules_me_doc,
         admin_get_user_resolved_workdays_doc,
         admin_get_user_classification_doc,
+        admin_get_user_leave_balance_doc,
         admin_set_workday_override_doc,
-        admin_delete_workday_override_doc
+        admin_delete_workday_override_doc,
+        system_admin_run_leave_grants_doc,
+        system_admin_adjust_leave_ledger_doc,
+        system_admin_set_hire_date_doc
     ),
     components(
         schemas(
@@ -232,6 +244,23 @@ struct RequestCancellationResponse {
             FlexPeriodClassificationResponse,
             FlexPeriodStatusResponse,
             MonthlyClassificationResponse,
+            LeaveBalanceResponse,
+            LeaveLotResponse,
+            LeaveExpiryScheduleResponse,
+            LeaveObligationWindowResponse,
+            LeaveObligationStatus,
+            LeaveGrantRunRequest,
+            LeaveGrantRunResponse,
+            LeaveGrantResultResponse,
+            LeaveGrantSkipResponse,
+            LeaveGrantSkipReason,
+            LeaveExpiryBackfillResponse,
+            LeaveLedgerAdjustRequest,
+            LeaveLedgerAdjustResponse,
+            LeaveLedgerEntryResponse,
+            LeaveLedgerKind,
+            SetHireDateRequest,
+            HireDateResponse,
             BreakRecordResponse,
             ActiveBreakResponse,
             AttendanceQuery,
@@ -1382,6 +1411,77 @@ fn admin_get_user_resolved_workdays_doc() {}
 fn admin_get_user_classification_doc() {}
 
 #[utoipa::path(
+    get,
+    path = "/api/leave-balances/me",
+    params(LeaveBalanceQuery),
+    responses(
+        (status = 200, description = "本人の有給残高・時効予定・年5日義務状況", body = LeaveBalanceResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    tag = "Requests"
+)]
+fn leave_balance_me_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/leave-balances",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザー ID"),
+        LeaveBalanceQuery
+    ),
+    responses(
+        (status = 200, description = "管理者向け有給残高・時効予定・年5日義務状況", body = LeaveBalanceResponse),
+        (status = 403, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    tag = "Admin"
+)]
+fn admin_get_user_leave_balance_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/leave-grants/run",
+    request_body = LeaveGrantRunRequest,
+    responses(
+        (status = 200, description = "有給付与実行または dry-run 結果", body = LeaveGrantRunResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    tag = "Admin"
+)]
+fn system_admin_run_leave_grants_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/leave-ledger/adjust",
+    request_body = LeaveLedgerAdjustRequest,
+    responses(
+        (status = 200, description = "初期移行・手動調整の adjust 投入結果", body = LeaveLedgerAdjustResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    tag = "Admin"
+)]
+fn system_admin_adjust_leave_ledger_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/users/{user_id}/hire-date",
+    params(("user_id" = String, Path, description = "対象ユーザー ID")),
+    request_body = SetHireDateRequest,
+    responses(
+        (status = 200, description = "入社日更新結果", body = HireDateResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
+    ),
+    tag = "Admin"
+)]
+fn system_admin_set_hire_date_doc() {}
+
+#[utoipa::path(
     put,
     path = "/api/admin/users/{user_id}/workday-overrides/{date}",
     params(
@@ -1443,8 +1543,13 @@ mod tests {
         assert!(paths.contains_key("/api/config/timezone"));
         assert!(paths.contains_key("/api/attendance/me"));
         assert!(paths.contains_key("/api/attendance-corrections/{id}"));
+        assert!(paths.contains_key("/api/leave-balances/me"));
         assert!(paths.contains_key("/api/admin/users/{id}"));
         assert!(paths.contains_key("/api/admin/users/{user_id}/holiday-exceptions/{id}"));
+        assert!(paths.contains_key("/api/admin/users/{user_id}/leave-balances"));
+        assert!(paths.contains_key("/api/admin/leave-grants/run"));
+        assert!(paths.contains_key("/api/admin/leave-ledger/adjust"));
+        assert!(paths.contains_key("/api/admin/users/{user_id}/hire-date"));
         assert!(paths.contains_key("/api/admin/work-schedules"));
         assert!(paths.contains_key("/api/admin/work-schedules/{id}/versions/{version_id}/publish"));
         assert!(paths.contains_key("/api/admin/work-schedule-assignments"));
@@ -1496,6 +1601,7 @@ mod tests {
             my_requests_doc,
             update_request_doc,
             cancel_request_doc,
+            leave_balance_me_doc,
             record_consent_doc,
             list_my_consents_doc,
             create_subject_request_doc,
@@ -1565,8 +1671,12 @@ mod tests {
             work_schedules_me_doc,
             admin_get_user_resolved_workdays_doc,
             admin_get_user_classification_doc,
+            admin_get_user_leave_balance_doc,
             admin_set_workday_override_doc,
             admin_delete_workday_override_doc,
+            system_admin_run_leave_grants_doc,
+            system_admin_adjust_leave_ledger_doc,
+            system_admin_set_hire_date_doc,
         ];
 
         for endpoint_doc in docs {

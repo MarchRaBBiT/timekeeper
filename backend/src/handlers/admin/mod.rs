@@ -5,6 +5,7 @@ pub mod common;
 pub mod departments;
 pub mod export;
 pub mod holidays;
+pub mod leave_ledger;
 pub mod requests;
 pub mod sessions;
 pub mod users;
@@ -20,6 +21,7 @@ pub use departments::*;
 // We should re-export everything from the new modules to maintain backward compatibility for `use crate::handlers::admin::*;` if used.
 pub use export::*;
 pub use holidays::*;
+pub use leave_ledger::*;
 pub use requests::*;
 pub use sessions::*;
 pub use users::*;

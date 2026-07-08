@@ -126,6 +126,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 残高参照 API: `GET /api/leave-balances/me`（本人）、`GET /api/admin/users/{user_id}/leave-balances`（Scoped Manager+）。残高・時効予定・年 5 日義務の消化状況を返す
   5. 初期残高投入用の `adjust` を管理 API または CLI として用意する
 - **ゴール:** 付与実行 → 残高参照の一連が integration test で green。api-catalog / OpenAPI 同期済み。lint green
+- **ExecPlan:** [EP-20260705-leave-entitlement-ledger](./active/EP-20260705-leave-entitlement-ledger.md)
+- **Status:** 実装完了・検証済み（2026-07-08）。付与・残高 read・adjust・hire-date API を追加。消化引当は予定通り T-05
 - **次の関連タスク:** T-05（消化引当）、T-11（単位拡張）、T-13（台帳の器を代休へ流用）
 
 ### T-06: 休暇承認→勤怠反映と打刻矛盾検知（G3 前半）

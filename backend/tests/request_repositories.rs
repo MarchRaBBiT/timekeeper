@@ -23,10 +23,10 @@ async fn leave_request_repository_approve_roundtrip() {
         .run(&pool)
         .await
         .expect("run migrations");
-    sqlx::query("TRUNCATE leave_requests")
+    sqlx::query("TRUNCATE leave_ledger_entries, leave_requests")
         .execute(&pool)
         .await
-        .expect("truncate leave_requests");
+        .expect("truncate leave request tables");
 
     let user = support::seed_user(&pool, UserRole::Employee, false).await;
     let admin = support::seed_user(&pool, UserRole::Manager, false).await;

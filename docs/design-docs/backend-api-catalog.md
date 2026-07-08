@@ -101,6 +101,16 @@
 | `/api/holidays/check` | `GET` | User | Query `date` | `200 {"is_holiday":bool,"reason"?:string}` | `500` holiday service failure | 指定日が休日か判定する |
 | `/api/holidays/month` | `GET` | User | Query `year`, `month` | `200 [{"date": "...", "reason": "..."}]` | `400` month 範囲外, `500` holiday service failure | 指定月の休日一覧取得 |
 
+## Leave Entitlement / Ledger
+
+| Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/api/leave-balances/me` | `GET` | User | Query `as_of?` (`YYYY-MM-DD`, 省略時はサーバー現在日) | `200 LeaveBalanceResponse { user_id, leave_type, as_of, available_minutes, available_days, active_lots, upcoming_expiries, obligations }` | `500` ledger/rule lookup failure | 本人の年次有給残高を ledger から導出し、時効予定と年5日義務の進捗を返す。消化・引当は行わない |
+| `/api/admin/users/{user_id}/leave-balances` | `GET` | Manager+ | Path `user_id`; Query `as_of?` | `200 LeaveBalanceResponse` | `400` invalid user_id, `403` 部署スコープ外, `500` lookup failure | 配下ユーザーの年次有給残高・時効予定・年5日義務進捗を返す。System Admin は全ユーザー、Manager は配下のみ |
+| `/api/admin/leave-grants/run` | `POST` | System Admin | Body `LeaveGrantRunRequest { base_date, dry_run=false, user_ids?, exclude_user_ids? }` | `200 LeaveGrantRunResponse { base_date, dry_run, granted[], skipped[], expired[] }` | `400` invalid input/unknown explicit user, `409` 付与ルール未設定, `500` append/lookup failure | 管理者起動で付与基準日の有給付与を実行する。`dry_run=true` は書き込まず、失効補記候補も結果だけ返す。cron 常駐は不要 |
+| `/api/admin/leave-ledger/adjust` | `POST` | System Admin | Body `LeaveLedgerAdjustRequest { user_id, amount_minutes, lot_id?, day_equivalent_minutes?, granted_at?, expires_at?, grant_base_date?, reason, dry_run=false }` | `200 LeaveLedgerAdjustResponse { dry_run, entry?, balance_after_minutes, balance_after_days }` | `400` reason 不足/日付不正/過剰控除/unknown lot, `404` user not found, `500` append/lookup failure | 初期移行・手動補正用に append-only ledger へ `adjust` を投入する。新規ロット投入は正の分数と付与日・時効日が必須。`dry_run=true` で投入後残高を照合できる |
+| `/api/admin/users/{user_id}/hire-date` | `PUT` | System Admin | Path `user_id`; Body `SetHireDateRequest { hire_date }` | `200 HireDateResponse { user_id, hire_date }` | `404` user not found, `500` update failure | 有給付与基準日の起点となる `users.hire_date` を設定する。未設定ユーザーは付与実行で `hire_date_not_set` として skip される |
+
 ## Admin Workflow / Audit / Holiday / Export
 
 | Endpoint | Method | Auth | Parameters | Success Response | Primary Errors | Summary |

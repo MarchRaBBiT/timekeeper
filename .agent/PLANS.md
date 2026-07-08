@@ -9,6 +9,10 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260705-leave-entitlement-ledger
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md`](../docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md)。T-04（G2 実装 前半）: 付与ルールマスタ + append-only `leave_ledger_entries`（migration 052–054）、`crates/domain` の FIFO・時効・年5日義務純ロジック、付与実行 API（dry-run）・残高 read API 2 本・初期投入 `adjust` API。消化引当は T-05
+
 # EP-20260704-notification-service-generalization
 
 **完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）

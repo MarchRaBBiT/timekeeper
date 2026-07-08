@@ -243,6 +243,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
             "/api/requests/{id}",
             delete(handlers::requests::cancel_request),
         )
+        .route(
+            "/api/leave-balances/me",
+            get(handlers::leave_ledger::get_my_leave_balance),
+        )
         .route("/api/consents", post(handlers::consents::record_consent))
         .route(
             "/api/consents/me",
@@ -446,6 +450,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             get(handlers::admin::get_user_resolved_workdays),
         )
         .route(
+            "/api/admin/users/{user_id}/leave-balances",
+            get(handlers::admin::get_user_leave_balance),
+        )
+        .route(
             "/api/admin/users/{user_id}/classification",
             get(handlers::admin::get_user_classification),
         )
@@ -580,6 +588,18 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/work-schedule-closures/monthly",
             post(handlers::admin::close_work_schedule_month),
+        )
+        .route(
+            "/api/admin/leave-grants/run",
+            post(handlers::admin::run_leave_grants),
+        )
+        .route(
+            "/api/admin/leave-ledger/adjust",
+            post(handlers::admin::adjust_leave_ledger),
+        )
+        .route(
+            "/api/admin/users/{user_id}/hire-date",
+            put(handlers::admin::set_user_hire_date),
         )
         .route(
             "/api/admin/work-schedule-assignments/{id}",
