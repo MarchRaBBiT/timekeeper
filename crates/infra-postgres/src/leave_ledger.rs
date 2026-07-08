@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use timekeeper_app::leave_ledger::{
     GrantCandidate, LeaveGrantUserRepository, LeaveLedgerError, LeaveLedgerRepository,
     LeaveRuleRepository, NewLeaveLedgerEntry, StoredLeaveLedgerEntry,
@@ -16,6 +16,82 @@ pub struct LeaveLedgerPostgresRepository {
 impl LeaveLedgerPostgresRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn list_entries_for_update(
+        tx: &mut Transaction<'_, Postgres>,
+        user_id: &str,
+        leave_type: &str,
+    ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError> {
+        sqlx::query_as::<_, LeaveLedgerEntryRow>(
+            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes,
+                    day_equivalent_minutes, granted_at, expires_at, grant_base_date,
+                    leave_request_id, reason, created_by, effective_at, created_at
+             FROM leave_ledger_entries
+             WHERE user_id = $1 AND leave_type = $2
+             ORDER BY effective_at ASC, created_at ASC, id ASC
+             FOR UPDATE",
+        )
+        .bind(user_id)
+        .bind(leave_type)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(repository_error)?
+        .into_iter()
+        .map(row_to_stored_entry)
+        .collect()
+    }
+
+    pub async fn append_entries_in_transaction(
+        tx: &mut Transaction<'_, Postgres>,
+        entries: Vec<NewLeaveLedgerEntry>,
+    ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError> {
+        let mut stored = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let id = Uuid::new_v4();
+            let lot_id = match entry.lot_id {
+                Some(lot_id) => parse_uuid(&lot_id, "lot_id")?,
+                None => Uuid::new_v4(),
+            };
+            let amount_minutes = i32::try_from(entry.amount_minutes).map_err(|_| {
+                LeaveLedgerError::InvalidInput("amount_minutes is out of range".to_string())
+            })?;
+            let day_equivalent_minutes =
+                i32::try_from(entry.day_equivalent_minutes).map_err(|_| {
+                    LeaveLedgerError::InvalidInput(
+                        "day_equivalent_minutes is out of range".to_string(),
+                    )
+                })?;
+            let row = sqlx::query_as::<_, LeaveLedgerEntryRow>(
+                "INSERT INTO leave_ledger_entries (
+                    id, user_id, leave_type, kind, lot_id, amount_minutes,
+                    day_equivalent_minutes, granted_at, expires_at, grant_base_date,
+                    leave_request_id, reason, created_by, effective_at
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                 RETURNING id, user_id, leave_type, kind, lot_id, amount_minutes,
+                    day_equivalent_minutes, granted_at, expires_at, grant_base_date,
+                    leave_request_id, reason, created_by, effective_at, created_at",
+            )
+            .bind(id)
+            .bind(entry.user_id)
+            .bind(entry.leave_type)
+            .bind(kind_to_str(entry.kind))
+            .bind(lot_id)
+            .bind(amount_minutes)
+            .bind(day_equivalent_minutes)
+            .bind(entry.granted_at)
+            .bind(entry.expires_at)
+            .bind(entry.grant_base_date)
+            .bind(entry.leave_request_id)
+            .bind(entry.reason)
+            .bind(entry.created_by)
+            .bind(entry.effective_at)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(repository_error)?;
+            stored.push(row_to_stored_entry(row)?);
+        }
+        Ok(stored)
     }
 }
 

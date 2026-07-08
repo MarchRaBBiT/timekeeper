@@ -3,10 +3,12 @@ use std::sync::Mutex;
 
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use timekeeper_app::leave_ledger::{
-    AdjustLeaveLedger, AdjustLeaveLedgerCommand, GetLeaveBalance, GetLeaveBalanceCommand,
-    GrantCandidate, GrantSkipReason, LeaveGrantUserRepository, LeaveLedgerError,
-    LeaveLedgerRepository, LeaveRuleRepository, NewLeaveLedgerEntry, RunLeaveGrants,
-    RunLeaveGrantsCommand, SetHireDate, StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
+    build_annual_leave_consume_entries, build_annual_leave_release_entries,
+    ensure_annual_leave_request_has_balance, AdjustLeaveLedger, AdjustLeaveLedgerCommand,
+    AnnualLeaveRequestLedgerCommand, GetLeaveBalance, GetLeaveBalanceCommand, GrantCandidate,
+    GrantSkipReason, LeaveGrantUserRepository, LeaveLedgerError, LeaveLedgerRepository,
+    LeaveRuleRepository, NewLeaveLedgerEntry, RunLeaveGrants, RunLeaveGrantsCommand, SetHireDate,
+    StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
 };
 use timekeeper_domain::leave_ledger::{
     LeaveGrantRule, LeaveLedgerKind, LeaveObligationRule, ObligationStatus,
@@ -198,6 +200,95 @@ fn candidate(user_id: &str, hire_date: Option<NaiveDate>) -> GrantCandidate {
         user_id: user_id.to_string(),
         hire_date,
     }
+}
+
+fn stored_entry(
+    kind: LeaveLedgerKind,
+    lot_id: &str,
+    amount_minutes: i64,
+    effective_at: DateTime<Utc>,
+) -> StoredLeaveLedgerEntry {
+    StoredLeaveLedgerEntry {
+        id: format!("entry-{lot_id}-{amount_minutes}"),
+        user_id: "user-1".to_string(),
+        leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+        kind,
+        lot_id: lot_id.to_string(),
+        amount_minutes,
+        day_equivalent_minutes: 480,
+        granted_at: Some(date(2026, 1, 1)),
+        expires_at: Some(date(2028, 1, 1)),
+        grant_base_date: Some(date(2026, 1, 1)),
+        leave_request_id: None,
+        reason: None,
+        created_by: None,
+        effective_at,
+        created_at: effective_at,
+    }
+}
+
+fn annual_request_command() -> AnnualLeaveRequestLedgerCommand {
+    AnnualLeaveRequestLedgerCommand {
+        user_id: "user-1".to_string(),
+        request_id: "request-1".to_string(),
+        start_date: date(2026, 7, 10),
+        end_date: date(2026, 7, 12),
+        created_by: Some("manager-1".to_string()),
+    }
+}
+
+#[test]
+fn annual_leave_submission_balance_check_rejects_insufficient_balance() {
+    let entries = vec![stored_entry(
+        LeaveLedgerKind::Adjust,
+        "lot-1",
+        960,
+        ts(2026, 1, 1),
+    )];
+
+    assert_eq!(
+        ensure_annual_leave_request_has_balance(&entries, date(2026, 7, 10), date(2026, 7, 12)),
+        Err(LeaveLedgerError::InsufficientBalance {
+            requested_minutes: 1440,
+            available_minutes: 960,
+        })
+    );
+}
+
+#[test]
+fn annual_leave_consume_entries_follow_fifo_and_release_reverses_them() {
+    let entries = vec![
+        stored_entry(LeaveLedgerKind::Adjust, "lot-1", 960, ts(2026, 1, 1)),
+        stored_entry(LeaveLedgerKind::Adjust, "lot-2", 960, ts(2026, 2, 1)),
+    ];
+
+    let consume = build_annual_leave_consume_entries(&entries, annual_request_command())
+        .expect("consume entries");
+    assert_eq!(consume.len(), 2);
+    assert_eq!(consume[0].lot_id.as_deref(), Some("lot-1"));
+    assert_eq!(consume[0].amount_minutes, -960);
+    assert_eq!(consume[1].lot_id.as_deref(), Some("lot-2"));
+    assert_eq!(consume[1].amount_minutes, -480);
+    assert_eq!(consume[0].leave_request_id.as_deref(), Some("request-1"));
+
+    let mut with_consumes = entries;
+    with_consumes.extend(consume.into_iter().enumerate().map(|(index, entry)| {
+        let mut stored = stored_entry(
+            LeaveLedgerKind::Consume,
+            entry.lot_id.as_deref().expect("lot"),
+            entry.amount_minutes,
+            entry.effective_at,
+        );
+        stored.id = format!("consume-{index}");
+        stored.leave_request_id = entry.leave_request_id;
+        stored
+    }));
+    let release = build_annual_leave_release_entries(&with_consumes, annual_request_command());
+    assert_eq!(release.len(), 2);
+    assert_eq!(release[0].lot_id.as_deref(), Some("lot-1"));
+    assert_eq!(release[0].amount_minutes, 960);
+    assert_eq!(release[1].lot_id.as_deref(), Some("lot-2"));
+    assert_eq!(release[1].amount_minutes, 480);
 }
 
 fn run_command(base_date: NaiveDate, dry_run: bool) -> RunLeaveGrantsCommand {

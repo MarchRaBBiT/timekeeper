@@ -688,7 +688,10 @@ fn cancel_my_attendance_correction_doc() {}
     post,
     path = "/api/requests/leave",
     request_body = CreateLeaveRequest,
-    responses((status = 200, body = LeaveRequestResponse)),
+    responses(
+        (status = 200, body = LeaveRequestResponse),
+        (status = 400, body = ErrorResponse, description = "date range validation or annual leave balance shortage (code=LEAVE_BALANCE_INSUFFICIENT)")
+    ),
     tag = "Requests"
 )]
 fn create_leave_doc() {}
@@ -728,7 +731,10 @@ fn update_request_doc() {}
     delete,
     path = "/api/requests/{id}",
     params(("id" = String, Path, description = "Request ID")),
-    responses((status = 200, body = RequestCancellationResponse)),
+    responses(
+        (status = 200, body = RequestCancellationResponse),
+        (status = 404, body = ErrorResponse, description = "Request not found or not cancellable")
+    ),
     tag = "Requests"
 )]
 fn cancel_request_doc() {}
@@ -830,7 +836,7 @@ fn admin_request_detail_doc() {}
     request_body = ApprovePayload,
     responses(
         (status = 200, body = serde_json::Value),
-        (status = 400, body = ErrorResponse, description = "コメント不正"),
+        (status = 400, body = ErrorResponse, description = "コメント不正、または annual 申請の残高不足 (code=LEAVE_BALANCE_INSUFFICIENT)"),
         (status = 403, body = ErrorResponse, description = "自己申請の承認禁止または承認権限なし"),
         (status = 404, body = ErrorResponse, description = "申請が存在しない、またはすでに処理済み")
     ),

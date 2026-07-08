@@ -4,6 +4,7 @@ use timekeeper_contract::leave::{
     LeaveGrantRunRequest, LeaveGrantRunResponse, LeaveGrantSkipReason, LeaveGrantSkipResponse,
     LeaveLedgerAdjustRequest, LeaveLedgerAdjustResponse, LeaveLedgerEntryResponse, LeaveLedgerKind,
     LeaveLotResponse, LeaveObligationStatus, LeaveObligationWindowResponse, SetHireDateRequest,
+    LEAVE_BALANCE_INSUFFICIENT_CODE,
 };
 use validator::Validate;
 
@@ -31,6 +32,14 @@ fn obligation_status_uses_snake_case_wire_format() {
     let parsed: LeaveObligationStatus =
         serde_json::from_value(serde_json::json!("fulfilled")).expect("deserialize");
     assert_eq!(parsed, LeaveObligationStatus::Fulfilled);
+}
+
+#[test]
+fn insufficient_balance_error_code_is_contract_fixed() {
+    assert_eq!(
+        LEAVE_BALANCE_INSUFFICIENT_CODE,
+        "LEAVE_BALANCE_INSUFFICIENT"
+    );
 }
 
 #[test]

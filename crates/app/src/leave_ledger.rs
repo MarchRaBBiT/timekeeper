@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use thiserror::Error;
 use timekeeper_domain::leave_ledger::{
-    annual_obligations, derive_balance, grant_expiry_date, pending_expirations,
+    allocate_fifo, annual_obligations, derive_balance, grant_expiry_date, pending_expirations,
     scheduled_grant_tenure_months, select_grant_rule, LeaveBalance, LeaveGrantRule,
     LeaveLedgerEvent, LeaveLedgerKind, LeaveObligationRule, ObligationWindow,
 };
@@ -27,6 +27,13 @@ pub enum LeaveLedgerError {
     UserNotFound,
     #[error("leave grant rules are not configured")]
     RulesNotConfigured,
+    #[error(
+        "insufficient leave balance: requested {requested_minutes}, available {available_minutes}"
+    )]
+    InsufficientBalance {
+        requested_minutes: i64,
+        available_minutes: i64,
+    },
     #[error("leave ledger repository error: {0}")]
     Repository(String),
 }
@@ -97,6 +104,155 @@ pub trait LeaveLedgerRepository: Send + Sync {
         &self,
         entries: Vec<NewLeaveLedgerEntry>,
     ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnualLeaveRequestLedgerCommand {
+    pub user_id: String,
+    pub request_id: String,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub created_by: Option<String>,
+}
+
+pub fn ensure_annual_leave_request_has_balance(
+    entries: &[StoredLeaveLedgerEntry],
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> Result<(), LeaveLedgerError> {
+    let events = stored_entries_to_events(entries);
+    let balance = derive_balance(&events, start_date);
+    let requested_minutes = requested_minutes_for_days(&balance, start_date, end_date)?;
+    allocate_fifo(&balance, requested_minutes)
+        .map(|_| ())
+        .map_err(allocation_error_to_ledger_error)
+}
+
+pub fn build_annual_leave_consume_entries(
+    entries: &[StoredLeaveLedgerEntry],
+    command: AnnualLeaveRequestLedgerCommand,
+) -> Result<Vec<NewLeaveLedgerEntry>, LeaveLedgerError> {
+    let events = stored_entries_to_events(entries);
+    let balance = derive_balance(&events, command.start_date);
+    let requested_minutes =
+        requested_minutes_for_days(&balance, command.start_date, command.end_date)?;
+    let allocations =
+        allocate_fifo(&balance, requested_minutes).map_err(allocation_error_to_ledger_error)?;
+    allocations
+        .into_iter()
+        .map(|allocation| {
+            let lot = balance
+                .lots
+                .iter()
+                .find(|lot| lot.lot_id == allocation.lot_id)
+                .ok_or_else(|| {
+                    LeaveLedgerError::Repository(format!(
+                        "allocated lot was not found: {}",
+                        allocation.lot_id
+                    ))
+                })?;
+            Ok(NewLeaveLedgerEntry {
+                user_id: command.user_id.clone(),
+                leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+                kind: LeaveLedgerKind::Consume,
+                lot_id: Some(allocation.lot_id),
+                amount_minutes: -allocation.amount_minutes,
+                day_equivalent_minutes: lot.day_equivalent_minutes,
+                granted_at: None,
+                expires_at: None,
+                grant_base_date: None,
+                leave_request_id: Some(command.request_id.clone()),
+                reason: None,
+                created_by: command.created_by.clone(),
+                effective_at: start_of_day_utc(command.start_date),
+            })
+        })
+        .collect()
+}
+
+pub fn build_annual_leave_release_entries(
+    entries: &[StoredLeaveLedgerEntry],
+    command: AnnualLeaveRequestLedgerCommand,
+) -> Vec<NewLeaveLedgerEntry> {
+    let mut releases = Vec::new();
+    for entry in entries.iter().filter(|entry| {
+        entry.leave_request_id.as_deref() == Some(command.request_id.as_str())
+            && entry.kind == LeaveLedgerKind::Consume
+    }) {
+        let already_released: i64 = entries
+            .iter()
+            .filter(|candidate| {
+                candidate.leave_request_id.as_deref() == Some(command.request_id.as_str())
+                    && candidate.kind == LeaveLedgerKind::Release
+                    && candidate.lot_id == entry.lot_id
+            })
+            .map(|candidate| candidate.amount_minutes)
+            .sum();
+        let consumed_minutes = -entry.amount_minutes;
+        let release_minutes = consumed_minutes - already_released;
+        if release_minutes <= 0 {
+            continue;
+        }
+        releases.push(NewLeaveLedgerEntry {
+            user_id: command.user_id.clone(),
+            leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+            kind: LeaveLedgerKind::Release,
+            lot_id: Some(entry.lot_id.clone()),
+            amount_minutes: release_minutes,
+            day_equivalent_minutes: entry.day_equivalent_minutes,
+            granted_at: None,
+            expires_at: None,
+            grant_base_date: None,
+            leave_request_id: Some(command.request_id.clone()),
+            reason: None,
+            created_by: command.created_by.clone(),
+            effective_at: start_of_day_utc(command.start_date),
+        });
+    }
+    releases
+}
+
+fn allocation_error_to_ledger_error(
+    error: timekeeper_domain::leave_ledger::FifoAllocationError,
+) -> LeaveLedgerError {
+    match error {
+        timekeeper_domain::leave_ledger::FifoAllocationError::NonPositiveAmount => {
+            LeaveLedgerError::InvalidInput("leave request duration must be positive".to_string())
+        }
+        timekeeper_domain::leave_ledger::FifoAllocationError::InsufficientBalance {
+            requested_minutes,
+            available_minutes,
+        } => LeaveLedgerError::InsufficientBalance {
+            requested_minutes,
+            available_minutes,
+        },
+    }
+}
+
+fn stored_entries_to_events(entries: &[StoredLeaveLedgerEntry]) -> Vec<LeaveLedgerEvent> {
+    entries
+        .iter()
+        .map(StoredLeaveLedgerEntry::to_domain_event)
+        .collect()
+}
+
+fn requested_minutes_for_days(
+    balance: &LeaveBalance,
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+) -> Result<i64, LeaveLedgerError> {
+    if start_date > end_date {
+        return Err(LeaveLedgerError::InvalidInput(
+            "start_date must be <= end_date".to_string(),
+        ));
+    }
+    let requested_days = (end_date - start_date).num_days() + 1;
+    let day_equivalent_minutes = balance
+        .active_lots()
+        .next()
+        .map(|lot| lot.day_equivalent_minutes)
+        .unwrap_or(480);
+    Ok(requested_days * day_equivalent_minutes)
 }
 
 #[async_trait]

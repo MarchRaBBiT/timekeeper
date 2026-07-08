@@ -1,9 +1,20 @@
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use std::str::FromStr;
+use timekeeper_app::leave_ledger::{
+    build_annual_leave_consume_entries, build_annual_leave_release_entries,
+    ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand, LeaveLedgerError,
+    LeaveLedgerRepository, ANNUAL_LEAVE_TYPE,
+};
+use timekeeper_contract::leave::LEAVE_BALANCE_INSUFFICIENT_CODE;
+use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 
 use crate::error::AppError;
-use crate::models::{leave_request::LeaveRequest, overtime_request::OvertimeRequest};
+use crate::models::{
+    leave_request::{LeaveRequest, LeaveType},
+    overtime_request::OvertimeRequest,
+    request::RequestStatus,
+};
 use crate::repositories::{
     common::push_clause,
     leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
@@ -203,6 +214,23 @@ impl RequestRepository {
         }
     }
 
+    pub async fn ensure_annual_leave_request_balance(
+        &self,
+        db: &PgPool,
+        request: &LeaveRequest,
+    ) -> Result<(), AppError> {
+        if !matches!(request.leave_type, LeaveType::Annual) {
+            return Ok(());
+        }
+        let ledger = LeaveLedgerPostgresRepository::new(db.clone());
+        let entries = ledger
+            .list_entries(&request.user_id.to_string(), ANNUAL_LEAVE_TYPE)
+            .await
+            .map_err(leave_ledger_error_to_app_error)?;
+        ensure_annual_leave_request_has_balance(&entries, request.start_date, request.end_date)
+            .map_err(leave_ledger_error_to_app_error)
+    }
+
     /// Updates the status of a request (approve or reject).
     ///
     /// Attempts to parse the request ID as either a leave or overtime request ID
@@ -230,29 +258,49 @@ impl RequestRepository {
     ) -> Result<bool, AppError> {
         let leave_repo = LeaveRequestRepository::new();
         if let Ok(leave_request_id) = LeaveRequestId::from_str(request_id) {
-            let affected = match &update {
-                RequestStatusUpdate::Approve {
-                    approver_id,
-                    comment,
-                    timestamp,
-                } => {
-                    leave_repo
-                        .approve(db, leave_request_id, *approver_id, comment, *timestamp)
-                        .await?
-                }
-                RequestStatusUpdate::Reject {
-                    approver_id,
-                    comment,
-                    timestamp,
-                } => {
-                    leave_repo
-                        .reject(db, leave_request_id, *approver_id, comment, *timestamp)
-                        .await?
-                }
-            };
+            if let Some(existing) = find_leave_request_optional(db, leave_request_id).await? {
+                let affected = match &update {
+                    RequestStatusUpdate::Approve {
+                        approver_id,
+                        comment,
+                        timestamp,
+                    } if matches!(existing.leave_type, LeaveType::Annual) => {
+                        if self
+                            .approve_annual_leave_request_with_ledger(
+                                db,
+                                leave_request_id,
+                                *approver_id,
+                                comment,
+                                *timestamp,
+                            )
+                            .await?
+                        {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    RequestStatusUpdate::Approve {
+                        approver_id,
+                        comment,
+                        timestamp,
+                    } => {
+                        leave_repo
+                            .approve(db, leave_request_id, *approver_id, comment, *timestamp)
+                            .await?
+                    }
+                    RequestStatusUpdate::Reject {
+                        approver_id,
+                        comment,
+                        timestamp,
+                    } => {
+                        leave_repo
+                            .reject(db, leave_request_id, *approver_id, comment, *timestamp)
+                            .await?
+                    }
+                };
 
-            if affected > 0 {
-                return Ok(true);
+                return Ok(affected > 0);
             }
         }
 
@@ -285,6 +333,217 @@ impl RequestRepository {
         }
 
         Ok(false)
+    }
+
+    async fn approve_annual_leave_request_with_ledger(
+        &self,
+        db: &PgPool,
+        id: LeaveRequestId,
+        approver_id: UserId,
+        comment: &str,
+        timestamp: DateTime<Utc>,
+    ) -> Result<bool, AppError> {
+        let mut tx = db.begin().await?;
+        let Some(request) = find_leave_request_for_update(&mut tx, id).await? else {
+            return Ok(false);
+        };
+        if !matches!(request.status, RequestStatus::Pending) {
+            return Ok(false);
+        }
+        lock_user_for_ledger(&mut tx, request.user_id).await?;
+        let entries = LeaveLedgerPostgresRepository::list_entries_for_update(
+            &mut tx,
+            &request.user_id.to_string(),
+            ANNUAL_LEAVE_TYPE,
+        )
+        .await
+        .map_err(leave_ledger_error_to_app_error)?;
+        let consume_entries = build_annual_leave_consume_entries(
+            &entries,
+            AnnualLeaveRequestLedgerCommand {
+                user_id: request.user_id.to_string(),
+                request_id: request.id.to_string(),
+                start_date: request.start_date,
+                end_date: request.end_date,
+                created_by: Some(approver_id.to_string()),
+            },
+        )
+        .map_err(leave_ledger_error_to_app_error)?;
+
+        let affected = sqlx::query(
+            "UPDATE leave_requests
+             SET status = $1, approved_by = $2, approved_at = $3, decision_comment = $4,
+                 updated_at = $5
+             WHERE id = $6 AND status = 'pending'",
+        )
+        .bind(RequestStatus::Approved.db_value())
+        .bind(approver_id)
+        .bind(timestamp)
+        .bind(comment)
+        .bind(timestamp)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if affected == 0 {
+            return Ok(false);
+        }
+        LeaveLedgerPostgresRepository::append_entries_in_transaction(&mut tx, consume_entries)
+            .await
+            .map_err(leave_ledger_error_to_app_error)?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    pub async fn cancel_leave_request_with_ledger(
+        &self,
+        db: &PgPool,
+        id: LeaveRequestId,
+        user_id: UserId,
+        timestamp: DateTime<Utc>,
+    ) -> Result<u64, AppError> {
+        let mut tx = db.begin().await?;
+        let Some(request) = find_leave_request_for_update(&mut tx, id).await? else {
+            return Ok(0);
+        };
+        if request.user_id != user_id {
+            return Ok(0);
+        }
+
+        match request.status {
+            RequestStatus::Pending => {
+                let affected =
+                    cancel_leave_request_in_tx(&mut tx, id, user_id, timestamp, "pending").await?;
+                tx.commit().await?;
+                Ok(affected)
+            }
+            RequestStatus::Approved if matches!(request.leave_type, LeaveType::Annual) => {
+                lock_user_for_ledger(&mut tx, request.user_id).await?;
+                let entries = LeaveLedgerPostgresRepository::list_entries_for_update(
+                    &mut tx,
+                    &request.user_id.to_string(),
+                    ANNUAL_LEAVE_TYPE,
+                )
+                .await
+                .map_err(leave_ledger_error_to_app_error)?;
+                let release_entries = build_annual_leave_release_entries(
+                    &entries,
+                    AnnualLeaveRequestLedgerCommand {
+                        user_id: request.user_id.to_string(),
+                        request_id: request.id.to_string(),
+                        start_date: request.start_date,
+                        end_date: request.end_date,
+                        created_by: Some(user_id.to_string()),
+                    },
+                );
+                let affected =
+                    cancel_leave_request_in_tx(&mut tx, id, user_id, timestamp, "approved").await?;
+                if affected == 0 {
+                    return Ok(0);
+                }
+                if !release_entries.is_empty() {
+                    LeaveLedgerPostgresRepository::append_entries_in_transaction(
+                        &mut tx,
+                        release_entries,
+                    )
+                    .await
+                    .map_err(leave_ledger_error_to_app_error)?;
+                }
+                tx.commit().await?;
+                Ok(affected)
+            }
+            _ => Ok(0),
+        }
+    }
+}
+
+async fn find_leave_request_optional(
+    db: &PgPool,
+    id: LeaveRequestId,
+) -> Result<Option<LeaveRequest>, AppError> {
+    sqlx::query_as::<_, LeaveRequest>(
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status,
+                approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+                decision_comment, created_at, updated_at
+         FROM leave_requests
+         WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .map_err(AppError::from)
+}
+
+async fn find_leave_request_for_update(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    id: LeaveRequestId,
+) -> Result<Option<LeaveRequest>, AppError> {
+    sqlx::query_as::<_, LeaveRequest>(
+        "SELECT id, user_id, leave_type, start_date, end_date, reason, status,
+                approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
+                decision_comment, created_at, updated_at
+         FROM leave_requests
+         WHERE id = $1
+         FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(AppError::from)
+}
+
+async fn lock_user_for_ledger(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    user_id: UserId,
+) -> Result<(), AppError> {
+    let found: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+        .bind(user_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    if found.is_none() {
+        return Err(AppError::NotFound("User not found".into()));
+    }
+    Ok(())
+}
+
+async fn cancel_leave_request_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    id: LeaveRequestId,
+    user_id: UserId,
+    timestamp: DateTime<Utc>,
+    expected_status: &str,
+) -> Result<u64, AppError> {
+    sqlx::query(
+        "UPDATE leave_requests
+         SET status = $1, cancelled_at = $2, updated_at = $3
+         WHERE id = $4 AND user_id = $5 AND status = $6",
+    )
+    .bind(RequestStatus::Cancelled.db_value())
+    .bind(timestamp)
+    .bind(timestamp)
+    .bind(id)
+    .bind(user_id)
+    .bind(expected_status)
+    .execute(&mut **tx)
+    .await
+    .map(|result| result.rows_affected())
+    .map_err(AppError::from)
+}
+
+fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
+    match error {
+        LeaveLedgerError::InvalidInput(message) => AppError::BadRequest(message),
+        LeaveLedgerError::UserNotFound => AppError::NotFound("User not found".into()),
+        LeaveLedgerError::RulesNotConfigured => {
+            AppError::Conflict("Leave grant rules are not configured".into())
+        }
+        LeaveLedgerError::InsufficientBalance { .. } => AppError::BadRequestWithCode {
+            message: "Insufficient annual leave balance".into(),
+            code: LEAVE_BALANCE_INSUFFICIENT_CODE.to_string(),
+        },
+        LeaveLedgerError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
     }
 }
 

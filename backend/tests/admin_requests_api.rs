@@ -91,7 +91,7 @@ async fn test_admin_can_list_all_requests() {
     let user_app = test_router_user(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-07-15",
         "end_date": "2024-07-17",
         "reason": "Summer vacation"
@@ -159,7 +159,7 @@ async fn test_admin_can_approve_leave_request() {
     let user_app = test_router_user(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-08-01",
         "end_date": "2024-08-03",
         "reason": "Personal time"
@@ -267,7 +267,7 @@ async fn test_admin_cannot_approve_own_request() {
     let admin_app = test_router_admin(pool.clone(), admin.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-12-01",
         "end_date": "2024-12-02",
         "reason": "Own request"
@@ -316,7 +316,7 @@ async fn test_admin_cannot_reject_own_request() {
     let admin_app = test_router_admin(pool.clone(), admin.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-12-10",
         "end_date": "2024-12-10",
         "reason": "Own request"
@@ -429,7 +429,7 @@ async fn test_employee_cannot_approve_request() {
     let user_app = test_router_user(pool.clone(), employee2.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-11-01",
         "end_date": "2024-11-03",
         "reason": "Vacation"

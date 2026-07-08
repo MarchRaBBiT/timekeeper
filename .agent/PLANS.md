@@ -13,6 +13,10 @@
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md`](../docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md)。T-04（G2 実装 前半）: 付与ルールマスタ + append-only `leave_ledger_entries`（migration 052–054）、`crates/domain` の FIFO・時効・年5日義務純ロジック、付与実行 API（dry-run）・残高 read API 2 本・初期投入 `adjust` API。消化引当は T-05
 
+# EP-20260708-leave-request-ledger-consumption
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md`](../docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md)。T-05（G2 実装 後半）: annual 申請の残高不足 reject、承認時 FIFO consume、承認済み annual 取消時 release。pending は引当せず承認時に同一 DB transaction で再検証する。annual 以外は残高非連動を維持
+
 # EP-20260704-notification-service-generalization
 
 **完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）

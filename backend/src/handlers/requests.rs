@@ -55,6 +55,8 @@ pub async fn create_leave_request(
     );
 
     let repo = RequestRepository::new();
+    repo.ensure_annual_leave_request_balance(&state.write_pool, &leave_request)
+        .await?;
     let saved = repo
         .create_request_with_history(&state.write_pool, RequestCreate::Leave(&leave_request))
         .await?;
@@ -319,9 +321,9 @@ pub async fn cancel_request(
     // Try leave cancellation first
     let leave_request_id = LeaveRequestId::from_str(&request_id)
         .map_err(|_| AppError::BadRequest("Invalid request ID format".into()))?;
-    let leave_repo = LeaveRequestRepository::new();
-    let result = leave_repo
-        .cancel(&state.write_pool, leave_request_id, user_id, now)
+    let request_repo = RequestRepository::new();
+    let result = request_repo
+        .cancel_leave_request_with_ledger(&state.write_pool, leave_request_id, user_id, now)
         .await?;
     if result > 0 {
         return Ok(Json(json!({"id": request_id, "status":"cancelled"})));

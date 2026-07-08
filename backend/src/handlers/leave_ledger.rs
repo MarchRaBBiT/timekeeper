@@ -6,7 +6,7 @@ use timekeeper_app::leave_ledger::{
 use timekeeper_contract::leave::{
     LeaveBalanceQuery, LeaveBalanceResponse, LeaveExpiryScheduleResponse, LeaveLedgerEntryResponse,
     LeaveLedgerKind as ContractLeaveLedgerKind, LeaveLotResponse, LeaveObligationStatus,
-    LeaveObligationWindowResponse,
+    LeaveObligationWindowResponse, LEAVE_BALANCE_INSUFFICIENT_CODE,
 };
 use timekeeper_domain::leave_ledger::{LeaveLedgerKind, ObligationStatus};
 use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
@@ -117,6 +117,10 @@ pub fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
         LeaveLedgerError::RulesNotConfigured => {
             AppError::Conflict("Leave grant rules are not configured".into())
         }
+        LeaveLedgerError::InsufficientBalance { .. } => AppError::BadRequestWithCode {
+            message: "Insufficient annual leave balance".into(),
+            code: LEAVE_BALANCE_INSUFFICIENT_CODE.to_string(),
+        },
         LeaveLedgerError::Repository(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }

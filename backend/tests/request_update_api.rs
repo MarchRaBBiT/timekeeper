@@ -248,7 +248,7 @@ async fn cancel_request_handles_invalid_and_not_cancellable_states() {
     let leave = seed_leave_request(
         &pool,
         employee.id,
-        timekeeper_backend::models::leave_request::LeaveType::Annual,
+        timekeeper_backend::models::leave_request::LeaveType::Sick,
         NaiveDate::from_ymd_opt(2026, 4, 10).expect("valid date"),
         NaiveDate::from_ymd_opt(2026, 4, 10).expect("valid date"),
     )

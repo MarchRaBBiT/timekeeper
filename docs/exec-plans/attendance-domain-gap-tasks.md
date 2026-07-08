@@ -148,6 +148,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-05: 休暇申請の残高検証・消化引当（G2 実装 後半）
 
 - **前提タスク:** T-04
+- **ExecPlan:** [EP-20260708-leave-request-ledger-consumption](./active/EP-20260708-leave-request-ledger-consumption.md)
+- **Status:** 完了（2026-07-08）。annual 申請の残高不足 reject、承認時 consume、承認済み annual 取消時 release を実装・検証済み。pending は引当せず承認時に同一 DB transaction で再検証する。
 - **目的:** 残高不足の申請を入口で止め、承認・取消と台帳を同期させる
 - **指示:**
   1. `POST /api/requests/leave`（`leave_type = annual`）で残高不足なら reject する（既存エラー envelope。エラー code を新設し contract に固定）

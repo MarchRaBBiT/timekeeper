@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
+pub const LEAVE_BALANCE_INSUFFICIENT_CODE: &str = "LEAVE_BALANCE_INSUFFICIENT";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LeaveLedgerKind {

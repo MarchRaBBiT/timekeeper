@@ -51,7 +51,7 @@ async fn test_create_leave_request_succeeds() {
     let app = test_router_with_state(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-07-15",
         "end_date": "2024-07-17",
         "reason": "Summer vacation"
@@ -83,7 +83,7 @@ async fn test_create_leave_request_with_invalid_date_range_fails() {
     let app = test_router_with_state(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-07-20",
         "end_date": "2024-07-15",
         "reason": "Invalid dates"
@@ -146,7 +146,7 @@ async fn test_get_my_requests_returns_list() {
     let app = test_router_with_state(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-07-15",
         "end_date": "2024-07-17",
         "reason": "Summer vacation"
@@ -190,7 +190,7 @@ async fn test_cancel_leave_request_succeeds() {
     let app = test_router_with_state(pool.clone(), employee.clone());
 
     let payload = json!({
-        "leave_type": "annual",
+        "leave_type": "sick",
         "start_date": "2024-08-01",
         "end_date": "2024-08-03",
         "reason": "Personal"

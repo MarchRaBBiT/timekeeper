@@ -105,7 +105,7 @@ async fn submit_leave_request(pool: PgPool, employee: User) -> String {
                 .header("Content-Type", "application/json")
                 .body(Body::from(
                     json!({
-                        "leave_type": "annual",
+                        "leave_type": "sick",
                         "start_date": "2025-06-01",
                         "end_date": "2025-06-03",
                         "reason": "vacation"
