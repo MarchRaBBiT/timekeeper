@@ -24,10 +24,25 @@ use timekeeper_app::attendance::{
     ListUserAttendanceQuery as AppListUserAttendanceQuery, StartBreak as StartBreakUseCase,
     StartBreakCommand as AppStartBreakCommand, StartBreakError,
 };
+use timekeeper_app::attendance_classification::{
+    ClassificationDay, ClassificationTotals, FlexPeriodStatus, GetMonthlyClassification,
+    MonthlyClassification, MonthlyClassificationError,
+    MonthlyClassificationQuery as AppMonthlyClassificationQuery,
+};
 use timekeeper_app::work_schedules::ResolveWorkday;
-use timekeeper_contract::attendance::AttendanceStatusResponse;
+use timekeeper_contract::attendance::{
+    AttendanceStatusResponse, ClassificationTotalsResponse, DailyClassificationResponse,
+    FlexPeriodClassificationResponse, FlexPeriodStatusResponse, MonthlyClassificationQueryParams,
+    MonthlyClassificationResponse,
+};
+use timekeeper_contract::work_schedules::{
+    ResolvedDayKind as ContractResolvedDayKind, WorkScheduleType as ContractWorkScheduleType,
+};
 use timekeeper_domain::WorkDate;
 use timekeeper_infra_postgres::attendance::AttendanceWorkflowRepository;
+use timekeeper_infra_postgres::attendance_classification::{
+    ClassificationPostgresRepository, PostgresWorkdayMaterializer,
+};
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 use utoipa::{IntoParams, ToSchema};
 
@@ -109,6 +124,143 @@ fn attendance_status_to_response(status: AppAttendanceStatus) -> AttendanceStatu
         clock_in_time: status.clock_in_time,
         clock_out_time: status.clock_out_time,
     }
+}
+
+fn monthly_classification_to_response(
+    result: MonthlyClassification,
+) -> MonthlyClassificationResponse {
+    match result {
+        MonthlyClassification::Calculated(calculated) => {
+            MonthlyClassificationResponse::Calculated {
+                year: calculated.year,
+                month: calculated.month,
+                days: calculated
+                    .days
+                    .into_iter()
+                    .map(classification_day_to_response)
+                    .collect(),
+                totals: classification_totals_to_response(calculated.totals),
+                flex_period: flex_period_to_response(calculated.flex_period),
+            }
+        }
+        MonthlyClassification::UnresolvedDays => MonthlyClassificationResponse::UnresolvedDays,
+        MonthlyClassification::WorkRuleNotConfigured => {
+            MonthlyClassificationResponse::WorkRuleNotConfigured
+        }
+    }
+}
+
+fn classification_day_to_response(day: ClassificationDay) -> DailyClassificationResponse {
+    DailyClassificationResponse {
+        work_date: day.work_date,
+        day_kind: classification_day_kind_to_response(day.day_kind),
+        schedule_type: classification_schedule_type_to_response(day.schedule_type),
+        actual_minutes: day.actual_minutes,
+        scheduled_minutes: day.scheduled_minutes,
+        statutory_within_minutes: day.statutory_within_minutes,
+        statutory_excess_minutes: day.statutory_excess_minutes,
+        legal_holiday_minutes: day.legal_holiday_minutes,
+        night_minutes: day.night_minutes,
+        in_progress: day.in_progress,
+        locked: day.locked,
+    }
+}
+
+fn classification_totals_to_response(totals: ClassificationTotals) -> ClassificationTotalsResponse {
+    ClassificationTotalsResponse {
+        actual_minutes: totals.actual_minutes,
+        scheduled_minutes: totals.scheduled_minutes,
+        statutory_within_minutes: totals.statutory_within_minutes,
+        statutory_excess_minutes: totals.statutory_excess_minutes,
+        legal_holiday_minutes: totals.legal_holiday_minutes,
+        night_minutes: totals.night_minutes,
+    }
+}
+
+fn flex_period_to_response(status: FlexPeriodStatus) -> FlexPeriodStatusResponse {
+    match status {
+        FlexPeriodStatus::NotApplicable => FlexPeriodStatusResponse::NotApplicable,
+        FlexPeriodStatus::UnresolvedDays => FlexPeriodStatusResponse::UnresolvedDays,
+        FlexPeriodStatus::VersionMixed => FlexPeriodStatusResponse::VersionMixed,
+        FlexPeriodStatus::NotConfigured => FlexPeriodStatusResponse::NotConfigured,
+        FlexPeriodStatus::Calculated(result) => FlexPeriodStatusResponse::Calculated {
+            result: FlexPeriodClassificationResponse {
+                contracted_minutes: result.contracted_minutes,
+                statutory_frame_minutes: result.statutory_frame_minutes,
+                actual_minutes: result.actual_minutes,
+                scheduled_minutes: result.scheduled_minutes,
+                statutory_within_minutes: result.statutory_within_minutes,
+                statutory_excess_minutes: result.statutory_excess_minutes,
+            },
+        },
+    }
+}
+
+fn classification_day_kind_to_response(
+    day_kind: timekeeper_app::work_schedules::ResolvedDayKind,
+) -> ContractResolvedDayKind {
+    match day_kind {
+        timekeeper_app::work_schedules::ResolvedDayKind::ScheduledWorkday => {
+            ContractResolvedDayKind::ScheduledWorkday
+        }
+        timekeeper_app::work_schedules::ResolvedDayKind::ScheduledNonWorkingDay => {
+            ContractResolvedDayKind::ScheduledNonWorkingDay
+        }
+        timekeeper_app::work_schedules::ResolvedDayKind::PublicHoliday => {
+            ContractResolvedDayKind::PublicHoliday
+        }
+    }
+}
+
+fn classification_schedule_type_to_response(
+    schedule_type: timekeeper_app::work_schedules::ScheduleType,
+) -> ContractWorkScheduleType {
+    match schedule_type {
+        timekeeper_app::work_schedules::ScheduleType::Fixed => ContractWorkScheduleType::Fixed,
+        timekeeper_app::work_schedules::ScheduleType::Flex => ContractWorkScheduleType::Flex,
+    }
+}
+
+fn classification_error_to_app_error(error: MonthlyClassificationError) -> AppError {
+    match error {
+        MonthlyClassificationError::InvalidYear | MonthlyClassificationError::InvalidMonth => {
+            AppError::BadRequestWithCode {
+                message: error.to_string(),
+                code: "INVALID_ATTENDANCE_CLASSIFICATION_QUERY".to_string(),
+            }
+        }
+        MonthlyClassificationError::Repository(message) => {
+            AppError::InternalServerError(anyhow::anyhow!(message))
+        }
+    }
+}
+
+pub async fn get_my_classification(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Query(params): Query<MonthlyClassificationQueryParams>,
+) -> Result<Json<MonthlyClassificationResponse>, AppError> {
+    monthly_classification_response(&state, &user.id.to_string(), params).await
+}
+
+pub(crate) async fn monthly_classification_response(
+    state: &AppState,
+    user_id: &str,
+    params: MonthlyClassificationQueryParams,
+) -> Result<Json<MonthlyClassificationResponse>, AppError> {
+    let use_case = GetMonthlyClassification::new(
+        ClassificationPostgresRepository::new(state.read_pool().clone()),
+        PostgresWorkdayMaterializer::new(state.write_pool.clone()),
+    );
+    let result = use_case
+        .execute(AppMonthlyClassificationQuery {
+            user_id: user_id.to_string(),
+            year: params.year,
+            month: params.month,
+        })
+        .await
+        .map_err(classification_error_to_app_error)?;
+    Ok(Json(monthly_classification_to_response(result)))
 }
 
 fn clock_in_error_to_app_error(error: ClockInError) -> AppError {

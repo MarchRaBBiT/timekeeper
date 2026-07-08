@@ -12,6 +12,7 @@ use timekeeper_backend::{
     state::AppState,
 };
 use tower::ServiceExt;
+use uuid::Uuid;
 
 mod support;
 use support::integration_guard;
@@ -48,6 +49,31 @@ fn test_router_user(pool: PgPool, user: User) -> Router {
         .with_state(state)
 }
 
+async fn assign_manager_to_employee_department(pool: &PgPool, manager: &User, employee: &User) {
+    let department_id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
+        .bind(&department_id)
+        .bind(format!("Requests Dept {department_id}"))
+        .execute(pool)
+        .await
+        .expect("insert department");
+    sqlx::query("UPDATE users SET department_id = $1 WHERE id = $2")
+        .bind(&department_id)
+        .bind(employee.id.to_string())
+        .execute(pool)
+        .await
+        .expect("assign employee department");
+    sqlx::query(
+        "INSERT INTO department_managers (department_id, user_id) VALUES ($1, $2) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(&department_id)
+    .bind(manager.id.to_string())
+    .execute(pool)
+    .await
+    .expect("assign department manager");
+}
+
 #[tokio::test]
 async fn test_admin_can_list_all_requests() {
     let _guard = integration_guard().await;
@@ -59,6 +85,7 @@ async fn test_admin_can_list_all_requests() {
 
     let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &admin, &employee).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
     let user_app = test_router_user(pool.clone(), employee.clone());
@@ -126,6 +153,7 @@ async fn test_admin_can_approve_leave_request() {
 
     let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &admin, &employee).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
     let user_app = test_router_user(pool.clone(), employee.clone());
@@ -180,6 +208,7 @@ async fn test_admin_can_reject_leave_request() {
 
     let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &admin, &employee).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
     let user_app = test_router_user(pool.clone(), employee.clone());
@@ -332,6 +361,7 @@ async fn test_approve_already_processed_request_fails() {
 
     let admin = seed_user(&pool, UserRole::Manager, false).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &admin, &employee).await;
 
     let employee_token = create_test_token(employee.id, employee.role.clone());
     let user_app = test_router_user(pool.clone(), employee.clone());

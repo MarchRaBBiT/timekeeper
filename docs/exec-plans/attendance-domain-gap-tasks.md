@@ -103,6 +103,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-03: 日次労働時間区分の read-model 実装（G1 実装）
 
 - **前提タスク:** T-01（design doc の決定に従うこと。doc と実装が食い違う場合は doc を先に修正する）
+- **個別 EP:** [EP-20260705-attendance-classification-read-model](./active/EP-20260705-attendance-classification-read-model.md)
+- **Status:** 完了（EP: [EP-20260705-attendance-classification-read-model](./active/EP-20260705-attendance-classification-read-model.md)、commit: `feat(attendance): add daily classification read-model`）
 - **目的:** 割増賃金計算の入力となる日次区分（所定内 / 法定内残業 / 法定外残業 / 深夜 / 法定休日）を導出値として提供する。T-07 / T-08 / T-13 / T-14 / T-15 がこの出力に依存する
 - **指示:**
   1. `crates/domain` に区分計算の純ロジック（resolved workday snapshot + effective 打刻 → 日次区分分値）を実装し、夜勤・boundary 前打刻・休日・flex の各ケースを unit test で固定する

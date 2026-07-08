@@ -31,6 +31,10 @@
 
 勤怠管理システムとしての機能不足観点 G1–G15 を優先度付きで棚卸しした親 EP。P1 = 労働時間の法令区分集計（G1）、有給付与・残高台帳（G2）、承認済み申請と実績の連動（G3）、36協定上限監視（G4）。
 
+# EP-20260705-attendance-classification-read-model
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-attendance-classification-read-model.md`](../docs/exec-plans/active/EP-20260705-attendance-classification-read-model.md)。T-03（G1）の日次労働時間区分 read-model。API は `GET /api/attendance/me/classification` と `GET /api/admin/users/{user_id}/classification`。
+
 # EP-20260311-frontend-rust-i18n-migration
 
 **完了済み** — 詳細: [`docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`](../docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md)

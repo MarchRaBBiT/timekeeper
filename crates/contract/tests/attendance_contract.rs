@@ -3,9 +3,12 @@ use timekeeper_contract::attendance::{
     AttendanceCorrectionDecisionPayload, AttendanceCorrectionResponse,
     AttendanceCorrectionSnapshot, AttendanceCorrectionStatus, AttendanceResponse,
     AttendanceStatusResponse, AttendanceSummary, BreakEndRequest, BreakRecordResponse,
-    BreakStartRequest, ClockInRequest, ClockOutRequest, CorrectionBreakItem,
-    CreateAttendanceCorrectionRequest, UpdateAttendanceCorrectionRequest,
+    BreakStartRequest, ClassificationTotalsResponse, ClockInRequest, ClockOutRequest,
+    CorrectionBreakItem, CreateAttendanceCorrectionRequest, DailyClassificationResponse,
+    FlexPeriodClassificationResponse, FlexPeriodStatusResponse, MonthlyClassificationResponse,
+    UpdateAttendanceCorrectionRequest,
 };
+use timekeeper_contract::work_schedules::{ResolvedDayKind, WorkScheduleType};
 
 #[test]
 fn clock_in_request_omits_date_when_client_uses_current_day() {
@@ -327,4 +330,93 @@ fn attendance_correction_decision_payload_keeps_comment_field() {
     let json = serde_json::to_value(payload).expect("serialize decision payload");
 
     assert_eq!(json, serde_json::json!({ "comment": "Approved" }));
+}
+
+#[test]
+fn monthly_classification_calculated_round_trips_tagged_status() {
+    let response = MonthlyClassificationResponse::Calculated {
+        year: 2026,
+        month: 7,
+        days: vec![DailyClassificationResponse {
+            work_date: NaiveDate::from_ymd_opt(2026, 7, 6).expect("date"),
+            day_kind: ResolvedDayKind::ScheduledWorkday,
+            schedule_type: WorkScheduleType::Fixed,
+            actual_minutes: 540,
+            scheduled_minutes: 480,
+            statutory_within_minutes: 0,
+            statutory_excess_minutes: 60,
+            legal_holiday_minutes: 0,
+            night_minutes: 0,
+            in_progress: false,
+            locked: true,
+        }],
+        totals: ClassificationTotalsResponse {
+            actual_minutes: 540,
+            scheduled_minutes: 480,
+            statutory_within_minutes: 0,
+            statutory_excess_minutes: 60,
+            legal_holiday_minutes: 0,
+            night_minutes: 0,
+        },
+        flex_period: FlexPeriodStatusResponse::Calculated {
+            result: FlexPeriodClassificationResponse {
+                contracted_minutes: 9600,
+                statutory_frame_minutes: 10628,
+                actual_minutes: 540,
+                scheduled_minutes: 540,
+                statutory_within_minutes: 0,
+                statutory_excess_minutes: 0,
+            },
+        },
+    };
+
+    let json = serde_json::to_value(&response).expect("serialize classification");
+
+    assert_eq!(json["status"], "calculated");
+    assert_eq!(json["days"][0]["day_kind"], "scheduled_workday");
+    assert_eq!(json["days"][0]["schedule_type"], "fixed");
+    assert_eq!(json["flex_period"]["status"], "calculated");
+    assert_eq!(json["flex_period"]["contracted_minutes"], 9600);
+    let round_trip: MonthlyClassificationResponse =
+        serde_json::from_value(json).expect("deserialize classification");
+    assert_eq!(round_trip, response);
+}
+
+#[test]
+fn monthly_classification_fail_closed_variants_are_tagged() {
+    let unresolved =
+        serde_json::to_value(MonthlyClassificationResponse::UnresolvedDays).expect("serialize");
+    let not_configured = serde_json::to_value(MonthlyClassificationResponse::WorkRuleNotConfigured)
+        .expect("serialize");
+
+    assert_eq!(
+        unresolved,
+        serde_json::json!({ "status": "unresolved_days" })
+    );
+    assert_eq!(
+        not_configured,
+        serde_json::json!({ "status": "work_rule_not_configured" })
+    );
+
+    let flex_variants = [
+        (
+            FlexPeriodStatusResponse::NotApplicable,
+            serde_json::json!({ "status": "not_applicable" }),
+        ),
+        (
+            FlexPeriodStatusResponse::UnresolvedDays,
+            serde_json::json!({ "status": "unresolved_days" }),
+        ),
+        (
+            FlexPeriodStatusResponse::VersionMixed,
+            serde_json::json!({ "status": "version_mixed" }),
+        ),
+        (
+            FlexPeriodStatusResponse::NotConfigured,
+            serde_json::json!({ "status": "not_configured" }),
+        ),
+    ];
+    for (value, expected) in flex_variants {
+        assert_eq!(serde_json::to_value(value).expect("serialize"), expected);
+    }
 }

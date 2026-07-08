@@ -1,7 +1,9 @@
 pub mod attendance {
     use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
     use serde::{Deserialize, Serialize};
-    use utoipa::ToSchema;
+    use utoipa::{IntoParams, ToSchema};
+
+    use crate::work_schedules::{ResolvedDayKind, WorkScheduleType};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
     pub struct ClockInRequest {
@@ -152,6 +154,74 @@ pub mod attendance {
         pub cancelled_at: Option<DateTime<Utc>>,
         pub created_at: DateTime<Utc>,
         pub updated_at: DateTime<Utc>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, IntoParams)]
+    pub struct MonthlyClassificationQueryParams {
+        pub year: i32,
+        pub month: u32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    pub struct DailyClassificationResponse {
+        pub work_date: NaiveDate,
+        pub day_kind: ResolvedDayKind,
+        pub schedule_type: WorkScheduleType,
+        pub actual_minutes: i64,
+        pub scheduled_minutes: i64,
+        pub statutory_within_minutes: i64,
+        pub statutory_excess_minutes: i64,
+        pub legal_holiday_minutes: i64,
+        pub night_minutes: i64,
+        pub in_progress: bool,
+        pub locked: bool,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    pub struct ClassificationTotalsResponse {
+        pub actual_minutes: i64,
+        pub scheduled_minutes: i64,
+        pub statutory_within_minutes: i64,
+        pub statutory_excess_minutes: i64,
+        pub legal_holiday_minutes: i64,
+        pub night_minutes: i64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    pub struct FlexPeriodClassificationResponse {
+        pub contracted_minutes: i64,
+        pub statutory_frame_minutes: i64,
+        pub actual_minutes: i64,
+        pub scheduled_minutes: i64,
+        pub statutory_within_minutes: i64,
+        pub statutory_excess_minutes: i64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    #[serde(tag = "status", rename_all = "snake_case")]
+    pub enum FlexPeriodStatusResponse {
+        NotApplicable,
+        UnresolvedDays,
+        VersionMixed,
+        NotConfigured,
+        Calculated {
+            #[serde(flatten)]
+            result: FlexPeriodClassificationResponse,
+        },
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    #[serde(tag = "status", rename_all = "snake_case")]
+    pub enum MonthlyClassificationResponse {
+        Calculated {
+            year: i32,
+            month: u32,
+            days: Vec<DailyClassificationResponse>,
+            totals: ClassificationTotalsResponse,
+            flex_period: FlexPeriodStatusResponse,
+        },
+        UnresolvedDays,
+        WorkRuleNotConfigured,
     }
 }
 

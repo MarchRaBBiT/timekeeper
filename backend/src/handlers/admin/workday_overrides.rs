@@ -11,9 +11,12 @@ use timekeeper_app::workday_overrides::{
     DeleteWorkdayOverride, SetWorkdayOverride, SetWorkdayOverrideCommand, StoredWorkdayOverride,
     WorkdayOverrideError,
 };
-use timekeeper_contract::work_schedules::{
-    ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery, SetWorkdayOverrideRequest,
-    WorkdayOverrideKind as ContractWorkdayOverrideKind, WorkdayOverrideResponse,
+use timekeeper_contract::{
+    attendance::{MonthlyClassificationQueryParams, MonthlyClassificationResponse},
+    work_schedules::{
+        ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery, SetWorkdayOverrideRequest,
+        WorkdayOverrideKind as ContractWorkdayOverrideKind, WorkdayOverrideResponse,
+    },
 };
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 
@@ -31,6 +34,17 @@ pub async fn get_user_resolved_workdays(
     let target = parse_user_id(&user_id)?;
     authorize_scope(&state, &user, target).await?;
     list_resolved_workdays(&state, &user_id, query).await
+}
+
+pub async fn get_user_classification(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Query(query): Query<MonthlyClassificationQueryParams>,
+) -> Result<Json<MonthlyClassificationResponse>, AppError> {
+    let target = parse_user_id(&user_id)?;
+    authorize_scope(&state, &user, target).await?;
+    crate::handlers::attendance::monthly_classification_response(&state, &user_id, query).await
 }
 
 pub async fn set_workday_override(

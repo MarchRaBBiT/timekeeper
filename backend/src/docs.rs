@@ -49,7 +49,9 @@ use crate::{
     },
 };
 use timekeeper_contract::attendance::{
-    AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse,
+    AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse, ClassificationTotalsResponse,
+    DailyClassificationResponse, FlexPeriodClassificationResponse, FlexPeriodStatusResponse,
+    MonthlyClassificationQueryParams, MonthlyClassificationResponse,
 };
 use timekeeper_contract::work_schedules::{
     AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
@@ -112,6 +114,7 @@ struct RequestCancellationResponse {
         attendance_status_doc,
         my_attendance_doc,
         my_attendance_summary_doc,
+        my_attendance_classification_doc,
         attendance_breaks_doc,
         export_attendance_doc,
         create_attendance_correction_doc,
@@ -192,6 +195,7 @@ struct RequestCancellationResponse {
         admin_close_work_schedule_month_doc,
         work_schedules_me_doc,
         admin_get_user_resolved_workdays_doc,
+        admin_get_user_classification_doc,
         admin_set_workday_override_doc,
         admin_delete_workday_override_doc
     ),
@@ -223,6 +227,11 @@ struct RequestCancellationResponse {
             AttendanceResponse,
             AttendanceSummary,
             AttendanceStatusResponse,
+            DailyClassificationResponse,
+            ClassificationTotalsResponse,
+            FlexPeriodClassificationResponse,
+            FlexPeriodStatusResponse,
+            MonthlyClassificationResponse,
             BreakRecordResponse,
             ActiveBreakResponse,
             AttendanceQuery,
@@ -573,6 +582,15 @@ fn my_attendance_doc() {}
     tag = "Attendance"
 )]
 fn my_attendance_summary_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/attendance/me/classification",
+    params(MonthlyClassificationQueryParams),
+    responses((status = 200, body = MonthlyClassificationResponse), (status = 400)),
+    tag = "Attendance"
+)]
+fn my_attendance_classification_doc() {}
 
 #[utoipa::path(
     get,
@@ -1352,6 +1370,18 @@ fn work_schedules_me_doc() {}
 fn admin_get_user_resolved_workdays_doc() {}
 
 #[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/classification",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        MonthlyClassificationQueryParams
+    ),
+    responses((status = 200, body = MonthlyClassificationResponse), (status = 400), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_get_user_classification_doc() {}
+
+#[utoipa::path(
     put,
     path = "/api/admin/users/{user_id}/workday-overrides/{date}",
     params(
@@ -1453,6 +1483,7 @@ mod tests {
             attendance_status_doc,
             my_attendance_doc,
             my_attendance_summary_doc,
+            my_attendance_classification_doc,
             attendance_breaks_doc,
             export_attendance_doc,
             create_attendance_correction_doc,
@@ -1533,6 +1564,7 @@ mod tests {
             admin_close_work_schedule_month_doc,
             work_schedules_me_doc,
             admin_get_user_resolved_workdays_doc,
+            admin_get_user_classification_doc,
             admin_set_workday_override_doc,
             admin_delete_workday_override_doc,
         ];

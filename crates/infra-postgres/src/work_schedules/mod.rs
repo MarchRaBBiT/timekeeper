@@ -279,7 +279,7 @@ async fn load_resolved(
     assemble_resolved_workday(row, intervals, breaks, core_time_windows).map(Some)
 }
 
-pub(super) async fn load_resolved_in_range(
+pub(crate) async fn load_resolved_in_range(
     pool: &PgPool,
     user_id: &str,
     from: NaiveDate,

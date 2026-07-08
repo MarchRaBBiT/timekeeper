@@ -201,6 +201,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
             get(handlers::attendance::get_my_summary),
         )
         .route(
+            "/api/attendance/me/classification",
+            get(handlers::attendance::get_my_classification),
+        )
+        .route(
             "/api/attendance/{id}/breaks",
             get(handlers::attendance::get_breaks_by_attendance),
         )
@@ -440,6 +444,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/users/{user_id}/resolved-workdays",
             get(handlers::admin::get_user_resolved_workdays),
+        )
+        .route(
+            "/api/admin/users/{user_id}/classification",
+            get(handlers::admin::get_user_classification),
         )
         .route(
             "/api/admin/users/{user_id}/work-schedule-calendar",

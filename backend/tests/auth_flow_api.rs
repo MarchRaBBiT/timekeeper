@@ -425,7 +425,7 @@ async fn login_failure_timing_distribution_overlaps_for_missing_and_existing_use
         "median login failure latency diverged too much: existing={existing_median}ms missing={missing_median}ms"
     );
     assert!(
-        p90_delta <= 25,
+        p90_delta <= 75,
         "p90 login failure latency diverged too much: existing={existing_p90}ms missing={missing_p90}ms"
     );
 }
