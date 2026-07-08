@@ -13,6 +13,7 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use timekeeper_app::leave_ledger::ANNUAL_LEAVE_TYPE;
 use uuid::Uuid;
 
 use crate::{
@@ -262,6 +263,9 @@ fn needs_body_for_metadata(event_type: &str) -> bool {
             | "admin_subject_request_approve"
             | "admin_subject_request_reject"
             | "workday_override_upserted"
+            | "leave_grant_run"
+            | "leave_ledger_adjust"
+            | "user_hire_date_set"
     )
 }
 
@@ -308,6 +312,18 @@ fn build_metadata(
             ))
         }
         "password_change" => Some(build_password_change_metadata(actor)),
+        "leave_grant_run" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_leave_grant_run_metadata(payload.as_ref()))
+        }
+        "leave_ledger_adjust" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_leave_ledger_adjust_metadata(payload.as_ref()))
+        }
+        "user_hire_date_set" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_hire_date_metadata(payload.as_ref()))
+        }
         _ => None,
     }
 }
@@ -474,6 +490,65 @@ fn build_workday_override_metadata(
         }
     }
 
+    Value::Object(summary)
+}
+
+fn build_leave_grant_run_metadata(payload: Option<&Value>) -> Value {
+    let dry_run = payload
+        .and_then(|value| value.get("dry_run"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let user_ids_count = payload
+        .and_then(|value| value.get("user_ids"))
+        .and_then(Value::as_array)
+        .map(|values| values.len() as u64);
+    let exclude_user_ids_count = payload
+        .and_then(|value| value.get("exclude_user_ids"))
+        .and_then(Value::as_array)
+        .map(|values| values.len() as u64);
+    let base_date = payload
+        .and_then(|value| value.get("base_date"))
+        .and_then(Value::as_str);
+    json!({
+        "dry_run": dry_run,
+        "user_ids_count": user_ids_count,
+        "exclude_user_ids_count": exclude_user_ids_count,
+        "base_date": base_date,
+    })
+}
+
+fn build_leave_ledger_adjust_metadata(payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    let dry_run = payload
+        .and_then(|value| value.get("dry_run"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    summary.insert("dry_run".to_string(), Value::Bool(dry_run));
+    // このAPIは年次有給休暇の台帳のみを扱うため leave_type はリクエストボディに
+    // 含まれない（timekeeper_app::leave_ledger::ANNUAL_LEAVE_TYPE 固定）。
+    summary.insert(
+        "leave_type".to_string(),
+        Value::String(ANNUAL_LEAVE_TYPE.to_string()),
+    );
+    if let Some(payload) = payload {
+        insert_string_if_present(&mut summary, payload, "user_id");
+        insert_string_if_present(&mut summary, payload, "lot_id");
+        insert_string_if_present(&mut summary, payload, "reason");
+        if let Some(amount) = payload.get("amount_minutes").and_then(Value::as_i64) {
+            summary.insert(
+                "amount_minutes".to_string(),
+                Value::Number(serde_json::Number::from(amount)),
+            );
+        }
+    }
+    Value::Object(summary)
+}
+
+fn build_hire_date_metadata(payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    if let Some(payload) = payload {
+        insert_string_if_present(&mut summary, payload, "hire_date");
+    }
     Value::Object(summary)
 }
 
@@ -786,6 +861,17 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "admin", "bulk-import", "users"]) => {
             Some(event("admin_bulk_import_users", "user", None))
         }
+        (&Method::POST, ["api", "admin", "leave-grants", "run"]) => {
+            Some(event("leave_grant_run", "leave_grant", None))
+        }
+        (&Method::POST, ["api", "admin", "leave-ledger", "adjust"]) => {
+            Some(event("leave_ledger_adjust", "leave_ledger", None))
+        }
+        (&Method::PUT, ["api", "admin", "users", user_id, "hire-date"]) => Some(event(
+            "user_hire_date_set",
+            "user",
+            Some((*user_id).to_string()),
+        )),
         _ => None,
     }
 }
@@ -986,6 +1072,109 @@ mod tests {
         assert_eq!(metadata["kind"], "use_schedule");
         assert_eq!(metadata["work_schedule_id"], "ws-123");
         assert_eq!(metadata["reason_length"], 4);
+    }
+
+    #[test]
+    fn classify_event_matches_leave_grant_run_path() {
+        let event = classify_event(&Method::POST, "/api/admin/leave-grants/run")
+            .expect("leave grant run should map");
+        assert_eq!(event.event_type, "leave_grant_run");
+        assert_eq!(event.target_type, Some("leave_grant"));
+        assert!(event.target_id.is_none());
+    }
+
+    #[test]
+    fn classify_event_matches_leave_ledger_adjust_path() {
+        let event = classify_event(&Method::POST, "/api/admin/leave-ledger/adjust")
+            .expect("leave ledger adjust should map");
+        assert_eq!(event.event_type, "leave_ledger_adjust");
+        assert_eq!(event.target_type, Some("leave_ledger"));
+        assert!(event.target_id.is_none());
+    }
+
+    #[test]
+    fn classify_event_matches_user_hire_date_path() {
+        let event = classify_event(&Method::PUT, "/api/admin/users/user-1/hire-date")
+            .expect("hire date update should map");
+        assert_eq!(event.event_type, "user_hire_date_set");
+        assert_eq!(event.target_type, Some("user"));
+        assert_eq!(event.target_id.as_deref(), Some("user-1"));
+    }
+
+    #[test]
+    fn needs_body_for_metadata_includes_phase1_leave_admin_events() {
+        assert!(needs_body_for_metadata("leave_grant_run"));
+        assert!(needs_body_for_metadata("leave_ledger_adjust"));
+        assert!(needs_body_for_metadata("user_hire_date_set"));
+    }
+
+    #[test]
+    fn build_leave_grant_run_metadata_includes_dry_run_and_counts() {
+        let payload = serde_json::json!({
+            "base_date": "2026-07-01",
+            "dry_run": true,
+            "user_ids": ["u-1", "u-2"],
+            "exclude_user_ids": ["u-3"],
+        });
+        let metadata = build_leave_grant_run_metadata(Some(&payload));
+
+        assert_eq!(metadata["dry_run"], true);
+        assert_eq!(metadata["user_ids_count"], 2);
+        assert_eq!(metadata["exclude_user_ids_count"], 1);
+        assert_eq!(metadata["base_date"], "2026-07-01");
+    }
+
+    #[test]
+    fn build_leave_grant_run_metadata_defaults_dry_run_false_when_missing() {
+        let payload = serde_json::json!({
+            "base_date": "2026-07-01",
+        });
+        let metadata = build_leave_grant_run_metadata(Some(&payload));
+
+        assert_eq!(metadata["dry_run"], false);
+        assert!(metadata["user_ids_count"].is_null());
+        assert!(metadata["exclude_user_ids_count"].is_null());
+    }
+
+    #[test]
+    fn build_leave_ledger_adjust_metadata_includes_whitelisted_fields() {
+        let payload = serde_json::json!({
+            "user_id": "user-1",
+            "amount_minutes": -480,
+            "lot_id": "lot-1",
+            "reason": "初期移行データの補正",
+            "dry_run": false,
+        });
+        let metadata = build_leave_ledger_adjust_metadata(Some(&payload));
+
+        assert_eq!(metadata["user_id"], "user-1");
+        assert_eq!(metadata["amount_minutes"], -480);
+        assert_eq!(metadata["lot_id"], "lot-1");
+        assert_eq!(metadata["reason"], "初期移行データの補正");
+        assert_eq!(metadata["dry_run"], false);
+        assert_eq!(metadata["leave_type"], ANNUAL_LEAVE_TYPE);
+    }
+
+    #[test]
+    fn build_leave_ledger_adjust_metadata_omits_password_like_unlisted_fields() {
+        let payload = serde_json::json!({
+            "user_id": "user-1",
+            "amount_minutes": 60,
+            "reason": "テスト",
+            "password": "should-not-appear",
+        });
+        let metadata = build_leave_ledger_adjust_metadata(Some(&payload));
+
+        let object = metadata.as_object().expect("metadata should be an object");
+        assert!(!object.contains_key("password"));
+    }
+
+    #[test]
+    fn build_hire_date_metadata_includes_hire_date() {
+        let payload = serde_json::json!({ "hire_date": "2020-04-01" });
+        let metadata = build_hire_date_metadata(Some(&payload));
+
+        assert_eq!(metadata["hire_date"], "2020-04-01");
     }
 
     #[test]
