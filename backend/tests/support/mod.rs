@@ -572,6 +572,102 @@ pub async fn seed_work_schedule_for_user(
     (schedule_id, version_id)
 }
 
+/// 月〜金(weekday 1-5)を稼働日、土日(weekday 6-7)を非稼働日とする勤務体系を割り当てる。
+/// H-1（有給消化は暦日ではなく resolved workday の稼働日ベースで計算する）の
+/// 統合テスト用ヘルパー。`seed_work_schedule_for_user` は全曜日を稼働日にするため、
+/// 稼働日/非稼働日の区別を検証するテストにはこちらを使う。
+pub async fn seed_weekday_work_schedule_for_user(
+    pool: &PgPool,
+    user_id: UserId,
+    public_holiday_policy: &str,
+) -> (Uuid, Uuid) {
+    let schedule_id = Uuid::new_v4();
+    let version_id = Uuid::new_v4();
+    let user_id = user_id.to_string();
+    sqlx::query("INSERT INTO work_schedules (id, code, name, created_by) VALUES ($1, $2, $3, $4)")
+        .bind(schedule_id)
+        .bind(format!("wd-{schedule_id}"))
+        .bind("Test Mon-Fri work schedule")
+        .bind(&user_id)
+        .execute(pool)
+        .await
+        .expect("insert work schedule");
+    sqlx::query(
+        "INSERT INTO work_schedule_versions \
+         (id, work_schedule_id, version_number, status, effective_from, timezone, \
+          workday_boundary, public_holiday_policy, published_by, published_at) \
+         VALUES ($1, $2, 1, 'published', $3, 'Asia/Tokyo', $4, $5, $6, NOW())",
+    )
+    .bind(version_id)
+    .bind(schedule_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("effective date"))
+    .bind(NaiveTime::from_hms_opt(5, 0, 0).expect("boundary"))
+    .bind(public_holiday_policy)
+    .bind(&user_id)
+    .execute(pool)
+    .await
+    .expect("insert work schedule version");
+    for weekday in 1_i16..=7 {
+        let is_working_day = weekday <= 5;
+        let day_kind = if is_working_day {
+            "working_day"
+        } else {
+            "non_working_day"
+        };
+        let day_rule_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO work_schedule_day_rules \
+             (id, version_id, weekday, day_kind, expected_work_minutes) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(day_rule_id)
+        .bind(version_id)
+        .bind(weekday)
+        .bind(day_kind)
+        .bind(if is_working_day { 480 } else { 0 })
+        .execute(pool)
+        .await
+        .expect("insert work schedule day rule");
+        if is_working_day {
+            sqlx::query(
+                "INSERT INTO work_schedule_work_intervals \
+                 (day_rule_id, sequence, start_time, start_day_offset, end_time, end_day_offset) \
+                 VALUES ($1, 1, $2, 0, $3, 0)",
+            )
+            .bind(day_rule_id)
+            .bind(NaiveTime::from_hms_opt(9, 0, 0).expect("start time"))
+            .bind(NaiveTime::from_hms_opt(18, 0, 0).expect("end time"))
+            .execute(pool)
+            .await
+            .expect("insert work interval");
+            sqlx::query(
+                "INSERT INTO work_schedule_planned_breaks \
+                 (day_rule_id, sequence, start_time, start_day_offset, end_time, end_day_offset) \
+                 VALUES ($1, 1, $2, 0, $3, 0)",
+            )
+            .bind(day_rule_id)
+            .bind(NaiveTime::from_hms_opt(12, 0, 0).expect("break start"))
+            .bind(NaiveTime::from_hms_opt(13, 0, 0).expect("break end"))
+            .execute(pool)
+            .await
+            .expect("insert planned break");
+        }
+    }
+    sqlx::query(
+        "INSERT INTO work_schedule_assignments \
+         (id, work_schedule_id, user_id, is_org_default, valid_from, created_by) \
+         VALUES ($1, $2, $3, FALSE, $4, $3)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(schedule_id)
+    .bind(&user_id)
+    .bind(NaiveDate::from_ymd_opt(2000, 1, 1).expect("valid from"))
+    .execute(pool)
+    .await
+    .expect("insert work schedule assignment");
+    (schedule_id, version_id)
+}
+
 /// weekday 3（水曜）に10:00-15:00のコアタイムを持つflexスケジュールを割り当てる。
 pub async fn seed_flex_work_schedule_for_user(pool: &PgPool, user_id: UserId) -> (Uuid, Uuid) {
     let schedule_id = Uuid::new_v4();

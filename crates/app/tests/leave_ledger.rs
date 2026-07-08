@@ -227,12 +227,15 @@ fn stored_entry(
     }
 }
 
+/// 金(7/10)〜月(7/13) の 4 暦日・稼働日 2 日（金・月。土日は非稼働日想定）を表す
+/// フィクスチャ。H-1 修正: 消化は暦日数ではなく稼働日数で計算する
+/// （docs/design-docs/leave-entitlement.md の Consumption Target Days）。
 fn annual_request_command() -> AnnualLeaveRequestLedgerCommand {
     AnnualLeaveRequestLedgerCommand {
         user_id: "user-1".to_string(),
         request_id: "request-1".to_string(),
         start_date: date(2026, 7, 10),
-        end_date: date(2026, 7, 12),
+        end_date: date(2026, 7, 13),
         created_by: Some("manager-1".to_string()),
     }
 }
@@ -246,12 +249,76 @@ fn annual_leave_submission_balance_check_rejects_insufficient_balance() {
         ts(2026, 1, 1),
     )];
 
+    // 4 暦日の申請だが稼働日は 3 日相当として渡す（呼び出し元が resolved workday
+    // から算出した値）。960 分の残高では 3 稼働日分（1440 分）を賄えない。
     assert_eq!(
-        ensure_annual_leave_request_has_balance(&entries, date(2026, 7, 10), date(2026, 7, 12)),
+        ensure_annual_leave_request_has_balance(&entries, date(2026, 7, 10), date(2026, 7, 13), 3),
         Err(LeaveLedgerError::InsufficientBalance {
             requested_minutes: 1440,
             available_minutes: 960,
         })
+    );
+}
+
+#[test]
+fn annual_leave_submission_balance_check_rejects_zero_working_days() {
+    let entries = vec![stored_entry(
+        LeaveLedgerKind::Adjust,
+        "lot-1",
+        960,
+        ts(2026, 1, 1),
+    )];
+
+    // 申請期間の稼働日が 0 日（全日が所定休日・祝日）の場合は、残高があっても拒否する。
+    assert_eq!(
+        ensure_annual_leave_request_has_balance(&entries, date(2026, 7, 11), date(2026, 7, 12), 0),
+        Err(LeaveLedgerError::NoWorkingDaysInRange)
+    );
+}
+
+#[test]
+fn annual_leave_submission_balance_check_rejects_when_no_active_lot() {
+    let entries: Vec<StoredLeaveLedgerEntry> = Vec::new();
+
+    // アクティブなロットが無いと日→分の換算基準が無いため、暗黙の固定値
+    // （旧実装の 480 分フォールバック）ではなく明示的なエラーにする。
+    assert_eq!(
+        ensure_annual_leave_request_has_balance(&entries, date(2026, 7, 10), date(2026, 7, 13), 2),
+        Err(LeaveLedgerError::NoActiveLeaveLot)
+    );
+}
+
+#[test]
+fn annual_leave_consume_entries_use_working_days_not_calendar_days() {
+    // 金(7/10)〜月(7/13) の 4 暦日。土日を除く稼働日は 2 日（金・月）のみなので、
+    // 消化は 2 * 480 = 960 分でなければならない（旧実装は 4 * 480 = 1920 分の
+    // バグがあった）。
+    let entries = vec![stored_entry(
+        LeaveLedgerKind::Adjust,
+        "lot-1",
+        2400,
+        ts(2026, 1, 1),
+    )];
+
+    let consume = build_annual_leave_consume_entries(&entries, annual_request_command(), 2)
+        .expect("consume entries");
+    assert_eq!(consume.len(), 1);
+    assert_eq!(consume[0].lot_id.as_deref(), Some("lot-1"));
+    assert_eq!(consume[0].amount_minutes, -960);
+}
+
+#[test]
+fn annual_leave_consume_entries_reject_zero_working_days() {
+    let entries = vec![stored_entry(
+        LeaveLedgerKind::Adjust,
+        "lot-1",
+        2400,
+        ts(2026, 1, 1),
+    )];
+
+    assert_eq!(
+        build_annual_leave_consume_entries(&entries, annual_request_command(), 0),
+        Err(LeaveLedgerError::NoWorkingDaysInRange)
     );
 }
 
@@ -262,7 +329,8 @@ fn annual_leave_consume_entries_follow_fifo_and_release_reverses_them() {
         stored_entry(LeaveLedgerKind::Adjust, "lot-2", 960, ts(2026, 2, 1)),
     ];
 
-    let consume = build_annual_leave_consume_entries(&entries, annual_request_command())
+    // 3 稼働日分（1440 分）を要求し、時効の近い lot-1 から FIFO で引き当てる。
+    let consume = build_annual_leave_consume_entries(&entries, annual_request_command(), 3)
         .expect("consume entries");
     assert_eq!(consume.len(), 2);
     assert_eq!(consume[0].lot_id.as_deref(), Some("lot-1"));

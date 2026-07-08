@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 pub mod active_session;
+pub mod annual_leave_workdays;
 pub mod attendance;
 pub mod attendance_repository;
 pub mod audit_log;

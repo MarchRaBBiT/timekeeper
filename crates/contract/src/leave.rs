@@ -10,6 +10,15 @@ use validator::Validate;
 
 pub const LEAVE_BALANCE_INSUFFICIENT_CODE: &str = "LEAVE_BALANCE_INSUFFICIENT";
 
+/// 申請期間内に稼働日（resolved workday の `ScheduledWorkday`）が 1 日もない場合（H-1）。
+pub const LEAVE_REQUEST_NO_WORKING_DAYS_CODE: &str = "LEAVE_REQUEST_NO_WORKING_DAYS";
+
+/// 申請期間内に勤務予定を解決できない日が含まれる場合。fail-closed で拒否する（H-1）。
+pub const LEAVE_REQUEST_SCHEDULE_UNRESOLVED_CODE: &str = "LEAVE_REQUEST_SCHEDULE_UNRESOLVED";
+
+/// 稼働日数を分へ換算するための day_equivalent_minutes を決定できるアクティブなロットが無い場合（H-1）。
+pub const LEAVE_REQUEST_NO_ACTIVE_LOT_CODE: &str = "LEAVE_REQUEST_NO_ACTIVE_LOT";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LeaveLedgerKind {

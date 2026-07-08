@@ -17,7 +17,9 @@ use uuid::Uuid;
 
 mod support;
 
-use support::{integration_guard, seed_user, test_config, test_pool};
+use support::{
+    integration_guard, seed_user, seed_weekday_work_schedule_for_user, test_config, test_pool,
+};
 
 fn router(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());
@@ -105,7 +107,43 @@ async fn annual_leave_request_rejects_insufficient_balance_at_submission() {
         .await
         .expect("migrate");
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    // 1日分(480分)しか残高が無い状態で、稼働日2日分(金・月=960分)を申請する。
+    seed_annual_balance(&pool, &employee, 1).await;
 
+    // 2026-07-10 (Fri) - 2026-07-13 (Mon): 4 暦日だが稼働日は金・月の 2 日
+    // (960分)。残高 480 分では不足として拒否される。
+    let (status, body) = request_json(
+        router(pool, employee),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-13",
+            "reason": "vacation"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "LEAVE_BALANCE_INSUFFICIENT");
+}
+
+#[tokio::test]
+async fn annual_leave_request_rejects_when_no_active_lot_exists() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+
+    // 有給が一度も付与・移行されていないユーザー（アクティブなロットが無い）。
+    // 旧実装は day_equivalent_minutes を 480 分に決め打ちフォールバックしていたが、
+    // H-1 修正でロットが無い場合は明示的なエラーにする。
     let (status, body) = request_json(
         router(pool, employee),
         "POST",
@@ -120,7 +158,68 @@ async fn annual_leave_request_rejects_insufficient_balance_at_submission() {
     .await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["code"], "LEAVE_BALANCE_INSUFFICIENT");
+    assert_eq!(body["code"], "LEAVE_REQUEST_NO_ACTIVE_LOT");
+}
+
+#[tokio::test]
+async fn annual_leave_request_rejects_when_no_working_days_in_range() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    seed_annual_balance(&pool, &employee, 5).await;
+
+    // 2026-07-11 (Sat) - 2026-07-12 (Sun): 稼働日が 0 日の申請は、残高があっても
+    // H-1 の Consumption Target Days 決定により拒否される。
+    let (status, body) = request_json(
+        router(pool, employee),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-11",
+            "end_date": "2026-07-12",
+            "reason": "vacation"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "LEAVE_REQUEST_NO_WORKING_DAYS");
+}
+
+#[tokio::test]
+async fn annual_leave_request_rejects_when_work_schedule_is_unresolved() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    // 勤務体系を一切割り当てないユーザー。resolved workday を解決できない日を
+    // 含む場合は、暦日フォールバックせず fail-closed でエラーにする。
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_annual_balance(&pool, &employee, 5).await;
+
+    let (status, body) = request_json(
+        router(pool, employee),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-12",
+            "reason": "vacation"
+        })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["code"], "LEAVE_REQUEST_SCHEDULE_UNRESOLVED");
 }
 
 #[tokio::test]
@@ -133,8 +232,11 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
         .expect("migrate");
     let manager = seed_user(&pool, UserRole::Manager, true).await;
     let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
     seed_annual_balance(&pool, &employee, 5).await;
 
+    // 2026-07-10 (Fri) - 2026-07-13 (Mon): 4 暦日だが稼働日は金・月の 2 日のみ。
+    // H-1 修正前は暦日ベースで 4 * 480 = 1920 分を誤って消費していた。
     let (status, body) = request_json(
         router(pool.clone(), employee.clone()),
         "POST",
@@ -142,7 +244,7 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
         Some(json!({
             "leave_type": "annual",
             "start_date": "2026-07-10",
-            "end_date": "2026-07-12",
+            "end_date": "2026-07-13",
             "reason": "vacation"
         })),
     )
@@ -151,7 +253,7 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
     let request_id = body["id"].as_str().expect("request id").to_string();
 
     assert_eq!(
-        balance_minutes(pool.clone(), employee.clone(), "2026-07-12").await,
+        balance_minutes(pool.clone(), employee.clone(), "2026-07-13").await,
         2400,
         "pending annual leave must not reserve balance"
     );
@@ -166,8 +268,9 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
-        balance_minutes(pool.clone(), employee.clone(), "2026-07-12").await,
-        960
+        balance_minutes(pool.clone(), employee.clone(), "2026-07-13").await,
+        1440,
+        "only the 2 working days (Fri + Mon) should be consumed: 2400 - 960 = 1440"
     );
 
     let consume_count: i64 = sqlx::query_scalar(
@@ -190,7 +293,7 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
-        balance_minutes(pool.clone(), employee, "2026-07-12").await,
+        balance_minutes(pool.clone(), employee, "2026-07-13").await,
         2400
     );
 

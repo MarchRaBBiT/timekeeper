@@ -34,6 +34,10 @@ pub enum LeaveLedgerError {
         requested_minutes: i64,
         available_minutes: i64,
     },
+    #[error("requested leave period contains no working days to consume")]
+    NoWorkingDaysInRange,
+    #[error("no active leave lot is available to determine day-equivalent minutes")]
+    NoActiveLeaveLot,
     #[error("leave ledger repository error: {0}")]
     Repository(String),
 }
@@ -115,27 +119,44 @@ pub struct AnnualLeaveRequestLedgerCommand {
     pub created_by: Option<String>,
 }
 
+/// `workday_count` は申請期間中で resolved workday が稼働日（`ScheduledWorkday`）と
+/// 判定した日数（暦日数ではない）。呼び出し元（backend repository 層）が resolved
+/// workday を解決して渡す。勤務予定を解決できない日を含む場合は、呼び出し元が
+/// fail-closed でこの関数を呼ばずにエラーを返すこと（docs/design-docs/leave-entitlement.md
+/// の Consumption Target Days 決定）。
 pub fn ensure_annual_leave_request_has_balance(
     entries: &[StoredLeaveLedgerEntry],
     start_date: NaiveDate,
     end_date: NaiveDate,
+    workday_count: i64,
 ) -> Result<(), LeaveLedgerError> {
+    if start_date > end_date {
+        return Err(LeaveLedgerError::InvalidInput(
+            "start_date must be <= end_date".to_string(),
+        ));
+    }
     let events = stored_entries_to_events(entries);
     let balance = derive_balance(&events, start_date);
-    let requested_minutes = requested_minutes_for_days(&balance, start_date, end_date)?;
+    let requested_minutes = requested_minutes_for_workdays(&balance, workday_count)?;
     allocate_fifo(&balance, requested_minutes)
         .map(|_| ())
         .map_err(allocation_error_to_ledger_error)
 }
 
+/// `workday_count` の意味は [`ensure_annual_leave_request_has_balance`] と同じ。
 pub fn build_annual_leave_consume_entries(
     entries: &[StoredLeaveLedgerEntry],
     command: AnnualLeaveRequestLedgerCommand,
+    workday_count: i64,
 ) -> Result<Vec<NewLeaveLedgerEntry>, LeaveLedgerError> {
+    if command.start_date > command.end_date {
+        return Err(LeaveLedgerError::InvalidInput(
+            "start_date must be <= end_date".to_string(),
+        ));
+    }
     let events = stored_entries_to_events(entries);
     let balance = derive_balance(&events, command.start_date);
-    let requested_minutes =
-        requested_minutes_for_days(&balance, command.start_date, command.end_date)?;
+    let requested_minutes = requested_minutes_for_workdays(&balance, workday_count)?;
     let allocations =
         allocate_fifo(&balance, requested_minutes).map_err(allocation_error_to_ledger_error)?;
     allocations
@@ -236,23 +257,23 @@ fn stored_entries_to_events(entries: &[StoredLeaveLedgerEntry]) -> Vec<LeaveLedg
         .collect()
 }
 
-fn requested_minutes_for_days(
+/// 稼働日数（暦日数ではない）を、アクティブなロットの `day_equivalent_minutes` で
+/// 分へ換算する。稼働日が 0 日の申請、およびアクティブなロットが存在せず換算基準が
+/// 無い場合は、いずれも明示的なエラーとして拒否する（暦日フォールバック・固定値
+/// フォールバックはしない）。
+fn requested_minutes_for_workdays(
     balance: &LeaveBalance,
-    start_date: NaiveDate,
-    end_date: NaiveDate,
+    workday_count: i64,
 ) -> Result<i64, LeaveLedgerError> {
-    if start_date > end_date {
-        return Err(LeaveLedgerError::InvalidInput(
-            "start_date must be <= end_date".to_string(),
-        ));
+    if workday_count <= 0 {
+        return Err(LeaveLedgerError::NoWorkingDaysInRange);
     }
-    let requested_days = (end_date - start_date).num_days() + 1;
     let day_equivalent_minutes = balance
         .active_lots()
         .next()
         .map(|lot| lot.day_equivalent_minutes)
-        .unwrap_or(480);
-    Ok(requested_days * day_equivalent_minutes)
+        .ok_or(LeaveLedgerError::NoActiveLeaveLot)?;
+    Ok(workday_count * day_equivalent_minutes)
 }
 
 #[async_trait]

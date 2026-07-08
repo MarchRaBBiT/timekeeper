@@ -6,7 +6,10 @@ use timekeeper_app::leave_ledger::{
     ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand, LeaveLedgerError,
     LeaveLedgerRepository, ANNUAL_LEAVE_TYPE,
 };
-use timekeeper_contract::leave::LEAVE_BALANCE_INSUFFICIENT_CODE;
+use timekeeper_contract::leave::{
+    LEAVE_BALANCE_INSUFFICIENT_CODE, LEAVE_REQUEST_NO_ACTIVE_LOT_CODE,
+    LEAVE_REQUEST_NO_WORKING_DAYS_CODE,
+};
 use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 
 use crate::error::AppError;
@@ -16,6 +19,7 @@ use crate::models::{
     request::RequestStatus,
 };
 use crate::repositories::{
+    annual_leave_workdays::count_working_days_for_annual_leave,
     common::push_clause,
     leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
     overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
@@ -222,13 +226,25 @@ impl RequestRepository {
         if !matches!(request.leave_type, LeaveType::Annual) {
             return Ok(());
         }
+        let workday_count = count_working_days_for_annual_leave(
+            db,
+            &request.user_id.to_string(),
+            request.start_date,
+            request.end_date,
+        )
+        .await?;
         let ledger = LeaveLedgerPostgresRepository::new(db.clone());
         let entries = ledger
             .list_entries(&request.user_id.to_string(), ANNUAL_LEAVE_TYPE)
             .await
             .map_err(leave_ledger_error_to_app_error)?;
-        ensure_annual_leave_request_has_balance(&entries, request.start_date, request.end_date)
-            .map_err(leave_ledger_error_to_app_error)
+        ensure_annual_leave_request_has_balance(
+            &entries,
+            request.start_date,
+            request.end_date,
+            workday_count,
+        )
+        .map_err(leave_ledger_error_to_app_error)
     }
 
     /// Updates the status of a request (approve or reject).
@@ -343,12 +359,41 @@ impl RequestRepository {
         comment: &str,
         timestamp: DateTime<Utc>,
     ) -> Result<bool, AppError> {
+        // 稼働日解決は resolved_workdays への materialize（書き込み）を伴うため、
+        // ledger の行ロックを取る前に db 直下で行う。申請作成時
+        // （ensure_annual_leave_request_balance）と同じ関数を使い、稼働日数の
+        // 計算を乖離させない。
+        let Some(pending_request) = find_leave_request_optional(db, id).await? else {
+            return Ok(false);
+        };
+        if !matches!(pending_request.status, RequestStatus::Pending) {
+            return Ok(false);
+        }
+        let workday_count = count_working_days_for_annual_leave(
+            db,
+            &pending_request.user_id.to_string(),
+            pending_request.start_date,
+            pending_request.end_date,
+        )
+        .await?;
+
         let mut tx = db.begin().await?;
         let Some(request) = find_leave_request_for_update(&mut tx, id).await? else {
             return Ok(false);
         };
         if !matches!(request.status, RequestStatus::Pending) {
             return Ok(false);
+        }
+        // workday_count はロック前に読んだ日付で解決している。ロックまでの間に
+        // 申請が編集されて期間が変わっていた場合、消化分数と期間が食い違うため
+        // conflict として拒否する（再実行すれば新しい期間で解決し直される）。
+        if request.start_date != pending_request.start_date
+            || request.end_date != pending_request.end_date
+            || request.user_id != pending_request.user_id
+        {
+            return Err(AppError::Conflict(
+                "leave request was modified while approving; please retry".to_string(),
+            ));
         }
         lock_user_for_ledger(&mut tx, request.user_id).await?;
         let entries = LeaveLedgerPostgresRepository::list_entries_for_update(
@@ -367,6 +412,7 @@ impl RequestRepository {
                 end_date: request.end_date,
                 created_by: Some(approver_id.to_string()),
             },
+            workday_count,
         )
         .map_err(leave_ledger_error_to_app_error)?;
 
@@ -540,6 +586,14 @@ fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
         LeaveLedgerError::InsufficientBalance { .. } => AppError::BadRequestWithCode {
             message: "Insufficient annual leave balance".into(),
             code: LEAVE_BALANCE_INSUFFICIENT_CODE.to_string(),
+        },
+        LeaveLedgerError::NoWorkingDaysInRange => AppError::BadRequestWithCode {
+            message: "Requested leave period has no working days to consume".into(),
+            code: LEAVE_REQUEST_NO_WORKING_DAYS_CODE.to_string(),
+        },
+        LeaveLedgerError::NoActiveLeaveLot => AppError::BadRequestWithCode {
+            message: "No active annual leave lot exists to determine day-equivalent minutes".into(),
+            code: LEAVE_REQUEST_NO_ACTIVE_LOT_CODE.to_string(),
         },
         LeaveLedgerError::Repository(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
