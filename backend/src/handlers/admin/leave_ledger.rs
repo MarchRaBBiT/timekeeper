@@ -57,18 +57,50 @@ pub async fn run_leave_grants(
 ) -> Result<Json<LeaveGrantRunResponse>, AppError> {
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
-    let use_case = RunLeaveGrants::new(repository.clone(), repository.clone(), repository);
-    let report = use_case
-        .execute(RunLeaveGrantsCommand {
-            base_date: payload.base_date,
-            dry_run: payload.dry_run,
-            user_ids: payload.user_ids,
-            exclude_user_ids: payload.exclude_user_ids.unwrap_or_default(),
-            created_by: Some(actor.id.to_string()),
-            now: Utc::now(),
-        })
-        .await
-        .map_err(leave_ledger_error_to_app_error)?;
+    let command = RunLeaveGrantsCommand {
+        base_date: payload.base_date,
+        dry_run: payload.dry_run,
+        user_ids: payload.user_ids,
+        exclude_user_ids: payload.exclude_user_ids.unwrap_or_default(),
+        created_by: Some(actor.id.to_string()),
+        now: Utc::now(),
+    };
+
+    // M-1a: 付与バッチの二重起動を leave_grant_batch_lock の claim/release で
+    // 排他する。個々のユーザーの正しさ（負残高・二重付与の防止）は use case
+    // 内部の users 行ロックが担保するため、この排他はあくまで運用上の重複
+    // 実行防止。dry_run は書き込みが無い read-only 経路なので排他しない
+    // （実行中バッチがあってもプレビューは返せる）。
+    let actor_id = actor.id.to_string();
+    let batch_repository = repository.clone();
+    let run = move || async move {
+        let use_case = RunLeaveGrants::new(
+            batch_repository.clone(),
+            batch_repository.clone(),
+            batch_repository,
+        );
+        use_case.execute(command).await
+    };
+    let report = if payload.dry_run {
+        run().await
+    } else {
+        repository
+            .run_grant_batch_exclusive(Some(&actor_id), run)
+            .await
+    }
+    .map_err(leave_ledger_error_to_app_error)?;
+
+    // M-1a: ユーザー単位トランザクションが失敗しても他ユーザーの処理は継続する。
+    // 失敗は既存の API 契約（LeaveGrantRunResponse）に含めず、運用フォロー用に
+    // ログへ残す。失敗したユーザーは同じ base_date で再実行すれば再度対象になる。
+    for failure in &report.failed {
+        tracing::error!(
+            user_id = %failure.user_id,
+            base_date = %report.base_date,
+            error = %failure.error,
+            "leave grant run: per-user ledger write failed; other users were unaffected and this user can be retried"
+        );
+    }
 
     Ok(Json(LeaveGrantRunResponse {
         base_date: report.base_date,

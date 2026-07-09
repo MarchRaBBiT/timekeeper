@@ -7,8 +7,8 @@ use timekeeper_app::leave_ledger::{
     ensure_annual_leave_request_has_balance, AdjustLeaveLedger, AdjustLeaveLedgerCommand,
     AnnualLeaveRequestLedgerCommand, GetLeaveBalance, GetLeaveBalanceCommand, GrantCandidate,
     GrantSkipReason, LeaveGrantUserRepository, LeaveLedgerError, LeaveLedgerRepository,
-    LeaveRuleRepository, NewLeaveLedgerEntry, RunLeaveGrants, RunLeaveGrantsCommand, SetHireDate,
-    StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
+    LeaveRuleRepository, LedgerLockFuture, NewLeaveLedgerEntry, RunLeaveGrants,
+    RunLeaveGrantsCommand, SetHireDate, StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
 };
 use timekeeper_domain::leave_ledger::{
     LeaveGrantRule, LeaveLedgerKind, LeaveObligationRule, ObligationStatus,
@@ -29,6 +29,9 @@ struct FakeLedger {
     entries: Mutex<Vec<StoredLeaveLedgerEntry>>,
     sequence: AtomicUsize,
     fail_append: bool,
+    /// H-2 / M-1a のテスト用: 指定した user_id への `with_user_lock` を
+    /// リポジトリ層のエラーとして失敗させる(他ユーザーが継続することの検証に使う)。
+    fail_for_users: Vec<String>,
 }
 
 impl FakeLedger {
@@ -37,11 +40,42 @@ impl FakeLedger {
             entries: Mutex::new(entries),
             sequence: AtomicUsize::new(1000),
             fail_append: false,
+            fail_for_users: Vec::new(),
+        }
+    }
+
+    fn failing_for(entries: Vec<StoredLeaveLedgerEntry>, fail_for_users: Vec<String>) -> Self {
+        Self {
+            entries: Mutex::new(entries),
+            sequence: AtomicUsize::new(1000),
+            fail_append: false,
+            fail_for_users,
         }
     }
 
     fn stored(&self) -> Vec<StoredLeaveLedgerEntry> {
         self.entries.lock().expect("entries lock").clone()
+    }
+
+    fn build_stored(&self, entry: NewLeaveLedgerEntry) -> StoredLeaveLedgerEntry {
+        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        StoredLeaveLedgerEntry {
+            id: format!("entry-{sequence}"),
+            user_id: entry.user_id,
+            leave_type: entry.leave_type,
+            kind: entry.kind,
+            lot_id: entry.lot_id.unwrap_or_else(|| format!("lot-{sequence}")),
+            amount_minutes: entry.amount_minutes,
+            day_equivalent_minutes: entry.day_equivalent_minutes,
+            granted_at: entry.granted_at,
+            expires_at: entry.expires_at,
+            grant_base_date: entry.grant_base_date,
+            leave_request_id: entry.leave_request_id,
+            reason: entry.reason,
+            created_by: entry.created_by,
+            effective_at: entry.effective_at,
+            created_at: entry.effective_at,
+        }
     }
 }
 
@@ -62,38 +96,66 @@ impl LeaveLedgerRepository for &FakeLedger {
             .collect())
     }
 
-    async fn append_entries(
+    async fn list_entries_for_users(
         &self,
-        entries: Vec<NewLeaveLedgerEntry>,
+        user_ids: &[String],
+        leave_type: &str,
     ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError> {
-        if self.fail_append {
-            return Err(LeaveLedgerError::Repository("append failed".to_string()));
-        }
-        let mut stored_entries = self.entries.lock().expect("entries lock");
-        let mut appended = Vec::new();
-        for entry in entries {
-            let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
-            let stored = StoredLeaveLedgerEntry {
-                id: format!("entry-{sequence}"),
-                user_id: entry.user_id,
-                leave_type: entry.leave_type,
-                kind: entry.kind,
-                lot_id: entry.lot_id.unwrap_or_else(|| format!("lot-{sequence}")),
-                amount_minutes: entry.amount_minutes,
-                day_equivalent_minutes: entry.day_equivalent_minutes,
-                granted_at: entry.granted_at,
-                expires_at: entry.expires_at,
-                grant_base_date: entry.grant_base_date,
-                leave_request_id: entry.leave_request_id,
-                reason: entry.reason,
-                created_by: entry.created_by,
-                effective_at: entry.effective_at,
-                created_at: entry.effective_at,
+        Ok(self
+            .entries
+            .lock()
+            .expect("entries lock")
+            .iter()
+            .filter(|entry| {
+                user_ids.iter().any(|id| id == &entry.user_id) && entry.leave_type == leave_type
+            })
+            .cloned()
+            .collect())
+    }
+
+    fn with_user_lock<'a, F, T>(
+        &'a self,
+        user_id: &'a str,
+        leave_type: &'a str,
+        compute: F,
+    ) -> LedgerLockFuture<'a, (Vec<StoredLeaveLedgerEntry>, T)>
+    where
+        F: FnOnce(
+                &[StoredLeaveLedgerEntry],
+            ) -> Result<(Vec<NewLeaveLedgerEntry>, T), LeaveLedgerError>
+            + Send
+            + 'a,
+        T: Send + 'a,
+    {
+        Box::pin(async move {
+            if self.fail_for_users.iter().any(|id| id == user_id) {
+                return Err(LeaveLedgerError::Repository(format!(
+                    "simulated per-user lock failure for {user_id}"
+                )));
+            }
+            let snapshot: Vec<StoredLeaveLedgerEntry> = {
+                let guard = self.entries.lock().expect("entries lock");
+                guard
+                    .iter()
+                    .filter(|entry| entry.user_id == user_id && entry.leave_type == leave_type)
+                    .cloned()
+                    .collect()
             };
-            stored_entries.push(stored.clone());
-            appended.push(stored);
-        }
-        Ok(appended)
+            let (new_entries, value) = compute(&snapshot)?;
+            if new_entries.is_empty() {
+                return Ok((Vec::new(), value));
+            }
+            if self.fail_append {
+                return Err(LeaveLedgerError::Repository("append failed".to_string()));
+            }
+            let mut stored_entries = self.entries.lock().expect("entries lock");
+            let appended: Vec<StoredLeaveLedgerEntry> = new_entries
+                .into_iter()
+                .map(|entry| self.build_stored(entry))
+                .collect();
+            stored_entries.extend(appended.iter().cloned());
+            Ok((appended, value))
+        })
     }
 }
 
@@ -412,6 +474,65 @@ async fn run_grants_writes_grant_lots_for_due_users() {
         .skipped
         .contains(&("no-hire-date".to_string(), GrantSkipReason::HireDateNotSet)));
     assert_eq!(ledger.stored().len(), 2);
+}
+
+/// M-1a: 1 ユーザーの書き込みがユーザー単位トランザクションで失敗しても、
+/// 他ユーザーの付与はロールバックされず生き残ること。旧実装は全候補者を
+/// 単一トランザクションで処理していたため、1 人の失敗（unique 制約違反等）で
+/// 全員分がロールバックされていた。
+#[tokio::test]
+async fn run_grants_partial_failure_does_not_roll_back_other_users() {
+    let ledger = FakeLedger::failing_for(Vec::new(), vec!["due-6m-b".to_string()]);
+    let rules = FakeRules::standard();
+    let users = FakeUsers::with(vec![
+        candidate("due-6m-a", Some(date(2026, 1, 1))),
+        candidate("due-6m-b", Some(date(2026, 1, 1))),
+        candidate("due-6m-c", Some(date(2026, 1, 1))),
+    ]);
+    let use_case = RunLeaveGrants::new(&ledger, &rules, &users);
+
+    let report = use_case
+        .execute(run_command(date(2026, 7, 1), false))
+        .await
+        .expect("run continues despite one user's failure");
+
+    // due-6m-a と due-6m-c は影響を受けず、それぞれの台帳へ書き込まれている。
+    let granted_ids: Vec<&str> = report
+        .granted
+        .iter()
+        .map(|outcome| outcome.user_id.as_str())
+        .collect();
+    assert!(granted_ids.contains(&"due-6m-a"));
+    assert!(granted_ids.contains(&"due-6m-c"));
+    assert!(!granted_ids.contains(&"due-6m-b"));
+    assert_eq!(ledger.stored().len(), 2);
+
+    // due-6m-b は failed として記録され、granted/skipped のどちらにも出てこない。
+    assert_eq!(report.failed.len(), 1);
+    assert_eq!(report.failed[0].user_id, "due-6m-b");
+    assert!(matches!(
+        report.failed[0].error,
+        LeaveLedgerError::Repository(_)
+    ));
+    assert!(!report
+        .skipped
+        .iter()
+        .any(|(user_id, _)| user_id == "due-6m-b"));
+
+    // 冪等性: due-6m-b は再実行すればまだ AlreadyGranted になっておらず、
+    // 再度付与対象として扱われる。
+    let retry = use_case
+        .execute(run_command(date(2026, 7, 1), false))
+        .await
+        .expect("retry should re-attempt the previously failed user");
+    assert!(retry
+        .skipped
+        .contains(&("due-6m-a".to_string(), GrantSkipReason::AlreadyGranted)));
+    assert!(retry
+        .skipped
+        .contains(&("due-6m-c".to_string(), GrantSkipReason::AlreadyGranted)));
+    assert_eq!(retry.failed.len(), 1);
+    assert_eq!(retry.failed[0].user_id, "due-6m-b");
 }
 
 #[tokio::test]

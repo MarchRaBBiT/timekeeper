@@ -595,6 +595,9 @@ fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
             message: "No active annual leave lot exists to determine day-equivalent minutes".into(),
             code: LEAVE_REQUEST_NO_ACTIVE_LOT_CODE.to_string(),
         },
+        LeaveLedgerError::BatchAlreadyRunning => {
+            AppError::Conflict("A leave grant batch is already running; please retry later".into())
+        }
         LeaveLedgerError::Repository(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }

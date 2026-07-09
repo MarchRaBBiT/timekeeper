@@ -127,6 +127,96 @@ async fn grant_run_writes_ledger_and_self_balance_reads_it() {
     assert_eq!(body["obligations"][0]["status"], "ok");
 }
 
+/// M-1a: 付与バッチ実行中（leave_grant_batch_lock が claim 済み）は 409 を返し、
+/// stale な claim（クラッシュ残留）は自動で奪い直して実行できること。
+/// dry_run は排他対象外で、claim 中でも実行できること。
+#[tokio::test]
+async fn grant_run_is_rejected_while_batch_lock_is_claimed_and_reclaims_stale_lock() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    let hire_path = format!("/api/admin/users/{}/hire-date", employee.id);
+    let (status, body) = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        &hire_path,
+        Some(json!({ "hire_date": "2026-01-01" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // 別バッチが実行中の想定で claim を立てる。
+    sqlx::query(
+        "UPDATE leave_grant_batch_lock
+         SET running = TRUE, claim_token = $1, started_at = NOW(), started_by = 'other-run'
+         WHERE id = 1",
+    )
+    .bind(Uuid::new_v4())
+    .execute(&pool)
+    .await
+    .expect("claim batch lock");
+
+    let run_payload = json!({
+        "base_date": "2026-07-01",
+        "dry_run": false,
+        "user_ids": [employee.id.to_string()]
+    });
+    let (status, body) = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/leave-grants/run",
+        Some(run_payload.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["code"], "CONFLICT");
+
+    // dry_run は排他対象外なので claim 中でもプレビューできる。
+    let mut dry_run_payload = run_payload.clone();
+    dry_run_payload["dry_run"] = json!(true);
+    let (status, body) = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/leave-grants/run",
+        Some(dry_run_payload),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["dry_run"], true);
+
+    // stale な claim（クラッシュ残留想定）は奪い直して実行できる。
+    sqlx::query(
+        "UPDATE leave_grant_batch_lock SET started_at = NOW() - INTERVAL '1 hour' WHERE id = 1",
+    )
+    .execute(&pool)
+    .await
+    .expect("make claim stale");
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "POST",
+        "/api/admin/leave-grants/run",
+        Some(run_payload),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["granted"].as_array().expect("grants").len(), 1);
+
+    // 実行完了後は claim が解放されている。
+    let running: bool =
+        sqlx::query_scalar("SELECT running FROM leave_grant_batch_lock WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .expect("read lock row");
+    assert!(!running, "batch lock must be released after the run");
+}
+
 #[tokio::test]
 async fn adjust_api_supports_dry_run_and_initial_balance_commit() {
     let _guard = integration_guard().await;
