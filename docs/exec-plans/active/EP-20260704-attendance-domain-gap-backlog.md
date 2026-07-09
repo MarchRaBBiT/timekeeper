@@ -145,7 +145,7 @@
 3. [x] 実装タスクリストの作成（前提・目的・ゴール・次タスク付き。G1→T-01/T-03、G2→T-02/T-04/T-05、G3→T-06/T-07、G4→T-08、G5→T-09、G6→T-10、G7→T-11、G8→T-12、G9→T-13、G10→T-14、G11→T-15、G12→T-16/T-17、G13→T-18、G14→T-19）
 4. [x] Phase 0（T-01, T-02, T-16, T-19）の着手・個別 EP 化（2026-07-04 完了。commits 40e10b8 / 5ec584b / 8d5101a / 92ca21a）
 5. [ ] Phase 1（T-03, T-04, T-06）の着手・個別 EP 化
-6. [ ] Phase 2（T-05, T-07, T-08, T-09, T-10, T-12, T-17）の着手・個別 EP 化
+6. [x] Phase 2（T-05, T-07, T-08, T-09, T-10, T-12, T-17）の着手・個別 EP 化
 7. [ ] Phase 3（T-11, T-13, T-14, T-15, T-18）の着手・個別 EP 化、G15 の再評価
 
 ## Validation Plan
@@ -166,3 +166,4 @@
 - 2026-07-04: Phase 0 を並列実行。T-01（勤怠計算ポリシー design doc、40e10b8）、T-02（有給台帳 design doc、5ec584b）、T-19（保存期間 policy design doc、8d5101a）完了。相互整合レビュー済み（休暇日 = 労働 0 分・別軸カウンタで T-01/T-02 一致、settlement-balance 既存決定と無矛盾）。T-16（通知基盤汎用化）は実装進行中
 - 2026-07-04: T-16 完了（92ca21a）。レビューで検出した「デプロイ跨ぎの legacy 形式 in-flight job 消失」エッジを fallback decode + 互換テスト 3 件で修正済み。Phase 0 全 4 タスク完了。次は Phase 1（T-03 / T-04 / T-06）
 - 2026-07-09: Phase 1 実装（b39ed35 / 05f45e9 / a2b1294 / 25104c0）の多観点レビュー（ドメイン正当性 / DB / セキュリティ / 契約同期）を実施。HIGH 3 件を検出・修正: 有給消化の暦日→稼働日ベース化（144ec32、leave-entitlement.md に Consumption Target Days を追記）、RunLeaveGrants/AdjustLeaveLedger の TOCTOU 修正 + 付与バッチのユーザー単位 tx 分離・二重起動排他（457281d、migration 055）、管理系ミューテーション 3 本の監査ログ登録（10b60d0）。MEDIUM 群も修正: adjust 入力の i32 範囲 validate + checked_add、更新時残高再検証、migration 056 の adjust CHECK、エラー変換一本化、admin export の既定期間 + 366 日上限 + user_id マージキー化（c7116c5）。leave_ledger.rs は use case 単位に分割（42c2074、mod/balance/consume/grants/adjust）。区分計算（T-03）は design doc との不一致なし。残課題: 承認済み休暇 read 表示と稼働日消化の非対称は仕様として明文化済み、RunLeaveGrantsReport.failed の API 露出は契約変更を伴うため未対応
+- 2026-07-09: Phase 2 残タスクを実装。T-07（残業申請突合 anomaly）、T-08（36協定監視 API/settings）、T-09/T-10（遅刻・早退・欠勤・休憩不足 anomaly）、T-12（月次締め workflow + `monthly-closing.md`）、T-17（申請提出/承認/却下 notification queue enqueue）を個別 EP 化して登録。`cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` は 18 passed。T-17 の missing clock-out reminder は notification enum variant として予約済みで、定期 scan/worker delivery は次の通知 worker 拡張に委ねる

@@ -12,7 +12,9 @@ pub use master::{
     retire_work_schedule, update_work_schedule, WorkScheduleListFilter,
 };
 pub use operations::{
-    close_month, list_anomalies, list_user_attendance_calendar, list_user_leave_calendar,
+    close_month, get_overtime_monitor_settings, list_anomalies, list_overtime_monitor,
+    list_user_attendance_calendar, list_user_leave_calendar, transition_monthly_closing,
+    upsert_overtime_monitor_settings,
 };
 pub use versions::{
     create_version, delete_version, find_version, publish_version, replace_version,
@@ -34,6 +36,8 @@ pub enum WorkScheduleRepositoryError {
     RetiredSchedule,
     #[error("referenced user or department does not exist")]
     InvalidReference,
+    #[error("invalid monthly closing state transition")]
+    InvalidStateTransition,
     #[error("stored work schedule data is invalid: {0}")]
     CorruptData(String),
     #[error(transparent)]

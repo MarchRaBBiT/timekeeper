@@ -297,6 +297,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
             "/api/work-schedules/me",
             get(handlers::work_schedules::get_my_workdays),
         )
+        .route(
+            "/api/monthly-closings/me/self-confirm",
+            post(handlers::admin::self_confirm_monthly_closing),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             user_rate_limit,
@@ -446,6 +450,14 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             get(handlers::admin::list_work_schedule_anomalies),
         )
         .route(
+            "/api/admin/overtime-monitor",
+            get(handlers::admin::list_overtime_monitor),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/approve",
+            post(handlers::admin::approve_monthly_closing),
+        )
+        .route(
             "/api/admin/users/{user_id}/resolved-workdays",
             get(handlers::admin::get_user_resolved_workdays),
         )
@@ -588,6 +600,19 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/work-schedule-closures/monthly",
             post(handlers::admin::close_work_schedule_month),
+        )
+        .route(
+            "/api/admin/overtime-monitor/settings",
+            get(handlers::admin::get_overtime_monitor_settings)
+                .put(handlers::admin::upsert_overtime_monitor_settings),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/close",
+            post(handlers::admin::close_monthly_closing),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/reopen",
+            post(handlers::admin::reopen_monthly_closing),
         )
         .route(
             "/api/admin/leave-grants/run",

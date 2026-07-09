@@ -71,7 +71,11 @@ use bb8_redis::redis;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use uuid::Uuid;
+
 use crate::{db::redis::RedisPool, services::lockout_notification_queue::LockoutNotificationJob};
+
+pub const APPLICATION_NOTIFICATION_QUEUE_KEY: &str = "app:notifications";
 
 /// Lua script shared by every notification queue: moves due jobs from a retry ZSET (scored by
 /// millisecond timestamp) back onto the head of the ready-to-process LIST.
@@ -92,6 +96,10 @@ return #jobs
 #[serde(rename_all = "snake_case")]
 pub enum NotificationKind {
     AccountLockout,
+    RequestSubmitted,
+    RequestApproved,
+    RequestRejected,
+    MissingClockOutReminder,
 }
 
 /// Generic notification job envelope. See the module docs for the wire format rationale.
@@ -99,6 +107,10 @@ pub enum NotificationKind {
 #[serde(tag = "notification_kind", rename_all = "snake_case")]
 pub enum NotificationJob {
     AccountLockout(LockoutNotificationJob),
+    RequestSubmitted(ApplicationNotificationJob),
+    RequestApproved(ApplicationNotificationJob),
+    RequestRejected(ApplicationNotificationJob),
+    MissingClockOutReminder(ApplicationNotificationJob),
 }
 
 impl NotificationJob {
@@ -106,8 +118,57 @@ impl NotificationJob {
     pub fn kind(&self) -> NotificationKind {
         match self {
             NotificationJob::AccountLockout(_) => NotificationKind::AccountLockout,
+            NotificationJob::RequestSubmitted(_) => NotificationKind::RequestSubmitted,
+            NotificationJob::RequestApproved(_) => NotificationKind::RequestApproved,
+            NotificationJob::RequestRejected(_) => NotificationKind::RequestRejected,
+            NotificationJob::MissingClockOutReminder(_) => {
+                NotificationKind::MissingClockOutReminder
+            }
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationNotificationJob {
+    pub job_id: String,
+    pub recipient_user_id: String,
+    pub actor_user_id: Option<String>,
+    pub subject_user_id: String,
+    pub event_id: String,
+    pub event_kind: String,
+    pub locale: String,
+    pub enqueued_at: DateTime<Utc>,
+    pub attempt: u32,
+}
+
+impl ApplicationNotificationJob {
+    pub fn new(
+        recipient_user_id: String,
+        actor_user_id: Option<String>,
+        subject_user_id: String,
+        event_id: String,
+        event_kind: String,
+        locale: String,
+    ) -> Self {
+        Self {
+            job_id: Uuid::new_v4().to_string(),
+            recipient_user_id,
+            actor_user_id,
+            subject_user_id,
+            event_id,
+            event_kind,
+            locale,
+            enqueued_at: Utc::now(),
+            attempt: 0,
+        }
+    }
+}
+
+pub async fn enqueue_application_notification_job(
+    pool: &RedisPool,
+    job: &NotificationJob,
+) -> anyhow::Result<()> {
+    enqueue_notification_job(pool, APPLICATION_NOTIFICATION_QUEUE_KEY, job).await
 }
 
 /// Generic dead-letter envelope, mirroring [`NotificationJob`]'s tagging strategy for the
@@ -289,6 +350,24 @@ mod tests {
     }
 
     #[test]
+    fn application_notification_jobs_carry_kind_tag() {
+        let job = ApplicationNotificationJob::new(
+            "manager-1".to_string(),
+            Some("employee-1".to_string()),
+            "employee-1".to_string(),
+            "request-1".to_string(),
+            "leave".to_string(),
+            "ja".to_string(),
+        );
+        let serialized = serde_json::to_value(NotificationJob::RequestSubmitted(job))
+            .expect("serialize request notification");
+
+        assert_eq!(serialized["notification_kind"], "request_submitted");
+        assert_eq!(serialized["recipient_user_id"], "manager-1");
+        assert_eq!(serialized["locale"], "ja");
+    }
+
+    #[test]
     fn notification_job_wire_format_deserializes_directly_into_lockout_notification_job() {
         let inner = sample_lockout_job();
         let job = NotificationJob::AccountLockout(inner.clone());
@@ -317,6 +396,7 @@ mod tests {
                 assert_eq!(decoded_inner.job_id, inner.job_id);
                 assert_eq!(decoded_inner.user_id, inner.user_id);
             }
+            _ => panic!("expected account_lockout notification"),
         }
     }
 }

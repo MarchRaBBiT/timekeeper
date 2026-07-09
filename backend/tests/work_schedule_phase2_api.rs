@@ -23,8 +23,8 @@ mod support;
 use support::integration_guard;
 
 use support::{
-    seed_attendance, seed_flex_work_schedule_for_user, seed_leave_request, seed_user,
-    seed_work_schedule_for_user, test_config, test_pool,
+    seed_attendance, seed_break_record, seed_flex_work_schedule_for_user, seed_leave_request,
+    seed_overtime_request, seed_user, seed_work_schedule_for_user, test_config, test_pool,
 };
 
 fn router(pool: PgPool, user: User) -> Router {
@@ -41,6 +41,31 @@ fn router(pool: PgPool, user: User) -> Router {
         .route(
             "/api/admin/work-schedule-anomalies",
             get(handlers::list_work_schedule_anomalies),
+        )
+        .route(
+            "/api/admin/overtime-monitor",
+            get(handlers::list_overtime_monitor),
+        )
+        .route(
+            "/api/admin/overtime-monitor/settings",
+            get(handlers::get_overtime_monitor_settings)
+                .put(handlers::upsert_overtime_monitor_settings),
+        )
+        .route(
+            "/api/monthly-closings/me/self-confirm",
+            post(handlers::self_confirm_monthly_closing),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/approve",
+            post(handlers::approve_monthly_closing),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/close",
+            post(handlers::close_monthly_closing),
+        )
+        .route(
+            "/api/admin/users/{user_id}/monthly-closings/reopen",
+            post(handlers::reopen_monthly_closing),
         )
         .route(
             "/api/admin/work-schedule-assignments/bulk",
@@ -518,6 +543,281 @@ async fn approved_leave_surfaces_in_calendar_and_clock_in_conflict_anomaly() {
     .await;
     assert_eq!(after_cancel_status, StatusCode::OK);
     assert_eq!(after_cancel["days"][0]["leave"], Value::Null);
+}
+
+#[tokio::test]
+async fn anomaly_list_detects_overtime_punctuality_absence_and_break_warnings() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let approved_overtime_user = seed_user(&pool, UserRole::Employee, false).await;
+    let unapproved_overtime_user = seed_user(&pool, UserRole::Employee, false).await;
+    let absent_user = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, approved_overtime_user.id, "non_working").await;
+    seed_work_schedule_for_user(&pool, unapproved_overtime_user.id, "non_working").await;
+    seed_work_schedule_for_user(&pool, absent_user.id, "non_working").await;
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [
+                approved_overtime_user.id.to_string(),
+                unapproved_overtime_user.id.to_string(),
+                absent_user.id.to_string()
+            ],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    let overtime =
+        seed_overtime_request(&pool, approved_overtime_user.id, date(2026, 7, 1), 1.0).await;
+    sqlx::query(
+        "UPDATE overtime_requests
+         SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+         WHERE id = $2",
+    )
+    .bind(admin.id.to_string())
+    .bind(overtime.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("approve overtime request");
+
+    let attendance = seed_attendance(
+        &pool,
+        approved_overtime_user.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:20:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_break_record(
+        &pool,
+        attendance.id,
+        NaiveDateTime::parse_from_str("2026-07-01T12:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("break start"),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T12:30:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("break end"),
+        ),
+    )
+    .await;
+
+    seed_attendance(
+        &pool,
+        unapproved_overtime_user.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T19:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/work-schedule-anomalies?from=2026-07-01&to=2026-07-01",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let kinds: Vec<_> = body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| item["kind"].as_str().expect("kind"))
+        .collect();
+    assert!(kinds.contains(&"overtime_exceeds_request"));
+    assert!(kinds.contains(&"unapproved_overtime"));
+    assert!(kinds.contains(&"late"));
+    assert!(kinds.contains(&"insufficient_break"));
+    assert!(kinds.contains(&"absent"));
+}
+
+#[tokio::test]
+async fn overtime_monitor_reports_threshold_statuses() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let settings = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 120,
+            "yearly_limit_minutes": 600,
+            "rolling_average_limit_minutes": 120,
+            "single_month_absolute_limit_minutes": 300,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(settings.0, StatusCode::OK);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/overtime-monitor?year=2026&month=7",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let employee_row = body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["user_id"] == employee.id.to_string())
+        .expect("employee row");
+    assert_eq!(employee_row["month_statutory_excess_minutes"], 180);
+    assert_eq!(employee_row["monthly_status"], "exceeded");
+}
+
+#[tokio::test]
+async fn monthly_closing_workflow_enforces_order_and_locks_on_close() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let system_admin = seed_user(&pool, UserRole::Manager, true).await;
+    let manager = seed_user(&pool, UserRole::Manager, false).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    assign_manager_to_employee_department(&pool, &manager, &employee).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let generated = request_json(
+        router(pool.clone(), system_admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    let premature_close = request_json(
+        router(pool.clone(), system_admin.clone()),
+        "POST",
+        &format!("/api/admin/users/{}/monthly-closings/close", employee.id),
+        Some(json!({ "year": 2026, "month": 7, "reason": "too early" })),
+    )
+    .await;
+    assert_eq!(premature_close.0, StatusCode::CONFLICT);
+    assert_eq!(
+        premature_close.1["code"],
+        "INVALID_MONTHLY_CLOSING_TRANSITION"
+    );
+
+    let self_confirmed = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/monthly-closings/me/self-confirm",
+        Some(json!({ "year": 2026, "month": 7, "reason": "confirmed" })),
+    )
+    .await;
+    assert_eq!(self_confirmed.0, StatusCode::OK);
+    assert_eq!(self_confirmed.1["status"], "self_confirmed");
+
+    let approved = request_json(
+        router(pool.clone(), manager.clone()),
+        "POST",
+        &format!("/api/admin/users/{}/monthly-closings/approve", employee.id),
+        Some(json!({ "year": 2026, "month": 7, "reason": "approved" })),
+    )
+    .await;
+    assert_eq!(approved.0, StatusCode::OK);
+    assert_eq!(approved.1["status"], "approved");
+
+    let closed = request_json(
+        router(pool.clone(), system_admin.clone()),
+        "POST",
+        &format!("/api/admin/users/{}/monthly-closings/close", employee.id),
+        Some(json!({ "year": 2026, "month": 7, "reason": "close" })),
+    )
+    .await;
+    assert_eq!(closed.0, StatusCode::OK);
+    assert_eq!(closed.1["status"], "closed");
+
+    let locked_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM resolved_workdays
+         WHERE user_id = $1 AND work_date = $2 AND locked_at IS NOT NULL",
+    )
+    .bind(employee.id.to_string())
+    .bind(date(2026, 7, 1))
+    .fetch_one(&pool)
+    .await
+    .expect("locked count");
+    assert_eq!(locked_count, 1);
+
+    let reopened = request_json(
+        router(pool.clone(), system_admin),
+        "POST",
+        &format!("/api/admin/users/{}/monthly-closings/reopen", employee.id),
+        Some(json!({ "year": 2026, "month": 7, "reason": "audit" })),
+    )
+    .await;
+    assert_eq!(reopened.0, StatusCode::OK);
+    assert_eq!(reopened.1["status"], "reopened");
 }
 
 #[tokio::test]

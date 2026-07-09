@@ -65,6 +65,9 @@ use timekeeper_contract::work_schedules::{
     BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
     CloseWorkScheduleMonthResponse, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
     DayKind, GenerateWorkScheduleProjectionsRequest, GenerateWorkScheduleProjectionsResponse,
+    MonthlyClosingStatus, MonthlyClosingTransitionRequest, MonthlyClosingWorkflowResponse,
+    OvertimeMonitorQuery, OvertimeMonitorResponse, OvertimeMonitorSettingsRequest,
+    OvertimeMonitorSettingsResponse, OvertimeMonitorStatus, OvertimeMonitorUserResponse,
     PlannedBreakInput, PlannedBreakResponse, PlannedWorkIntervalInput, PlannedWorkIntervalResponse,
     PublicHolidayPolicy, ReplaceWorkScheduleVersionRequest, ResolvedBreakResponse, ResolvedDayKind,
     ResolvedWorkIntervalResponse, ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery,
@@ -199,8 +202,15 @@ struct RequestCancellationResponse {
         admin_bulk_create_work_schedule_assignments_doc,
         admin_generate_work_schedule_projections_doc,
         admin_list_work_schedule_anomalies_doc,
+        admin_list_overtime_monitor_doc,
+        admin_get_overtime_monitor_settings_doc,
+        admin_upsert_overtime_monitor_settings_doc,
         admin_get_work_schedule_calendar_doc,
         admin_close_work_schedule_month_doc,
+        self_confirm_monthly_closing_doc,
+        admin_approve_monthly_closing_doc,
+        admin_close_monthly_closing_doc,
+        admin_reopen_monthly_closing_doc,
         work_schedules_me_doc,
         admin_get_user_resolved_workdays_doc,
         admin_get_user_classification_doc,
@@ -364,7 +374,15 @@ struct RequestCancellationResponse {
             WorkScheduleCalendarDayResponse,
             WorkScheduleCalendarResponse,
             CloseWorkScheduleMonthRequest,
-            CloseWorkScheduleMonthResponse
+            CloseWorkScheduleMonthResponse,
+            OvertimeMonitorStatus,
+            OvertimeMonitorUserResponse,
+            OvertimeMonitorResponse,
+            OvertimeMonitorSettingsRequest,
+            OvertimeMonitorSettingsResponse,
+            MonthlyClosingStatus,
+            MonthlyClosingTransitionRequest,
+            MonthlyClosingWorkflowResponse
         )
     ),
     modifiers(&SecuritySchemes),
@@ -1366,6 +1384,32 @@ fn admin_list_work_schedule_anomalies_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/admin/overtime-monitor",
+    params(OvertimeMonitorQuery),
+    responses((status = 200, body = OvertimeMonitorResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_list_overtime_monitor_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/overtime-monitor/settings",
+    responses((status = 200, body = OvertimeMonitorSettingsResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_get_overtime_monitor_settings_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/overtime-monitor/settings",
+    request_body = OvertimeMonitorSettingsRequest,
+    responses((status = 200, body = OvertimeMonitorSettingsResponse), (status = 400)),
+    tag = "Admin"
+)]
+fn admin_upsert_overtime_monitor_settings_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/users/{user_id}/work-schedule-calendar",
     params(
         ("user_id" = String, Path, description = "対象ユーザーID"),
@@ -1384,6 +1428,45 @@ fn admin_get_work_schedule_calendar_doc() {}
     tag = "Admin"
 )]
 fn admin_close_work_schedule_month_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/monthly-closings/me/self-confirm",
+    request_body = MonthlyClosingTransitionRequest,
+    responses((status = 200, body = MonthlyClosingWorkflowResponse), (status = 409)),
+    tag = "Work Schedule"
+)]
+fn self_confirm_monthly_closing_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{user_id}/monthly-closings/approve",
+    params(("user_id" = String, Path, description = "対象ユーザーID")),
+    request_body = MonthlyClosingTransitionRequest,
+    responses((status = 200, body = MonthlyClosingWorkflowResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_approve_monthly_closing_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{user_id}/monthly-closings/close",
+    params(("user_id" = String, Path, description = "対象ユーザーID")),
+    request_body = MonthlyClosingTransitionRequest,
+    responses((status = 200, body = MonthlyClosingWorkflowResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_close_monthly_closing_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/users/{user_id}/monthly-closings/reopen",
+    params(("user_id" = String, Path, description = "対象ユーザーID")),
+    request_body = MonthlyClosingTransitionRequest,
+    responses((status = 200, body = MonthlyClosingWorkflowResponse), (status = 409)),
+    tag = "Admin"
+)]
+fn admin_reopen_monthly_closing_doc() {}
 
 #[utoipa::path(
     get,
@@ -1561,6 +1644,8 @@ mod tests {
         assert!(paths.contains_key("/api/admin/work-schedules"));
         assert!(paths.contains_key("/api/admin/work-schedules/{id}/versions/{version_id}/publish"));
         assert!(paths.contains_key("/api/admin/work-schedule-assignments"));
+        assert!(paths.contains_key("/api/admin/overtime-monitor"));
+        assert!(paths.contains_key("/api/monthly-closings/me/self-confirm"));
 
         let tags = json
             .get("tags")
@@ -1674,8 +1759,15 @@ mod tests {
             admin_bulk_create_work_schedule_assignments_doc,
             admin_generate_work_schedule_projections_doc,
             admin_list_work_schedule_anomalies_doc,
+            admin_list_overtime_monitor_doc,
+            admin_get_overtime_monitor_settings_doc,
+            admin_upsert_overtime_monitor_settings_doc,
             admin_get_work_schedule_calendar_doc,
             admin_close_work_schedule_month_doc,
+            self_confirm_monthly_closing_doc,
+            admin_approve_monthly_closing_doc,
+            admin_close_monthly_closing_doc,
+            admin_reopen_monthly_closing_doc,
             work_schedules_me_doc,
             admin_get_user_resolved_workdays_doc,
             admin_get_user_classification_doc,

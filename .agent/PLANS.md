@@ -21,6 +21,26 @@
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-leave-attendance-integration.md`](../docs/exec-plans/active/EP-20260709-leave-attendance-integration.md)。T-06（G3 前半）: 承認済み休暇を attendance read path / summary / CSV / work-schedule calendar へ read-time join で反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
 
+# EP-20260709-overtime-request-reconciliation
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-overtime-request-reconciliation.md`](../docs/exec-plans/active/EP-20260709-overtime-request-reconciliation.md)。T-07（G3 後半）: `unapproved_overtime` / `overtime_exceeds_request` anomaly を追加し、admin anomaly list / calendar 経由で露出する
+
+# EP-20260709-overtime-monitor-api
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-overtime-monitor-api.md`](../docs/exec-plans/active/EP-20260709-overtime-monitor-api.md)。T-08（G4）: `overtime_monitor_settings` と `GET /api/admin/overtime-monitor` / settings API を追加し、月次・年度・直近6ヶ月平均の `ok` / `warning` / `exceeded` を返す
+
+# EP-20260709-punctuality-break-anomalies
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-punctuality-break-anomalies.md`](../docs/exec-plans/active/EP-20260709-punctuality-break-anomalies.md)。T-09/T-10（G5/G6）: `late` / `early_leave` / `absent` / `insufficient_break` anomaly を追加
+
+# EP-20260709-monthly-closing-workflow
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-monthly-closing-workflow.md`](../docs/exec-plans/active/EP-20260709-monthly-closing-workflow.md)。T-12（G8）: 月次締め design doc、workflow tables、self-confirm / approve / close / reopen API を追加。`closed` は既存 monthly lock と統合
+
+# EP-20260709-request-notification-events
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-request-notification-events.md`](../docs/exec-plans/active/EP-20260709-request-notification-events.md)。T-17（G12 後半）: 汎用 notification envelope に申請イベント variant を追加し、申請提出・承認・却下時に Redis queue 有効なら enqueue する
+
 # EP-20260704-notification-service-generalization
 
 **完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）

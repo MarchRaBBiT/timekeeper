@@ -164,6 +164,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-07: 残業申請と実績の突合（G3 後半）
 
 - **前提タスク:** T-03（法定外実績の定義を使う）
+- **ExecPlan:** [EP-20260709-overtime-request-reconciliation](./active/EP-20260709-overtime-request-reconciliation.md)
+- **Status:** 完了（2026-07-09）。`unapproved_overtime` / `overtime_exceeds_request` anomaly を追加し、admin anomaly list / calendar に露出
 - **目的:** 「申請なしの残業」「申請超過の残業」を検知し、申請ワークフローを形骸化させない
 - **指示:**
   1. anomaly kind を追加する（例: `unapproved_overtime` / `overtime_exceeds_request`）。判定は日次: 承認済み overtime request の `planned_hours` と T-03 の法定外実績分を比較し、許容差（分、設定パラメータ）を超えたら検出
@@ -175,6 +177,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-08: 36協定上限の実績監視 API（G4）
 
 - **前提タスク:** T-03（T-07 完了が望ましいが必須ではない）
+- **ExecPlan:** [EP-20260709-overtime-monitor-api](./active/EP-20260709-overtime-monitor-api.md)
+- **Status:** 完了（2026-07-09）。`overtime_monitor_settings` と `GET /api/admin/overtime-monitor` / settings API を追加
 - **目的:** 時間外労働の上限（月 45h / 年 360h、特別条項、単月 100h 未満・2〜6 ヶ月平均 80h）への接近・超過を発生前に可視化する
 - **指示:**
   1. 閾値マスタ（36協定設定: 一般上限・特別条項上限・警告水準%）を新規 migration で追加する。System Admin が CRUD できる最小 API を付ける
@@ -187,6 +191,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-09: 遅刻・早退・欠勤判定（G5）
 
 - **前提タスク:** T-06（休暇日を欠勤誤検知から除外するため必須）、T-01（判定猶予・丸めの決定に従う）
+- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./active/EP-20260709-punctuality-break-anomalies.md)
+- **Status:** 完了（2026-07-09）。`late` / `early_leave` / `absent` anomaly を追加し、休暇日は欠勤から除外
 - **目的:** 予定と実績の乖離（遅刻・早退・欠勤）を判定・集計可能にする
 - **指示:**
   1. anomaly kind を追加する: `late` / `early_leave`（fixed schedule のみ。flex はコアタイム逸脱として別 kind か対象外かを T-01 の決定に従い明示）、`absent`（予定勤務日に打刻も承認済み休暇もない過去日）
@@ -199,6 +205,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-10: 休憩の法定下限チェック（G6）
 
 - **前提タスク:** T-01（警告扱い・どの労働時間で判定するかの決定に従う）。T-03 と独立に実装可
+- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./active/EP-20260709-punctuality-break-anomalies.md)
+- **Status:** 完了（2026-07-09）。設定値に基づく `insufficient_break` anomaly を追加
 - **目的:** 労働 6h 超で休憩 45 分未満 / 8h 超で 60 分未満の日を可視化する
 - **指示:**
   1. anomaly kind `insufficient_break` を追加する。入力は effective 打刻（修正承認後の値）
@@ -210,6 +218,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-12: 月次締めの承認ワークフロー（G8）
 
 - **前提タスク:** 設計は独立で開始可。実装は T-03 完了後を推奨（締め確定値の固定拡張を見込むため）
+- **ExecPlan:** [EP-20260709-monthly-closing-workflow](./active/EP-20260709-monthly-closing-workflow.md)
+- **Status:** 完了（2026-07-09）。[monthly-closing.md](../design-docs/monthly-closing.md)、workflow tables、self-confirm / approve / close / reopen API を追加
 - **目的:** 現状の「system_admin による一方的な lock」を、本人確認 → 上長承認 → 締め確定 → 再締めの追跡可能なワークフローへ拡張する
 - **指示:**
   1. まず `docs/design-docs/monthly-closing.md`（Follow-up Designs 2 の具体化）を作成し、状態遷移（`open` → `self_confirmed` → `approved` → `closed`、`closed` → 再締め `reopened` → 再 `closed`）、各遷移の権限（本人 / Scoped Manager / System Admin）、再締め時の監査証跡を決定する
@@ -222,6 +232,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-17: 申請・打刻イベントの通知配線（G12 後半）
 
 - **前提タスク:** T-16
+- **ExecPlan:** [EP-20260709-request-notification-events](./active/EP-20260709-request-notification-events.md)
+- **Status:** 完了（2026-07-09）。汎用 notification envelope に申請イベント variant を追加し、申請提出・承認・却下時に Redis queue 有効なら enqueue する。`missing_clock_out_reminder` variant は予約済みで、定期 scan/worker delivery は後続 worker 拡張へ残す
 - **目的:** 申請の放置・打刻漏れの放置を通知で減らす
 - **指示:**
   1. 通知イベントを配線する: 申請提出（承認可能な Scoped Manager へ）、承認・却下（申請者へ）、打刻漏れ（前営業日の `missing clock-out` 検知時に本人へ）

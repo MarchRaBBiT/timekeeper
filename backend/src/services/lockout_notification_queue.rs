@@ -122,6 +122,10 @@ pub async fn dequeue_lockout_notification_job(
 fn decode_lockout_notification_payload(raw: &str) -> anyhow::Result<LockoutNotificationJob> {
     match serde_json::from_str::<NotificationJob>(raw) {
         Ok(NotificationJob::AccountLockout(job)) => Ok(job),
+        Ok(other) => Err(anyhow!(
+            "expected account_lockout notification job, got {:?}",
+            other.kind()
+        )),
         Err(tagged_err) => {
             serde_json::from_str::<LockoutNotificationJob>(raw).map_err(|legacy_err| {
                 anyhow!(

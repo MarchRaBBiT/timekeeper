@@ -18,6 +18,9 @@ use crate::{
         overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
         request::{RequestListFilters, RequestRepository, RequestStatusUpdate},
     },
+    services::notification_queue::{
+        enqueue_application_notification_job, ApplicationNotificationJob, NotificationJob,
+    },
     state::AppState,
     types::{LeaveRequestId, OvertimeRequestId, UserId},
     utils::time,
@@ -60,6 +63,15 @@ pub async fn approve_request(
         )
         .await?
     {
+        enqueue_request_decision_notification(
+            &state,
+            applicant_id,
+            Some(user.id.to_string()),
+            &request_id,
+            "request",
+            true,
+        )
+        .await;
         return Ok(Json(json!({"message": "Request approved"})));
     }
 
@@ -103,12 +115,50 @@ pub async fn reject_request(
         )
         .await?
     {
+        enqueue_request_decision_notification(
+            &state,
+            applicant_id,
+            Some(user.id.to_string()),
+            &request_id,
+            "request",
+            false,
+        )
+        .await;
         return Ok(Json(json!({"message": "Request rejected"})));
     }
 
     Err(AppError::NotFound(
         "Request not found or already processed".into(),
     ))
+}
+
+async fn enqueue_request_decision_notification(
+    state: &AppState,
+    applicant_id: UserId,
+    actor_user_id: Option<String>,
+    request_id: &str,
+    request_kind: &str,
+    approved: bool,
+) {
+    let Some(redis_pool) = state.redis() else {
+        return;
+    };
+    let job = ApplicationNotificationJob::new(
+        applicant_id.to_string(),
+        actor_user_id,
+        applicant_id.to_string(),
+        request_id.to_string(),
+        request_kind.to_string(),
+        "ja".to_string(),
+    );
+    let notification = if approved {
+        NotificationJob::RequestApproved(job)
+    } else {
+        NotificationJob::RequestRejected(job)
+    };
+    if let Err(error) = enqueue_application_notification_job(redis_pool, &notification).await {
+        tracing::warn!(error = %error, "failed to enqueue request decision notification");
+    }
 }
 
 /// Returns the user ID of the applicant who submitted the given request.

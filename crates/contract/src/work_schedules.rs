@@ -406,6 +406,12 @@ pub enum WorkScheduleAnomalyKind {
     MissingClockIn,
     MissingClockOut,
     LeaveConflict,
+    UnapprovedOvertime,
+    OvertimeExceedsRequest,
+    Late,
+    EarlyLeave,
+    Absent,
+    InsufficientBreak,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -479,6 +485,93 @@ pub struct CloseWorkScheduleMonthResponse {
     pub from: NaiveDate,
     pub to: NaiveDate,
     pub locked_count: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OvertimeMonitorStatus {
+    Ok,
+    Warning,
+    Exceeded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, IntoParams)]
+pub struct OvertimeMonitorQuery {
+    pub year: i32,
+    pub month: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OvertimeMonitorUserResponse {
+    pub user_id: String,
+    pub month_statutory_excess_minutes: i64,
+    pub fiscal_year_statutory_excess_minutes: i64,
+    pub rolling_average_statutory_excess_minutes: i64,
+    pub monthly_status: OvertimeMonitorStatus,
+    pub yearly_status: OvertimeMonitorStatus,
+    pub rolling_average_status: OvertimeMonitorStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OvertimeMonitorResponse {
+    pub year: i32,
+    pub month: u32,
+    pub fiscal_year_start_month: u32,
+    pub items: Vec<OvertimeMonitorUserResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OvertimeMonitorSettingsRequest {
+    pub valid_from: NaiveDate,
+    pub fiscal_year_start_month: u32,
+    pub monthly_limit_minutes: i64,
+    pub yearly_limit_minutes: i64,
+    pub rolling_average_limit_minutes: i64,
+    pub single_month_absolute_limit_minutes: i64,
+    pub warning_ratio_percent: i32,
+    #[serde(default)]
+    pub overtime_request_tolerance_minutes: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct OvertimeMonitorSettingsResponse {
+    pub id: String,
+    pub valid_from: NaiveDate,
+    pub fiscal_year_start_month: u32,
+    pub monthly_limit_minutes: i64,
+    pub yearly_limit_minutes: i64,
+    pub rolling_average_limit_minutes: i64,
+    pub single_month_absolute_limit_minutes: i64,
+    pub warning_ratio_percent: i32,
+    pub overtime_request_tolerance_minutes: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MonthlyClosingStatus {
+    Open,
+    SelfConfirmed,
+    Approved,
+    Closed,
+    Reopened,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct MonthlyClosingTransitionRequest {
+    pub year: i32,
+    pub month: u32,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct MonthlyClosingWorkflowResponse {
+    pub id: String,
+    pub user_id: String,
+    pub year: i32,
+    pub month: u32,
+    pub status: MonthlyClosingStatus,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]

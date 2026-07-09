@@ -10,6 +10,9 @@ use timekeeper_app::attendance::{
 };
 use timekeeper_infra_postgres::attendance_correction::AttendanceCorrectionRepository;
 
+use crate::services::notification_queue::{
+    enqueue_application_notification_job, ApplicationNotificationJob, NotificationJob,
+};
 use crate::{
     error::AppError,
     models::{
@@ -68,6 +71,13 @@ pub async fn create_leave_request(
             )))
         }
     };
+    enqueue_request_submitted_notifications(
+        &state,
+        &response.user_id.to_string(),
+        &response.id.to_string(),
+        "leave",
+    )
+    .await;
     Ok(Json(response))
 }
 
@@ -98,7 +108,59 @@ pub async fn create_overtime_request(
             )))
         }
     };
+    enqueue_request_submitted_notifications(
+        &state,
+        &response.user_id.to_string(),
+        &response.id.to_string(),
+        "overtime",
+    )
+    .await;
     Ok(Json(response))
+}
+
+async fn enqueue_request_submitted_notifications(
+    state: &AppState,
+    applicant_id: &str,
+    request_id: &str,
+    request_kind: &str,
+) {
+    let Some(redis_pool) = state.redis() else {
+        return;
+    };
+    let recipients = match sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT dm.user_id
+         FROM users applicant
+         JOIN department_managers dm ON dm.department_id = applicant.department_id
+         WHERE applicant.id = $1",
+    )
+    .bind(applicant_id)
+    .fetch_all(state.read_pool())
+    .await
+    {
+        Ok(items) => items,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to resolve request notification recipients");
+            return;
+        }
+    };
+    for recipient in recipients {
+        let job = ApplicationNotificationJob::new(
+            recipient,
+            Some(applicant_id.to_string()),
+            applicant_id.to_string(),
+            request_id.to_string(),
+            request_kind.to_string(),
+            "ja".to_string(),
+        );
+        if let Err(error) = enqueue_application_notification_job(
+            redis_pool,
+            &NotificationJob::RequestSubmitted(job),
+        )
+        .await
+        {
+            tracing::warn!(error = %error, "failed to enqueue request submitted notification");
+        }
+    }
 }
 
 pub async fn get_my_requests(

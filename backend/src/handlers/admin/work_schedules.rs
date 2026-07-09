@@ -14,13 +14,15 @@ use timekeeper_contract::work_schedules::{
     BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
     CloseWorkScheduleMonthResponse, CreateWorkScheduleRequest, CreateWorkScheduleVersionRequest,
     FlexPolicyInput, GenerateWorkScheduleProjectionsRequest,
-    GenerateWorkScheduleProjectionsResponse, ReplaceWorkScheduleVersionRequest,
-    UpdateWorkScheduleRequest, WorkScheduleAnomalyListQuery, WorkScheduleAnomalyListResponse,
-    WorkScheduleAssignmentListQuery, WorkScheduleAssignmentListResponse,
-    WorkScheduleAssignmentRequest, WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse,
-    WorkScheduleDetailResponse, WorkScheduleListQuery, WorkScheduleListResponse,
-    WorkScheduleProjectionError, WorkScheduleResponse, WorkScheduleType,
-    WorkScheduleVersionResponse,
+    GenerateWorkScheduleProjectionsResponse, MonthlyClosingStatus, MonthlyClosingTransitionRequest,
+    MonthlyClosingWorkflowResponse, OvertimeMonitorQuery, OvertimeMonitorResponse,
+    OvertimeMonitorSettingsRequest, OvertimeMonitorSettingsResponse,
+    ReplaceWorkScheduleVersionRequest, UpdateWorkScheduleRequest, WorkScheduleAnomalyListQuery,
+    WorkScheduleAnomalyListResponse, WorkScheduleAssignmentListQuery,
+    WorkScheduleAssignmentListResponse, WorkScheduleAssignmentRequest,
+    WorkScheduleCalendarDayResponse, WorkScheduleCalendarResponse, WorkScheduleDetailResponse,
+    WorkScheduleListQuery, WorkScheduleListResponse, WorkScheduleProjectionError,
+    WorkScheduleResponse, WorkScheduleType, WorkScheduleVersionResponse,
 };
 use timekeeper_domain::work_schedules::{
     CoreTimeWindow, DayKind, FlexPolicy, PlannedBreak, PlannedWorkInterval, ScheduleDefinition,
@@ -510,6 +512,70 @@ pub async fn list_work_schedule_anomalies(
     }))
 }
 
+pub async fn list_overtime_monitor(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Query(query): Query<OvertimeMonitorQuery>,
+) -> Result<Json<OvertimeMonitorResponse>, AppError> {
+    require_manager(&user)?;
+    if !(1..=12).contains(&query.month) {
+        return Err(invalid_work_schedule("month must be between 1 and 12"));
+    }
+    if !(1900..=9999).contains(&query.year) {
+        return Err(invalid_work_schedule("year must be between 1900 and 9999"));
+    }
+    let user_ids = if user.is_system_admin() {
+        None
+    } else {
+        Some(
+            list_subordinate_user_ids(state.read_pool(), user.id)
+                .await
+                .map_err(|error| AppError::InternalServerError(error.into()))?,
+        )
+    };
+    let scoped_user_ids = match user_ids {
+        Some(ids) => ids,
+        None => sqlx::query_scalar::<_, String>("SELECT id FROM users ORDER BY id")
+            .fetch_all(state.read_pool())
+            .await
+            .map_err(|error| AppError::InternalServerError(error.into()))?,
+    };
+    let response = work_schedule::list_overtime_monitor(
+        state.read_pool(),
+        &scoped_user_ids,
+        query.year,
+        query.month,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
+pub async fn get_overtime_monitor_settings(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+) -> Result<Json<OvertimeMonitorSettingsResponse>, AppError> {
+    require_system_admin(&user)?;
+    let response =
+        work_schedule::get_overtime_monitor_settings(state.read_pool(), Utc::now().date_naive())
+            .await
+            .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
+pub async fn upsert_overtime_monitor_settings(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<OvertimeMonitorSettingsRequest>,
+) -> Result<Json<OvertimeMonitorSettingsResponse>, AppError> {
+    require_system_admin(&user)?;
+    validate_overtime_monitor_settings(&payload)?;
+    let response = work_schedule::upsert_overtime_monitor_settings(&state.write_pool, &payload)
+        .await
+        .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
 pub async fn bulk_create_work_schedule_assignments(
     State(state): State<AppState>,
     Extension(user): Extension<User>,
@@ -612,6 +678,110 @@ pub async fn close_work_schedule_month(
         to,
         locked_count,
     }))
+}
+
+pub async fn self_confirm_monthly_closing(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Json(payload): Json<MonthlyClosingTransitionRequest>,
+) -> Result<Json<MonthlyClosingWorkflowResponse>, AppError> {
+    validate_monthly_transition_payload(&payload)?;
+    let reason = normalized_reason(payload.reason.as_deref())?;
+    let response = work_schedule::transition_monthly_closing(
+        &state.write_pool,
+        &user.id.to_string(),
+        payload.year,
+        payload.month,
+        MonthlyClosingStatus::SelfConfirmed,
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
+pub async fn approve_monthly_closing(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<MonthlyClosingTransitionRequest>,
+) -> Result<Json<MonthlyClosingWorkflowResponse>, AppError> {
+    validate_monthly_transition_payload(&payload)?;
+    let target =
+        UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    authorize_scope(&state, &user, target).await?;
+    let reason = normalized_reason(payload.reason.as_deref())?;
+    let response = work_schedule::transition_monthly_closing(
+        &state.write_pool,
+        &user_id,
+        payload.year,
+        payload.month,
+        MonthlyClosingStatus::Approved,
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
+pub async fn close_monthly_closing(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<MonthlyClosingTransitionRequest>,
+) -> Result<Json<MonthlyClosingWorkflowResponse>, AppError> {
+    require_system_admin(&user)?;
+    validate_monthly_transition_payload(&payload)?;
+    UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    let reason = normalized_reason(payload.reason.as_deref())?;
+    let response = work_schedule::transition_monthly_closing(
+        &state.write_pool,
+        &user_id,
+        payload.year,
+        payload.month,
+        MonthlyClosingStatus::Closed,
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    work_schedule::close_month(
+        &state.write_pool,
+        payload.year,
+        payload.month,
+        std::slice::from_ref(&user_id),
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(response))
+}
+
+pub async fn reopen_monthly_closing(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Json(payload): Json<MonthlyClosingTransitionRequest>,
+) -> Result<Json<MonthlyClosingWorkflowResponse>, AppError> {
+    require_system_admin(&user)?;
+    validate_monthly_transition_payload(&payload)?;
+    UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    let reason = normalized_reason(payload.reason.as_deref())?;
+    let response = work_schedule::transition_monthly_closing(
+        &state.write_pool,
+        &user_id,
+        payload.year,
+        payload.month,
+        MonthlyClosingStatus::Reopened,
+        &user.id.to_string(),
+        reason,
+    )
+    .await
+    .map_err(map_repository_error)?;
+    Ok(Json(response))
 }
 
 struct VersionDefinitionInput<'a> {
@@ -777,6 +947,10 @@ fn map_repository_error(error: WorkScheduleRepositoryError) -> AppError {
             message: "Referenced user or department does not exist".to_string(),
             code: "INVALID_WORK_SCHEDULE_REFERENCE".to_string(),
         },
+        WorkScheduleRepositoryError::InvalidStateTransition => AppError::ConflictWithCode {
+            message: "Invalid monthly closing state transition".to_string(),
+            code: "INVALID_MONTHLY_CLOSING_TRANSITION".to_string(),
+        },
         WorkScheduleRepositoryError::CorruptData(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }
@@ -812,6 +986,10 @@ fn repository_error_code_message(error: &WorkScheduleRepositoryError) -> (&'stat
         WorkScheduleRepositoryError::InvalidReference => (
             "INVALID_WORK_SCHEDULE_REFERENCE",
             "Referenced user or department does not exist".into(),
+        ),
+        WorkScheduleRepositoryError::InvalidStateTransition => (
+            "INVALID_MONTHLY_CLOSING_TRANSITION",
+            "Invalid monthly closing state transition".into(),
         ),
         WorkScheduleRepositoryError::CorruptData(message) => {
             ("INVALID_WORK_SCHEDULE", message.clone())
@@ -895,6 +1073,57 @@ fn validate_range(from: NaiveDate, to: NaiveDate) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+fn validate_overtime_monitor_settings(
+    payload: &OvertimeMonitorSettingsRequest,
+) -> Result<(), AppError> {
+    if !(1..=12).contains(&payload.fiscal_year_start_month) {
+        return Err(invalid_work_schedule(
+            "fiscal_year_start_month must be between 1 and 12",
+        ));
+    }
+    if payload.monthly_limit_minutes <= 0
+        || payload.yearly_limit_minutes <= 0
+        || payload.rolling_average_limit_minutes <= 0
+        || payload.single_month_absolute_limit_minutes <= 0
+    {
+        return Err(invalid_work_schedule("overtime limits must be positive"));
+    }
+    if !(1..=100).contains(&payload.warning_ratio_percent) {
+        return Err(invalid_work_schedule(
+            "warning_ratio_percent must be between 1 and 100",
+        ));
+    }
+    if payload.overtime_request_tolerance_minutes < 0 {
+        return Err(invalid_work_schedule(
+            "overtime_request_tolerance_minutes must be non-negative",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_monthly_transition_payload(
+    payload: &MonthlyClosingTransitionRequest,
+) -> Result<(), AppError> {
+    if !(1..=12).contains(&payload.month) {
+        return Err(invalid_work_schedule("month must be between 1 and 12"));
+    }
+    if !(1900..=9999).contains(&payload.year) {
+        return Err(invalid_work_schedule("year must be between 1900 and 9999"));
+    }
+    normalized_reason(payload.reason.as_deref())?;
+    Ok(())
+}
+
+fn normalized_reason(value: Option<&str>) -> Result<Option<&str>, AppError> {
+    let reason = value.map(str::trim).filter(|v| !v.is_empty());
+    if reason.is_some_and(|item| item.chars().count() > 500) {
+        return Err(invalid_work_schedule(
+            "reason must be at most 500 characters",
+        ));
+    }
+    Ok(reason)
 }
 
 fn dates_inclusive(from: NaiveDate, to: NaiveDate) -> Result<Vec<NaiveDate>, AppError> {
