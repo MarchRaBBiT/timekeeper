@@ -385,3 +385,18 @@ fn obligation_merges_multiple_grants_on_the_same_base_date() {
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0].granted_minutes, 480 * 12);
 }
+
+/// M-2: `remaining_minutes` の加算はもう素朴な `+=` ではなく `checked_add` を
+/// 使う。この不変条件は「単一イベントの `amount_minutes` は contract 層
+/// （i32 range）と DB 列（`INTEGER`）で常に i32 範囲に収まる」という上流の
+/// 保証に依存しており、破られた場合は静かにラップアラウンドさせず
+/// fail-fast する（本来ここまで到達しないはずの異常系）。
+#[test]
+#[should_panic(expected = "i64 accumulation overflow")]
+fn derive_balance_panics_on_amount_minutes_i64_overflow() {
+    let events = vec![
+        grant("lot-1", date(2025, 1, 1), date(2027, 1, 1), i64::MAX),
+        event("lot-1", LeaveLedgerKind::Adjust, i64::MAX, date(2025, 2, 1)),
+    ];
+    derive_balance(&events, date(2026, 7, 5));
+}

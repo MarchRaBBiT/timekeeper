@@ -122,7 +122,31 @@ pub fn derive_balance(events: &[LeaveLedgerEvent], as_of: NaiveDate) -> LeaveBal
                 lots.last_mut().expect("lot just pushed")
             }
         };
-        lot.remaining_minutes += event.amount_minutes;
+        // M-2: 素朴な `+=` は i64 オーバーフロー時にリリースビルドで
+        // ラップアラウンドし、負残高判定を誤って通過させうる。
+        //
+        // 設計判断（詳細は docs/design-docs/leave-entitlement.md 更新は不要、
+        // ここに理由を残す）: `derive_balance` は `Result` を返していないため
+        // 純粋にエラー化すると、この関数を呼ぶ 7 箇所超（`GetLeaveBalance`
+        // / `RunLeaveGrants` / `AdjustLeaveLedger` / 各種 test）すべてに
+        // シグネチャ変更が波及する。一方で `amount_minutes` は
+        // (a) contract 層の `LeaveLedgerAdjustRequest::amount_minutes` が
+        // i32 範囲にバリデーション済み、(b) DB 列も `INTEGER`（i32）で
+        // 永続化時に `i32::try_from` を通す、という 2 段の不変条件で
+        // すでに i32 範囲に収まっている。1 ロットあたり i32 の最大値相当の
+        // イベントを 2^32 件超積み上げない限り i64 accumulator は溢れない
+        // ため、ここでの overflow は「起こり得る通常のエラー」ではなく
+        // 「上流の不変条件が破れた異常事態」。既存の
+        // `.expect("expired lot has expires_at")`（本ファイル）と同様、
+        // saturating で握り潰さず fail-fast する。
+        lot.remaining_minutes = lot
+            .remaining_minutes
+            .checked_add(event.amount_minutes)
+            .expect(
+                "leave ledger amount_minutes is bounded by contract validation (i32 range) \
+                 and the DB INTEGER column; i64 accumulation overflow means an upstream \
+                 invariant was violated",
+            );
         if event.kind == LeaveLedgerKind::Expire {
             lot.has_expire_event = true;
         }

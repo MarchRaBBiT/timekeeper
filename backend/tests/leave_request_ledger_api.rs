@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
     Extension, Router,
 };
 use chrono::NaiveDate;
@@ -25,7 +25,10 @@ fn router(pool: PgPool, user: User) -> Router {
     let state = AppState::new(pool, None, None, None, test_config());
     Router::new()
         .route("/api/requests/leave", post(requests::create_leave_request))
-        .route("/api/requests/{id}", delete(requests::cancel_request))
+        .route(
+            "/api/requests/{id}",
+            put(requests::update_request).delete(requests::cancel_request),
+        )
         .route(
             "/api/admin/requests/{id}/approve",
             put(admin::approve_request),
@@ -339,6 +342,81 @@ async fn non_annual_leave_stays_balance_independent() {
         "PUT",
         &approve_path,
         Some(json!({ "comment": "approved" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+/// M-4: `update_request` (PUT /api/requests/{id}) は pending の annual leave の
+/// leave_type / start_date / end_date を残高検証なしで通していたため、更新は
+/// 成功するのに承認で初めて拒否される非対称があった。更新後も annual のまま
+/// 残高が不足する日付へ変更しようとした場合は、作成時と同じ
+/// `LEAVE_BALANCE_INSUFFICIENT` で拒否されることを固定する。
+#[tokio::test]
+async fn update_request_revalidates_balance_when_result_stays_annual() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    // 1日分(480分)しか残高が無い。
+    seed_annual_balance(&pool, &employee, 1).await;
+
+    // 2026-07-13 (Mon) の 1 稼働日だけなら残高内で申請できる。
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-13",
+            "end_date": "2026-07-13",
+            "reason": "vacation"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request_id = body["id"].as_str().expect("request id").to_string();
+
+    // 2026-07-10 (Fri) - 2026-07-13 (Mon): 稼働日は金・月の 2 日 = 960 分。
+    // 残高は 480 分しか無いため、更新は作成時と同じ理由で拒否されるべき。
+    let update_path = format!("/api/requests/{request_id}");
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "PUT",
+        &update_path,
+        Some(json!({
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-13"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "LEAVE_BALANCE_INSUFFICIENT");
+
+    // 拒否された更新は反映されず、元の日付のままであること。
+    let unchanged: (String, String) =
+        sqlx::query_as("SELECT start_date::text, end_date::text FROM leave_requests WHERE id = $1")
+            .bind(&request_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch leave request");
+    assert_eq!(unchanged.0, "2026-07-13");
+    assert_eq!(unchanged.1, "2026-07-13");
+
+    // leave_type を非 annual に変えれば残高検証はスキップされ、更新が通る。
+    let (status, body) = request_json(
+        router(pool, employee),
+        "PUT",
+        &update_path,
+        Some(json!({
+            "leave_type": "sick",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-13"
+        })),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");

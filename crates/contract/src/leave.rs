@@ -160,12 +160,22 @@ pub struct LeaveGrantRunResponse {
 pub struct LeaveLedgerAdjustRequest {
     pub user_id: String,
     /// 符号付き分。新規ロット投入（初期移行）は正、控除は負。
+    ///
+    /// M-2: DB 列は `INTEGER`（i32）で、永続化時は `i32::try_from` を通す。
+    /// しかし `dry_run=true` はこの DB 変換を一切経由しないため、ここで
+    /// i32 範囲にバリデーションしておかないと、リリースビルドでは
+    /// `crates/app/src/leave_ledger.rs` の残高計算が `i64` のラップアラウンドを
+    /// 起こし、負残高チェックを誤って通過しうる。
+    #[validate(range(min = -2_147_483_648, max = 2_147_483_647))]
     pub amount_minutes: i64,
     /// 既存ロットの補正時に指定。省略時は新規ロットを採番する。
     #[serde(default)]
     pub lot_id: Option<String>,
     /// 新規ロット時に必須。1 日 = N 分の換算値。
+    /// DB 側の `leave_ledger_entries.day_equivalent_minutes` の
+    /// `CHECK (day_equivalent_minutes BETWEEN 1 AND 1440)` と同じ範囲に揃える。
     #[serde(default)]
+    #[validate(range(min = 1, max = 1440))]
     pub day_equivalent_minutes: Option<i64>,
     /// 新規ロット時に必須。ロットの付与日。
     #[serde(default)]

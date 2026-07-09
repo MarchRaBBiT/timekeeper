@@ -1013,7 +1013,21 @@ fn build_adjust_entry(
                     "unknown lot_id: {lot_id}"
                 )));
             };
-            if lot.remaining_minutes + command.amount_minutes < 0 {
+            // M-2: `+` の代わりに `checked_add` を使う。`amount_minutes` は
+            // contract 層（`LeaveLedgerAdjustRequest::amount_minutes`）で
+            // i32 範囲にバリデーション済みのはずだが、`dry_run=true` は
+            // DB の `i32::try_from` を経由しないため、ここでも防御的に
+            // オーバーフローを明示エラーにする（`i64` のラップアラウンドで
+            // 負残高チェックを誤通過させない）。
+            let new_remaining = lot
+                .remaining_minutes
+                .checked_add(command.amount_minutes)
+                .ok_or_else(|| {
+                    LeaveLedgerError::InvalidInput(
+                        "amount_minutes overflows the lot balance computation".to_string(),
+                    )
+                })?;
+            if new_remaining < 0 {
                 return Err(LeaveLedgerError::InvalidInput(
                     "adjustment would make the lot balance negative".to_string(),
                 ));

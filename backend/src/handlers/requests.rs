@@ -226,6 +226,16 @@ pub async fn update_request(
         updated.end_date = new_end;
         updated.reason = new_reason;
         updated.updated_at = now;
+        // M-4: 更新後の値が annual のままなら、作成時
+        // (`create_leave_request`) と同じ稼働日ベースの残高検証を更新前に
+        // 再実行する。pending 申請は承認まで ledger を消費しないため、この
+        // 検証は作成時と全く同じロジックで良い（重複実装を避けるため
+        // `RequestRepository::ensure_annual_leave_request_balance` を共用する）。
+        // これにより「更新は成功するのに承認で初めて拒否される」非対称を防ぐ。
+        let request_repo = RequestRepository::new();
+        request_repo
+            .ensure_annual_leave_request_balance(&state.write_pool, &updated)
+            .await?;
         leave_repo.update(&state.write_pool, &updated).await?;
         return Ok(Json(json!({"message":"Leave request updated"})));
     }

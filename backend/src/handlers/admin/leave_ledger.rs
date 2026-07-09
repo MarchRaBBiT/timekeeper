@@ -19,11 +19,8 @@ use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 use validator::Validate;
 
 use crate::{
-    error::AppError,
-    handlers::leave_ledger::{
-        balance_view_to_response, entry_to_response, leave_ledger_error_to_app_error,
-        minutes_to_days,
-    },
+    error::{leave_ledger::leave_ledger_error_to_app_error, AppError},
+    handlers::leave_ledger::{balance_view_to_response, entry_to_response, minutes_to_days},
     models::user::User,
     repositories::department::can_manager_approve,
     state::AppState,
@@ -55,6 +52,13 @@ pub async fn run_leave_grants(
     Extension(actor): Extension<User>,
     Json(payload): Json<LeaveGrantRunRequest>,
 ) -> Result<Json<LeaveGrantRunResponse>, AppError> {
+    // LOW: defense-in-depth. このハンドラは `system_admin_routes` の
+    // `auth_system_admin` middleware にも認可を委ねているが、middleware の
+    // 設定ミスやルート付け替えだけで認可が抜けないよう、ハンドラ側でも
+    // 明示的に system admin を検証する。
+    if !actor.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
     let command = RunLeaveGrantsCommand {
@@ -145,6 +149,10 @@ pub async fn adjust_leave_ledger(
     Extension(actor): Extension<User>,
     Json(payload): Json<LeaveLedgerAdjustRequest>,
 ) -> Result<Json<LeaveLedgerAdjustResponse>, AppError> {
+    // LOW: defense-in-depth（run_leave_grants と同様の理由）。
+    if !actor.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
     let use_case = AdjustLeaveLedger::new(repository.clone(), repository);
@@ -180,9 +188,16 @@ pub async fn adjust_leave_ledger(
 
 pub async fn set_user_hire_date(
     Extension(state): Extension<AppState>,
+    Extension(actor): Extension<User>,
     Path(user_id): Path<String>,
     Json(payload): Json<SetHireDateRequest>,
 ) -> Result<Json<HireDateResponse>, AppError> {
+    // LOW: defense-in-depth（run_leave_grants と同様の理由）。このハンドラは
+    // これまで actor を受け取っておらず、system_admin_routes の middleware
+    // だけに認可を委ねていた。
+    if !actor.is_system_admin() {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
     let use_case = SetHireDate::new(repository);

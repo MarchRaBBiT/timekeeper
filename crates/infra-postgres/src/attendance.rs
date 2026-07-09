@@ -86,6 +86,7 @@ struct EffectiveCorrectionRow {
 
 #[derive(Debug, Clone, FromRow)]
 struct AdminAttendanceExportRowData {
+    user_id: String,
     username: String,
     full_name: String,
     date: NaiveDate,
@@ -104,6 +105,7 @@ struct LeaveDayRowData {
 
 #[derive(Debug, Clone, FromRow)]
 struct AdminLeaveDayRowData {
+    user_id: String,
     username: String,
     full_name: String,
     date: NaiveDate,
@@ -855,7 +857,8 @@ async fn list_admin_attendance_export(
     filters: AdminAttendanceExportFilters,
 ) -> Result<Vec<AdminAttendanceExportRowData>, sqlx::Error> {
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username,
+        "SELECT u.id AS user_id,
+                u.username,
                 COALESCE(u.full_name_enc, '') AS full_name,
                 a.date,
                 a.clock_in_time,
@@ -908,7 +911,8 @@ async fn list_admin_leave_days(
     filters: AdminAttendanceExportFilters,
 ) -> Result<Vec<AdminLeaveDayRowData>, sqlx::Error> {
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT u.username,
+        "SELECT u.id AS user_id,
+                u.username,
                 COALESCE(u.full_name_enc, '') AS full_name,
                 d.day::date AS date,
                 lr.leave_type
@@ -1130,6 +1134,7 @@ fn effective_correction_to_app(row: EffectiveCorrectionRow) -> EffectiveAttendan
 
 fn admin_export_row_to_app(row: AdminAttendanceExportRowData) -> AdminAttendanceExportRow {
     AdminAttendanceExportRow {
+        user_id: row.user_id,
         username: row.username,
         full_name_encrypted: row.full_name,
         date: row.date,
@@ -1151,6 +1156,7 @@ fn leave_day_row_to_app(row: LeaveDayRowData) -> LeaveDayRecord {
 
 fn admin_leave_day_row_to_app(row: AdminLeaveDayRowData) -> AdminLeaveDayRow {
     AdminLeaveDayRow {
+        user_id: row.user_id,
         username: row.username,
         full_name_encrypted: row.full_name,
         date: row.date,

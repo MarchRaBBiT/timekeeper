@@ -224,6 +224,7 @@ pub mod attendance {
 
     #[derive(Debug, Clone, PartialEq)]
     pub struct AdminAttendanceExportRow {
+        pub user_id: String,
         pub username: String,
         pub full_name_encrypted: String,
         pub date: NaiveDate,
@@ -236,6 +237,7 @@ pub mod attendance {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct AdminLeaveDayRow {
+        pub user_id: String,
         pub username: String,
         pub full_name_encrypted: String,
         pub date: NaiveDate,
@@ -598,9 +600,16 @@ pub mod attendance {
     pub enum ExportAdminAttendanceError {
         #[error("forbidden")]
         Forbidden,
+        #[error("date range must not exceed {max_days} days")]
+        DateRangeTooLarge { max_days: i64 },
         #[error("admin attendance export repository error: {0}")]
         Repository(String),
     }
+
+    /// Maximum inclusive span (in days) allowed for a single admin attendance
+    /// export request. Guards against unbounded `generate_series` fan-out in
+    /// the leave-days query when combined with a very wide `from`/`to` range.
+    pub const MAX_ADMIN_EXPORT_RANGE_DAYS: i64 = 366;
 
     #[derive(Debug, Error, PartialEq, Eq)]
     pub enum CreateAttendanceCorrectionError {
@@ -1741,6 +1750,15 @@ pub mod attendance {
                 return Err(ExportAdminAttendanceError::Forbidden);
             }
 
+            if let (Some(from), Some(to)) = (query.from, query.to) {
+                let span_days = (to - from).num_days() + 1;
+                if span_days > MAX_ADMIN_EXPORT_RANGE_DAYS {
+                    return Err(ExportAdminAttendanceError::DateRangeTooLarge {
+                        max_days: MAX_ADMIN_EXPORT_RANGE_DAYS,
+                    });
+                }
+            }
+
             let allowed_user_ids = if query.requester_is_manager && !query.requester_is_system_admin
             {
                 Some(
@@ -2358,14 +2376,14 @@ pub mod attendance {
         let mut leave_by_user_date: HashMap<(String, NaiveDate), AdminLeaveDayRow> = HashMap::new();
         for leave in leave_days {
             leave_by_user_date
-                .entry((leave.username.clone(), leave.date))
+                .entry((leave.user_id.clone(), leave.date))
                 .or_insert(leave);
         }
 
         let mut merged = rows
             .into_iter()
             .map(|row| {
-                let leave = leave_by_user_date.remove(&(row.username.clone(), row.date));
+                let leave = leave_by_user_date.remove(&(row.user_id.clone(), row.date));
                 AdminAttendanceExportRow {
                     leave_type: leave.map(|leave| leave.leave_type),
                     ..row
@@ -2376,6 +2394,7 @@ pub mod attendance {
             leave_by_user_date
                 .into_values()
                 .map(|leave| AdminAttendanceExportRow {
+                    user_id: leave.user_id,
                     username: leave.username,
                     full_name_encrypted: leave.full_name_encrypted,
                     date: leave.date,

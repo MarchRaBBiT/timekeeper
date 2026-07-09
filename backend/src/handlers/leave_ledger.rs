@@ -1,18 +1,22 @@
 use axum::{extract::Query, Extension, Json};
 use timekeeper_app::leave_ledger::{
-    GetLeaveBalance, GetLeaveBalanceCommand, LeaveBalanceView, LeaveLedgerError,
-    StoredLeaveLedgerEntry,
+    GetLeaveBalance, GetLeaveBalanceCommand, LeaveBalanceView, StoredLeaveLedgerEntry,
 };
 use timekeeper_contract::leave::{
     LeaveBalanceQuery, LeaveBalanceResponse, LeaveExpiryScheduleResponse, LeaveLedgerEntryResponse,
     LeaveLedgerKind as ContractLeaveLedgerKind, LeaveLotResponse, LeaveObligationStatus,
-    LeaveObligationWindowResponse, LEAVE_BALANCE_INSUFFICIENT_CODE,
-    LEAVE_REQUEST_NO_ACTIVE_LOT_CODE, LEAVE_REQUEST_NO_WORKING_DAYS_CODE,
+    LeaveObligationWindowResponse,
 };
 use timekeeper_domain::leave_ledger::{LeaveLedgerKind, ObligationStatus};
 use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 
 use crate::{error::AppError, models::user::User, state::AppState};
+
+// M-6: `LeaveLedgerError` → `AppError` の変換は `crate::error::leave_ledger` に
+// 1 本化されている（旧: このモジュールと `repositories::request` に同一実装が
+// コピーされていた）。ここでは既存の呼び出し元（`handlers::admin::leave_ledger`
+// 等）を壊さないよう、その場所からそのまま re-export する。
+pub use crate::error::leave_ledger::leave_ledger_error_to_app_error;
 
 pub async fn get_my_leave_balance(
     Extension(state): Extension<AppState>,
@@ -108,34 +112,6 @@ pub fn entry_to_response(entry: StoredLeaveLedgerEntry) -> LeaveLedgerEntryRespo
         created_by: entry.created_by,
         effective_at: entry.effective_at,
         created_at: entry.created_at,
-    }
-}
-
-pub fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
-    match error {
-        LeaveLedgerError::InvalidInput(message) => AppError::BadRequest(message),
-        LeaveLedgerError::UserNotFound => AppError::NotFound("User not found".into()),
-        LeaveLedgerError::RulesNotConfigured => {
-            AppError::Conflict("Leave grant rules are not configured".into())
-        }
-        LeaveLedgerError::InsufficientBalance { .. } => AppError::BadRequestWithCode {
-            message: "Insufficient annual leave balance".into(),
-            code: LEAVE_BALANCE_INSUFFICIENT_CODE.to_string(),
-        },
-        LeaveLedgerError::NoWorkingDaysInRange => AppError::BadRequestWithCode {
-            message: "Requested leave period has no working days to consume".into(),
-            code: LEAVE_REQUEST_NO_WORKING_DAYS_CODE.to_string(),
-        },
-        LeaveLedgerError::NoActiveLeaveLot => AppError::BadRequestWithCode {
-            message: "No active annual leave lot exists to determine day-equivalent minutes".into(),
-            code: LEAVE_REQUEST_NO_ACTIVE_LOT_CODE.to_string(),
-        },
-        LeaveLedgerError::BatchAlreadyRunning => {
-            AppError::Conflict("A leave grant batch is already running; please retry later".into())
-        }
-        LeaveLedgerError::Repository(message) => {
-            AppError::InternalServerError(anyhow::anyhow!(message))
-        }
     }
 }
 

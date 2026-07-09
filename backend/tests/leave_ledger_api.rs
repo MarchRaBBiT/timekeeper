@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post, put},
     Extension, Router,
 };
+use chrono::NaiveDate;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use timekeeper_backend::{
@@ -318,4 +319,56 @@ async fn admin_balance_read_is_limited_to_manager_department_scope() {
     let (status, body) = request_json(router(pool, other_manager), "GET", &path, None).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["code"], "FORBIDDEN");
+}
+
+/// M-5: migration 056 が追加した `leave_ledger_adjust_new_lot_fields` CHECK。
+/// kind='adjust' で `granted_at` を設定する（= 新規ロット投入のつもり）のに
+/// `expires_at` を欠かす行は DB レベルで拒否されるべき。
+#[tokio::test]
+async fn adjust_new_lot_requires_expires_at_at_the_database_level() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let granted_at = NaiveDate::from_ymd_opt(2026, 1, 1).expect("date");
+
+    let result = sqlx::query(
+        "INSERT INTO leave_ledger_entries (
+            id, user_id, leave_type, kind, lot_id, amount_minutes,
+            day_equivalent_minutes, granted_at, expires_at, grant_base_date,
+            reason, effective_at
+         ) VALUES ($1,$2,'annual','adjust',$3,2400,480,$4,NULL,NULL,'missing expiry',$4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(employee.id.to_string())
+    .bind(Uuid::new_v4())
+    .bind(granted_at)
+    .execute(&pool)
+    .await;
+
+    let error = result.expect_err("DB must reject adjust rows missing expires_at");
+    let message = error.to_string();
+    assert!(
+        message.contains("leave_ledger_adjust_new_lot_fields"),
+        "expected the new-lot CHECK violation, got: {message}"
+    );
+
+    // 対照: 既存ロットへの調整（granted_at が NULL）は expires_at が NULL でも許可される。
+    sqlx::query(
+        "INSERT INTO leave_ledger_entries (
+            id, user_id, leave_type, kind, lot_id, amount_minutes,
+            day_equivalent_minutes, granted_at, expires_at, grant_base_date,
+            reason, effective_at
+         ) VALUES ($1,$2,'annual','adjust',$3,-480,480,NULL,NULL,NULL,'existing lot adjust',$4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(employee.id.to_string())
+    .bind(Uuid::new_v4())
+    .bind(granted_at)
+    .execute(&pool)
+    .await
+    .expect("existing-lot adjust without granted_at must be allowed");
 }

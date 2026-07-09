@@ -836,6 +836,39 @@ async fn adjust_on_existing_lot_rejects_overdraw() {
     ));
 }
 
+/// M-2: `dry_run=true` は DB の `i32::try_from` を一切経由しないため、
+/// `build_adjust_entry` 内の `checked_add` が唯一のオーバーフロー防御になる。
+/// i64::MAX / i64::MIN を投入してもラップアラウンドせず明示エラーになることを
+/// 固定する。
+#[tokio::test]
+async fn adjust_on_existing_lot_rejects_amount_that_overflows_i64() {
+    let ledger = FakeLedger::default();
+    let users = FakeUsers::with(vec![candidate("user-1", None)]);
+    let use_case = AdjustLeaveLedger::new(&ledger, &users);
+
+    let created = use_case
+        .execute(adjust_command(2400))
+        .await
+        .expect("seed lot");
+    let lot_id = created.entry.expect("entry").lot_id;
+
+    let mut overflow_max = adjust_command(i64::MAX);
+    overflow_max.lot_id = Some(lot_id.clone());
+    overflow_max.dry_run = true;
+    assert!(matches!(
+        use_case.execute(overflow_max).await,
+        Err(LeaveLedgerError::InvalidInput(_))
+    ));
+
+    let mut overflow_min = adjust_command(i64::MIN);
+    overflow_min.lot_id = Some(lot_id);
+    overflow_min.dry_run = true;
+    assert!(matches!(
+        use_case.execute(overflow_min).await,
+        Err(LeaveLedgerError::InvalidInput(_))
+    ));
+}
+
 #[tokio::test]
 async fn set_hire_date_updates_users() {
     let users = FakeUsers::with(vec![candidate("user-1", None)]);

@@ -57,8 +57,11 @@ fn time(hour: u32) -> NaiveDateTime {
     date().and_hms_opt(hour, 0, 0).expect("time")
 }
 
+const EMPLOYEE_USER_ID: &str = "11111111-1111-1111-1111-111111111111";
+
 fn export_row() -> AdminAttendanceExportRow {
     AdminAttendanceExportRow {
+        user_id: EMPLOYEE_USER_ID.to_string(),
         username: "employee".to_string(),
         full_name_encrypted: "encrypted-name".to_string(),
         date: date(),
@@ -72,6 +75,7 @@ fn export_row() -> AdminAttendanceExportRow {
 
 fn leave_day(day: u32, leave_type: &str) -> AdminLeaveDayRow {
     AdminLeaveDayRow {
+        user_id: EMPLOYEE_USER_ID.to_string(),
         username: "employee".to_string(),
         full_name_encrypted: "encrypted-name".to_string(),
         date: NaiveDate::from_ymd_opt(2026, 6, day).expect("date"),
@@ -211,4 +215,69 @@ async fn export_attaches_leave_type_to_punched_day_without_replacing_actuals() {
     assert_eq!(export.rows[0].clock_out_time, Some(time(18)));
     assert_eq!(export.rows[0].total_work_hours, Some(8.0));
     assert_eq!(export.rows[0].leave_type.as_deref(), Some("sick"));
+}
+
+#[tokio::test]
+async fn export_does_not_merge_leave_across_different_user_ids_sharing_a_username() {
+    // Regression test for M-9: the merge key must be (user_id, date), not
+    // (username, date). A stale/duplicate username must not cause a leave
+    // row belonging to a different user to be attached to this row.
+    let repository = RecordingAdminExportRepository::default();
+    *repository.rows.lock().expect("rows lock") = vec![export_row()];
+    *repository.leave_days.lock().expect("leave days lock") = vec![AdminLeaveDayRow {
+        user_id: "22222222-2222-2222-2222-222222222222".to_string(),
+        username: "employee".to_string(),
+        full_name_encrypted: "encrypted-name-2".to_string(),
+        date: date(),
+        leave_type: "annual".to_string(),
+    }];
+    let use_case = ExportAdminAttendance::new(repository);
+
+    let export = use_case
+        .execute(ExportAdminAttendanceQuery {
+            requester_is_system_admin: true,
+            ..query()
+        })
+        .await
+        .expect("export succeeds");
+
+    // The two rows share a date and username but belong to different
+    // user_ids, so they must remain two distinct rows rather than being
+    // merged into one.
+    assert_eq!(export.rows.len(), 2);
+    let attendance_row = export
+        .rows
+        .iter()
+        .find(|row| row.user_id == EMPLOYEE_USER_ID)
+        .expect("attendance row present");
+    assert_eq!(attendance_row.status, "present");
+    assert_eq!(attendance_row.leave_type, None);
+    let leave_row = export
+        .rows
+        .iter()
+        .find(|row| row.user_id == "22222222-2222-2222-2222-222222222222")
+        .expect("leave row present");
+    assert_eq!(leave_row.status, ON_LEAVE_STATUS);
+    assert_eq!(leave_row.leave_type.as_deref(), Some("annual"));
+}
+
+#[tokio::test]
+async fn rejects_date_range_exceeding_max_span() {
+    let use_case = ExportAdminAttendance::new(RecordingAdminExportRepository::default());
+    let from = date();
+    let to = from + chrono::Duration::days(400);
+
+    let result = use_case
+        .execute(ExportAdminAttendanceQuery {
+            requester_is_system_admin: true,
+            from: Some(from),
+            to: Some(to),
+            ..query()
+        })
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(ExportAdminAttendanceError::DateRangeTooLarge { max_days: 366 })
+    ));
 }

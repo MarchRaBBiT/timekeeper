@@ -7,6 +7,9 @@ use serde::Serialize;
 use serde_json::Value;
 use utoipa::ToSchema;
 
+/// M-6: `LeaveLedgerError` → `AppError` 変換の共通実装。
+pub mod leave_ledger;
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
     pub error: String,

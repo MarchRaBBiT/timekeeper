@@ -146,6 +146,85 @@ fn adjust_request_requires_reason_and_defaults_flags() {
     assert!(empty_reason.validate().is_err());
 }
 
+/// M-2: `amount_minutes` は DB 列（`INTEGER` = i32）へ収まる範囲でなければ
+/// ならない。`dry_run=true` は DB の `i32::try_from` を経由しないため、
+/// 契約層でのバリデーションが唯一のガードになる。
+#[test]
+fn adjust_request_rejects_amount_minutes_outside_i32_range() {
+    let base = LeaveLedgerAdjustRequest {
+        user_id: "user-1".to_string(),
+        amount_minutes: 2400,
+        lot_id: None,
+        day_equivalent_minutes: None,
+        granted_at: None,
+        expires_at: None,
+        grant_base_date: None,
+        reason: "initial migration".to_string(),
+        dry_run: true,
+    };
+    assert!(base.validate().is_ok());
+
+    let too_low = LeaveLedgerAdjustRequest {
+        amount_minutes: i64::MIN,
+        ..base.clone()
+    };
+    assert!(too_low.validate().is_err());
+
+    let too_high = LeaveLedgerAdjustRequest {
+        amount_minutes: i64::MAX,
+        ..base.clone()
+    };
+    assert!(too_high.validate().is_err());
+
+    let min_boundary = LeaveLedgerAdjustRequest {
+        amount_minutes: -2_147_483_648,
+        ..base.clone()
+    };
+    assert!(min_boundary.validate().is_ok());
+
+    let max_boundary = LeaveLedgerAdjustRequest {
+        amount_minutes: 2_147_483_647,
+        ..base
+    };
+    assert!(max_boundary.validate().is_ok());
+}
+
+/// M-2: `day_equivalent_minutes` は DB の
+/// `CHECK (day_equivalent_minutes BETWEEN 1 AND 1440)` と同じ範囲に揃える。
+#[test]
+fn adjust_request_rejects_day_equivalent_minutes_outside_db_check_range() {
+    let base = LeaveLedgerAdjustRequest {
+        user_id: "user-1".to_string(),
+        amount_minutes: 2400,
+        lot_id: None,
+        day_equivalent_minutes: Some(480),
+        granted_at: Some(date(2026, 7, 1)),
+        expires_at: Some(date(2028, 7, 1)),
+        grant_base_date: Some(date(2026, 7, 1)),
+        reason: "initial migration".to_string(),
+        dry_run: true,
+    };
+    assert!(base.validate().is_ok());
+
+    let zero = LeaveLedgerAdjustRequest {
+        day_equivalent_minutes: Some(0),
+        ..base.clone()
+    };
+    assert!(zero.validate().is_err());
+
+    let too_high = LeaveLedgerAdjustRequest {
+        day_equivalent_minutes: Some(1441),
+        ..base.clone()
+    };
+    assert!(too_high.validate().is_err());
+
+    let overflow = LeaveLedgerAdjustRequest {
+        day_equivalent_minutes: Some(i64::MAX),
+        ..base
+    };
+    assert!(overflow.validate().is_err());
+}
+
 #[test]
 fn adjust_response_roundtrips() {
     let response = LeaveLedgerAdjustResponse {

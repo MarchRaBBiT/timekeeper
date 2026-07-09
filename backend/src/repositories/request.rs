@@ -3,16 +3,12 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 use std::str::FromStr;
 use timekeeper_app::leave_ledger::{
     build_annual_leave_consume_entries, build_annual_leave_release_entries,
-    ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand, LeaveLedgerError,
+    ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand,
     LeaveLedgerRepository, ANNUAL_LEAVE_TYPE,
-};
-use timekeeper_contract::leave::{
-    LEAVE_BALANCE_INSUFFICIENT_CODE, LEAVE_REQUEST_NO_ACTIVE_LOT_CODE,
-    LEAVE_REQUEST_NO_WORKING_DAYS_CODE,
 };
 use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 
-use crate::error::AppError;
+use crate::error::{leave_ledger::leave_ledger_error_to_app_error, AppError};
 use crate::models::{
     leave_request::{LeaveRequest, LeaveType},
     overtime_request::OvertimeRequest,
@@ -574,34 +570,6 @@ async fn cancel_leave_request_in_tx(
     .await
     .map(|result| result.rows_affected())
     .map_err(AppError::from)
-}
-
-fn leave_ledger_error_to_app_error(error: LeaveLedgerError) -> AppError {
-    match error {
-        LeaveLedgerError::InvalidInput(message) => AppError::BadRequest(message),
-        LeaveLedgerError::UserNotFound => AppError::NotFound("User not found".into()),
-        LeaveLedgerError::RulesNotConfigured => {
-            AppError::Conflict("Leave grant rules are not configured".into())
-        }
-        LeaveLedgerError::InsufficientBalance { .. } => AppError::BadRequestWithCode {
-            message: "Insufficient annual leave balance".into(),
-            code: LEAVE_BALANCE_INSUFFICIENT_CODE.to_string(),
-        },
-        LeaveLedgerError::NoWorkingDaysInRange => AppError::BadRequestWithCode {
-            message: "Requested leave period has no working days to consume".into(),
-            code: LEAVE_REQUEST_NO_WORKING_DAYS_CODE.to_string(),
-        },
-        LeaveLedgerError::NoActiveLeaveLot => AppError::BadRequestWithCode {
-            message: "No active annual leave lot exists to determine day-equivalent minutes".into(),
-            code: LEAVE_REQUEST_NO_ACTIVE_LOT_CODE.to_string(),
-        },
-        LeaveLedgerError::BatchAlreadyRunning => {
-            AppError::Conflict("A leave grant batch is already running; please retry later".into())
-        }
-        LeaveLedgerError::Repository(message) => {
-            AppError::InternalServerError(anyhow::anyhow!(message))
-        }
-    }
 }
 
 async fn list_leave_requests(
