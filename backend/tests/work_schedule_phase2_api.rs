@@ -1211,6 +1211,94 @@ async fn manager_cannot_approve_own_monthly_closing() {
 }
 
 #[tokio::test]
+async fn approve_monthly_closing_rejects_unknown_target_user() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let system_admin = seed_user(&pool, UserRole::Manager, true).await;
+    // System admins bypass the department-scope check in `authorize_scope`, so
+    // a valid-format but nonexistent target user_id reaches the repository
+    // layer, where `monthly_closing_workflows.user_id` has a FK to `users`.
+    let unknown_user_id = Uuid::new_v4().to_string();
+
+    let (status, body) = request_json(
+        router(pool.clone(), system_admin),
+        "POST",
+        &format!("/api/admin/users/{unknown_user_id}/monthly-closings/approve"),
+        Some(json!({ "year": 2026, "month": 7, "reason": "approve unknown user" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE_REFERENCE");
+
+    let workflow_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM monthly_closing_workflows WHERE user_id = $1")
+            .bind(&unknown_user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("workflow count");
+    assert_eq!(workflow_count, 0);
+}
+
+#[tokio::test]
+async fn concurrent_first_self_confirm_requests_do_not_500() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    // Two concurrent first-requests for the same user/year/month (e.g. a
+    // double-click on self-confirm) used to race on the initial workflow
+    // INSERT: both could observe no existing row and both attempt the INSERT,
+    // and the loser hit the `monthly_closing_workflows_user_month_key` unique
+    // violation as a raw 500 instead of the normal 409 transition-conflict
+    // response. Assert that never happens, regardless of scheduling.
+    let first = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/monthly-closings/me/self-confirm",
+        Some(json!({ "year": 2026, "month": 8, "reason": "confirm 1" })),
+    );
+    let second = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/monthly-closings/me/self-confirm",
+        Some(json!({ "year": 2026, "month": 8, "reason": "confirm 2" })),
+    );
+    let (first_result, second_result) = tokio::join!(first, second);
+
+    let mut statuses = vec![first_result.0, second_result.0];
+    statuses.sort_by_key(|status| status.as_u16());
+    assert_eq!(
+        statuses,
+        vec![StatusCode::OK, StatusCode::CONFLICT],
+        "expected exactly one winner (200) and one conflict (409), got {:?} / {:?}",
+        first_result,
+        second_result
+    );
+
+    let workflow_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM monthly_closing_workflows
+         WHERE user_id = $1 AND year = $2 AND month = $3",
+    )
+    .bind(employee.id.to_string())
+    .bind(2026_i32)
+    .bind(8_i32)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow count");
+    assert_eq!(workflow_count, 1);
+}
+
+#[tokio::test]
 async fn manager_anomaly_list_without_user_id_is_limited_to_subordinates() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;

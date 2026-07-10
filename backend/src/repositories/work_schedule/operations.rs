@@ -10,7 +10,7 @@ use timekeeper_contract::work_schedules::{
 };
 use uuid::Uuid;
 
-use super::{RepositoryResult, WorkScheduleRepositoryError};
+use super::{map_database_error, RepositoryResult, WorkScheduleRepositoryError};
 
 #[derive(Debug, Clone, FromRow)]
 struct AttendanceCalendarRow {
@@ -926,18 +926,43 @@ async fn transition_monthly_closing_tx(
     let (workflow_id, from_status) = match existing {
         Some((id, status)) => (id, status),
         None => {
-            let id = Uuid::new_v4();
-            sqlx::query(
+            // Two concurrent first-requests for the same user/year/month (e.g. a
+            // double-click on self-confirm) can both observe `existing = None`
+            // above, since there is no row yet for `SELECT ... FOR UPDATE` to
+            // lock. Use `ON CONFLICT DO NOTHING` instead of a bare INSERT so the
+            // loser of that race doesn't surface a raw unique-violation 500; it
+            // instead falls through to re-reading the row the winner created,
+            // under `FOR UPDATE`, and continues through the normal transition
+            // check below (which will correctly reject/accept based on the
+            // now-current status).
+            let inserted = sqlx::query_as::<_, (Uuid, String)>(
                 "INSERT INTO monthly_closing_workflows (id, user_id, year, month, status)
-                 VALUES ($1, $2, $3, $4, 'open')",
+                 VALUES ($1, $2, $3, $4, 'open')
+                 ON CONFLICT (user_id, year, month) DO NOTHING
+                 RETURNING id, status",
             )
-            .bind(id)
+            .bind(Uuid::new_v4())
             .bind(user_id)
             .bind(year)
             .bind(month_i32)
-            .execute(&mut **transaction)
-            .await?;
-            (id, "open".to_string())
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(map_database_error)?;
+            match inserted {
+                Some((id, status)) => (id, status),
+                None => {
+                    sqlx::query_as::<_, (Uuid, String)>(
+                        "SELECT id, status FROM monthly_closing_workflows
+                     WHERE user_id = $1 AND year = $2 AND month = $3
+                     FOR UPDATE",
+                    )
+                    .bind(user_id)
+                    .bind(year)
+                    .bind(month_i32)
+                    .fetch_one(&mut **transaction)
+                    .await?
+                }
+            }
         }
     };
     let to_status_db = monthly_status_to_db(to_status);
@@ -965,7 +990,8 @@ async fn transition_monthly_closing_tx(
     .bind(reason)
     .bind(workflow_id)
     .fetch_one(&mut **transaction)
-    .await?;
+    .await
+    .map_err(map_database_error)?;
     sqlx::query(
         "INSERT INTO monthly_closing_workflow_events
          (workflow_id, from_status, to_status, acted_by, reason)

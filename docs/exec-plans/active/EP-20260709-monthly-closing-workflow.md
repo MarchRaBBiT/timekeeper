@@ -150,3 +150,96 @@ attempt did not mutate state).
 - `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` — no warnings.
 - `bash scripts/harness.sh docs-check` — green.
 
+## 2026-07-10: MEDIUM fixes — phantom-insert race and unmapped FK violation in `transition_monthly_closing_tx`
+
+### Defect 1: initial workflow INSERT race surfaces as raw 500
+
+`transition_monthly_closing_tx` (`backend/src/repositories/work_schedule/operations.rs`) fetched
+the existing `monthly_closing_workflows` row with `SELECT ... FOR UPDATE`, but `FOR UPDATE` only
+locks rows that exist — it cannot protect against a *phantom insert*. Two concurrent first-requests
+for the same `user_id`/`year`/`month` (e.g. a double-click on self-confirm) could both observe
+`existing = None`, and both then ran a bare `INSERT INTO monthly_closing_workflows (...) VALUES
+(..., 'open')`. The loser of that race hit the `monthly_closing_workflows_user_month_key` UNIQUE
+violation, which propagated through `?` as `WorkScheduleRepositoryError::Sqlx` — a raw `500`
+instead of the intended `409 INVALID_MONTHLY_CLOSING_TRANSITION`.
+
+### Defect 2: transition to a nonexistent `user_id` surfaces as raw 500
+
+`approve_monthly_closing`, `close_monthly_closing`, and `reopen_monthly_closing`
+(`backend/src/handlers/admin/work_schedules.rs`) only validate the path `user_id` with
+`UserId::from_str` (format only) before calling into `transition_monthly_closing` /
+`close_monthly_closing_workflow`. `approve_monthly_closing`'s `authorize_scope` returns `Ok`
+immediately for system admins without checking the target exists. A well-formed but nonexistent
+`user_id` therefore reached the repository INSERT, which violated
+`monthly_closing_workflows.user_id REFERENCES users(id)` — surfaced as a raw `500` because the
+INSERT/UPDATE statements in `transition_monthly_closing_tx` used bare `?` instead of the existing
+`map_database_error` helper (`backend/src/repositories/work_schedule/mod.rs`) that already
+translates `*_fkey` constraint violations into `WorkScheduleRepositoryError::InvalidReference` (used
+elsewhere, e.g. `master.rs:88`, `versions.rs:68`).
+
+### Fix
+
+Both fixed in `backend/src/repositories/work_schedule/operations.rs`,
+`transition_monthly_closing_tx`, without adding any new error variant or error code:
+
+- Replaced the bare first-insert with
+  `INSERT ... ON CONFLICT (user_id, year, month) DO NOTHING RETURNING id, status`, wrapped in
+  `.map_err(map_database_error)` (imported via `super::map_database_error`, already `pub(super)`-
+  visible to sibling submodules — see `master.rs`/`versions.rs` for the existing pattern). If the
+  conflict branch returns nothing (i.e. this request lost the race), the code falls through to a
+  second `SELECT id, status ... FOR UPDATE`, which blocks until the winner's transaction commits
+  and then reads the now-current row. Execution then continues through the normal
+  `is_valid_monthly_transition` check exactly as it would have for a genuinely pre-existing row, so
+  the loser gets the ordinary `409 INVALID_MONTHLY_CLOSING_TRANSITION` (or `200`, if the winner's
+  transition happens to leave the row in a state from which the loser's requested transition is
+  still valid) instead of a raw `500`.
+- Added `.map_err(map_database_error)` to the `UPDATE monthly_closing_workflows ... RETURNING`
+  statement as well, since its `self_confirmed_by` / `approved_by` / `closed_by` / `reopened_by`
+  columns are also `REFERENCES users(id)` and are populated with `actor_id` when the corresponding
+  status transition matches — covering the same FK-violation-to-`InvalidReference` translation for
+  that statement.
+- No changes to `close_month_tx`, `is_valid_monthly_transition`, or any error code/variant. The
+  existing `map_repository_error` in `backend/src/handlers/admin/work_schedules.rs` already maps
+  `InvalidReference` → `400 INVALID_WORK_SCHEDULE_REFERENCE` and `InvalidStateTransition` → `409
+  INVALID_MONTHLY_CLOSING_TRANSITION`, so no handler changes were needed beyond what already
+  existed.
+
+### Tests added (`backend/tests/work_schedule_phase2_api.rs`)
+
+- `approve_monthly_closing_rejects_unknown_target_user`: system admin (bypasses `authorize_scope`
+  department check) calls approve with a syntactically valid but nonexistent `user_id`
+  (`Uuid::new_v4()`); asserts `400 INVALID_WORK_SCHEDULE_REFERENCE` and that no
+  `monthly_closing_workflows` row was created for that id (confirms the failed INSERT did not leave
+  partial state — expected, since it's inside a transaction that gets rolled back on error).
+- `concurrent_first_self_confirm_requests_do_not_500`: fires two concurrent
+  `POST /api/monthly-closings/me/self-confirm` requests for the same employee/year/month via
+  `tokio::join!` (two separate `request_json` futures against `pool.clone()`, so they genuinely race
+  at the DB level — `integration_guard()` only serializes across `#[tokio::test]` functions in this
+  file, not within one). Asserts the resulting status codes, sorted, are exactly `[200, 409]` (never
+  `500`), and that exactly one `monthly_closing_workflows` row exists afterward. Ran 5x locally with
+  no flakes (deterministic because the second `SELECT ... FOR UPDATE` blocks on the winner's
+  transaction).
+- Decided against adding a similarly deterministic test for defect 2 against `close`/`reopen` (only
+  `approve` was tested): all three routes go through the same
+  `transition_monthly_closing_tx`/`map_database_error` code path, and `close_monthly_closing`/
+  `reopen_monthly_closing` require `require_system_admin` (simpler auth than `approve`'s
+  scope+self-approval checks), so the `approve` case is the one most likely to have been reached by
+  a caller in practice and is a representative regression test for all three.
+
+### Validation (measured 2026-07-10)
+
+- `cargo fmt --all --check` — passed (no diff after `cargo fmt --all`).
+- `cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` — 24 passed; 0
+  failed (22 existing + `approve_monthly_closing_rejects_unknown_target_user` +
+  `concurrent_first_self_confirm_requests_do_not_500`).
+- `concurrent_first_self_confirm_requests_do_not_500` alone, run 5x — 5/5 passed, no flakes.
+- `cargo test -p timekeeper-backend --lib` — 403 passed; 0 failed (no regression in unrelated unit
+  tests).
+- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` — no warnings.
+- `bash scripts/harness.sh docs-check` — green, after updating
+  `docs/design-docs/backend-api-catalog.md`: added `400 INVALID_WORK_SCHEDULE_REFERENCE` to the
+  Primary Errors column for the `approve` / `close` / `reopen` monthly-closing rows (defect 2), and
+  added a note to the `self-confirm` row's description clarifying that concurrent first-requests no
+  longer produce a `500` (defect 1; no new status code, so no Primary Errors column change needed
+  there).
+
