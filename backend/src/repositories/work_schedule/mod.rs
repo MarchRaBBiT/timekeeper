@@ -12,9 +12,9 @@ pub use master::{
     retire_work_schedule, update_work_schedule, WorkScheduleListFilter,
 };
 pub use operations::{
-    close_month, get_overtime_monitor_settings, list_anomalies, list_overtime_monitor,
-    list_user_attendance_calendar, list_user_leave_calendar, transition_monthly_closing,
-    upsert_overtime_monitor_settings,
+    close_month, close_monthly_closing_workflow, get_overtime_monitor_settings, list_anomalies,
+    list_overtime_monitor, list_user_attendance_calendar, list_user_leave_calendar,
+    transition_monthly_closing, upsert_overtime_monitor_settings,
 };
 pub use versions::{
     create_version, delete_version, find_version, publish_version, replace_version,

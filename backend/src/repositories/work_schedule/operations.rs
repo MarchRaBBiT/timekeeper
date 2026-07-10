@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use timekeeper_contract::work_schedules::{
     MonthlyClosingStatus, MonthlyClosingWorkflowResponse, OvertimeMonitorResponse,
     OvertimeMonitorSettingsRequest, OvertimeMonitorSettingsResponse, OvertimeMonitorStatus,
@@ -566,17 +566,33 @@ pub async fn close_month(
     closed_by: &str,
     reason: Option<&str>,
 ) -> RepositoryResult<(NaiveDate, NaiveDate, i64)> {
+    let mut transaction = pool.begin().await?;
+    let result = close_month_tx(&mut transaction, year, month, user_ids, closed_by, reason).await?;
+    transaction.commit().await?;
+    Ok(result)
+}
+
+/// Core `close_month` logic against an already-open transaction. Callers own the
+/// begin/commit lifecycle so this can be composed with other writes (e.g. the
+/// monthly closing workflow transition) inside a single atomic transaction.
+async fn close_month_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    year: i32,
+    month: u32,
+    user_ids: &[String],
+    closed_by: &str,
+    reason: Option<&str>,
+) -> RepositoryResult<(NaiveDate, NaiveDate, i64)> {
     let from = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or_else(|| WorkScheduleRepositoryError::CorruptData("invalid close month".into()))?;
     let to = end_of_month(from)?;
-    let mut transaction = pool.begin().await?;
     if !user_ids.is_empty() {
         let requested_count = i64::try_from(user_ids.iter().collect::<HashSet<_>>().len())
             .map_err(|_| WorkScheduleRepositoryError::CorruptData("too many user ids".into()))?;
         let existing_count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ANY($1)")
                 .bind(user_ids)
-                .fetch_one(&mut *transaction)
+                .fetch_one(&mut **transaction)
                 .await?;
         if existing_count != requested_count {
             return Err(WorkScheduleRepositoryError::InvalidReference);
@@ -589,7 +605,7 @@ pub async fn close_month(
         )
         .bind(from)
         .bind(to)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?
         .rows_affected()
     } else {
@@ -600,7 +616,7 @@ pub async fn close_month(
         .bind(user_ids)
         .bind(from)
         .bind(to)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?
         .rows_affected()
     };
@@ -625,11 +641,10 @@ pub async fn close_month(
         .bind(locked_count)
         .bind(closed_by)
         .bind(reason)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await?;
     }
 
-    transaction.commit().await?;
     Ok((from, to, locked_count))
 }
 
@@ -825,6 +840,33 @@ pub async fn transition_monthly_closing(
     reason: Option<&str>,
 ) -> RepositoryResult<MonthlyClosingWorkflowResponse> {
     let mut transaction = pool.begin().await?;
+    let response = transition_monthly_closing_tx(
+        &mut transaction,
+        user_id,
+        year,
+        month,
+        to_status,
+        actor_id,
+        reason,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(response)
+}
+
+/// Core `transition_monthly_closing` logic against an already-open transaction.
+/// Callers own the begin/commit lifecycle so this can be composed with other
+/// writes (e.g. locking resolved workdays on close) inside a single atomic
+/// transaction.
+async fn transition_monthly_closing_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    user_id: &str,
+    year: i32,
+    month: u32,
+    to_status: MonthlyClosingStatus,
+    actor_id: &str,
+    reason: Option<&str>,
+) -> RepositoryResult<MonthlyClosingWorkflowResponse> {
     let month_i32 = i32::try_from(month)
         .map_err(|_| WorkScheduleRepositoryError::CorruptData("invalid close month".into()))?;
     let existing = sqlx::query_as::<_, (Uuid, String)>(
@@ -835,7 +877,7 @@ pub async fn transition_monthly_closing(
     .bind(user_id)
     .bind(year)
     .bind(month_i32)
-    .fetch_optional(&mut *transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
     let (workflow_id, from_status) = match existing {
         Some((id, status)) => (id, status),
@@ -849,7 +891,7 @@ pub async fn transition_monthly_closing(
             .bind(user_id)
             .bind(year)
             .bind(month_i32)
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
             (id, "open".to_string())
         }
@@ -878,7 +920,7 @@ pub async fn transition_monthly_closing(
     .bind(actor_id)
     .bind(reason)
     .bind(workflow_id)
-    .fetch_one(&mut *transaction)
+    .fetch_one(&mut **transaction)
     .await?;
     sqlx::query(
         "INSERT INTO monthly_closing_workflow_events
@@ -890,10 +932,41 @@ pub async fn transition_monthly_closing(
     .bind(to_status_db)
     .bind(actor_id)
     .bind(reason)
-    .execute(&mut *transaction)
+    .execute(&mut **transaction)
     .await?;
-    transaction.commit().await?;
     monthly_workflow_response(row)
+}
+
+/// Transitions a monthly closing workflow to `closed` and locks the
+/// corresponding resolved workdays in a single transaction. This guarantees
+/// the design invariant that a `closed` workflow always has its resolved
+/// workdays locked: if either half fails, the whole transition rolls back
+/// instead of leaving the workflow `closed` with unlocked workdays (which
+/// would be unrecoverable via the API, since `closed -> closed` is not a
+/// valid transition).
+pub async fn close_monthly_closing_workflow(
+    pool: &PgPool,
+    user_id: &str,
+    year: i32,
+    month: u32,
+    actor_id: &str,
+    reason: Option<&str>,
+) -> RepositoryResult<MonthlyClosingWorkflowResponse> {
+    let mut transaction = pool.begin().await?;
+    let response = transition_monthly_closing_tx(
+        &mut transaction,
+        user_id,
+        year,
+        month,
+        MonthlyClosingStatus::Closed,
+        actor_id,
+        reason,
+    )
+    .await?;
+    let user_ids = [user_id.to_string()];
+    close_month_tx(&mut transaction, year, month, &user_ids, actor_id, reason).await?;
+    transaction.commit().await?;
+    Ok(response)
 }
 
 fn dates_inclusive(from: NaiveDate, to: NaiveDate) -> RepositoryResult<Vec<NaiveDate>> {

@@ -736,22 +736,14 @@ pub async fn close_monthly_closing(
     validate_monthly_transition_payload(&payload)?;
     UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
     let reason = normalized_reason(payload.reason.as_deref())?;
-    let response = work_schedule::transition_monthly_closing(
+    // Transition to `closed` and lock the resolved workdays atomically so a
+    // failure partway through cannot leave the workflow `closed` with
+    // unlocked workdays (closed -> closed is not a valid retry transition).
+    let response = work_schedule::close_monthly_closing_workflow(
         &state.write_pool,
         &user_id,
         payload.year,
         payload.month,
-        MonthlyClosingStatus::Closed,
-        &user.id.to_string(),
-        reason,
-    )
-    .await
-    .map_err(map_repository_error)?;
-    work_schedule::close_month(
-        &state.write_pool,
-        payload.year,
-        payload.month,
-        std::slice::from_ref(&user_id),
         &user.id.to_string(),
         reason,
     )
