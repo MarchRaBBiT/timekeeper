@@ -16,6 +16,7 @@ use timekeeper_backend::{
     repositories::work_schedule,
     state::AppState,
 };
+use timekeeper_contract::work_schedules::WorkScheduleAnomalyKind;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -1056,6 +1057,101 @@ async fn overtime_monitor_reports_threshold_statuses() {
         .expect("employee row");
     assert_eq!(employee_row["month_statutory_excess_minutes"], 180);
     assert_eq!(employee_row["monthly_status"], "exceeded");
+}
+
+#[tokio::test]
+async fn upsert_overtime_monitor_settings_rejects_minutes_beyond_i32_range() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+
+    // i32::MAX + 1 minutes overflows the `INTEGER` DB column. Before the fix this
+    // reached the repository's `i32::try_from`, which returned `CorruptData` and
+    // surfaced as a 500 INTERNAL_SERVER_ERROR instead of a validation error.
+    let overflow_minutes = i64::from(i32::MAX) + 1;
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": overflow_minutes,
+            "yearly_limit_minutes": 600,
+            "rolling_average_limit_minutes": 120,
+            "single_month_absolute_limit_minutes": 300,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "INVALID_WORK_SCHEDULE");
+}
+
+#[tokio::test]
+async fn anomaly_list_uses_caller_supplied_today_for_absent_boundary() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    // Both dates are scheduled weekdays; neither has any attendance recorded.
+    let yesterday = date(2026, 7, 7);
+    let today = date(2026, 7, 8);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-07",
+            "to": "2026-07-08"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    // Call the repository directly with an explicit `today` so the boundary is
+    // deterministic regardless of the wall-clock date the suite runs on.
+    let anomalies = work_schedule::list_anomalies(
+        &pool,
+        Some(vec![employee.id.to_string()]),
+        yesterday,
+        today,
+        today,
+    )
+    .await
+    .expect("list anomalies");
+
+    let kind_for = |work_date: NaiveDate| {
+        anomalies
+            .iter()
+            .find(|item| item.work_date == work_date)
+            .unwrap_or_else(|| panic!("no anomaly recorded for {work_date}"))
+            .kind
+    };
+
+    assert_eq!(
+        kind_for(yesterday),
+        WorkScheduleAnomalyKind::Absent,
+        "a scheduled workday strictly before `today` with no attendance must be absent"
+    );
+    assert_eq!(
+        kind_for(today),
+        WorkScheduleAnomalyKind::MissingClockIn,
+        "`today` itself must not be treated as a past day yet"
+    );
 }
 
 #[tokio::test]

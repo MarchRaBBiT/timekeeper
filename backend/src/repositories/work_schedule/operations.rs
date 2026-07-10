@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use timekeeper_contract::work_schedules::{
     MonthlyClosingStatus, MonthlyClosingWorkflowResponse, OvertimeMonitorResponse,
@@ -128,11 +128,22 @@ pub async fn list_user_leave_calendar(
     Ok(leave_by_date)
 }
 
+/// Lists work-schedule anomalies (missing punches, punctuality, absence, breaks,
+/// overtime, ...) for `user_ids` (or all users when `None`) between `from` and `to`.
+///
+/// `today` is the "current date" used to distinguish `Absent` (a scheduled past
+/// workday with no attendance or approved leave) from `MissingClockIn` (a scheduled
+/// workday that has not happened yet, or is still in progress). The repository layer
+/// deliberately does not read the wall clock itself (no `Utc::now()`): callers must
+/// resolve "today" in the business timezone (see `crate::utils::time::today_local`
+/// with `state.config.time_zone`) and pass it in, so the boundary is both testable
+/// and correct for a non-UTC business timezone.
 pub async fn list_anomalies(
     pool: &PgPool,
     user_ids: Option<Vec<String>>,
     from: NaiveDate,
     to: NaiveDate,
+    today: NaiveDate,
 ) -> RepositoryResult<Vec<WorkScheduleAnomalyResponse>> {
     let users = match user_ids {
         Some(ids) => ids,
@@ -237,7 +248,7 @@ pub async fn list_anomalies(
             }
             if resolved_day.day_kind == "scheduled_workday" {
                 match attendance {
-                    None if work_date < Utc::now().date_naive() => items.push(anomaly(
+                    None if work_date < today => items.push(anomaly(
                         &user_id,
                         work_date,
                         WorkScheduleAnomalyKind::Absent,

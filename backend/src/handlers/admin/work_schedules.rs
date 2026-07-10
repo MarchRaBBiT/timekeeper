@@ -42,6 +42,7 @@ use crate::{
     },
     state::AppState,
     types::{DepartmentId, UserId},
+    utils::time,
 };
 
 const DEFAULT_PAGE: i64 = 1;
@@ -445,11 +446,13 @@ pub async fn get_work_schedule_calendar(
         work_schedule::list_user_leave_calendar(state.read_pool(), &user_id, query.from, query.to)
             .await
             .map_err(map_repository_error)?;
+    let today = time::today_local(&state.config.time_zone);
     let anomalies = work_schedule::list_anomalies(
         state.read_pool(),
         Some(vec![user_id.clone()]),
         query.from,
         query.to,
+        today,
     )
     .await
     .map_err(map_repository_error)?;
@@ -502,9 +505,11 @@ pub async fn list_work_schedule_anomalies(
                 .map_err(|error| AppError::InternalServerError(error.into()))?,
         )
     };
-    let items = work_schedule::list_anomalies(state.read_pool(), user_ids, query.from, query.to)
-        .await
-        .map_err(map_repository_error)?;
+    let today = time::today_local(&state.config.time_zone);
+    let items =
+        work_schedule::list_anomalies(state.read_pool(), user_ids, query.from, query.to, today)
+            .await
+            .map_err(map_repository_error)?;
     Ok(Json(WorkScheduleAnomalyListResponse {
         from: query.from,
         to: query.to,
@@ -1072,6 +1077,25 @@ fn validate_range(from: NaiveDate, to: NaiveDate) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Business-meaningful ceiling for the 36-agreement overtime limit fields
+/// (`monthly_limit_minutes` / `yearly_limit_minutes` / `rolling_average_limit_minutes` /
+/// `single_month_absolute_limit_minutes`), in minutes.
+///
+/// The DB column is `INTEGER` (`i32`), so any value beyond `i32::MAX` currently makes
+/// the repository's `i32::try_from` fail with `CorruptData`, which surfaces as a 500.
+/// Rather than validating against the technical `i32::MAX` ceiling, this is set to
+/// 10x a full calendar year of minutes (10 * 527,040 min/year = 5,270,400 minutes,
+/// ~10 years) — far beyond any realistic overtime-limit configuration, while leaving
+/// comfortable headroom under `i32::MAX` (~4085 years) so the conversion can never
+/// overflow.
+/// Rationale recorded in docs/exec-plans/active/EP-20260709-overtime-monitor-api.md.
+const MAX_OVERTIME_LIMIT_MINUTES: i64 = 527_040 * 10;
+
+/// Ceiling for `overtime_request_tolerance_minutes`. This field is a small
+/// reconciliation buffer, not a limit, so it is capped far tighter than the limit
+/// fields above: one month's worth of minutes is already generous headroom.
+const MAX_OVERTIME_TOLERANCE_MINUTES: i64 = 44_640;
+
 fn validate_overtime_monitor_settings(
     payload: &OvertimeMonitorSettingsRequest,
 ) -> Result<(), AppError> {
@@ -1087,14 +1111,25 @@ fn validate_overtime_monitor_settings(
     {
         return Err(invalid_work_schedule("overtime limits must be positive"));
     }
+    if payload.monthly_limit_minutes > MAX_OVERTIME_LIMIT_MINUTES
+        || payload.yearly_limit_minutes > MAX_OVERTIME_LIMIT_MINUTES
+        || payload.rolling_average_limit_minutes > MAX_OVERTIME_LIMIT_MINUTES
+        || payload.single_month_absolute_limit_minutes > MAX_OVERTIME_LIMIT_MINUTES
+    {
+        return Err(invalid_work_schedule(
+            "overtime limits must not exceed the supported maximum",
+        ));
+    }
     if !(1..=100).contains(&payload.warning_ratio_percent) {
         return Err(invalid_work_schedule(
             "warning_ratio_percent must be between 1 and 100",
         ));
     }
-    if payload.overtime_request_tolerance_minutes < 0 {
+    if payload.overtime_request_tolerance_minutes < 0
+        || payload.overtime_request_tolerance_minutes > MAX_OVERTIME_TOLERANCE_MINUTES
+    {
         return Err(invalid_work_schedule(
-            "overtime_request_tolerance_minutes must be non-negative",
+            "overtime_request_tolerance_minutes must be between 0 and the supported maximum",
         ));
     }
     Ok(())
