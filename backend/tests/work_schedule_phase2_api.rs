@@ -1060,6 +1060,152 @@ async fn overtime_monitor_reports_threshold_statuses() {
 }
 
 #[tokio::test]
+async fn overtime_monitor_keeps_per_user_month_totals_independent_across_users() {
+    // Regression test for the SQL-side monthly aggregation (GROUP BY
+    // a.user_id, date_trunc('month', a.date)) introduced to replace
+    // per-day rows summed in Rust: this locks that each user's
+    // month/fiscal/rolling totals only ever reflect that user's own
+    // attendance, never another user's, even though both users share the
+    // same fetch window and are aggregated by the same query.
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee_a = seed_user(&pool, UserRole::Employee, false).await;
+    let employee_b = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee_a.id, "non_working").await;
+    seed_work_schedule_for_user(&pool, employee_b.id, "non_working").await;
+
+    let settings = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 1000,
+            "yearly_limit_minutes": 1000,
+            "rolling_average_limit_minutes": 1000,
+            "single_month_absolute_limit_minutes": 1000,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(settings.0, StatusCode::OK);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee_a.id.to_string(), employee_b.id.to_string()],
+            "from": "2026-04-01",
+            "to": "2026-08-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    // Employee A: 60 minutes of overtime in April, 30 in August.
+    seed_attendance(
+        &pool,
+        employee_a.id,
+        date(2026, 4, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T19:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee_a.id,
+        date(2026, 8, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-08-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-08-01T18:30:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    // Employee B: 120 minutes of overtime in April (same raw span as
+    // employee A's April day), and exactly on-time (0 overtime) in August.
+    // If April/August totals were ever pooled across users instead of kept
+    // per-user, employee A's numbers would leak into employee B's totals
+    // (and vice versa).
+    seed_attendance(
+        &pool,
+        employee_b.id,
+        date(2026, 4, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T19:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee_b.id,
+        date(2026, 8, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-08-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-08-01T17:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/overtime-monitor?year=2026&month=8",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let items = body["items"].as_array().expect("items");
+    let row_a = items
+        .iter()
+        .find(|item| item["user_id"] == employee_a.id.to_string())
+        .expect("employee a row");
+    let row_b = items
+        .iter()
+        .find(|item| item["user_id"] == employee_b.id.to_string())
+        .expect("employee b row");
+
+    // Employee A: April (600 - 480 = 120) + August (570 - 480 = 90) = 210
+    // minutes fiscal total; August month total is just its own 90 minutes.
+    assert_eq!(row_a["month_statutory_excess_minutes"], 90);
+    assert_eq!(row_a["fiscal_year_statutory_excess_minutes"], 210);
+
+    // Employee B: April (600 - 480 = 120) + August (480 - 480 = 0) = 120
+    // minutes fiscal total; August month total is 0. None of employee A's
+    // minutes should appear here, and B's April total must not have been
+    // inflated by shared bucketing with employee A.
+    assert_eq!(row_b["month_statutory_excess_minutes"], 0);
+    assert_eq!(row_b["fiscal_year_statutory_excess_minutes"], 120);
+}
+
+#[tokio::test]
 async fn upsert_overtime_monitor_settings_rejects_minutes_beyond_i32_range() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;

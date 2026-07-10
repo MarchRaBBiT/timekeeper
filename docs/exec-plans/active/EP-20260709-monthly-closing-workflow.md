@@ -243,3 +243,42 @@ Both fixed in `backend/src/repositories/work_schedule/operations.rs`,
   longer produce a `500` (defect 1; no new status code, so no Primary Errors column change needed
   there).
 
+## Follow-up fix (2026-07-10, MEDIUM: missing indexes on FK columns / hot query predicates)
+
+レビューで指摘された DB 性能欠陥。`backend/migrations/058_create_monthly_closing_workflows.sql`
+は既存の migration 慣習（040 の `idx_department_managers_user_id`、043 の FK 索引群など）に反して
+FK 列に索引が張られていなかった。既存 migration の編集は禁止のため、新規
+`backend/migrations/059_add_phase2_indexes.sql` を追加した。
+
+- `monthly_closing_workflows.self_confirmed_by` / `approved_by` / `closed_by` / `reopened_by`
+  （いずれも `users(id) ON DELETE RESTRICT` のnullable FK）に部分索引
+  (`WHERE <col> IS NOT NULL`) を追加。索引が無いと user 削除時にこの4列それぞれについて
+  `monthly_closing_workflows` の全表スキャンで参照有無を確認することになる。多くの行は
+  ワークフロー進行の途中までしかこれらの列が埋まらないため、部分索引でサイズを抑えた。
+- `monthly_closing_workflow_events (workflow_id, created_at)` の複合索引を追加。
+  `workflow_id` は `ON DELETE CASCADE` の NOT NULL FK であることに加え、将来のワークフロー別
+  監査履歴一覧（`created_at` 順）のクエリにも対応する。
+- `monthly_closing_workflow_events (acted_by)` の索引を追加（`users(id) ON DELETE RESTRICT`
+  の NOT NULL FK、同様に user 削除時の全表スキャンを避ける）。
+- `overtime_requests (user_id, date) WHERE status = 'approved'` の部分索引を追加。
+  Phase2 で追加された `list_approved_overtime`（同じ `operations.rs`）の
+  `WHERE user_id = ANY($1) AND status = 'approved' AND date BETWEEN $2 AND $3` は、既存の
+  `idx_overtime_requests_user_id` / `idx_overtime_requests_status`（001 由来、単一列）では
+  `date` の範囲条件をインデックスでカバーできず post-filter になっていた。承認済みのみに絞った
+  部分索引で `user_id, date` の複合条件を直接カバーする。
+
+適用確認: 新規 migration は本番コードを変更していないため専用のユニットテストは追加していない。
+`sqlx::migrate!("./migrations")` は統合テスト起動時に自動的に全 migration を適用するため、
+`work_schedule_phase2_api` の統合テストが green であること自体が `059_add_phase2_indexes.sql`
+の適用確認を兼ねる（下記 Validation 参照）。
+
+### Validation (実測, 2026-07-10)
+
+- [x] `cargo fmt --all --check` — 差分なし
+- [x] `cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` —
+      27 passed; 0 failed（`059_add_phase2_indexes.sql` を含む全 migration が
+      testcontainers 上の Postgres に適用された状態で実行・green）
+- [x] `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` — warnings なし
+- API 契約・スキーマの列/制約は不変（索引追加のみ）のため
+  `docs/design-docs/backend-api-catalog.md` の更新は不要（変更なし）
+

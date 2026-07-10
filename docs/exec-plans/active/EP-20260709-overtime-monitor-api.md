@@ -94,3 +94,53 @@
 - [x] `docs/design-docs/backend-api-catalog.md` の `/api/admin/overtime-monitor/settings` 行を更新
       （上限超過で `400 INVALID_WORK_SCHEDULE` を返す旨と具体的な上限値を明記。route/method/DTO は不変）
 
+## Follow-up fix (2026-07-10, MEDIUM #2: `list_overtime_monitor` O(U²×M) 再走査 + 日次行の全転送)
+
+レビューで指摘された DB 性能欠陥。`backend/src/repositories/work_schedule/operations.rs` の
+`list_overtime_monitor` が抱えていた2つの問題を修正した。
+
+1. **日次行の全転送**: 最大13ヶ月(fiscal/rolling window の広い方)分の attendance を
+   `user_id, date` 単位の生 row のまま fetch し、Rust 側 `by_user_month` に月次集計していた。
+   全ユーザー×全日分のネットワーク転送・行構築コストが不要にかかっていた。
+2. **O(U²×M) 再走査**: `for user_id in user_ids` ループの中で、fiscal 合計・rolling 合計の
+   両方について `by_user_month.iter().filter(|((id, ...))| id == user_id ...)` と
+   **全ユーザー×全月の HashMap を毎回スキャン**していた。意味論自体は user_id でフィルタして
+   いたため結果は正しかったが（欠陥はパフォーマンスのみで正当性のバグではない）、ユーザー数が
+   増えるほど二乗で悪化する。
+
+### 修正内容
+
+- SQL を `GROUP BY a.user_id, date_trunc('month', a.date)` の月次集計に変更。ここで
+  ef24020 で入った休憩控除（`br` サブクエリの LEFT JOIN + `COALESCE(br.break_minutes, 0)`)と
+  `rw.schedule_type = 'fixed'` フィルタは現行のまま維持し、`GREATEST(..., 0)` を `SUM(...)` で
+  包む形にした（日次で 0 未満を切り捨ててから月次合計する意味論は変えていない）。
+- Rust 側の中間構造を `HashMap<(String, i32, u32), i64>`（全ユーザー×全月フラット）から
+  `HashMap<String, HashMap<(i32, u32), i64>>`（ユーザーごとに月マップを分離）に変更。
+  fiscal/rolling の合計はそのユーザー自身の月マップ（フェッチ窓に収まる最大 ~13 件）だけを
+  走査するため、ループ全体で O(U×M) になる。
+- レスポンス契約（フィールド・ソート順）は不変。DTO/OpenAPI/catalog の変更なし。
+- 呼び出し元 `handlers/admin/work_schedules.rs::list_overtime_monitor` の
+  `SELECT id FROM users ORDER BY id`（system admin 時の全ユーザー取得、LIMIT なし）は
+  **今回はそのまま**とした。ページネーション導入はレスポンス契約（`items` の形・ページング
+  パラメータ）変更になり本タスクのスコープ外（呼び出し元の契約は不変という指示）。ユーザー数が
+  数千規模に達した場合はこの一覧取得がボトルネックになり得るため、別チケットでの対応候補として
+  記録しておく。
+
+### Tests added (`backend/tests/work_schedule_phase2_api.rs`)
+
+- `overtime_monitor_keeps_per_user_month_totals_independent_across_users`: 2ユーザー
+  (employee_a, employee_b) × 2ヶ月(2026-04, 2026-08) で異なる残業分数を作り、SQL 側の
+  `GROUP BY a.user_id, date_trunc('month', a.date)` と Rust 側のユーザー単位マップ構築が
+  ユーザー間で値を混同しないことを固定する回帰テスト。fiscal_year_start_month=4 で
+  year=2026,month=8 を問い合わせ、employee_a: month=90分/fiscal=210分、employee_b:
+  month=0分/fiscal=120分（互いの分数が一切混入していない）ことを検証。
+
+### Validation (実測, 2026-07-10)
+
+- [x] `cargo fmt --all --check`（backend/ 配下） — 差分なし
+- [x] `cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` —
+      27 passed; 0 failed（新規: `overtime_monitor_keeps_per_user_month_totals_independent_across_users`。
+      `sqlx::migrate!` により新規 migration `059_add_phase2_indexes.sql` もこの実行で自動適用・検証済み）
+- [x] `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` — warnings なし
+- API 契約不変のため `docs/design-docs/backend-api-catalog.md` の更新は不要（変更なし）
+

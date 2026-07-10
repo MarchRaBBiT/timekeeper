@@ -706,14 +706,20 @@ pub async fn list_overtime_monitor(
     // of a fiscal year that started in month 4) would be silently dropped from
     // the fiscal-year total.
     let fetch_from = fiscal_start.min(rolling_from);
+    // Aggregated to one row per (user, month) in SQL via GROUP BY, instead of
+    // transferring one row per attendance day and summing in Rust. For a
+    // 13-month fetch window across many users this avoids shipping and
+    // materializing daily rows the caller never needs individually.
     let rows = sqlx::query_as::<_, (String, NaiveDate, i64)>(
-        "SELECT a.user_id, a.date,
-                GREATEST(
-                    ROUND(EXTRACT(EPOCH FROM (a.clock_out_time - a.clock_in_time)) / 60)::BIGINT
-                    - COALESCE(br.break_minutes, 0)
-                    - rw.expected_work_minutes,
-                    0
-                ) AS overtime_minutes
+        "SELECT a.user_id, date_trunc('month', a.date)::date AS month_start,
+                SUM(
+                    GREATEST(
+                        ROUND(EXTRACT(EPOCH FROM (a.clock_out_time - a.clock_in_time)) / 60)::BIGINT
+                        - COALESCE(br.break_minutes, 0)
+                        - rw.expected_work_minutes,
+                        0
+                    )
+                )::BIGINT AS overtime_minutes
          FROM attendance a
          JOIN resolved_workdays rw ON rw.user_id = a.user_id AND rw.work_date = a.date
          LEFT JOIN (
@@ -728,7 +734,8 @@ pub async fn list_overtime_monitor(
            AND a.date BETWEEN $2 AND $3
            AND a.clock_in_time IS NOT NULL
            AND a.clock_out_time IS NOT NULL
-           AND rw.schedule_type = 'fixed'",
+           AND rw.schedule_type = 'fixed'
+         GROUP BY a.user_id, date_trunc('month', a.date)",
     )
     .bind(user_ids)
     .bind(fetch_from)
@@ -736,38 +743,50 @@ pub async fn list_overtime_monitor(
     .fetch_all(pool)
     .await?;
 
-    let mut by_user_month: HashMap<(String, i32, u32), i64> = HashMap::new();
-    for (user_id, date, minutes) in rows {
-        *by_user_month
-            .entry((user_id, date.year(), date.month()))
-            .or_default() += minutes;
+    // Grouped by user first so that computing each user's fiscal/rolling
+    // totals below only scans that user's own (small, bounded by the
+    // fetch window's ~13 months) entries, instead of re-scanning every
+    // user's rows for every user (which made the previous shape O(U^2*M)).
+    let mut by_user: HashMap<String, HashMap<(i32, u32), i64>> = HashMap::new();
+    for (user_id, month_start_date, minutes) in rows {
+        by_user
+            .entry(user_id)
+            .or_default()
+            .insert((month_start_date.year(), month_start_date.month()), minutes);
     }
 
     let mut items = Vec::new();
     for user_id in user_ids {
-        let month_minutes = by_user_month
-            .get(&(user_id.clone(), year, month))
+        let user_months = by_user.get(user_id);
+        let month_minutes = user_months
+            .and_then(|months| months.get(&(year, month)))
             .copied()
             .unwrap_or(0);
-        let fiscal_minutes: i64 = by_user_month
-            .iter()
-            .filter(|((id, row_year, row_month), _)| {
-                id == user_id
-                    && month_start_for(*row_year, *row_month)
-                        .is_some_and(|date| date >= fiscal_start && date <= month_start)
+        let fiscal_minutes: i64 = user_months
+            .map(|months| {
+                months
+                    .iter()
+                    .filter(|((row_year, row_month), _)| {
+                        month_start_for(*row_year, *row_month)
+                            .is_some_and(|date| date >= fiscal_start && date <= month_start)
+                    })
+                    .map(|(_, value)| *value)
+                    .sum()
             })
-            .map(|(_, value)| *value)
-            .sum();
+            .unwrap_or(0);
         let rolling_months = months_between_inclusive(rolling_from, month_start)?;
-        let rolling_minutes: i64 = by_user_month
-            .iter()
-            .filter(|((id, row_year, row_month), _)| {
-                id == user_id
-                    && month_start_for(*row_year, *row_month)
-                        .is_some_and(|date| date >= rolling_from && date <= month_start)
+        let rolling_minutes: i64 = user_months
+            .map(|months| {
+                months
+                    .iter()
+                    .filter(|((row_year, row_month), _)| {
+                        month_start_for(*row_year, *row_month)
+                            .is_some_and(|date| date >= rolling_from && date <= month_start)
+                    })
+                    .map(|(_, value)| *value)
+                    .sum()
             })
-            .map(|(_, value)| *value)
-            .sum();
+            .unwrap_or(0);
         let rolling_average = if rolling_months == 0 {
             0
         } else {
