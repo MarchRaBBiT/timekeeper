@@ -98,3 +98,55 @@ own internal steps (lock update + closure log insert) roll back together on fail
 - `bash scripts/harness.sh docs-check` — green (no API contract change, so no catalog edit
   required).
 
+## 2026-07-10: HIGH fix — self-approval of monthly closing not forbidden
+
+### Defect
+
+`approve_monthly_closing` (`backend/src/handlers/admin/work_schedules.rs`) only called
+`authorize_scope(&state, &user, target)`, which checks *department* scope (`can_manager_approve`)
+but never checks whether `target == user.id`. The existing request approval handlers
+(`approve_request` / `reject_request` in `backend/src/handlers/admin/requests.rs:43,95`) already
+reject `applicant_id == user.id` with `AppError::Forbidden` before running the scope check, but
+`approve_monthly_closing` had no equivalent guard. Since `can_manager_approve` matches on
+`users.department_id IN (subordinate depts of the manager)` with no self-exclusion, a manager who
+is also a member of a department they manage could: (1) `POST
+/api/monthly-closings/me/self-confirm` to self-confirm their own month, then (2) `POST
+/api/admin/users/{own_id}/monthly-closings/approve` to approve it themselves — completing the
+"self-confirm → manager approve" two-party control alone, defeating the separation of duties the
+workflow is designed to enforce (`docs/design-docs/monthly-closing.md` Authorization section).
+
+### Fix
+
+- `backend/src/handlers/admin/work_schedules.rs::approve_monthly_closing`: added a
+  `target == user.id` check that returns `AppError::Forbidden("Managers cannot approve their own
+  monthly closing")` immediately after payload validation and before `authorize_scope` runs. The
+  check applies unconditionally (including to system admins), matching the existing
+  `approve_request` / `reject_request` precedent, which also bans self-approval for every role.
+- `docs/design-docs/monthly-closing.md`: documented the self-approval ban explicitly under
+  Authorization, referencing the `approve_request` precedent.
+- `docs/design-docs/backend-api-catalog.md`: updated the `Primary Errors` and summary columns for
+  `/api/admin/users/{user_id}/monthly-closings/approve` to mention the `403` self-approval
+  rejection (authorization requirement change, so the catalog update is in the same change per
+  `docs/manual/CODING_AGENT.md`).
+
+### Test
+
+Added `manager_cannot_approve_own_monthly_closing` to
+`backend/tests/work_schedule_phase2_api.rs`: seeds a system admin (to generate the projection,
+since `/api/admin/work-schedule-projections/generate` requires system admin) and a manager who is
+also placed as a member of the department they manage via `assign_manager_to_employee_department`.
+The manager self-confirms their own month, then attempts
+`POST /api/admin/users/{manager_id}/monthly-closings/approve` on themselves and asserts `403`, and
+asserts the workflow status in `monthly_closing_workflows` is still `self_confirmed` (the approve
+attempt did not mutate state).
+
+### Validation (measured 2026-07-10)
+
+- `cargo fmt --all --check` — passed (no diff).
+- `cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` — 19 passed
+  (18 existing + new `manager_cannot_approve_own_monthly_closing`); 0 failed. (Test initially
+  failed with `left: 403, right: 200` because the projection-generation step used the manager
+  instead of a system admin; fixed by seeding a dedicated `system_admin` user for that step.)
+- `cargo clippy -p timekeeper-backend --all-targets -- -D warnings` — no warnings.
+- `bash scripts/harness.sh docs-check` — green.
+

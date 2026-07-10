@@ -710,6 +710,11 @@ pub async fn approve_monthly_closing(
     validate_monthly_transition_payload(&payload)?;
     let target =
         UserId::from_str(&user_id).map_err(|_| invalid_work_schedule("invalid user_id"))?;
+    if target == user.id {
+        return Err(AppError::Forbidden(
+            "Managers cannot approve their own monthly closing".to_string(),
+        ));
+    }
     authorize_scope(&state, &user, target).await?;
     let reason = normalized_reason(payload.reason.as_deref())?;
     let response = work_schedule::transition_monthly_closing(

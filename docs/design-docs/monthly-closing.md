@@ -58,6 +58,11 @@ The transition table is the workflow source of truth. The existing `work_schedul
 
 - Self-confirm: authenticated user only, always for self.
 - Approve: system admin or manager with existing department approval scope.
+- Approve rejects self-approval: if the target `user_id` equals the acting user's own id, the
+  request is rejected with `403` before the department-scope check runs, even for a system
+  admin. This mirrors the existing `approve_request` / `reject_request` self-approval ban for
+  leave/overtime requests (`backend/src/handlers/admin/requests.rs`) and preserves the two-party
+  self-confirm-then-approve control when a manager also belongs to a department they manage.
 - Close/reopen: system admin only.
 
 ## Compatibility

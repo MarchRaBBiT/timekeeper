@@ -821,6 +821,66 @@ async fn monthly_closing_workflow_enforces_order_and_locks_on_close() {
 }
 
 #[tokio::test]
+async fn manager_cannot_approve_own_monthly_closing() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let system_admin = seed_user(&pool, UserRole::Manager, true).await;
+    let manager = seed_user(&pool, UserRole::Manager, false).await;
+    // The manager is also a member of the department they manage, so
+    // `authorize_scope` alone would let them approve their own month.
+    assign_manager_to_employee_department(&pool, &manager, &manager).await;
+    seed_work_schedule_for_user(&pool, manager.id, "non_working").await;
+
+    let generated = request_json(
+        router(pool.clone(), system_admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [manager.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    let self_confirmed = request_json(
+        router(pool.clone(), manager.clone()),
+        "POST",
+        "/api/monthly-closings/me/self-confirm",
+        Some(json!({ "year": 2026, "month": 7, "reason": "confirmed" })),
+    )
+    .await;
+    assert_eq!(self_confirmed.0, StatusCode::OK);
+    assert_eq!(self_confirmed.1["status"], "self_confirmed");
+
+    let self_approve = request_json(
+        router(pool.clone(), manager.clone()),
+        "POST",
+        &format!("/api/admin/users/{}/monthly-closings/approve", manager.id),
+        Some(json!({ "year": 2026, "month": 7, "reason": "self approve" })),
+    )
+    .await;
+    assert_eq!(self_approve.0, StatusCode::FORBIDDEN);
+
+    let status: String = sqlx::query_scalar(
+        "SELECT status FROM monthly_closing_workflows
+         WHERE user_id = $1 AND year = $2 AND month = $3",
+    )
+    .bind(manager.id.to_string())
+    .bind(2026_i32)
+    .bind(7_i32)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow status");
+    assert_eq!(status, "self_confirmed");
+}
+
+#[tokio::test]
 async fn manager_anomaly_list_without_user_id_is_limited_to_subordinates() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
