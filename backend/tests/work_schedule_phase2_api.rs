@@ -654,6 +654,336 @@ async fn anomaly_list_detects_overtime_punctuality_absence_and_break_warnings() 
 }
 
 #[tokio::test]
+async fn overtime_calculation_deducts_break_minutes() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    let settings = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 120,
+            "yearly_limit_minutes": 600,
+            "rolling_average_limit_minutes": 120,
+            "single_month_absolute_limit_minutes": 300,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(settings.0, StatusCode::OK);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-02"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    // Day 1: worked exactly the scheduled 9:00-18:00 span (raw span = 540
+    // minutes) and took the scheduled 60-minute break. Net worked time equals
+    // expected_work_minutes (480), so no overtime should be detected even
+    // though the raw clock span exceeds 480.
+    let on_time = seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T18:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_break_record(
+        &pool,
+        on_time.id,
+        NaiveDateTime::parse_from_str("2026-07-01T12:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("break start"),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T13:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("break end"),
+        ),
+    )
+    .await;
+
+    // Day 2: worked until 20:00 with the same 60-minute break. Net worked time
+    // is 600 minutes, 120 minutes above expected — this should be detected,
+    // and the excess must be the break-deducted figure (120), not the raw
+    // clock span minus expected (660 - 480 = 180).
+    let overworked = seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 2),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-02T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-02T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_break_record(
+        &pool,
+        overworked.id,
+        NaiveDateTime::parse_from_str("2026-07-02T12:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("break start"),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-02T13:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("break end"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin.clone()),
+        "GET",
+        &format!(
+            "/api/admin/work-schedule-anomalies?user_id={}&from=2026-07-01&to=2026-07-02",
+            employee.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let items = body["items"].as_array().expect("items");
+    let day1_has_overtime = items.iter().any(|item| {
+        item["work_date"] == "2026-07-01"
+            && (item["kind"] == "unapproved_overtime" || item["kind"] == "overtime_exceeds_request")
+    });
+    assert!(
+        !day1_has_overtime,
+        "break-compliant on-time day must not report an overtime anomaly"
+    );
+    let day2_has_overtime = items
+        .iter()
+        .any(|item| item["work_date"] == "2026-07-02" && item["kind"] == "unapproved_overtime");
+    assert!(
+        day2_has_overtime,
+        "day exceeding expected work minutes net of break must report unapproved overtime"
+    );
+
+    let (monitor_status, monitor_body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/overtime-monitor?year=2026&month=7",
+        None,
+    )
+    .await;
+    assert_eq!(monitor_status, StatusCode::OK);
+    let employee_row = monitor_body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["user_id"] == employee.id.to_string())
+        .expect("employee row");
+    assert_eq!(employee_row["month_statutory_excess_minutes"], 120);
+}
+
+#[tokio::test]
+async fn flex_schedule_is_excluded_from_overtime_anomalies_and_monitor() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let flex_user = seed_user(&pool, UserRole::Employee, false).await;
+    seed_flex_work_schedule_for_user(&pool, flex_user.id).await;
+
+    let settings = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 120,
+            "yearly_limit_minutes": 600,
+            "rolling_average_limit_minutes": 120,
+            "single_month_absolute_limit_minutes": 300,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(settings.0, StatusCode::OK);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [flex_user.id.to_string()],
+            "from": "2026-07-01",
+            "to": "2026-07-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+
+    // A long clock span, well above the flex day's expected_work_minutes
+    // (which represents the flex band's max span, not a contracted duration).
+    // Flex users must not be judged against this figure for overtime purposes.
+    seed_attendance(
+        &pool,
+        flex_user.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T07:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T22:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin.clone()),
+        "GET",
+        &format!(
+            "/api/admin/work-schedule-anomalies?user_id={}&from=2026-07-01&to=2026-07-01",
+            flex_user.id
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let kinds: Vec<_> = body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| item["kind"].as_str().expect("kind"))
+        .collect();
+    assert!(!kinds.contains(&"unapproved_overtime"));
+    assert!(!kinds.contains(&"overtime_exceeds_request"));
+
+    let (monitor_status, monitor_body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/overtime-monitor?year=2026&month=7",
+        None,
+    )
+    .await;
+    assert_eq!(monitor_status, StatusCode::OK);
+    let employee_row = monitor_body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["user_id"] == flex_user.id.to_string())
+        .expect("flex employee row is still present with zero excess minutes");
+    assert_eq!(employee_row["month_statutory_excess_minutes"], 0);
+}
+
+#[tokio::test]
+async fn overtime_monitor_fiscal_year_total_includes_months_before_rolling_window() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_work_schedule_for_user(&pool, employee.id, "non_working").await;
+
+    // Fiscal year starts in April. Querying month=12 means the fiscal year
+    // began 8 months earlier, but the 6-month rolling window only reaches
+    // back to July. April attendance must still be included in the fiscal
+    // year total even though it falls outside the rolling window.
+    let settings = request_json(
+        router(pool.clone(), admin.clone()),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 1000,
+            "yearly_limit_minutes": 1000,
+            "rolling_average_limit_minutes": 1000,
+            "single_month_absolute_limit_minutes": 1000,
+            "warning_ratio_percent": 50,
+            "overtime_request_tolerance_minutes": 0
+        })),
+    )
+    .await;
+    assert_eq!(settings.0, StatusCode::OK);
+
+    let generated = request_json(
+        router(pool.clone(), admin.clone()),
+        "POST",
+        "/api/admin/work-schedule-projections/generate",
+        Some(json!({
+            "user_ids": [employee.id.to_string()],
+            "from": "2026-04-01",
+            "to": "2026-04-01"
+        })),
+    )
+    .await;
+    assert_eq!(generated.0, StatusCode::OK);
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 4, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T09:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-04-01T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), admin),
+        "GET",
+        "/api/admin/overtime-monitor?year=2026&month=12",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let employee_row = body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["user_id"] == employee.id.to_string())
+        .expect("employee row");
+    // April overtime (180 minutes: 660 raw - 480 expected, no break recorded)
+    // must be reflected in the fiscal year total for a December query.
+    assert_eq!(employee_row["fiscal_year_statutory_excess_minutes"], 180);
+    // April is outside the 6-month rolling window ending in December
+    // (Jul-Dec), so it must not appear in the rolling average.
+    assert_eq!(employee_row["rolling_average_statutory_excess_minutes"], 0);
+    assert_eq!(employee_row["month_statutory_excess_minutes"], 0);
+}
+
+#[tokio::test]
 async fn overtime_monitor_reports_threshold_statuses() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;

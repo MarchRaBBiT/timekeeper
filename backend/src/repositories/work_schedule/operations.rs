@@ -195,6 +195,12 @@ pub async fn list_anomalies(
             .or_insert(row);
     }
 
+    let overtime_context = OvertimeAnomalyContext {
+        break_totals: &break_totals,
+        overtime_requests: &overtime_requests,
+        settings,
+    };
+
     let mut items = Vec::new();
     for user_id in users {
         for work_date in dates_inclusive(from, to)? {
@@ -278,8 +284,7 @@ pub async fn list_anomalies(
                             work_date,
                             resolved_day,
                             row,
-                            &overtime_requests,
-                            settings,
+                            &overtime_context,
                         );
                     }
                 }
@@ -498,27 +503,50 @@ fn add_break_anomalies(
     }
 }
 
+/// Bundles the per-request-scoped lookup tables and settings used by
+/// [`add_overtime_anomalies`] so the function stays within a reasonable
+/// argument count while still being computed once per `list_anomalies` call.
+struct OvertimeAnomalyContext<'a> {
+    break_totals: &'a HashMap<String, i64>,
+    overtime_requests: &'a HashMap<(String, NaiveDate), i64>,
+    settings: OvertimeMonitorSettingsRow,
+}
+
 fn add_overtime_anomalies(
     items: &mut Vec<WorkScheduleAnomalyResponse>,
     user_id: &str,
     work_date: NaiveDate,
     resolved_day: &ResolvedStateRow,
     attendance: &AttendanceCalendarRow,
-    overtime_requests: &HashMap<(String, NaiveDate), i64>,
-    settings: OvertimeMonitorSettingsRow,
+    context: &OvertimeAnomalyContext,
 ) {
-    let Some(work_minutes) = raw_work_minutes(attendance) else {
+    // `expected_work_minutes` is a net (break-deducted) figure and is only a
+    // meaningful contracted duration for fixed schedules; flex schedules use it
+    // to represent the flex band width, so overtime cannot be judged against it
+    // here. Real flex overtime requires settlement-period-based accounting,
+    // which is out of scope for this anomaly detector.
+    if resolved_day.schedule_type != "fixed" {
+        return;
+    }
+    let Some(raw_minutes) = raw_work_minutes(attendance) else {
         return;
     };
+    let break_minutes = context
+        .break_totals
+        .get(&attendance.id)
+        .copied()
+        .unwrap_or(0);
+    let work_minutes = (raw_minutes - break_minutes).max(0);
     let daily_overtime = (work_minutes - i64::from(resolved_day.expected_work_minutes)).max(0);
     if daily_overtime <= 0 {
         return;
     }
-    let approved = overtime_requests
+    let approved = context
+        .overtime_requests
         .get(&(user_id.to_string(), work_date))
         .copied()
         .unwrap_or(0);
-    let tolerance = i64::from(settings.overtime_request_tolerance_minutes);
+    let tolerance = i64::from(context.settings.overtime_request_tolerance_minutes);
     if approved == 0 {
         items.push(anomaly(
             user_id,
@@ -661,22 +689,38 @@ pub async fn list_overtime_monitor(
     let settings = find_overtime_monitor_settings(pool, month_end).await?;
     let fiscal_start = fiscal_year_start(year, month, settings.fiscal_year_start_month)?;
     let rolling_from = rolling_window_start(month_start, 6)?;
+    // The fiscal-year total is computed from this same fetch below, so the
+    // fetch window must start no later than the fiscal year start — otherwise
+    // months between fiscal_start and rolling_from (e.g. querying in month 12
+    // of a fiscal year that started in month 4) would be silently dropped from
+    // the fiscal-year total.
+    let fetch_from = fiscal_start.min(rolling_from);
     let rows = sqlx::query_as::<_, (String, NaiveDate, i64)>(
         "SELECT a.user_id, a.date,
                 GREATEST(
                     ROUND(EXTRACT(EPOCH FROM (a.clock_out_time - a.clock_in_time)) / 60)::BIGINT
+                    - COALESCE(br.break_minutes, 0)
                     - rw.expected_work_minutes,
                     0
                 ) AS overtime_minutes
          FROM attendance a
          JOIN resolved_workdays rw ON rw.user_id = a.user_id AND rw.work_date = a.date
+         LEFT JOIN (
+             SELECT attendance_id,
+                    ROUND(SUM(EXTRACT(EPOCH FROM (break_end_time - break_start_time)) / 60))::BIGINT
+                        AS break_minutes
+             FROM break_records
+             WHERE break_end_time IS NOT NULL
+             GROUP BY attendance_id
+         ) br ON br.attendance_id = a.id
          WHERE a.user_id = ANY($1)
            AND a.date BETWEEN $2 AND $3
            AND a.clock_in_time IS NOT NULL
-           AND a.clock_out_time IS NOT NULL",
+           AND a.clock_out_time IS NOT NULL
+           AND rw.schedule_type = 'fixed'",
     )
     .bind(user_ids)
-    .bind(rolling_from)
+    .bind(fetch_from)
     .bind(month_end)
     .fetch_all(pool)
     .await?;
