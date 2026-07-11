@@ -65,6 +65,24 @@
 //!    safety net that stops a new kind from being silently mishandled by old dequeue code.
 //!
 //! T-17 itself (wiring handlers to enqueue these new kinds) is out of scope for this change.
+//!
+//! ## Application notification queue has no consumer yet: `LTRIM` cap
+//!
+//! `docs/exec-plans/active/EP-20260709-request-notification-events.md` scoped worker
+//! delivery for the application notification variants (`RequestSubmitted` /
+//! `RequestApproved` / `RequestRejected` / `MissingClockOutReminder`) out of that change —
+//! unlike [`crate::services::lockout_notification_queue`], which is drained by
+//! `lockout_notification_worker` via `BRPOP`, nothing currently reads
+//! [`APPLICATION_NOTIFICATION_QUEUE_KEY`]. Every leave/overtime submit, approval, and
+//! rejection enqueues onto it, so an unbounded `RPUSH` would grow the Redis list forever and
+//! risk exhausting Redis memory in production. [`enqueue_application_notification_job`]
+//! guards against that by `LTRIM`-capping the list to
+//! [`APPLICATION_NOTIFICATION_QUEUE_MAX_LEN`] entries after every push, silently dropping the
+//! oldest queued jobs once the cap is exceeded. This is a stopgap: once a worker exists for
+//! this queue, revisit (likely remove) this cap — see the module-level doc comment on
+//! [`enqueue_application_notification_job`] for details. The shared
+//! [`enqueue_notification_job`] helper (also used by the lockout queue, which does not need
+//! this cap because it has a consumer) is deliberately left untouched.
 
 use anyhow::anyhow;
 use bb8_redis::redis;
@@ -76,6 +94,18 @@ use uuid::Uuid;
 use crate::{db::redis::RedisPool, services::lockout_notification_queue::LockoutNotificationJob};
 
 pub const APPLICATION_NOTIFICATION_QUEUE_KEY: &str = "app:notifications";
+
+/// Maximum number of jobs retained on [`APPLICATION_NOTIFICATION_QUEUE_KEY`].
+///
+/// This queue has no consumer yet (see the module docs' "Application notification queue has
+/// no consumer yet" section), so every enqueue past this length causes
+/// [`enqueue_application_notification_job`] to `LTRIM` the oldest entries off. 10_000 is a
+/// generous multiple of realistic daily leave/overtime submit+decision volume for this system
+/// (each request submission/approval/rejection enqueues at most one job); it exists purely to
+/// bound worst-case Redis memory while no worker drains the list, not as a tuned capacity
+/// figure. Revisit (most likely: remove the cap and rely on `BRPOP` draining it) once a worker
+/// is implemented for this queue.
+pub const APPLICATION_NOTIFICATION_QUEUE_MAX_LEN: isize = 10_000;
 
 /// Lua script shared by every notification queue: moves due jobs from a retry ZSET (scored by
 /// millisecond timestamp) back onto the head of the ready-to-process LIST.
@@ -164,11 +194,75 @@ impl ApplicationNotificationJob {
     }
 }
 
+/// Enqueues `job` onto [`APPLICATION_NOTIFICATION_QUEUE_KEY`] (`RPUSH`), then `LTRIM`s that
+/// list down to the newest [`APPLICATION_NOTIFICATION_QUEUE_MAX_LEN`] entries.
+///
+/// **Truncation notice:** because this queue currently has no consumer (see the module docs'
+/// "Application notification queue has no consumer yet" section), once the list holds more
+/// than [`APPLICATION_NOTIFICATION_QUEUE_MAX_LEN`] jobs, this function silently drops the
+/// oldest excess jobs (the ones nearest the head, i.e. least recently `RPUSH`ed) rather than
+/// letting the list grow without bound. Callers must not assume every enqueued job survives to
+/// be delivered. This is a deliberate, temporary tradeoff (unbounded Redis memory growth vs.
+/// best-effort delivery) that should be revisited once a worker drains this queue.
+///
+/// The `RPUSH` and `LTRIM` are issued as two sequential commands rather than a single atomic
+/// Lua script (unlike [`requeue_due_notification_jobs`]'s move script) — a job can transiently
+/// exceed the cap by one entry between the two calls under concurrent enqueues, but that is
+/// acceptable here since this is a soft memory-bound, not a hard correctness requirement.
+///
+/// This cap is intentionally scoped to the application notification queue only: the shared
+/// [`enqueue_notification_job`] helper (also used to enqueue onto the lockout queue, which has
+/// a consumer and must not be trimmed) is left unmodified.
 pub async fn enqueue_application_notification_job(
     pool: &RedisPool,
     job: &NotificationJob,
 ) -> anyhow::Result<()> {
-    enqueue_notification_job(pool, APPLICATION_NOTIFICATION_QUEUE_KEY, job).await
+    enqueue_notification_job(pool, APPLICATION_NOTIFICATION_QUEUE_KEY, job).await?;
+    trim_notification_queue(
+        pool,
+        APPLICATION_NOTIFICATION_QUEUE_KEY,
+        APPLICATION_NOTIFICATION_QUEUE_MAX_LEN,
+    )
+    .await
+}
+
+/// `LTRIM`s `queue_key` down to its newest `max_len` entries.
+///
+/// Redis `LTRIM start stop` keeps the inclusive `[start, stop]` slice of the list and drops
+/// everything outside it. `RPUSH` appends to the tail, so the newest entries live at the
+/// highest (least negative) indices; [`ltrim_keep_newest_range`] computes the `(start, stop)`
+/// pair that keeps exactly the newest `max_len` entries and drops the rest from the head.
+async fn trim_notification_queue(
+    pool: &RedisPool,
+    queue_key: &str,
+    max_len: isize,
+) -> anyhow::Result<()> {
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|err| anyhow!("acquire redis connection: {err}"))?;
+    let (start, stop) = ltrim_keep_newest_range(max_len);
+    let _: () = redis::cmd("LTRIM")
+        .arg(queue_key)
+        .arg(start)
+        .arg(stop)
+        .query_async(&mut *conn)
+        .await
+        .map_err(|err| anyhow!("trim notification queue: {err}"))?;
+    Ok(())
+}
+
+/// Computes the `LTRIM start stop` range that keeps only the newest `max_len` entries of a
+/// `RPUSH`-appended Redis list, e.g. `ltrim_keep_newest_range(10_000)` returns `(-10_000, -1)`
+/// (`LTRIM key -10000 -1`), which keeps the last 10,000 elements and drops everything before
+/// them. Negative Redis list indices count from the tail (`-1` is the newest/last element), so
+/// this is independent of the list's current length — Redis clamps `start` to `0` itself when
+/// the list is shorter than `max_len`, so this never errors or over-trims a short list.
+///
+/// Extracted as a pure function (no Redis I/O) so the range arithmetic is unit-testable without
+/// a live Redis connection.
+fn ltrim_keep_newest_range(max_len: isize) -> (isize, isize) {
+    (-max_len, -1)
 }
 
 /// Generic dead-letter envelope, mirroring [`NotificationJob`]'s tagging strategy for the
@@ -398,5 +492,29 @@ mod tests {
             }
             _ => panic!("expected account_lockout notification"),
         }
+    }
+
+    #[test]
+    fn ltrim_keep_newest_range_keeps_exactly_max_len_from_the_tail() {
+        // `LTRIM key -10000 -1` keeps the newest 10,000 entries (RPUSH appends to the tail, so
+        // negative indices closest to -1 are the most recently pushed).
+        assert_eq!(ltrim_keep_newest_range(10_000), (-10_000, -1));
+    }
+
+    #[test]
+    fn ltrim_keep_newest_range_matches_configured_application_queue_cap() {
+        assert_eq!(
+            ltrim_keep_newest_range(APPLICATION_NOTIFICATION_QUEUE_MAX_LEN),
+            (-APPLICATION_NOTIFICATION_QUEUE_MAX_LEN, -1)
+        );
+    }
+
+    #[test]
+    fn ltrim_keep_newest_range_handles_small_and_edge_lengths() {
+        assert_eq!(ltrim_keep_newest_range(1), (-1, -1));
+        // max_len = 0 is not a value this module ever configures, but the arithmetic should
+        // still be well-defined (Redis treats LTRIM key 0 -1 as "keep everything", i.e. this
+        // would be a no-op cap, not a panic/overflow) rather than behaving unpredictably.
+        assert_eq!(ltrim_keep_newest_range(0), (0, -1));
     }
 }
