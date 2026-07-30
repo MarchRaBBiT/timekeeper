@@ -106,7 +106,7 @@
 6. [x] docs: `work-schedule-master.md` へ Design Decisions 転記と Status 更新、`backend-api-catalog.md` へ API 2行追加（計算不可の扱い・tagged union を利用者向けに明記）、`docs-check`
 7. [x] `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / focused tests / 影響統合テスト全件 / coverage 計測（目標80%）
 8. [x] Codex へ実装の adversarial review を依頼し、指摘を修正する
-9. [ ] git commit、Progress Notes 更新、`.agent/PLANS.md` のポインタ更新
+9. [x] git commit、Progress Notes 更新、`.agent/PLANS.md` のポインタ更新
 
 ## Validation Plan
 
@@ -128,7 +128,7 @@
 
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] `git commit`
+- [x] `git commit` — `51a2c9d feat: add flex settlement balance read model`
 
 ## Progress Notes
 
