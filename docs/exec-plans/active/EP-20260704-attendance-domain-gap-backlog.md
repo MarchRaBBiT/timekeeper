@@ -169,3 +169,4 @@
 - 2026-07-09: Phase 2 残タスクを実装。T-07（残業申請突合 anomaly）、T-08（36協定監視 API/settings）、T-09/T-10（遅刻・早退・欠勤・休憩不足 anomaly）、T-12（月次締め workflow + `monthly-closing.md`）、T-17（申請提出/承認/却下 notification queue enqueue）を個別 EP 化して登録。`cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` は 18 passed。T-17 の missing clock-out reminder は notification enum variant として予約済みで、定期 scan/worker delivery は次の通知 worker 拡張に委ねる
 - 2026-07-30: Phase 3 の T-11 / T-13 / T-14 / T-15 / T-18 を個別 EP 化して実装着手。migration を T-11=060–061、T-13=062–063、T-18=064、T-14=065 と予約し、T-15 は migration なしとした。実行順は T-11・T-18・T-15 backend → T-13 → T-14、T-15 frontendと統合検証。G15 は具体要件がないため引き続き out of scope
 - 2026-07-30: Phase 3 全5タスクの実装・統合検証・adversarial code/security reviewを完了。レビューで検出した時間休更新、振替取消/月次締め、勤務間隔、給与reopen、休日出勤認可/監査の競合・契約不備を回帰テスト付きで修正し、最終判定Approve。
+- 2026-07-30: Phase 3 実装を commit `fc1414e` として記録。

@@ -250,7 +250,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-11: 半休・時間単位休暇と休暇種別マスタ（G7）
 
-**Status:** 完了・検証済み（[EP-20260730-leave-units-and-type-master](./active/EP-20260730-leave-units-and-type-master.md)、migration 060–061）
+**Status:** 完了（[EP-20260730-leave-units-and-type-master](./active/EP-20260730-leave-units-and-type-master.md)、commit `fc1414e`、migration 060–061）
 
 - **前提タスク:** T-04, T-05（残高消化を分単位へ一般化する対象があるため）
 - **目的:** 日単位固定の休暇申請を半休・時間単位へ拡張し、コード内 enum 固定の休暇種別を会社固有に定義可能にする
@@ -264,7 +264,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-13: 振替休日・代休の管理（G9）
 
-**Status:** 完了・検証済み（[EP-20260730-holiday-substitution-compensatory-leave](./active/EP-20260730-holiday-substitution-compensatory-leave.md)、migration 062–063）
+**Status:** 完了（[EP-20260730-holiday-substitution-compensatory-leave](./active/EP-20260730-holiday-substitution-compensatory-leave.md)、commit `fc1414e`、migration 062–063）
 
 - **前提タスク:** T-03（休日労働の区分判定）、T-04（付与台帳の器）
 - **目的:** 休日出勤の対価（事前振替 = 振休、事後付与 = 代休）を付与・消化・期限まで追跡可能にする
@@ -278,7 +278,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-14: 給与エクスポート契約（G10）
 
-**Status:** 実装完了・検証済み（[EP-20260730-payroll-export-contract](./active/EP-20260730-payroll-export-contract.md)、migration 065）
+**Status:** 完了（[EP-20260730-payroll-export-contract](./active/EP-20260730-payroll-export-contract.md)、commit `fc1414e`、migration 065）
 
 - **前提タスク:** T-03（区分集計）、T-12（closed 状態の確定）
 - **目的:** 給与システムが必要とする「従業員 × 月 × 賃金項目」の確定値を、締め済み月についてのみ出力する
@@ -291,7 +291,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-15: 管理者向け月次レポート / 長時間労働ダッシュボード（G11）
 
-**Status:** 完了・検証済み（[EP-20260730-admin-attendance-report](./active/EP-20260730-admin-attendance-report.md)、migration追加なし）
+**Status:** 完了（[EP-20260730-admin-attendance-report](./active/EP-20260730-admin-attendance-report.md)、commit `fc1414e`、migration追加なし）
 
 - **前提タスク:** T-03（T-08 完了後の統合を推奨）
 - **目的:** 管理者が raw CSV 以外で部署・全社の月次状況（労働時間、残業、anomaly、36協定判定）を一覧できるようにする
@@ -305,7 +305,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-18: 勤務間インターバルチェック（G13）
 
-**Status:** 完了・検証済み（[EP-20260730-work-interval-anomaly](./active/EP-20260730-work-interval-anomaly.md)、migration 064）
+**Status:** 完了（[EP-20260730-work-interval-anomaly](./active/EP-20260730-work-interval-anomaly.md)、commit `fc1414e`、migration 064）
 
 - **前提タスク:** T-09（anomaly 判定基盤に相乗りする）
 - **目的:** 前日の退勤から当日の出勤までの休息時間の不足（努力義務、目安 11h）を可視化する
