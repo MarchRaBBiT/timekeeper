@@ -20,7 +20,6 @@
 - [Work Schedule Master](./design-docs/work-schedule-master.md)
 - [Frontend Structure](./design-docs/frontend-structure.md)
 - [Scaling Guide](./design-docs/scaling.md)
-- [Theme Implementation](./design-docs/theme-implementation.md)
 
 ## Migration
 
@@ -31,13 +30,8 @@
 
 - [Work Schedule Phase2 Review (2026-07-02)](./reviews/2026-07-02-work-schedule-phase2-review.md)
 
-## Issue Breakdowns
-
-- [Issue Documents](./issues)
-
 ## Plans
 
-- [Long-Term Plans](./plans)
 - [Exec Plans / Trackers](./exec-plans)
 
 ## Components
