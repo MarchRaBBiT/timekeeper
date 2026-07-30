@@ -127,7 +127,7 @@
 
 - [x] 不足観点が実装調査（API catalog / migrations / handlers / 既存 EP・design doc）に基づき優先度付きで列挙されている
 - [x] 既存計画（settlement-balance EP、Follow-up Designs 1–4、tech-debt #7/#11/#16）との対応関係が明示され、二重登録がない
-- [ ] P1 の各観点（G1–G4）に対応する design doc または個別 EP が作成されている
+- [x] P1 の各観点（G1–G4）に対応する design doc または個別 EP が作成されている
 - [ ] P2 の各観点が、着手時に本 EP を起点として個別 EP 化されている（着手順は下記 Suggested Order）
 
 ## Constraints / Non-goals
@@ -144,7 +144,7 @@
 2. [x] gap inventory の文書化・優先順位付け（本ファイル）
 3. [x] 実装タスクリストの作成（前提・目的・ゴール・次タスク付き。G1→T-01/T-03、G2→T-02/T-04/T-05、G3→T-06/T-07、G4→T-08、G5→T-09、G6→T-10、G7→T-11、G8→T-12、G9→T-13、G10→T-14、G11→T-15、G12→T-16/T-17、G13→T-18、G14→T-19）
 4. [x] Phase 0（T-01, T-02, T-16, T-19）の着手・個別 EP 化（2026-07-04 完了。commits 40e10b8 / 5ec584b / 8d5101a / 92ca21a）
-5. [ ] Phase 1（T-03, T-04, T-06）の着手・個別 EP 化
+5. [x] Phase 1（T-03, T-04, T-06）の着手・個別 EP 化（2026-07-09 実装・多観点レビュー完了）
 6. [x] Phase 2（T-05, T-07, T-08, T-09, T-10, T-12, T-17）の着手・個別 EP 化
 7. [ ] Phase 3（T-11, T-13, T-14, T-15, T-18）の着手・個別 EP 化、G15 の再評価
 

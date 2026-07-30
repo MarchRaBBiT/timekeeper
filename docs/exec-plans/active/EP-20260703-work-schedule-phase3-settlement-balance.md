@@ -70,22 +70,22 @@
 
 ## Done Criteria (Observable)
 
-- [ ] 全日 flex・単一 version の月について、`GET /api/work-schedules/me/settlement-balance` が `status = "calculated"` と `contracted_minutes`（settlement period 由来）・`actual_minutes`（整数分）・`balance_minutes` を返す（backend統合テスト: flex version作成→publish→assign→resolve→打刻→残高取得のエンドツーエンド）
-- [ ] レスポンスは tagged union（`status` フィールド）であり、計算不可4種を含む全 variant が contract round-trip テストと OpenAPI schema に固定されている。計算不可は 200 で返り、4xx はリクエスト検証・認可のみ
-- [ ] `actual_minutes` は effective values の timestamp 差分から整数分で直接計算され、**保存済み `attendance.total_work_hours`（f64）を計算入力に使用していない**ことをテストで固定する
-- [ ] attendance correction の**申請→承認の API フロー経由**（直接 DB insert ではない）で承認された補正が残高へ反映される
-- [ ] 休憩は実打刻ベースで控除され、予定休憩は控除されない。`clock_out` 欠落の進行中 attendance は `actual_minutes = 0`・`in_progress: true` で日次内訳に含まれる
-- [ ] 実績は `work_date` 基準で月へ帰属する: 月末の夜勤（`end_day_offset = 1` で翌暦月に跨る）の実績が当月へ全量帰属し、月初の `workday_boundary` 前打刻の実績が前月へ帰属することをテストで固定する
-- [ ] materialize 後も resolved workday が無い日を含む月は `unresolved_days` で計算不可となり、欠損日を無視した部分計算が行われない（resolved 0件の月・1日だけ欠損の月の両方をテスト）
-- [ ] 対象月の**全 resolved workdays（非勤務日・祝日含む）**が参照する version の settlement period 値が一致しない場合、`version_mixed` で計算不可が返る（値の按分をしない）。非勤務日でのみ version が切り替わるケースも検出されることをテストで固定する
-- [ ] fixed のみ・fixed/flex 混在の月は `not_applicable`、全日 flex だが settlement period 行が無い月は `not_configured` が返り、計算不可ステータスの優先順位（`unresolved_days` → `not_applicable` → `version_mixed` → `not_configured`）がテストで固定されている
-- [ ] 祝日・非勤務日は `actual_minutes = 0` の日次内訳として計算に含まれ（計算不可にならない）、当月途中・未来月の要求は暫定残高（実績 0 を含む）として成功する
-- [ ] `year`（1900..=9999）・`month`（1..=12）の範囲外は `400 INVALID_WORK_SCHEDULE`（`month=0/13`、`year=10000`、不正 `user_id` をテスト）
-- [ ] 月次締め済み（locked projection）の月でも残高が計算でき、締め後の correction 承認が残高へ反映される（残高が保存値でなく導出値であることの固定）
-- [ ] admin API は既存 resolved-workdays と同じ部署スコープ認可に従う（System Admin=全員、Manager=配下のみ、スコープ外は403）
-- [ ] 残高は丸めなしの分値であり、`expected_work_minutes` を計算に使用していない
-- [ ] `work-schedule-master.md` に Design Decisions が転記され、`backend-api-catalog.md` に API 2本が追記される（**混在月・未設定・計算不可の扱いと `status` tagged union を利用者向けに明記**）
-- [ ] 既存テスト（workday_resolver / work_schedule_read_api / admin_work_schedules_api / work_schedule_phase2_api / attendance_work_schedule_integration / backend --lib）に回帰がない
+- [x] 全日 flex・単一 version の月について、`GET /api/work-schedules/me/settlement-balance` が `status = "calculated"` と `contracted_minutes`（settlement period 由来）・`actual_minutes`（整数分）・`balance_minutes` を返す（backend統合テスト: flex version作成→publish→assign→resolve→打刻→残高取得のエンドツーエンド）
+- [x] レスポンスは tagged union（`status` フィールド）であり、計算不可4種を含む全 variant が contract round-trip テストと OpenAPI schema に固定されている。計算不可は 200 で返り、4xx はリクエスト検証・認可のみ
+- [x] `actual_minutes` は effective values の timestamp 差分から整数分で直接計算され、**保存済み `attendance.total_work_hours`（f64）を計算入力に使用していない**ことをテストで固定する
+- [x] attendance correction の**申請→承認の API フロー経由**（直接 DB insert ではない）で承認された補正が残高へ反映される
+- [x] 休憩は実打刻ベースで控除され、予定休憩は控除されない。`clock_out` 欠落の進行中 attendance は `actual_minutes = 0`・`in_progress: true` で日次内訳に含まれる
+- [x] 実績は `work_date` 基準で月へ帰属する: 月末の夜勤（`end_day_offset = 1` で翌暦月に跨る）の実績が当月へ全量帰属し、月初の `workday_boundary` 前打刻の実績が前月へ帰属することをテストで固定する
+- [x] materialize 後も resolved workday が無い日を含む月は `unresolved_days` で計算不可となり、欠損日を無視した部分計算が行われない（resolved 0件の月・1日だけ欠損の月の両方をテスト）
+- [x] 対象月の**全 resolved workdays（非勤務日・祝日含む）**が参照する version の settlement period 値が一致しない場合、`version_mixed` で計算不可が返る（値の按分をしない）。非勤務日でのみ version が切り替わるケースも検出されることをテストで固定する
+- [x] fixed のみ・fixed/flex 混在の月は `not_applicable`、全日 flex だが settlement period 行が無い月は `not_configured` が返り、計算不可ステータスの優先順位（`unresolved_days` → `not_applicable` → `version_mixed` → `not_configured`）がテストで固定されている
+- [x] 祝日・非勤務日は `actual_minutes = 0` の日次内訳として計算に含まれ（計算不可にならない）、当月途中・未来月の要求は暫定残高（実績 0 を含む）として成功する
+- [x] `year`（1900..=9999）・`month`（1..=12）の範囲外は `400 INVALID_WORK_SCHEDULE`（`month=0/13`、`year=10000`、不正 `user_id` をテスト）
+- [x] 月次締め済み（locked projection）の月でも残高が計算でき、締め後の correction 承認が残高へ反映される（残高が保存値でなく導出値であることの固定）
+- [x] admin API は既存 resolved-workdays と同じ部署スコープ認可に従う（System Admin=全員、Manager=配下のみ、スコープ外は403）
+- [x] 残高は丸めなしの分値であり、`expected_work_minutes` を計算に使用していない
+- [x] `work-schedule-master.md` に Design Decisions が転記され、`backend-api-catalog.md` に API 2本が追記される（**混在月・未設定・計算不可の扱いと `status` tagged union を利用者向けに明記**）
+- [x] 既存テスト（workday_resolver / work_schedule_read_api / admin_work_schedules_api / work_schedule_phase2_api / attendance_work_schedule_integration / backend --lib）に回帰がない
 
 ## Constraints / Non-goals
 
@@ -98,40 +98,52 @@
 
 ## Task Breakdown
 
-1. [ ] app unit test（RED）: `crates/app/tests/settlement_balance.rs` を新規作成し、**計算純ロジック**（単一version計算・整数分計算・version混在fail-closed（非勤務日のみの切替含む）・unresolved_days・not_applicable（fixed混在含む）・not_configured・ステータス優先順位・進行中attendanceの0分扱い・丸めなし）を失敗テストで固定する
-2. [ ] app 実装（GREEN）: `CalculateSettlementBalance` use case・port trait・結果型（`status` tagged union に対応する enum）
-3. [ ] infra-postgres: port 実装（月次 resolved workdays 読み出し、version→settlement period 解決、effective values 適用済み実績の timestamp 読み出し）と integration test
-4. [ ] contract: tagged union DTO（`status` 全 variant）+ round-trip テスト
-5. [ ] backend: handler 2本・routing・year/month validation・OpenAPI 登録・部署スコープ認可 + integration test（**materialize を含むエンドツーエンド・correction 申請→承認 API フロー経由の反映・月境界の夜勤/boundary前打刻・resolved 0件月/1日欠損月・当月途中/未来月・認可403・validation 400**。HTTP 契約と境界日付は統合テスト側で固定する）
-6. [ ] docs: `work-schedule-master.md` へ Design Decisions 転記と Status 更新、`backend-api-catalog.md` へ API 2行追加（計算不可の扱い・tagged union を利用者向けに明記）、`docs-check`
-7. [ ] `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / focused tests / 影響統合テスト全件 / coverage 計測（目標80%）
-8. [ ] Codex へ実装の adversarial review を依頼し、指摘を修正する
+1. [x] app unit test（RED）: `crates/app/tests/settlement_balance.rs` を新規作成し、**計算純ロジック**（単一version計算・整数分計算・version混在fail-closed（非勤務日のみの切替含む）・unresolved_days・not_applicable（fixed混在含む）・not_configured・ステータス優先順位・進行中attendanceの0分扱い・丸めなし）を失敗テストで固定する
+2. [x] app 実装（GREEN）: `CalculateSettlementBalance` use case・port trait・結果型（`status` tagged union に対応する enum）
+3. [x] infra-postgres: port 実装（月次 resolved workdays 読み出し、version→settlement period 解決、effective values 適用済み実績の timestamp 読み出し）と integration test
+4. [x] contract: tagged union DTO（`status` 全 variant）+ round-trip テスト
+5. [x] backend: handler 2本・routing・year/month validation・OpenAPI 登録・部署スコープ認可 + integration test（**materialize を含むエンドツーエンド・correction 申請→承認 API フロー経由の反映・月境界の夜勤/boundary前打刻・resolved 0件月/1日欠損月・当月途中/未来月・認可403・validation 400**。HTTP 契約と境界日付は統合テスト側で固定する）
+6. [x] docs: `work-schedule-master.md` へ Design Decisions 転記と Status 更新、`backend-api-catalog.md` へ API 2行追加（計算不可の扱い・tagged union を利用者向けに明記）、`docs-check`
+7. [x] `cargo fmt --all --check` / `cargo clippy --workspace --all-targets -- -D warnings` / focused tests / 影響統合テスト全件 / coverage 計測（目標80%）
+8. [x] Codex へ実装の adversarial review を依頼し、指摘を修正する
 9. [ ] git commit、Progress Notes 更新、`.agent/PLANS.md` のポインタ更新
 
 ## Validation Plan
 
-- [ ] `cargo test -p timekeeper-app --test settlement_balance`
-- [ ] `cargo test -p timekeeper-contract`
-- [ ] `cargo test -p timekeeper-backend --test settlement_balance_api`（新規）
-- [ ] `cargo test -p timekeeper-backend --test workday_resolver`（回帰）
-- [ ] `cargo test -p timekeeper-backend --test work_schedule_read_api`（回帰）
-- [ ] `cargo test -p timekeeper-backend --test admin_work_schedules_api`（回帰）
-- [ ] `cargo test -p timekeeper-backend --test attendance_work_schedule_integration`（回帰）
-- [ ] `cargo test -p timekeeper-backend --lib`（回帰）
-- [ ] `cargo fmt --all --check`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
-- [ ] `bash scripts/harness.sh docs-check`
-- [ ] 新規モジュールの line coverage 計測（目標80%）
-- [ ] Codex adversarial review
+- [x] `cargo test -p timekeeper-app --test settlement_balance`
+- [x] `cargo test -p timekeeper-contract`
+- [x] `cargo test -p timekeeper-backend --test settlement_balance_api`（新規）
+- [x] `cargo test -p timekeeper-backend --test workday_resolver`（回帰）
+- [x] `cargo test -p timekeeper-backend --test work_schedule_read_api`（回帰）
+- [x] `cargo test -p timekeeper-backend --test admin_work_schedules_api`（回帰）
+- [x] `cargo test -p timekeeper-backend --test attendance_work_schedule_integration`（回帰）
+- [x] `cargo test -p timekeeper-backend --lib`（回帰）
+- [x] `cargo fmt --all --check`
+- [x] `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] `bash scripts/harness.sh docs-check`
+- [x] 新規モジュールの line coverage 計測（目標80%）
+- [x] Codex adversarial review
 
 ## Git Snapshot Log
 
-- [ ] `git status --short`
-- [ ] focused tests pass
+- [x] `git status --short`
+- [x] focused tests pass
 - [ ] `git commit`
 
 ## Progress Notes
 
+- 2026-07-30: 実装完了。`CalculateSettlementBalance` use case、5 variant の `status`
+  tagged union、既存 effective attendance read を再利用する PostgreSQL adapter、本人・scoped
+  manager 向け API 2 本、OpenAPI/API catalog/design doc を追加した。HTTP 統合テストで
+  materialize、全計算不可 status、version/type 混在、補正申請→別 manager 承認→locked 月再計算、
+  日跨ぎ夜勤と boundary 前打刻の `work_date` 帰属、認可・入力境界を固定した。
+  実測: app 6 passed、contract 全 suite green（settlement 2 passed）、settlement API 8 passed、
+  admin work schedules 15 passed、attendance/work-schedule integration 8 passed、
+  work-schedule read 9 passed、workday resolver 16 passed、Phase 2 API 27 passed、
+  backend lib 406 passed。`cargo clippy --workspace --all-targets -- -D warnings`、
+  `docs-check`、`fmt-check`、`git diff --check` は green。新規 app module の line coverage は
+  100.00%（region 96.51%）で80%目標を達成した。実装レビューは Block 2回の指摘を修正後、
+  最終 **Approve**。security review は Critical/High なしで **Approve**。
 - 2026-07-03: EP作成（計画のみ、実装未着手）。Phase3 先行2EPの申し送り「清算期間残高の実績突合」を対象とし、実装前に確定すべき設計判断（補正後 effective values の採用、実休憩ベース・予定休憩控除なし、丸めなし、契約値の按分なし、version混在は fail-closed、残高は非保存の導出値、expected_work_minutes 不使用、flexのみ対象、read-only API 2本、既存アーキテクチャ配置）を Design Decisions 節として明文化した。丸め・締め時点固定・給与エクスポートは design doc の Follow-up Designs 1/2/4 へ明示的に委譲した。
 - 2026-07-03: Codex（`codex:codex-rescue`エージェント経由、backgroundタスク`task-mr4px414-r21aav`、所要3分40秒）に計画段階のadversarial reviewを依頼した。結果は **Block**（High 2件・Medium 5件・Low 2件）。指摘と対応は以下（すべて本EPへ反映済み。実装は未着手）:
   - **High#1（API契約未定義）**: 計算不可を `200+成功DTO内code` で返すのか `4xx+ErrorResponse` で返すのか未定義で、実装者ごとに挙動が割れる。→ Design Decision 9 で「計算不可はリソースの正当な状態として 200 + tagged union（`status` フィールド）、4xx はリクエスト検証・認可のみ」と確定し、contract round-trip / OpenAPI への固定を Done Criteria 化した。

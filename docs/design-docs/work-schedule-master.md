@@ -1,8 +1,8 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 2 backend MVP implemented — operational projection generation, anomaly detection, admin calendar API, bulk assignment, and monthly close lock are available. Phase 3 flex/core time/settlement period is implemented end-to-end for the Work Schedule Version API (`crates/domain`, `crates/contract`, `backend` handler/repository/migration) and for `ResolveWorkday`/`ResolvedWorkday` projection output (`schedule_type` + per-day core time window snapshot, read via `/api/work-schedules/me`, admin resolved-workdays, and the calendar API); settlement balance reconciliation against actual attendance is not yet implemented.
+**Status:** Phase 2 backend MVP and Phase 3 flex/core time/settlement balance are implemented. The settlement balance is a read-time derived value exposed to the employee and scoped managers; payroll snapshot/export remains a follow-up.
 
-**Updated:** 2026-07-03
+**Updated:** 2026-07-30
 
 **Scope:** 勤務体系の版管理、適用、日別勤務予定の解決、および勤怠との接続
 
@@ -39,8 +39,25 @@ handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チ�
 3経路すべてで参照可能にした。**`expected_work_minutes`はflexでは区間（flex band）の最大稼働可能幅を表し、
 契約所定時間ではない**——この意味論は変更しておらず、anomaly検出・打刻接続（`day_kind`のみ参照）への
 誤用がないことを回帰テストで固定した。清算期間はprojectionへsnapshotせず、`work_schedule_version_id`
-経由でpublished version（DBトリガーにより不変）を参照する設計とした。清算期間残高の実績突合は
-「勤怠計算ポリシー」設計に依存するため引き続き未実装。
+経由でpublished version（DBトリガーにより不変）を参照する設計とした。
+2026-07-30に清算期間残高の第一増分を実装し、補正後の実打刻と実休憩から分単位の実績を導出して、
+契約所定分との差を本人・scoped manager向けAPIで参照可能にした。
+
+### 清算期間残高（第一増分）
+
+- 対象は月次清算期間を持つflex勤務のみ。`expected_work_minutes`は契約所定分に使用しない
+- 契約所定分はpublished versionの`contracted_minutes_per_period`を参照する
+- 実績は`attendance_correction_effective_values`適用後のclock/break timestampから整数分で直接計算し、
+  保存済み`total_work_hours`や予定休憩は使用しない
+- 実績は`work_date`の属する月へ全量帰属し、日跨ぎ勤務を暦日で分割しない
+- 残高は保存せず、`actual_minutes - contracted_minutes`としてread時に導出する。締め後に承認された
+  勤怠修正も次回readへ反映される
+- 対象月はread前にmaterializeする。欠損日が残る場合は`unresolved_days`、fixed日を含む場合は
+  `not_applicable`、異なる契約所定分を持つversionが混在する場合は`version_mixed`、
+  清算期間未設定は`not_configured`を返す
+- 計算不可はエラーではなく`200 OK`の`status` tagged unionで表現する
+- 進行中attendanceは`actual_minutes = 0`、`in_progress = true`として日次内訳へ含める
+- 第一増分では分単位の丸め、version混在月の按分、残高snapshot、CSV/給与exportを行わない
 
 ## Decision Summary
 
@@ -361,6 +378,8 @@ resolved_workday_core_time_windows     -- Phase3: 解決済み勤務日のコア
 | `DELETE` | `/api/admin/users/{user_id}/workday-overrides/{date}` | authorized manager | 未ロック例外を削除、`204` |
 | `GET` | `/api/admin/users/{user_id}/resolved-workdays` | scoped manager+ | `from`, `to` 必須 |
 | `GET` | `/api/work-schedules/me` | user | 自分の解決済み予定。`from`, `to` 必須 |
+| `GET` | `/api/admin/users/{user_id}/settlement-balance` | scoped manager+ | `year`, `month` 必須。flex清算期間残高 |
+| `GET` | `/api/work-schedules/me/settlement-balance` | user | `year`, `month` 必須。本人のflex清算期間残高 |
 
 `authorized manager` は既存の部署階層スコープを利用する。
 マスタ変更と割り当て変更は system admin に限定し、日別例外だけを担当マネージャーへ許可する。
@@ -533,7 +552,7 @@ handlerへ解決規則やSQLを追加しない。
 
 ### Phase 3 — Advanced Work Arrangements
 
-- flex、core time、清算期間（domain model・Work Schedule Version API配線・`ResolveWorkday`のflex対応出力（`schedule_type`/コアタイムsnapshot）は実装済み。清算期間残高の実績突合は未実装）
+- flex、core time、清算期間（domain model・API配線・`ResolveWorkday`出力・補正後実績との清算期間残高突合まで実装済み）
 - 変形労働、複数勤務区間
 - シフト一括作成・交換
 - attendance calculation policyとの接続

@@ -238,6 +238,7 @@ pub mod attendance {
 }
 
 pub mod leave;
+pub mod settlement_balance;
 pub mod work_schedules;
 
 pub mod requests {

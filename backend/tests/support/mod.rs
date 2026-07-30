@@ -733,6 +733,14 @@ pub async fn seed_flex_work_schedule_for_user(pool: &PgPool, user_id: UserId) ->
     .await
     .expect("insert core time window");
     sqlx::query(
+        "INSERT INTO work_schedule_settlement_periods \
+         (version_id, unit, contracted_minutes_per_period) VALUES ($1, 'monthly', 9600)",
+    )
+    .bind(version_id)
+    .execute(pool)
+    .await
+    .expect("insert flex settlement period");
+    sqlx::query(
         "UPDATE work_schedule_versions \
          SET status = 'published', published_by = $2, published_at = NOW() \
          WHERE id = $1",

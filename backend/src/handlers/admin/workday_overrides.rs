@@ -13,6 +13,7 @@ use timekeeper_app::workday_overrides::{
 };
 use timekeeper_contract::{
     attendance::{MonthlyClassificationQueryParams, MonthlyClassificationResponse},
+    settlement_balance::{SettlementBalanceQueryParams, SettlementBalanceResponse},
     work_schedules::{
         ResolvedWorkdayListResponse, ResolvedWorkdayRangeQuery, SetWorkdayOverrideRequest,
         WorkdayOverrideKind as ContractWorkdayOverrideKind, WorkdayOverrideResponse,
@@ -45,6 +46,17 @@ pub async fn get_user_classification(
     let target = parse_user_id(&user_id)?;
     authorize_scope(&state, &user, target).await?;
     crate::handlers::attendance::monthly_classification_response(&state, &user_id, query).await
+}
+
+pub async fn get_user_settlement_balance(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Path(user_id): Path<String>,
+    Query(query): Query<SettlementBalanceQueryParams>,
+) -> Result<Json<SettlementBalanceResponse>, AppError> {
+    let target = parse_user_id(&user_id)?;
+    authorize_scope(&state, &user, target).await?;
+    crate::handlers::work_schedules::settlement_balance_response(&state, &user_id, query).await
 }
 
 pub async fn set_workday_override(

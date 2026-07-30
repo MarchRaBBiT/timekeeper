@@ -24,40 +24,40 @@
   での大規模分割リファクタを凍結し、「これ以上肥大化させない」ガードに切り替える。
   現行側での分割作業は rebuild と semantic conflict を起こすため優先度を P2 に下げる。
 - **rebuild 期間中も現行 harness が gate であり続ける項目**（#5）は P1 を維持する。2026-07-04 に本体を返済済み（詳細はセクション #5 参照）。
-- **運用実害がある quick win**（#11 runbook 追記、#6 残作業の stale line-count 削除）を先に処理する。
+- **運用実害がある quick win**（#11 runbook 追記、#6 の stale line-count 削除）を先に処理し、いずれも返済済み。
 
 各項目の実測ステータス（詳細は各セクションの Status 参照）:
 
-| # | Debt | 2026-07-04 status |
+| # | Debt | Current status |
 |---|---|---|
 | 1 | P0 Build health | 返済済み（2026-03-11） |
 | 2 | Backend god modules | 未着手・悪化（auth.rs 2059 / main.rs 1139 / audit_log.rs 1060 行）→ rebuild へ委譲、P2 降格 |
 | 3 | Frontend god modules | 未着手・悪化（client.rs 1121 / holidays.rs 1659 行）→ rebuild へ委譲、P2 降格 |
 | 4 | Repository / handler duplication | 未着手 → rebuild の use case 分割 EP 群が返済経路、P2 降格 |
 | 5 | Test harness fragility | 返済済み（2026-07-04）。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage を追加。follow-up は残るが P1 as-was の懸念は解消 |
-| 6 | Docs source-of-truth drift | 部分解消（plan 配置は `docs/exec-plans/` に統一済み。AGENTS.md の line count は stale のまま） |
+| 6 | Docs source-of-truth drift | 返済済み（plan 配置を統一し、変化しやすい AGENTS.md の line count を削除） |
 | 7 | Queue / worker operational debt | 返済済み（2026-07-04）。Recommended Fix 1–3 を T-16（汎用通知サービス基盤）と統合して返済: RUNBOOK 追記・`worker-once` stage 追加・queue メッセージ型の一般化 |
-| 8 | Frontend i18n follow-up | 未返済（`rust-i18n 4.0.0-preview1` のまま。EP-20260311 が 3 ヶ月停滞、生死判定要） |
+| 8 | Frontend i18n follow-up | 一部返済済み（EP-20260311 の移行・検証は完了。`rust-i18n 4.0.0-preview1` から stable 系への更新だけを独立した残債として維持） |
 | 9 | 部署管理 UI 未完成 | 未返済（`#[allow(dead_code)]` 3 メソッド残存） |
 | 10 | ユーザー管理 department_id 選択 | 部分解消（招待フォームは実装済み: f3677c6。編集フォームは未実装） |
 | 11 | 最上位マネージャー自己申請 pending | 一次返済済み（RUNBOOK 追記・本コミット）。中長期対応（代理承認者/自動エスカレーション）は P2 で残存 |
 | 12 | allowed_user_ids 関心漏れ | 未返済 → rebuild の use case 層で解消見込み、rebuild へ委譲 |
 | 13 | CreateUser serde 非対称 | 未返済（現状維持を確認） |
 | 14 | departments_resource リフレッシュ | 未返済（key は `bool` のまま） |
-| 15 | 既存 failing integration test 6 件 | 新規（2026-07-04 登録）。`main` 相当で backend-integration が red。PR #456 への test 未追従が原因 |
+| 15 | 既存 failing integration test 6 件 | 返済済み。PR #456 後の認可・schema に test を追従し、対象 2 suite は 15 passed / 0 failed（2026-07-30 再実測） |
 | 16 | 勤怠修正承認の管理 UI 未配線 | 新規（2026-07-04 登録）。approve/reject が API 直叩きでしか実行できない |
 
 ## Priority Queue
 
 | Priority | Debt | Scope | Why now |
 |---|---|---|---|
-| P1 | 既存 failing integration test 6 件（#15） | `backend/tests/admin_requests_api.rs`, `backend/tests/user_update_api.rs` | `main` 相当で backend-integration が red のままだと、gate として「今回差分の失敗」を検知できない |
+| ~~P1~~ 返済済み | 既存 failing integration test 6 件（#15） | `backend/tests/admin_requests_api.rs`, `backend/tests/user_update_api.rs` | 現行認可・schema に test を追従し、対象 2 suite は 15 passed / 0 failed |
 | P2 | 勤怠修正承認の管理 UI 未配線（#16） | `/admin` 画面 + `frontend/src/api/client.rs` | 勤怠修正の承認/却下が API 直叩きでしか実行できず、RUNBOOK が curl 手順に依存している |
 | P2 | 最上位マネージャー自己申請 pending 中長期対応（#11 残） | 代理承認者 / system_admin 自動エスカレーション | RUNBOOK 追記（quick win）は返済済み。残るのは仕様検討を要する中長期対応のみ |
-| P2 | Docs source-of-truth drift 残作業（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` の stale line count | agent が誤った見積もりをする。削除だけで済む quick win |
+| ~~P2~~ 返済済み | Docs source-of-truth drift（#6） | `backend/AGENTS.md`, `frontend/AGENTS.md` | 変化しやすい line count / file size metadata を削除 |
 | P2 | ユーザー編集フォームの department 選択（#10 残） | `admin_users/components/detail.rs` | 招待フォーム側は返済済みで、残り半分だけ |
 | P2 | 部署管理 UI 未完成（#9） | department 編集 / manager 割当 UI | dead_code 3 件の温床 |
-| P2 | Frontend i18n follow-up（#8） | EP-20260311 の再開 or クローズ判定 | preview 依存が 4 ヶ月継続。停滞 EP の生死判定が先 |
+| P2 | Frontend i18n preview 依存（#8 残） | `rust-i18n 4.0.0-preview1` の stable 系への更新 | EP-20260311 の移行・検証は完了済み。依存更新は本体完了と分離して扱う |
 | ~~P2~~ 返済済み | Queue / worker operational debt（#7） | RUNBOOK, harness stage | T-16 と統合して 2026-07-04 に返済（RUNBOOK 追記 / `worker-once` stage / queue メッセージ型一般化） |
 | P2 | Backend / Frontend god modules（#2, #3） | 現行側は肥大化ガードのみ | 分割は rebuild（`crates/`, `apps/web`）で実現 |
 | P2 | Repository / handler duplication（#4）, allowed_user_ids（#12） | rebuild use case 層 | rebuild EP 群が実質的な返済経路 |
@@ -335,14 +335,13 @@ Recommended Fix 1-4 を次のとおり返済した。
 
 ---
 
-### 6. P2: Docs Source-Of-Truth Drift
+### 6. P2→返済済み: Docs Source-Of-Truth Drift
 
-**Status (2026-07-04)**
+**Status (2026-07-30)**
 
-- 部分解消。exec plan の配置は `docs/exec-plans/{active,completed}` に統一済み（`docs/generated/exec-plans` は消滅）
-- 未解消: `backend/AGENTS.md` / `frontend/AGENTS.md` の line count は依然 stale
-  （例: `client.rs` 記載 692 行 / 実測 1121 行、`auth.rs` 記載 642 行 / 実測 2059 行）
-- 残作業は Recommended Fix 1（変化しやすい line-count metadata の削除）のみで、quick win
+- 返済済み。exec plan の配置は `docs/exec-plans/{active,completed}` に統一済み
+- `backend/AGENTS.md` / `frontend/AGENTS.md` から、変化しやすく陳腐化していた
+  line count / file size metadata を削除した
 
 **Symptoms**
 
@@ -353,11 +352,10 @@ Recommended Fix 1-4 を次のとおり返済した。
 **Evidence**
 
 - [frontend/AGENTS.md](../../frontend/AGENTS.md)
-  - `api/client.rs` を `692 lines` と書いているが現状は `942 lines`
+  - hotspot は行数ではなく分割方針で記載
 - [backend/AGENTS.md](../../backend/AGENTS.md)
-  - `handlers/auth.rs` を `642 lines` と書いているが現状は `1993 lines`
+  - hotspot は行数ではなく分割方針で記載
 - [AGENTS.md](../../AGENTS.md)
-- [docs/generated/exec-plans/active](../generated/exec-plans/active)
 - [docs/exec-plans/tech-debt-tracker.md](./tech-debt-tracker.md)
 
 **Impact**
@@ -446,12 +444,14 @@ queue のメッセージ型を `notification_kind` + payload の internally-tagg
 
 ---
 
-### 8. P2: Frontend I18n Follow-up Debt
+### 8. P2: Frontend I18n Preview Dependency Debt
 
-**Status (2026-07-04)**
+**Status (2026-07-30)**
 
-- 未返済。`frontend/Cargo.toml` は `rust-i18n = "4.0.0-preview1"` のまま
-- [EP-20260311-frontend-rust-i18n-migration](./active/EP-20260311-frontend-rust-i18n-migration.md) が active に残っているが約 4 ヶ月停滞。まず EP の再開かクローズかを判定する
+- [EP-20260311-frontend-rust-i18n-migration](./active/EP-20260311-frontend-rust-i18n-migration.md)
+  の翻訳移行・テスト・文書同期は完了済み
+- 未返済なのは `frontend/Cargo.toml` の `rust-i18n = "4.0.0-preview1"` を stable 系へ
+  更新する作業のみ。本体 EP の完了状態とは分離し、依存更新 debt として維持する
 
 **Status (2026-03-12)**
 
@@ -710,15 +710,17 @@ queue のメッセージ型を `notification_kind` + payload の internally-tagg
 
 ---
 
-### 15. P1: 既存 failing integration test 6 件（PR #456 への test 未追従）
+### 15. P1→返済済み: 既存 failing integration test 6 件（PR #456 への test 未追従）
 
 **発生時期:** 発見は 2026-07-04（item #5 返済の検証中）。混入は PR #456（部署階層 & マネージャー承認）と推定
 
-**Status (2026-07-04)**
+**Status (2026-07-30)**
 
-- 新規登録。`main` 相当コードで `backend-integration` が恒常的に red（1314 passed / 6 failed）
-- 6 件とも item #5 の返済とは無関係の既存 failure であることを、diff 適用前ファイルへの巻き戻し再実行で確認済み
-- 2026-07-04 に該当 2 バイナリを単体再実行し、原因を診断済み（下記）。**いずれも製品バグではなく test 側の陳腐化**
+- 返済済み。`admin_requests_api.rs` は現行の部署スコープ認可へ、
+  `user_update_api.rs` は現行 schema / 共有 fixture へ追従済み
+- `cargo test -p timekeeper-backend --test admin_requests_api --test user_update_api -- --nocapture`:
+  15 passed / 0 failed（2026-07-30 再実測）
+- 以下の Symptoms / Root Cause は返済前の記録として保持する
 
 **Symptoms**
 
@@ -795,13 +797,13 @@ queue のメッセージ型を `notification_kind` + payload の internally-tagg
 1. ~~P0 Build health debt~~（返済済み 2026-03-11）
 2. ~~P1 最上位マネージャーの自己申請 pending（#11）— RUNBOOK 追記~~（一次返済済み・本コミット。中長期対応は P2 #11 残 へ降格）
 3. ~~P1 Test harness fragility（#5）~~（返済済み 2026-07-04。fixture profile / EnvVarGuard / 共有 integration_guard / backend-security-smoke stage / suite execution model を追加。follow-up は P2 #5 残 へ）
-4. P1 既存 failing integration test 6 件（#15）— PR #456 への test 追従。backend-integration を 0 failed に戻す
+4. ~~P1 既存 failing integration test 6 件（#15）~~（返済済み。対象 2 suite は 15 passed / 0 failed）
 5. P2 最上位マネージャー自己申請 pending 中長期対応（#11 残）— 代理承認者 / 自動エスカレーション検討
-6. P2 Docs source-of-truth drift 残作業（#6）— AGENTS.md の stale line-count 削除
+6. ~~P2 Docs source-of-truth drift 残作業（#6）~~（返済済み。AGENTS.md の stale line-count を削除）
 7. P2 ユーザー編集フォームの department 選択（#10 残り半分）
 8. P2 部署管理 UI 未完成（#9）
 9. P2 勤怠修正承認の管理 UI 未配線（#16）— #9 と同型のため合わせて計画してよい
-10. P2 Frontend i18n follow-up（#8）— まず EP-20260311 の生死判定
+10. P2 Frontend i18n preview 依存（#8 残）— 完了済み EP-20260311 とは分離し、stable 系への依存更新を計画
 11. ~~P2 Queue / worker operational debt（#7）~~（返済済み 2026-07-04。T-16 と統合。RUNBOOK 追記 / `worker-once` stage / queue メッセージ型一般化）
 12. P2 Backend / Frontend god modules（#2, #3）— rebuild へ委譲、現行側は肥大化ガードのみ
 13. P2 Repository / handler duplication（#4）+ allowed_user_ids 関心漏れ（#12）— rebuild use case EP 群へ委譲

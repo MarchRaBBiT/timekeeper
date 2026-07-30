@@ -3,12 +3,19 @@ use axum::{
     Json,
 };
 use chrono::Utc;
+use timekeeper_app::settlement_balance::{
+    CalculateSettlementBalance, SettlementBalanceError, SettlementBalanceQuery,
+    SettlementBalanceResult,
+};
 use timekeeper_app::user_workdays::{
     ListUserWorkdays, ListUserWorkdaysCommand, ListUserWorkdaysError,
 };
 use timekeeper_app::work_schedules::{
     ResolveWorkday, ResolveWorkdayCommand, ResolveWorkdayError, ResolvedDayKind, ResolvedWorkday,
     ScheduleType, WorkScheduleSource,
+};
+use timekeeper_contract::settlement_balance::{
+    SettlementBalanceDayResponse, SettlementBalanceQueryParams, SettlementBalanceResponse,
 };
 use timekeeper_contract::work_schedules::{
     CoreTimeWindowResponse, ResolvedBreakResponse, ResolvedDayKind as ContractResolvedDayKind,
@@ -17,6 +24,9 @@ use timekeeper_contract::work_schedules::{
     WorkScheduleType as ContractWorkScheduleType,
 };
 use timekeeper_domain::work_schedules::{CoreTimeWindow, PlannedBreak, PlannedWorkInterval};
+use timekeeper_infra_postgres::settlement_balance::{
+    SettlementBalancePostgresRepository, SettlementPostgresWorkdayMaterializer,
+};
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 
 use crate::{error::AppError, models::user::User, state::AppState};
@@ -28,6 +38,32 @@ pub async fn get_my_workdays(
 ) -> Result<Json<ResolvedWorkdayListResponse>, AppError> {
     let user_id = user.id.to_string();
     list_resolved_workdays(&state, &user_id, query).await
+}
+
+pub async fn get_my_settlement_balance(
+    State(state): State<AppState>,
+    Extension(user): Extension<User>,
+    Query(query): Query<SettlementBalanceQueryParams>,
+) -> Result<Json<SettlementBalanceResponse>, AppError> {
+    settlement_balance_response(&state, &user.id.to_string(), query).await
+}
+
+pub(crate) async fn settlement_balance_response(
+    state: &AppState,
+    user_id: &str,
+    query: SettlementBalanceQueryParams,
+) -> Result<Json<SettlementBalanceResponse>, AppError> {
+    let repository = SettlementBalancePostgresRepository::new(state.read_pool().clone());
+    let materializer = SettlementPostgresWorkdayMaterializer::new(state.write_pool.clone());
+    let result = CalculateSettlementBalance::new(repository, materializer)
+        .execute(SettlementBalanceQuery {
+            user_id: user_id.to_string(),
+            year: query.year,
+            month: query.month,
+        })
+        .await
+        .map_err(settlement_error_to_app_error)?;
+    Ok(Json(settlement_result_to_response(result)))
 }
 
 /// `from`/`to` の範囲で解決済み勤務日を取得し、応答 DTO へ整形する共通処理。
@@ -103,6 +139,49 @@ fn list_workdays_error_to_app_error(error: ListUserWorkdaysError) -> AppError {
         ListUserWorkdaysError::Repository(message) => {
             AppError::InternalServerError(anyhow::anyhow!(message))
         }
+    }
+}
+
+fn settlement_error_to_app_error(error: SettlementBalanceError) -> AppError {
+    match error {
+        SettlementBalanceError::InvalidYear => AppError::BadRequestWithCode {
+            message: "year must be between 1900 and 9999".to_string(),
+            code: "INVALID_WORK_SCHEDULE".to_string(),
+        },
+        SettlementBalanceError::InvalidMonth => AppError::BadRequestWithCode {
+            message: "month must be between 1 and 12".to_string(),
+            code: "INVALID_WORK_SCHEDULE".to_string(),
+        },
+        SettlementBalanceError::Repository(message) => {
+            tracing::error!(error = %message, "settlement balance repository error");
+            AppError::InternalServerError(anyhow::anyhow!("settlement balance calculation failed"))
+        }
+    }
+}
+
+fn settlement_result_to_response(result: SettlementBalanceResult) -> SettlementBalanceResponse {
+    match result {
+        SettlementBalanceResult::Calculated(calculated) => SettlementBalanceResponse::Calculated {
+            year: calculated.year,
+            month: calculated.month,
+            contracted_minutes: calculated.contracted_minutes,
+            actual_minutes: calculated.actual_minutes,
+            balance_minutes: calculated.balance_minutes,
+            days: calculated
+                .days
+                .into_iter()
+                .map(|day| SettlementBalanceDayResponse {
+                    work_date: day.work_date,
+                    actual_minutes: day.actual_minutes,
+                    locked: day.locked,
+                    in_progress: day.in_progress,
+                })
+                .collect(),
+        },
+        SettlementBalanceResult::UnresolvedDays => SettlementBalanceResponse::UnresolvedDays,
+        SettlementBalanceResult::NotApplicable => SettlementBalanceResponse::NotApplicable,
+        SettlementBalanceResult::VersionMixed => SettlementBalanceResponse::VersionMixed,
+        SettlementBalanceResult::NotConfigured => SettlementBalanceResponse::NotConfigured,
     }
 }
 

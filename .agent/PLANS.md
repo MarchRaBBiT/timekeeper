@@ -81,7 +81,7 @@
 
 # EP-20260703-work-schedule-phase3-settlement-balance
 
-**計画段階（未着手）** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md)
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md)。補正後実績と月次契約所定分を分単位で突合するread-model、本人・scoped manager向けAPI、tagged union contractを追加
 
 # EP-20260703-work-schedule-phase3-resolve-workday-flex
 

@@ -298,6 +298,10 @@ fn user_routes(state: AppState) -> Router<AppState> {
             get(handlers::work_schedules::get_my_workdays),
         )
         .route(
+            "/api/work-schedules/me/settlement-balance",
+            get(handlers::work_schedules::get_my_settlement_balance),
+        )
+        .route(
             "/api/monthly-closings/me/self-confirm",
             post(handlers::admin::self_confirm_monthly_closing),
         )
@@ -468,6 +472,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/users/{user_id}/classification",
             get(handlers::admin::get_user_classification),
+        )
+        .route(
+            "/api/admin/users/{user_id}/settlement-balance",
+            get(handlers::admin::get_user_settlement_balance),
         )
         .route(
             "/api/admin/users/{user_id}/work-schedule-calendar",

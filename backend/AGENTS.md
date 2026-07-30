@@ -23,13 +23,13 @@ backend/src/
 ├── lib.rs            # ライブラリ（bin/token_cleanup.rs で共有）
 ├── handlers/         # API ハンドラー（詳細: handlers/AGENTS.md）
 │   ├── admin/        # 管理者機能（詳細: handlers/admin/AGENTS.md）
-│   ├── auth.rs       # 認証・MFA・パスワードリセット (642 lines - 監視要)
-│   └── attendance.rs # 勤怠打刻・CSV エクスポート (610 lines)
+│   ├── auth.rs       # 認証・MFA・パスワードリセット（複雑度監視対象）
+│   └── attendance.rs # 勤怠打刻・CSV エクスポート（複雑度監視対象）
 ├── repositories/     # Trait-based リポジトリ層 (password_reset.rs 含む)
 ├── models/           # データモデル（sqlx::FromRow + validator）
 ├── middleware/       # JWT認証・監査ログ・ロギング
 │   ├── auth.rs       # Extension<User> 抽出、トークン検証
-│   └── audit_log.rs # 監査ログ分類・メタデータ構築 (848 lines - 監視要)
+│   └── audit_log.rs # 監査ログ分類・メタデータ構築（複雑度監視対象）
 ├── services/         # ビジネスロジック（祝日計算など）
 ├── utils/            # JWT 生成、CSV エクスポート、セキュリティ、email
 └── error/mod.rs      # 統一 AppError enum + IntoResponse
@@ -81,10 +81,10 @@ tests/               # testcontainers 統合テスト（詳細: tests/AGENTS.md�
 - rebuild work で巨大 handler を移植先にも再作成することは禁止。use case / domain / infra 境界へ分ける
 
 ## COMPLEXITY HOTSPOTS (要リファクタ)
-- `middleware/audit_log.rs` (848 lines): 分類ロジックのモジュール化
-- `handlers/auth.rs` (642 lines): MFA ロジックの `handlers/mfa.rs` へ分離
-- `main.rs` (603 lines): ルート定義のモジュール化（`handlers::routes()`）
-- `handlers/attendance.rs` (610 lines): CSV エクスポートの utils へ分離
+- `middleware/audit_log.rs`: 分類ロジックのモジュール化
+- `handlers/auth.rs`: MFA ロジックの `handlers/mfa.rs` へ分離
+- `main.rs`: ルート定義のモジュール化（`handlers::routes()`）
+- `handlers/attendance.rs`: CSV エクスポートの utils へ分離
 
 ## COMMANDS
 ```bash

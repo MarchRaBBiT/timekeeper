@@ -20,10 +20,10 @@ Leptos CSR-only WASM フロントエンド + TailwindCSS。MVVM パターン、�
 frontend/src/
 ├── main.rs          # エントリーポイント
 ├── lib.rs           # ライブラリ
-├── router.rs        # Leptos Router 定義 (3.8 KB)
-├── config.rs        # 実行時設定 (9.7 KB - 構成ファイル)
+├── router.rs        # Leptos Router 定義
+├── config.rs        # 実行時設定
 ├── api/
-│   ├── client.rs    # 集中 API クライアント (692 lines - 監視要)
+│   ├── client.rs    # 集中 API クライアント（複雑度監視対象）
 │   └── types.rs    # ApiError + 共通型
 ├── components/
 │   ├── common.rs    # 共通コンポーネント
@@ -98,8 +98,8 @@ pages/attendance/
 - rebuild work で巨大 panel / view_model / global API client を移植先にも再作成することは禁止。feature boundary へ分ける
 
 ## COMPLEXITY HOTSPOTS (要リファクタ)
-- `api/client.rs` (692 lines): ドメイン分割（AuthClient/AttendanceClient 等）予定
-- `pages/admin/components/holidays.rs` (654 lines): コンポーネント分割予定（フィルタ・Google 連携）
+- `api/client.rs`: ドメイン分割（AuthClient/AttendanceClient 等）予定
+- `pages/admin/components/holidays.rs`: コンポーネント分割予定（フィルタ・Google 連携）
 
 ## COMMANDS
 ```bash

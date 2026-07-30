@@ -1,5 +1,6 @@
 pub mod attendance_classification;
 pub mod leave_ledger;
+pub mod settlement_balance;
 pub mod user_workdays;
 pub mod work_schedules;
 pub mod workday_overrides;

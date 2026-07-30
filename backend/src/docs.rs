@@ -60,6 +60,9 @@ use timekeeper_contract::leave::{
     LeaveLedgerAdjustResponse, LeaveLedgerEntryResponse, LeaveLedgerKind, LeaveLotResponse,
     LeaveObligationStatus, LeaveObligationWindowResponse, SetHireDateRequest,
 };
+use timekeeper_contract::settlement_balance::{
+    SettlementBalanceDayResponse, SettlementBalanceQueryParams, SettlementBalanceResponse,
+};
 use timekeeper_contract::work_schedules::{
     AssignmentTarget, BulkWorkScheduleAssignmentFailure, BulkWorkScheduleAssignmentRequest,
     BulkWorkScheduleAssignmentResponse, CloseWorkScheduleMonthRequest,
@@ -212,8 +215,10 @@ struct RequestCancellationResponse {
         admin_close_monthly_closing_doc,
         admin_reopen_monthly_closing_doc,
         work_schedules_me_doc,
+        work_schedules_me_settlement_balance_doc,
         admin_get_user_resolved_workdays_doc,
         admin_get_user_classification_doc,
+        admin_get_user_settlement_balance_doc,
         admin_get_user_leave_balance_doc,
         admin_set_workday_override_doc,
         admin_delete_workday_override_doc,
@@ -255,6 +260,8 @@ struct RequestCancellationResponse {
             FlexPeriodClassificationResponse,
             FlexPeriodStatusResponse,
             MonthlyClassificationResponse,
+            SettlementBalanceDayResponse,
+            SettlementBalanceResponse,
             LeaveBalanceResponse,
             LeaveLotResponse,
             LeaveExpiryScheduleResponse,
@@ -1479,6 +1486,18 @@ fn work_schedules_me_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/work-schedules/me/settlement-balance",
+    params(SettlementBalanceQueryParams),
+    responses(
+        (status = 200, body = SettlementBalanceResponse),
+        (status = 400, body = ErrorResponse)
+    ),
+    tag = "Work Schedule"
+)]
+fn work_schedules_me_settlement_balance_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/users/{user_id}/resolved-workdays",
     params(
         ("user_id" = String, Path, description = "対象ユーザーID"),
@@ -1500,6 +1519,22 @@ fn admin_get_user_resolved_workdays_doc() {}
     tag = "Admin"
 )]
 fn admin_get_user_classification_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/users/{user_id}/settlement-balance",
+    params(
+        ("user_id" = String, Path, description = "対象ユーザーID"),
+        SettlementBalanceQueryParams
+    ),
+    responses(
+        (status = 200, body = SettlementBalanceResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 403, body = ErrorResponse)
+    ),
+    tag = "Admin"
+)]
+fn admin_get_user_settlement_balance_doc() {}
 
 #[utoipa::path(
     get,
@@ -1769,8 +1804,10 @@ mod tests {
             admin_close_monthly_closing_doc,
             admin_reopen_monthly_closing_doc,
             work_schedules_me_doc,
+            work_schedules_me_settlement_balance_doc,
             admin_get_user_resolved_workdays_doc,
             admin_get_user_classification_doc,
+            admin_get_user_settlement_balance_doc,
             admin_get_user_leave_balance_doc,
             admin_set_workday_override_doc,
             admin_delete_workday_override_doc,
