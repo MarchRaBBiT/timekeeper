@@ -9,6 +9,10 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260730-lan-manual-testbed
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-lan-manual-testbed.md`](../docs/exec-plans/active/EP-20260730-lan-manual-testbed.md)。LAN上の別端末からHTTPSで人手確認するための隔離Podman Compose環境。
+
 # EP-20260730-leave-units-and-type-master
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md`](../docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md)。T-11: 半休・時間単位休暇、休暇種別マスタ、分単位台帳消化、勤怠表示の拡張（migration 060–061）

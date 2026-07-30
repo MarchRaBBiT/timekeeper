@@ -1,0 +1,90 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.93}
+        CARGO_CHEF_VERSION: ${CARGO_CHEF_VERSION:-0.1.73}
+    environment:
+      DATABASE_URL: postgres://timekeeper:timekeeper@backend-db:5432/timekeeper
+      REDIS_URL: redis://redis:6379
+      REDIS_POOL_SIZE: "10"
+      REDIS_CONNECT_TIMEOUT: "5"
+      FEATURE_REDIS_CACHE_ENABLED: "true"
+      RUST_LOG: info
+      APP_TIMEZONE: Asia/Tokyo
+      JWT_SECRET: ${LAN_TESTBED_JWT_SECRET:?run scripts/lan-testbed.sh instead of compose directly}
+      COOKIE_SECURE: "true"
+      COOKIE_SAMESITE: Lax
+      CORS_ALLOW_ORIGINS: https://${LAN_TESTBED_HOST}:${LAN_TESTBED_HTTPS_PORT:-8443}
+      RATE_LIMIT_IP_MAX_REQUESTS: ${LAN_TESTBED_RATE_LIMIT_IP_MAX_REQUESTS:-15}
+      RATE_LIMIT_USER_MAX_REQUESTS: ${LAN_TESTBED_RATE_LIMIT_USER_MAX_REQUESTS:-20}
+      RATE_LIMIT_IP_WINDOW_SECONDS: ${LAN_TESTBED_RATE_LIMIT_IP_WINDOW_SECONDS:-900}
+      RATE_LIMIT_USER_WINDOW_SECONDS: ${LAN_TESTBED_RATE_LIMIT_USER_WINDOW_SECONDS:-3600}
+    depends_on:
+      backend-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lan_testbed
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1.93}
+        CARGO_CHEF_VERSION: ${CARGO_CHEF_VERSION:-0.1.73}
+        WASM_PACK_VERSION: ${WASM_PACK_VERSION:-0.13.1}
+    ports:
+      - "${LAN_TESTBED_IP}:${LAN_TESTBED_HTTPS_PORT:-8443}:443"
+    environment:
+      API_BASE_URL: /api
+      TLS_CERT_CN: ${LAN_TESTBED_HOST}
+      TLS_SAN: ${LAN_TESTBED_TLS_SAN}
+      TLS_CERT_DAYS: "30"
+    depends_on:
+      - backend
+    volumes:
+      - "${LAN_TESTBED_TLS_DIR}:/etc/nginx/tls:Z"
+    networks:
+      - lan_testbed
+
+  backend-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: timekeeper
+      POSTGRES_USER: timekeeper
+      POSTGRES_PASSWORD: timekeeper
+    volumes:
+      - lan_testbed_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timekeeper -d timekeeper"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - lan_testbed
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - lan_testbed_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - lan_testbed
+
+volumes:
+  lan_testbed_postgres:
+  lan_testbed_redis:
+
+networks:
+  lan_testbed:
+    driver: bridge

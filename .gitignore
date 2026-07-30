@@ -51,3 +51,4 @@ Thumbs.db
 # Working directories
 /.tmp/
 /.tmp-target/
+.lan-testbed.env
