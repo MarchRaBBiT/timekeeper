@@ -8,6 +8,48 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaveUnit {
+    Day,
+    HalfAm,
+    HalfPm,
+    Hour,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CreateLeaveTypeRequest {
+    #[validate(length(min = 1, max = 50))]
+    pub code: String,
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    pub is_paid: bool,
+    pub balance_tracked: bool,
+    #[validate(length(min = 1, max = 4))]
+    pub allowed_units: Vec<LeaveUnit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
+pub struct UpdateLeaveTypeRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    pub is_paid: bool,
+    pub balance_tracked: bool,
+    #[validate(length(min = 1, max = 4))]
+    pub allowed_units: Vec<LeaveUnit>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct LeaveTypeResponse {
+    pub code: String,
+    pub name: String,
+    pub is_paid: bool,
+    pub balance_tracked: bool,
+    pub allowed_units: Vec<LeaveUnit>,
+    pub is_active: bool,
+}
+
 pub const LEAVE_BALANCE_INSUFFICIENT_CODE: &str = "LEAVE_BALANCE_INSUFFICIENT";
 
 /// 申請期間内に稼働日（resolved workday の `ScheduledWorkday`）が 1 日もない場合（H-1）。
@@ -38,10 +80,22 @@ pub enum LeaveObligationStatus {
     Fulfilled,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, IntoParams)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, IntoParams)]
 pub struct LeaveBalanceQuery {
+    /// 残高を導出する休暇種別コード（省略時は年次有給）。
+    #[serde(default = "default_leave_type_code")]
+    pub leave_type_code: String,
     /// 残高を導出する基準日（省略時はサーバー現在日）。
     pub as_of: Option<NaiveDate>,
+}
+
+impl Default for LeaveBalanceQuery {
+    fn default() -> Self {
+        Self {
+            leave_type_code: default_leave_type_code(),
+            as_of: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -95,6 +149,10 @@ pub struct LeaveBalanceResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
 pub struct LeaveGrantRunRequest {
+    /// 付与対象の残高連動休暇種別コード（省略時は年次有給）。
+    #[serde(default = "default_leave_type_code")]
+    #[validate(length(min = 1, max = 50))]
+    pub leave_type_code: String,
     /// 付与基準日。入社日 + 6 ヶ月 + 12k ヶ月がこの日に一致するユーザーが対象。
     pub base_date: NaiveDate,
     /// true なら台帳へ書き込まず結果だけ返す。
@@ -159,6 +217,10 @@ pub struct LeaveGrantRunResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
 pub struct LeaveLedgerAdjustRequest {
     pub user_id: String,
+    /// 調整対象の残高連動休暇種別コード（省略時は年次有給）。
+    #[serde(default = "default_leave_type_code")]
+    #[validate(length(min = 1, max = 50))]
+    pub leave_type_code: String,
     /// 符号付き分。新規ロット投入（初期移行）は正、控除は負。
     ///
     /// M-2: DB 列は `INTEGER`（i32）で、永続化時は `i32::try_from` を通す。
@@ -192,6 +254,10 @@ pub struct LeaveLedgerAdjustRequest {
     /// true なら書き込まず、投入後の導出残高だけ返す（初期移行の照合用）。
     #[serde(default)]
     pub dry_run: bool,
+}
+
+fn default_leave_type_code() -> String {
+    "annual".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

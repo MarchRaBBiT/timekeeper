@@ -48,17 +48,29 @@ use crate::{
         PaginationQuery,
     },
 };
+use timekeeper_contract::admin_attendance_report::{
+    AdminAttendanceReportItem, AdminAttendanceReportQuery, AdminAttendanceReportResponse,
+    ReportClassification,
+};
 use timekeeper_contract::attendance::{
     AdminAttendanceUpsert, AdminBreakItem, AttendanceStatusResponse, ClassificationTotalsResponse,
     DailyClassificationResponse, FlexPeriodClassificationResponse, FlexPeriodStatusResponse,
     MonthlyClassificationQueryParams, MonthlyClassificationResponse,
 };
+use timekeeper_contract::holiday_work::{
+    HolidayWorkBenefit, HolidayWorkDecision, HolidayWorkRequestResponse, HolidayWorkRequestStatus,
+    SubmitHolidayWorkRequest,
+};
 use timekeeper_contract::leave::{
-    HireDateResponse, LeaveBalanceQuery, LeaveBalanceResponse, LeaveExpiryBackfillResponse,
-    LeaveExpiryScheduleResponse, LeaveGrantResultResponse, LeaveGrantRunRequest,
-    LeaveGrantRunResponse, LeaveGrantSkipReason, LeaveGrantSkipResponse, LeaveLedgerAdjustRequest,
-    LeaveLedgerAdjustResponse, LeaveLedgerEntryResponse, LeaveLedgerKind, LeaveLotResponse,
-    LeaveObligationStatus, LeaveObligationWindowResponse, SetHireDateRequest,
+    CreateLeaveTypeRequest, HireDateResponse, LeaveBalanceQuery, LeaveBalanceResponse,
+    LeaveExpiryBackfillResponse, LeaveExpiryScheduleResponse, LeaveGrantResultResponse,
+    LeaveGrantRunRequest, LeaveGrantRunResponse, LeaveGrantSkipReason, LeaveGrantSkipResponse,
+    LeaveLedgerAdjustRequest, LeaveLedgerAdjustResponse, LeaveLedgerEntryResponse, LeaveLedgerKind,
+    LeaveLotResponse, LeaveObligationStatus, LeaveObligationWindowResponse, LeaveTypeResponse,
+    LeaveUnit, SetHireDateRequest, UpdateLeaveTypeRequest,
+};
+use timekeeper_contract::payroll_export::{
+    PayrollExportFailedUser, PayrollExportResponse, PayrollExportedUser,
 };
 use timekeeper_contract::settlement_balance::{
     SettlementBalanceDayResponse, SettlementBalanceQueryParams, SettlementBalanceResponse,
@@ -101,6 +113,66 @@ struct RequestCancellationResponse {
     status: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/holiday-work-requests",
+    request_body = SubmitHolidayWorkRequest,
+    responses((status = 200, body = HolidayWorkRequestResponse), (status = 400, body = ErrorResponse)),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn submit_holiday_work_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/holiday-work-requests/me",
+    responses((status = 200, body = [HolidayWorkRequestResponse])),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn list_my_holiday_work_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/holiday-work-requests/{id}",
+    params(("id" = uuid::Uuid, Path)),
+    responses((status = 200, body = HolidayWorkRequestResponse), (status = 409, body = ErrorResponse)),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn cancel_holiday_work_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/holiday-work-requests",
+    responses((status = 200, body = [HolidayWorkRequestResponse]), (status = 403, body = ErrorResponse)),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn admin_list_holiday_work_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/holiday-work-requests/{id}/approve",
+    params(("id" = uuid::Uuid, Path)),
+    request_body = HolidayWorkDecision,
+    responses((status = 200, body = HolidayWorkRequestResponse), (status = 409, body = ErrorResponse)),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn admin_approve_holiday_work_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/holiday-work-requests/{id}/reject",
+    params(("id" = uuid::Uuid, Path)),
+    request_body = HolidayWorkDecision,
+    responses((status = 200, body = HolidayWorkRequestResponse), (status = 409, body = ErrorResponse)),
+    security(("bearer_auth" = [])),
+    tag = "holiday-work"
+)]
+fn admin_reject_holiday_work_doc() {}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -141,6 +213,9 @@ struct RequestCancellationResponse {
         update_request_doc,
         cancel_request_doc,
         leave_balance_me_doc,
+        submit_holiday_work_doc,
+        list_my_holiday_work_doc,
+        cancel_holiday_work_doc,
         record_consent_doc,
         list_my_consents_doc,
         create_subject_request_doc,
@@ -150,6 +225,9 @@ struct RequestCancellationResponse {
         check_holiday_doc,
         list_month_holidays_doc,
         admin_list_requests_doc,
+        admin_list_holiday_work_doc,
+        admin_approve_holiday_work_doc,
+        admin_reject_holiday_work_doc,
         admin_request_detail_doc,
         admin_approve_request_doc,
         admin_reject_request_doc,
@@ -205,6 +283,7 @@ struct RequestCancellationResponse {
         admin_bulk_create_work_schedule_assignments_doc,
         admin_generate_work_schedule_projections_doc,
         admin_list_work_schedule_anomalies_doc,
+        admin_attendance_report_doc,
         admin_list_overtime_monitor_doc,
         admin_get_overtime_monitor_settings_doc,
         admin_upsert_overtime_monitor_settings_doc,
@@ -214,6 +293,7 @@ struct RequestCancellationResponse {
         admin_approve_monthly_closing_doc,
         admin_close_monthly_closing_doc,
         admin_reopen_monthly_closing_doc,
+        admin_payroll_export_doc,
         work_schedules_me_doc,
         work_schedules_me_settlement_balance_doc,
         admin_get_user_resolved_workdays_doc,
@@ -224,6 +304,10 @@ struct RequestCancellationResponse {
         admin_delete_workday_override_doc,
         system_admin_run_leave_grants_doc,
         system_admin_adjust_leave_ledger_doc,
+        system_admin_list_leave_types_doc,
+        system_admin_create_leave_type_doc,
+        system_admin_update_leave_type_doc,
+        system_admin_delete_leave_type_doc,
         system_admin_set_hire_date_doc
     ),
     components(
@@ -279,6 +363,15 @@ struct RequestCancellationResponse {
             LeaveLedgerKind,
             SetHireDateRequest,
             HireDateResponse,
+            LeaveUnit,
+            CreateLeaveTypeRequest,
+            UpdateLeaveTypeRequest,
+            LeaveTypeResponse,
+            HolidayWorkBenefit,
+            HolidayWorkRequestStatus,
+            SubmitHolidayWorkRequest,
+            HolidayWorkDecision,
+            HolidayWorkRequestResponse,
             BreakRecordResponse,
             ActiveBreakResponse,
             AttendanceQuery,
@@ -376,6 +469,9 @@ struct RequestCancellationResponse {
             WorkScheduleAnomalyKind,
             WorkScheduleAnomalyResponse,
             WorkScheduleAnomalyListResponse,
+            ReportClassification,
+            AdminAttendanceReportItem,
+            AdminAttendanceReportResponse,
             WorkScheduleCalendarAttendanceResponse,
             WorkScheduleCalendarLeaveResponse,
             WorkScheduleCalendarDayResponse,
@@ -389,7 +485,10 @@ struct RequestCancellationResponse {
             OvertimeMonitorSettingsResponse,
             MonthlyClosingStatus,
             MonthlyClosingTransitionRequest,
-            MonthlyClosingWorkflowResponse
+            MonthlyClosingWorkflowResponse,
+            PayrollExportResponse,
+            PayrollExportedUser,
+            PayrollExportFailedUser
         )
     ),
     modifiers(&SecuritySchemes),
@@ -1391,6 +1490,19 @@ fn admin_list_work_schedule_anomalies_doc() {}
 
 #[utoipa::path(
     get,
+    path = "/api/admin/attendance-report",
+    params(AdminAttendanceReportQuery),
+    responses(
+        (status = 200, body = AdminAttendanceReportResponse),
+        (status = 400),
+        (status = 403)
+    ),
+    tag = "Admin"
+)]
+fn admin_attendance_report_doc() {}
+
+#[utoipa::path(
+    get,
     path = "/api/admin/overtime-monitor",
     params(OvertimeMonitorQuery),
     responses((status = 200, body = OvertimeMonitorResponse), (status = 403)),
@@ -1474,6 +1586,18 @@ fn admin_close_monthly_closing_doc() {}
     tag = "Admin"
 )]
 fn admin_reopen_monthly_closing_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/payroll-export",
+    params(
+        ("year" = i32, Query, description = "Payroll year"),
+        ("month" = u32, Query, description = "Payroll month (1-12)")
+    ),
+    responses((status = 200, body = PayrollExportResponse), (status = 403)),
+    tag = "Admin"
+)]
+fn admin_payroll_export_doc() {}
 
 #[utoipa::path(
     get,
@@ -1592,6 +1716,46 @@ fn system_admin_run_leave_grants_doc() {}
     tag = "Admin"
 )]
 fn system_admin_adjust_leave_ledger_doc() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/admin/leave-types",
+    responses((status = 200, body = [LeaveTypeResponse])),
+    security(("bearer_auth" = [])),
+    tag = "leave"
+)]
+fn system_admin_list_leave_types_doc() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/leave-types",
+    request_body = CreateLeaveTypeRequest,
+    responses((status = 201, body = LeaveTypeResponse)),
+    security(("bearer_auth" = [])),
+    tag = "leave"
+)]
+fn system_admin_create_leave_type_doc() {}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/leave-types/{code}",
+    params(("code" = String, Path)),
+    request_body = UpdateLeaveTypeRequest,
+    responses((status = 200, body = LeaveTypeResponse)),
+    security(("bearer_auth" = [])),
+    tag = "leave"
+)]
+fn system_admin_update_leave_type_doc() {}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/leave-types/{code}",
+    params(("code" = String, Path)),
+    responses((status = 204)),
+    security(("bearer_auth" = [])),
+    tag = "leave"
+)]
+fn system_admin_delete_leave_type_doc() {}
 
 #[utoipa::path(
     put,
@@ -1794,6 +1958,7 @@ mod tests {
             admin_bulk_create_work_schedule_assignments_doc,
             admin_generate_work_schedule_projections_doc,
             admin_list_work_schedule_anomalies_doc,
+            admin_attendance_report_doc,
             admin_list_overtime_monitor_doc,
             admin_get_overtime_monitor_settings_doc,
             admin_upsert_overtime_monitor_settings_doc,
@@ -1803,6 +1968,7 @@ mod tests {
             admin_approve_monthly_closing_doc,
             admin_close_monthly_closing_doc,
             admin_reopen_monthly_closing_doc,
+            admin_payroll_export_doc,
             work_schedules_me_doc,
             work_schedules_me_settlement_balance_doc,
             admin_get_user_resolved_workdays_doc,
@@ -1813,6 +1979,10 @@ mod tests {
             admin_delete_workday_override_doc,
             system_admin_run_leave_grants_doc,
             system_admin_adjust_leave_ledger_doc,
+            system_admin_list_leave_types_doc,
+            system_admin_create_leave_type_doc,
+            system_admin_update_leave_type_doc,
+            system_admin_delete_leave_type_doc,
             system_admin_set_hire_date_doc,
         ];
 

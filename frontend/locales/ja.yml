@@ -988,6 +988,18 @@ admin_components:
       unset: "未設定"
       active: "適用中"
     confirm_delete: "この週次休日を削除してもよろしいですか？"
+  attendance_report:
+    title: "月次勤怠レポート"
+    loading: "勤怠レポートを読み込み中です..."
+    error: "勤怠レポートを取得できませんでした。"
+    empty: "対象の従業員はいません。"
+    filters:
+      month: "対象月"
+      department: "部署"
+      apply: "適用"
+    pagination:
+      previous: "前へ"
+      next: "次へ"
 
 api:
   errors:

@@ -66,6 +66,7 @@ impl FakeLedger {
             kind: entry.kind,
             lot_id: entry.lot_id.unwrap_or_else(|| format!("lot-{sequence}")),
             amount_minutes: entry.amount_minutes,
+            obligation_minutes: entry.obligation_minutes,
             day_equivalent_minutes: entry.day_equivalent_minutes,
             granted_at: entry.granted_at,
             expires_at: entry.expires_at,
@@ -277,6 +278,11 @@ fn stored_entry(
         kind,
         lot_id: lot_id.to_string(),
         amount_minutes,
+        obligation_minutes: if matches!(kind, LeaveLedgerKind::Consume | LeaveLedgerKind::Release) {
+            amount_minutes
+        } else {
+            0
+        },
         day_equivalent_minutes: 480,
         granted_at: Some(date(2026, 1, 1)),
         expires_at: Some(date(2028, 1, 1)),
@@ -295,6 +301,7 @@ fn stored_entry(
 fn annual_request_command() -> AnnualLeaveRequestLedgerCommand {
     AnnualLeaveRequestLedgerCommand {
         user_id: "user-1".to_string(),
+        leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
         request_id: "request-1".to_string(),
         start_date: date(2026, 7, 10),
         end_date: date(2026, 7, 13),
@@ -421,8 +428,29 @@ fn annual_leave_consume_entries_follow_fifo_and_release_reverses_them() {
     assert_eq!(release[1].amount_minutes, 480);
 }
 
+#[test]
+fn custom_balance_tracked_consume_keeps_the_selected_leave_type() {
+    let mut entries = vec![stored_entry(
+        LeaveLedgerKind::Adjust,
+        "lot-1",
+        960,
+        ts(2026, 1, 1),
+    )];
+    for entry in &mut entries {
+        entry.leave_type = "wellness".to_string();
+    }
+    let mut command = annual_request_command();
+    command.leave_type_code = "wellness".to_string();
+
+    let consume =
+        build_annual_leave_consume_entries(&entries, command, 1).expect("custom consume entries");
+    assert_eq!(consume[0].leave_type, "wellness");
+    assert_eq!(consume[0].amount_minutes, -480);
+}
+
 fn run_command(base_date: NaiveDate, dry_run: bool) -> RunLeaveGrantsCommand {
     RunLeaveGrantsCommand {
+        leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
         base_date,
         dry_run,
         user_ids: None,
@@ -474,6 +502,22 @@ async fn run_grants_writes_grant_lots_for_due_users() {
         .skipped
         .contains(&("no-hire-date".to_string(), GrantSkipReason::HireDateNotSet)));
     assert_eq!(ledger.stored().len(), 2);
+}
+
+#[tokio::test]
+async fn run_grants_writes_custom_balance_tracked_leave_type() {
+    let ledger = FakeLedger::default();
+    let rules = FakeRules::standard();
+    let users = FakeUsers::with(vec![candidate("due-6m", Some(date(2026, 1, 1)))]);
+    let use_case = RunLeaveGrants::new(&ledger, &rules, &users);
+    let mut command = run_command(date(2026, 7, 1), false);
+    command.leave_type_code = "wellness".to_string();
+
+    use_case.execute(command).await.expect("custom grant");
+
+    let stored = ledger.stored();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].leave_type, "wellness");
 }
 
 /// M-1a: 1 ユーザーの書き込みがユーザー単位トランザクションで失敗しても、
@@ -586,6 +630,7 @@ async fn run_grants_backfills_expirations_idempotently() {
         kind: LeaveLedgerKind::Grant,
         lot_id: "lot-old".to_string(),
         amount_minutes: 4800,
+        obligation_minutes: 0,
         day_equivalent_minutes: 480,
         granted_at: Some(date(2024, 1, 1)),
         expires_at: Some(date(2026, 1, 1)),
@@ -668,6 +713,7 @@ async fn get_balance_derives_lots_and_obligations() {
         kind: LeaveLedgerKind::Grant,
         lot_id: "lot-1".to_string(),
         amount_minutes: 4800,
+        obligation_minutes: 0,
         day_equivalent_minutes: 480,
         granted_at: Some(date(2026, 7, 1)),
         expires_at: Some(date(2028, 7, 1)),
@@ -684,6 +730,7 @@ async fn get_balance_derives_lots_and_obligations() {
     let view = use_case
         .execute(GetLeaveBalanceCommand {
             user_id: "user-1".to_string(),
+            leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
             as_of: date(2026, 7, 5),
         })
         .await
@@ -706,6 +753,7 @@ async fn get_balance_without_obligation_rule_returns_no_windows() {
     let view = use_case
         .execute(GetLeaveBalanceCommand {
             user_id: "user-1".to_string(),
+            leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
             as_of: date(2026, 7, 5),
         })
         .await
@@ -714,9 +762,47 @@ async fn get_balance_without_obligation_rule_returns_no_windows() {
     assert!(view.obligations.is_empty());
 }
 
+#[tokio::test]
+async fn adjust_and_balance_support_custom_balance_tracked_leave_type() {
+    let ledger = FakeLedger::default();
+    let users = FakeUsers::with(vec![candidate("user-1", None)]);
+    let mut command = adjust_command(960);
+    command.leave_type_code = "wellness".to_string();
+    AdjustLeaveLedger::new(&ledger, &users)
+        .execute(command)
+        .await
+        .expect("custom adjust");
+
+    let no_obligation_rules = FakeRules {
+        grant_rules: Vec::new(),
+        obligation: None,
+    };
+    let view = GetLeaveBalance::new(&ledger, &no_obligation_rules)
+        .execute(GetLeaveBalanceCommand {
+            user_id: "user-1".to_string(),
+            leave_type_code: "wellness".to_string(),
+            as_of: date(2026, 7, 5),
+        })
+        .await
+        .expect("custom balance");
+    assert_eq!(view.leave_type, "wellness");
+    assert_eq!(view.balance.available_minutes, 960);
+
+    let annual = GetLeaveBalance::new(&ledger, &no_obligation_rules)
+        .execute(GetLeaveBalanceCommand {
+            user_id: "user-1".to_string(),
+            leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
+            as_of: date(2026, 7, 5),
+        })
+        .await
+        .expect("annual balance");
+    assert_eq!(annual.balance.available_minutes, 0);
+}
+
 fn adjust_command(amount: i64) -> AdjustLeaveLedgerCommand {
     AdjustLeaveLedgerCommand {
         user_id: "user-1".to_string(),
+        leave_type_code: ANNUAL_LEAVE_TYPE.to_string(),
         amount_minutes: amount,
         lot_id: None,
         day_equivalent_minutes: Some(480),

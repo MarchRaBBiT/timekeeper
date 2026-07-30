@@ -247,6 +247,18 @@ fn user_routes(state: AppState) -> Router<AppState> {
             "/api/leave-balances/me",
             get(handlers::leave_ledger::get_my_leave_balance),
         )
+        .route(
+            "/api/holiday-work-requests",
+            post(handlers::holiday_work::submit),
+        )
+        .route(
+            "/api/holiday-work-requests/me",
+            get(handlers::holiday_work::list_mine),
+        )
+        .route(
+            "/api/holiday-work-requests/{id}",
+            delete(handlers::holiday_work::cancel),
+        )
         .route("/api/consents", post(handlers::consents::record_consent))
         .route(
             "/api/consents/me",
@@ -326,6 +338,18 @@ fn user_routes(state: AppState) -> Router<AppState> {
 fn admin_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/admin/requests", get(handlers::admin::list_requests))
+        .route(
+            "/api/admin/holiday-work-requests",
+            get(handlers::holiday_work::list_pending),
+        )
+        .route(
+            "/api/admin/holiday-work-requests/{id}/approve",
+            post(handlers::holiday_work::approve),
+        )
+        .route(
+            "/api/admin/holiday-work-requests/{id}/reject",
+            post(handlers::holiday_work::reject),
+        )
         .route(
             "/api/admin/requests/{id}",
             get(handlers::admin::get_request_detail),
@@ -454,6 +478,10 @@ fn admin_routes(state: AppState) -> Router<AppState> {
             get(handlers::admin::list_work_schedule_anomalies),
         )
         .route(
+            "/api/admin/attendance-report",
+            get(handlers::admin::get_admin_attendance_report),
+        )
+        .route(
             "/api/admin/overtime-monitor",
             get(handlers::admin::list_overtime_monitor),
         )
@@ -577,6 +605,10 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
             patch(handlers::admin::update_work_schedule),
         )
         .route(
+            "/api/admin/payroll-export",
+            get(handlers::admin::export_payroll),
+        )
+        .route(
             "/api/admin/work-schedules/{id}/retire",
             post(handlers::admin::retire_work_schedule),
         )
@@ -629,6 +661,14 @@ fn system_admin_routes(state: AppState) -> Router<AppState> {
         .route(
             "/api/admin/leave-ledger/adjust",
             post(handlers::admin::adjust_leave_ledger),
+        )
+        .route(
+            "/api/admin/leave-types",
+            get(handlers::admin::list_leave_types).post(handlers::admin::create_leave_type),
+        )
+        .route(
+            "/api/admin/leave-types/{code}",
+            put(handlers::admin::update_leave_type).delete(handlers::admin::delete_leave_type),
         )
         .route(
             "/api/admin/users/{user_id}/hire-date",

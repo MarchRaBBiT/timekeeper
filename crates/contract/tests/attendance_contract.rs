@@ -189,6 +189,10 @@ fn attendance_response_roundtrips_leave_designation() {
         leave: Some(AttendanceLeaveResponse {
             leave_request_id: "request-1".to_string(),
             leave_type: "annual".to_string(),
+            acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            start_time: None,
+            end_time: None,
+            requested_minutes: None,
         }),
     };
 

@@ -1,7 +1,7 @@
 # Monthly Closing Workflow
 
-**Status:** Phase 2 backend API implemented
-**Updated:** 2026-07-09
+**Status:** Phase 3 payroll snapshot integration implemented
+**Updated:** 2026-07-30
 
 ## Scope
 
@@ -15,7 +15,6 @@ In scope:
 
 Out of scope:
 
-- Payroll export value freezing. That belongs to T-14.
 - Rich administrator dashboard. That belongs to T-15.
 - Unlocking already locked `resolved_workdays`. Reopen records workflow intent only.
 
@@ -43,7 +42,9 @@ All other transitions are rejected with `409 INVALID_MONTHLY_CLOSING_TRANSITION`
 - Existing DB triggers keep locked `resolved_workdays`, intervals, breaks, and workday overrides immutable.
 - The legacy `POST /api/admin/work-schedule-closures/monthly` remains available for bulk operational lock compatibility.
 
-`reopened` does not unlock `resolved_workdays`. It records that follow-up correction/re-close workflow is required. A later T-14/T-15 design can decide whether reopened payroll values are blocked from export.
+`closed` also appends an immutable payroll snapshot revision in the same transaction. `reopened`
+does not unlock `resolved_workdays`, and blocks payroll export. Re-closing appends a new revision;
+the earlier revision remains unchanged. See [payroll-export.md](./payroll-export.md).
 
 ## Audit Trail
 

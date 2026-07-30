@@ -3,19 +3,18 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 use std::str::FromStr;
 use timekeeper_app::leave_ledger::{
     build_annual_leave_consume_entries, build_annual_leave_release_entries,
-    ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand,
-    LeaveLedgerRepository, ANNUAL_LEAVE_TYPE,
+    build_leave_consume_entries_for_minutes, ensure_annual_leave_request_has_balance,
+    ensure_leave_request_minutes_have_balance, AnnualLeaveRequestLedgerCommand,
+    LeaveLedgerRepository,
 };
 use timekeeper_infra_postgres::leave_ledger::LeaveLedgerPostgresRepository;
 
 use crate::error::{leave_ledger::leave_ledger_error_to_app_error, AppError};
 use crate::models::{
-    leave_request::{LeaveRequest, LeaveType},
-    overtime_request::OvertimeRequest,
-    request::RequestStatus,
+    leave_request::LeaveRequest, overtime_request::OvertimeRequest, request::RequestStatus,
 };
 use crate::repositories::{
-    annual_leave_workdays::count_working_days_for_annual_leave,
+    annual_leave_workdays::{count_working_days_for_annual_leave, partial_leave_minutes},
     common::push_clause,
     leave_request::{LeaveRequestRepository, LeaveRequestRepositoryTrait},
     overtime_request::{OvertimeRequestRepository, OvertimeRequestRepositoryTrait},
@@ -214,32 +213,54 @@ impl RequestRepository {
         }
     }
 
-    pub async fn ensure_annual_leave_request_balance(
+    pub async fn ensure_balance_tracked_leave_request_balance(
         &self,
         db: &PgPool,
         request: &LeaveRequest,
     ) -> Result<(), AppError> {
-        if !matches!(request.leave_type, LeaveType::Annual) {
+        let leave_type_code = request.leave_type.db_value();
+        let ledger = LeaveLedgerPostgresRepository::new(db.clone());
+        if !ledger
+            .is_balance_tracked_leave_type(leave_type_code)
+            .await
+            .map_err(leave_ledger_error_to_app_error)?
+        {
             return Ok(());
         }
-        let workday_count = count_working_days_for_annual_leave(
-            db,
-            &request.user_id.to_string(),
-            request.start_date,
-            request.end_date,
-        )
-        .await?;
-        let ledger = LeaveLedgerPostgresRepository::new(db.clone());
+        let partial_minutes = partial_leave_minutes(db, request).await?;
+        let workday_count = if partial_minutes.is_none() {
+            Some(
+                count_working_days_for_annual_leave(
+                    db,
+                    &request.user_id.to_string(),
+                    request.start_date,
+                    request.end_date,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let entries = ledger
-            .list_entries(&request.user_id.to_string(), ANNUAL_LEAVE_TYPE)
+            .list_entries(&request.user_id.to_string(), leave_type_code)
             .await
             .map_err(leave_ledger_error_to_app_error)?;
-        ensure_annual_leave_request_has_balance(
-            &entries,
-            request.start_date,
-            request.end_date,
-            workday_count,
-        )
+        match (partial_minutes, workday_count) {
+            (Some(minutes), _) => {
+                ensure_leave_request_minutes_have_balance(&entries, request.start_date, minutes)
+            }
+            (None, Some(days)) => ensure_annual_leave_request_has_balance(
+                &entries,
+                request.start_date,
+                request.end_date,
+                days,
+            ),
+            (None, None) => Err(
+                timekeeper_app::leave_ledger::LeaveLedgerError::InvalidInput(
+                    "leave duration could not be derived".to_string(),
+                ),
+            ),
+        }
         .map_err(leave_ledger_error_to_app_error)
     }
 
@@ -271,14 +292,18 @@ impl RequestRepository {
         let leave_repo = LeaveRequestRepository::new();
         if let Ok(leave_request_id) = LeaveRequestId::from_str(request_id) {
             if let Some(existing) = find_leave_request_optional(db, leave_request_id).await? {
+                let balance_tracked = LeaveLedgerPostgresRepository::new(db.clone())
+                    .is_balance_tracked_leave_type(existing.leave_type.db_value())
+                    .await
+                    .map_err(leave_ledger_error_to_app_error)?;
                 let affected = match &update {
                     RequestStatusUpdate::Approve {
                         approver_id,
                         comment,
                         timestamp,
-                    } if matches!(existing.leave_type, LeaveType::Annual) => {
+                    } if balance_tracked => {
                         if self
-                            .approve_annual_leave_request_with_ledger(
+                            .approve_balance_tracked_leave_request_with_ledger(
                                 db,
                                 leave_request_id,
                                 *approver_id,
@@ -347,7 +372,7 @@ impl RequestRepository {
         Ok(false)
     }
 
-    async fn approve_annual_leave_request_with_ledger(
+    async fn approve_balance_tracked_leave_request_with_ledger(
         &self,
         db: &PgPool,
         id: LeaveRequestId,
@@ -365,13 +390,20 @@ impl RequestRepository {
         if !matches!(pending_request.status, RequestStatus::Pending) {
             return Ok(false);
         }
-        let workday_count = count_working_days_for_annual_leave(
-            db,
-            &pending_request.user_id.to_string(),
-            pending_request.start_date,
-            pending_request.end_date,
-        )
-        .await?;
+        let partial_minutes = partial_leave_minutes(db, &pending_request).await?;
+        let workday_count = if partial_minutes.is_none() {
+            Some(
+                count_working_days_for_annual_leave(
+                    db,
+                    &pending_request.user_id.to_string(),
+                    pending_request.start_date,
+                    pending_request.end_date,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
 
         let mut tx = db.begin().await?;
         let Some(request) = find_leave_request_for_update(&mut tx, id).await? else {
@@ -386,30 +418,65 @@ impl RequestRepository {
         if request.start_date != pending_request.start_date
             || request.end_date != pending_request.end_date
             || request.user_id != pending_request.user_id
+            || request.leave_type != pending_request.leave_type
+            || request.acquisition_unit != pending_request.acquisition_unit
+            || request.start_time != pending_request.start_time
+            || request.end_time != pending_request.end_time
+            || request.requested_minutes != pending_request.requested_minutes
         {
             return Err(AppError::Conflict(
                 "leave request was modified while approving; please retry".to_string(),
+            ));
+        }
+        let balance_tracked = sqlx::query_scalar::<_, bool>(
+            "SELECT balance_tracked
+             FROM leave_types
+             WHERE code = $1
+             FOR SHARE",
+        )
+        .bind(request.leave_type.db_value())
+        .fetch_optional(&mut *tx)
+        .await?
+        .unwrap_or(false);
+        if !balance_tracked {
+            return Err(AppError::Conflict(
+                "leave type is no longer balance-tracked; please retry".to_string(),
             ));
         }
         lock_user_for_ledger(&mut tx, request.user_id).await?;
         let entries = LeaveLedgerPostgresRepository::list_entries_for_update(
             &mut tx,
             &request.user_id.to_string(),
-            ANNUAL_LEAVE_TYPE,
+            request.leave_type.db_value(),
         )
         .await
         .map_err(leave_ledger_error_to_app_error)?;
-        let consume_entries = build_annual_leave_consume_entries(
-            &entries,
-            AnnualLeaveRequestLedgerCommand {
-                user_id: request.user_id.to_string(),
-                request_id: request.id.to_string(),
-                start_date: request.start_date,
-                end_date: request.end_date,
-                created_by: Some(approver_id.to_string()),
-            },
-            workday_count,
-        )
+        let command = AnnualLeaveRequestLedgerCommand {
+            user_id: request.user_id.to_string(),
+            leave_type_code: request.leave_type.db_value().to_string(),
+            request_id: request.id.to_string(),
+            start_date: request.start_date,
+            end_date: request.end_date,
+            created_by: Some(approver_id.to_string()),
+        };
+        let consume_entries = match (partial_minutes, workday_count) {
+            (Some(minutes), _) => build_leave_consume_entries_for_minutes(
+                &entries,
+                command,
+                minutes,
+                matches!(
+                    request.acquisition_unit,
+                    crate::models::leave_request::LeaveAcquisitionUnit::HalfAm
+                        | crate::models::leave_request::LeaveAcquisitionUnit::HalfPm
+                ),
+            ),
+            (None, Some(days)) => build_annual_leave_consume_entries(&entries, command, days),
+            (None, None) => Err(
+                timekeeper_app::leave_ledger::LeaveLedgerError::InvalidInput(
+                    "leave duration could not be derived".to_string(),
+                ),
+            ),
+        }
         .map_err(leave_ledger_error_to_app_error)?;
 
         let affected = sqlx::query(
@@ -451,6 +518,13 @@ impl RequestRepository {
         if request.user_id != user_id {
             return Ok(0);
         }
+        let balance_tracked = sqlx::query_scalar::<_, bool>(
+            "SELECT balance_tracked FROM leave_types WHERE code = $1",
+        )
+        .bind(request.leave_type.db_value())
+        .fetch_optional(&mut *tx)
+        .await?
+        .unwrap_or(false);
 
         match request.status {
             RequestStatus::Pending => {
@@ -459,12 +533,12 @@ impl RequestRepository {
                 tx.commit().await?;
                 Ok(affected)
             }
-            RequestStatus::Approved if matches!(request.leave_type, LeaveType::Annual) => {
+            RequestStatus::Approved if balance_tracked => {
                 lock_user_for_ledger(&mut tx, request.user_id).await?;
                 let entries = LeaveLedgerPostgresRepository::list_entries_for_update(
                     &mut tx,
                     &request.user_id.to_string(),
-                    ANNUAL_LEAVE_TYPE,
+                    request.leave_type.db_value(),
                 )
                 .await
                 .map_err(leave_ledger_error_to_app_error)?;
@@ -472,6 +546,7 @@ impl RequestRepository {
                     &entries,
                     AnnualLeaveRequestLedgerCommand {
                         user_id: request.user_id.to_string(),
+                        leave_type_code: request.leave_type.db_value().to_string(),
                         request_id: request.id.to_string(),
                         start_date: request.start_date,
                         end_date: request.end_date,
@@ -504,7 +579,8 @@ async fn find_leave_request_optional(
     id: LeaveRequestId,
 ) -> Result<Option<LeaveRequest>, AppError> {
     sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status,
+        "SELECT id, user_id, leave_type, start_date, end_date, acquisition_unit,
+                start_time, end_time, requested_minutes, reason, status,
                 approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
                 decision_comment, created_at, updated_at
          FROM leave_requests
@@ -521,7 +597,8 @@ async fn find_leave_request_for_update(
     id: LeaveRequestId,
 ) -> Result<Option<LeaveRequest>, AppError> {
     sqlx::query_as::<_, LeaveRequest>(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status,
+        "SELECT id, user_id, leave_type, start_date, end_date, acquisition_unit,
+                start_time, end_time, requested_minutes, reason, status,
                 approved_by, approved_at, rejected_by, rejected_at, cancelled_at,
                 decision_comment, created_at, updated_at
          FROM leave_requests
@@ -579,7 +656,10 @@ async fn list_leave_requests(
     offset: i64,
 ) -> Result<Vec<LeaveRequest>, AppError> {
     let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-        "SELECT id, user_id, leave_type, start_date, end_date, reason, status, approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at FROM leave_requests",
+        "SELECT id, user_id, leave_type, start_date, end_date, acquisition_unit,
+                start_time, end_time, requested_minutes, reason, status, approved_by,
+                approved_at, rejected_by, rejected_at, cancelled_at, decision_comment,
+                created_at, updated_at FROM leave_requests",
     );
     apply_request_filters(&mut builder, filters);
     builder

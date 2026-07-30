@@ -19,6 +19,7 @@ fn grant(
         lot_id: lot_id.to_string(),
         kind: LeaveLedgerKind::Grant,
         amount_minutes: minutes,
+        obligation_minutes: 0,
         day_equivalent_minutes: 480,
         granted_at: Some(granted_at),
         expires_at: Some(expires_at),
@@ -32,6 +33,11 @@ fn event(lot_id: &str, kind: LeaveLedgerKind, minutes: i64, on: NaiveDate) -> Le
         lot_id: lot_id.to_string(),
         kind,
         amount_minutes: minutes,
+        obligation_minutes: if matches!(kind, LeaveLedgerKind::Consume | LeaveLedgerKind::Release) {
+            minutes
+        } else {
+            0
+        },
         day_equivalent_minutes: 480,
         granted_at: None,
         expires_at: None,
@@ -190,6 +196,7 @@ fn adjust_opening_a_new_lot_behaves_like_a_grant_lot() {
         lot_id: "migrated".to_string(),
         kind: LeaveLedgerKind::Adjust,
         amount_minutes: 2400,
+        obligation_minutes: 0,
         day_equivalent_minutes: 480,
         granted_at: Some(date(2025, 10, 1)),
         expires_at: Some(date(2027, 10, 1)),
@@ -319,6 +326,19 @@ fn obligation_counts_consumes_inside_the_window_only() {
     assert_eq!(window.taken_minutes, 480 * 2);
     // window は過ぎており未達 → 残期間で達成不可能。
     assert_eq!(window.status, ObligationStatus::AtRisk);
+}
+
+#[test]
+fn obligation_ignores_hour_leave_and_counts_half_leave_as_half_day() {
+    let base = date(2026, 1, 1);
+    let mut hour = event("lot-1", LeaveLedgerKind::Consume, -60, date(2026, 2, 1));
+    hour.obligation_minutes = 0;
+    let mut half = event("lot-1", LeaveLedgerKind::Consume, -239, date(2026, 3, 1));
+    half.obligation_minutes = -240;
+    let events = vec![grant("lot-1", base, date(2028, 1, 1), 4800), hour, half];
+
+    let windows = annual_obligations(&events, &obligation_rule(), date(2026, 4, 1));
+    assert_eq!(windows[0].taken_minutes, 240);
 }
 
 #[test]

@@ -35,6 +35,9 @@ pub fn LeaveRequestForm(
                                     leave_type: payload.leave_type,
                                     start_date: payload.start_date,
                                     end_date: payload.end_date,
+                                    acquisition_unit: payload.acquisition_unit,
+                                    start_time: payload.start_time,
+                                    end_time: payload.end_time,
                                     reason: payload.reason,
                                 },
                             )

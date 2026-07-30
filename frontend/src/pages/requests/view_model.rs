@@ -653,6 +653,9 @@ mod host_tests {
                 leave_type: "annual".into(),
                 start_date: NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
                 end_date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+                start_time: None,
+                end_time: None,
                 reason: None,
             });
             assert!(
@@ -699,6 +702,9 @@ mod host_tests {
                     leave_type: "annual".into(),
                     start_date: NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
                     end_date: NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                    acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+                    start_time: None,
+                    end_time: None,
                     reason: Some("updated".into()),
                 },
             )));

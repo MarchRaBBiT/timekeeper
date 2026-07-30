@@ -17,7 +17,9 @@ use crate::{
     error::AppError,
     models::{
         attendance_correction_request::AttendanceCorrectionResponse,
-        leave_request::{CreateLeaveRequest, LeaveRequest, LeaveRequestResponse, LeaveType},
+        leave_request::{
+            CreateLeaveRequest, LeaveAcquisitionUnit, LeaveRequest, LeaveRequestResponse, LeaveType,
+        },
         overtime_request::{CreateOvertimeRequest, OvertimeRequest, OvertimeRequestResponse},
     },
     repositories::{
@@ -48,17 +50,29 @@ pub async fn create_leave_request(
 
     validate_create_leave_request(&payload)?;
     let leave_type = parse_leave_type(&payload.leave_type)?;
+    validate_leave_type_policy(&state, &payload).await?;
 
-    let leave_request = LeaveRequest::new(
+    let requested_minutes = match (payload.start_time, payload.end_time) {
+        (Some(start), Some(end)) => Some(
+            i32::try_from((end - start).num_minutes())
+                .map_err(|_| AppError::BadRequest("leave duration is too large".into()))?,
+        ),
+        _ => None,
+    };
+    let leave_request = LeaveRequest::new_with_duration(
         user_id,
         leave_type,
         payload.start_date,
         payload.end_date,
+        acquisition_unit_to_model(payload.acquisition_unit),
+        payload.start_time,
+        payload.end_time,
+        requested_minutes,
         payload.reason,
     );
 
     let repo = RequestRepository::new();
-    repo.ensure_annual_leave_request_balance(&state.write_pool, &leave_request)
+    repo.ensure_balance_tracked_leave_request_balance(&state.write_pool, &leave_request)
         .await?;
     let saved = repo
         .create_request_with_history(&state.write_pool, RequestCreate::Leave(&leave_request))
@@ -211,6 +225,29 @@ fn validate_create_leave_request(payload: &CreateLeaveRequest) -> Result<(), App
             "start_date must be <= end_date".into(),
         ));
     }
+    match payload.acquisition_unit {
+        timekeeper_contract::requests::LeaveAcquisitionUnit::Hour => {
+            if payload.start_date != payload.end_date {
+                return Err(AppError::BadRequest(
+                    "hour leave must be requested for a single day".into(),
+                ));
+            }
+            match (payload.start_time, payload.end_time) {
+                (Some(start), Some(end)) if start < end => {}
+                _ => {
+                    return Err(AppError::BadRequest(
+                        "hour leave requires start_time < end_time".into(),
+                    ))
+                }
+            }
+        }
+        _ if payload.start_time.is_some() || payload.end_time.is_some() => {
+            return Err(AppError::BadRequest(
+                "start_time and end_time are only valid for hour leave".into(),
+            ))
+        }
+        _ => {}
+    }
     validate_optional_reason(&payload.reason)?;
     Ok(())
 }
@@ -244,8 +281,65 @@ fn parse_leave_type(value: &str) -> Result<LeaveType, AppError> {
         "sick" => Ok(LeaveType::Sick),
         "personal" => Ok(LeaveType::Personal),
         "other" => Ok(LeaveType::Other),
+        custom
+            if custom
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_lowercase())
+                && custom
+                    .chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_') =>
+        {
+            Ok(LeaveType::Custom(custom.to_string()))
+        }
         _ => Err(AppError::BadRequest("Invalid leave_type".into())),
     }
+}
+
+fn acquisition_unit_to_model(
+    value: timekeeper_contract::requests::LeaveAcquisitionUnit,
+) -> LeaveAcquisitionUnit {
+    match value {
+        timekeeper_contract::requests::LeaveAcquisitionUnit::Day => LeaveAcquisitionUnit::Day,
+        timekeeper_contract::requests::LeaveAcquisitionUnit::HalfAm => LeaveAcquisitionUnit::HalfAm,
+        timekeeper_contract::requests::LeaveAcquisitionUnit::HalfPm => LeaveAcquisitionUnit::HalfPm,
+        timekeeper_contract::requests::LeaveAcquisitionUnit::Hour => LeaveAcquisitionUnit::Hour,
+    }
+}
+
+async fn validate_leave_type_policy(
+    state: &AppState,
+    payload: &CreateLeaveRequest,
+) -> Result<(), AppError> {
+    let unit = match payload.acquisition_unit {
+        timekeeper_contract::requests::LeaveAcquisitionUnit::Day => "day",
+        timekeeper_contract::requests::LeaveAcquisitionUnit::HalfAm => "half_am",
+        timekeeper_contract::requests::LeaveAcquisitionUnit::HalfPm => "half_pm",
+        timekeeper_contract::requests::LeaveAcquisitionUnit::Hour => "hour",
+    };
+    validate_leave_type_code_policy(state, &payload.leave_type, unit).await
+}
+
+async fn validate_leave_type_code_policy(
+    state: &AppState,
+    leave_type_code: &str,
+    acquisition_unit: &str,
+) -> Result<(), AppError> {
+    let allowed = sqlx::query_scalar::<_, bool>(
+        "SELECT is_active AND $2 = ANY(allowed_units)
+         FROM leave_types WHERE code = $1",
+    )
+    .bind(leave_type_code)
+    .bind(acquisition_unit)
+    .fetch_optional(state.read_pool())
+    .await?
+    .ok_or_else(|| AppError::BadRequest("Invalid leave_type".into()))?;
+    if !allowed {
+        return Err(AppError::BadRequest(
+            "leave type is inactive or does not allow the requested unit".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub async fn update_request(
@@ -281,6 +375,17 @@ pub async fn update_request(
                 "start_date must be <= end_date".into(),
             ));
         }
+        if matches!(
+            updated.acquisition_unit,
+            LeaveAcquisitionUnit::HalfAm
+                | LeaveAcquisitionUnit::HalfPm
+                | LeaveAcquisitionUnit::Hour
+        ) && new_start != new_end
+        {
+            return Err(AppError::BadRequest(
+                "partial leave must be requested for a single day".into(),
+            ));
+        }
         let new_reason = upd.reason.or(updated.reason.clone());
         let now = Utc::now();
         updated.leave_type = new_type;
@@ -288,15 +393,23 @@ pub async fn update_request(
         updated.end_date = new_end;
         updated.reason = new_reason;
         updated.updated_at = now;
-        // M-4: 更新後の値が annual のままなら、作成時
+        let acquisition_unit = match updated.acquisition_unit {
+            LeaveAcquisitionUnit::Day => "day",
+            LeaveAcquisitionUnit::HalfAm => "half_am",
+            LeaveAcquisitionUnit::HalfPm => "half_pm",
+            LeaveAcquisitionUnit::Hour => "hour",
+        };
+        validate_leave_type_code_policy(&state, updated.leave_type.db_value(), acquisition_unit)
+            .await?;
+        // M-4: 更新後の値が残高連動種別なら、作成時
         // (`create_leave_request`) と同じ稼働日ベースの残高検証を更新前に
         // 再実行する。pending 申請は承認まで ledger を消費しないため、この
         // 検証は作成時と全く同じロジックで良い（重複実装を避けるため
-        // `RequestRepository::ensure_annual_leave_request_balance` を共用する）。
+        // `RequestRepository::ensure_balance_tracked_leave_request_balance` を共用する）。
         // これにより「更新は成功するのに承認で初めて拒否される」非対称を防ぐ。
         let request_repo = RequestRepository::new();
         request_repo
-            .ensure_annual_leave_request_balance(&state.write_pool, &updated)
+            .ensure_balance_tracked_leave_request_balance(&state.write_pool, &updated)
             .await?;
         leave_repo.update(&state.write_pool, &updated).await?;
         return Ok(Json(json!({"message":"Leave request updated"})));
@@ -464,11 +577,14 @@ mod tests {
             leave_type: "annual".into(),
             start_date: start,
             end_date: end,
+            acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            start_time: None,
+            end_time: None,
             reason: None,
         };
 
         assert!(super::validate_create_leave_request(&payload).is_err());
-        assert!(super::parse_leave_type("invalid").is_err());
+        assert!(super::parse_leave_type("Invalid").is_err());
         assert!(matches!(
             super::parse_leave_type("sick").unwrap(),
             super::LeaveType::Sick

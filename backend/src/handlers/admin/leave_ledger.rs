@@ -39,9 +39,17 @@ pub async fn get_user_leave_balance(
 
     let as_of = query.as_of.unwrap_or_else(|| Utc::now().date_naive());
     let repository = LeaveLedgerPostgresRepository::new(state.read_pool().clone());
+    repository
+        .ensure_balance_tracked_leave_type(&query.leave_type_code)
+        .await
+        .map_err(leave_ledger_error_to_app_error)?;
     let use_case = GetLeaveBalance::new(repository.clone(), repository);
     let view = use_case
-        .execute(GetLeaveBalanceCommand { user_id, as_of })
+        .execute(GetLeaveBalanceCommand {
+            user_id,
+            leave_type_code: query.leave_type_code,
+            as_of,
+        })
         .await
         .map_err(leave_ledger_error_to_app_error)?;
     Ok(Json(balance_view_to_response(view)))
@@ -61,7 +69,12 @@ pub async fn run_leave_grants(
     }
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
+    repository
+        .ensure_balance_tracked_leave_type(&payload.leave_type_code)
+        .await
+        .map_err(leave_ledger_error_to_app_error)?;
     let command = RunLeaveGrantsCommand {
+        leave_type_code: payload.leave_type_code.clone(),
         base_date: payload.base_date,
         dry_run: payload.dry_run,
         user_ids: payload.user_ids,
@@ -155,10 +168,15 @@ pub async fn adjust_leave_ledger(
     }
     payload.validate()?;
     let repository = LeaveLedgerPostgresRepository::new(state.write_pool.clone());
+    repository
+        .ensure_balance_tracked_leave_type(&payload.leave_type_code)
+        .await
+        .map_err(leave_ledger_error_to_app_error)?;
     let use_case = AdjustLeaveLedger::new(repository.clone(), repository);
     let report = use_case
         .execute(AdjustLeaveLedgerCommand {
             user_id: payload.user_id,
+            leave_type_code: payload.leave_type_code,
             amount_minutes: payload.amount_minutes,
             lot_id: payload.lot_id,
             day_equivalent_minutes: payload.day_equivalent_minutes,

@@ -15,7 +15,9 @@ use timekeeper_app::{
 use timekeeper_domain::attendance_classification::WorkRuleParameters;
 use uuid::Uuid;
 
-use crate::work_schedules::{load_resolved_in_range, WorkdayResolverPostgresRepository};
+use crate::work_schedules::{
+    load_resolved_for_users_in_range, load_resolved_in_range, WorkdayResolverPostgresRepository,
+};
 
 #[derive(Debug, Clone)]
 pub struct ClassificationPostgresRepository {
@@ -48,6 +50,15 @@ struct AttendanceRow {
 }
 
 #[derive(Debug, Clone, FromRow)]
+struct BatchAttendanceRow {
+    id: String,
+    user_id: String,
+    date: NaiveDate,
+    clock_in_time: Option<NaiveDateTime>,
+    clock_out_time: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Clone, FromRow)]
 struct BreakRow {
     attendance_id: String,
     break_start_time: NaiveDateTime,
@@ -71,6 +82,178 @@ struct WorkRuleSettingsRow {
     night_end: NaiveTime,
     week_start_weekday: i16,
     legal_holiday_weekday: i16,
+}
+
+#[derive(Debug, Clone)]
+pub struct BatchClassificationSnapshot {
+    resolved: HashMap<String, Vec<timekeeper_app::work_schedules::ResolvedWorkday>>,
+    actuals: HashMap<String, Vec<DayActuals>>,
+    settlements: HashMap<String, i64>,
+    rules: Vec<WorkRuleRow>,
+}
+
+impl BatchClassificationSnapshot {
+    pub async fn load(
+        pool: &PgPool,
+        user_ids: &[String],
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Self, MonthlyClassificationError> {
+        let resolved_rows = load_resolved_for_users_in_range(pool, user_ids, from, to)
+            .await
+            .map_err(resolve_error_to_classification_error)?;
+        let version_ids = resolved_rows
+            .iter()
+            .map(|row| row.work_schedule_version_id.clone())
+            .collect::<Vec<_>>();
+        let mut resolved: HashMap<String, Vec<_>> = HashMap::new();
+        for row in resolved_rows {
+            resolved.entry(row.user_id.clone()).or_default().push(row);
+        }
+
+        let attendance = sqlx::query_as::<_, BatchAttendanceRow>(
+            "SELECT id, user_id, date, clock_in_time, clock_out_time
+             FROM attendance
+             WHERE user_id = ANY($1) AND date BETWEEN $2 AND $3
+             ORDER BY user_id, date, clock_in_time NULLS LAST",
+        )
+        .bind(user_ids)
+        .bind(from)
+        .bind(to)
+        .fetch_all(pool)
+        .await
+        .map_err(repository_error)?;
+        let attendance_ids = attendance
+            .iter()
+            .map(|row| row.id.clone())
+            .collect::<Vec<_>>();
+        let corrections = effective_corrections_by_attendance_id(pool, &attendance_ids).await?;
+        let raw_breaks = raw_breaks_by_attendance_id(pool, &attendance_ids).await?;
+        let mut actuals: HashMap<String, Vec<DayActuals>> = HashMap::new();
+        for row in attendance {
+            let actual = if let Some(correction) = corrections.get(&row.id) {
+                DayActuals {
+                    work_date: row.date,
+                    clock_in_time: correction.clock_in_time_corrected,
+                    clock_out_time: correction.clock_out_time_corrected,
+                    breaks: correction_breaks(&correction.break_records_corrected_json)?,
+                }
+            } else {
+                DayActuals {
+                    work_date: row.date,
+                    clock_in_time: row.clock_in_time,
+                    clock_out_time: row.clock_out_time,
+                    breaks: raw_breaks.get(&row.id).cloned().unwrap_or_default(),
+                }
+            };
+            actuals.entry(row.user_id).or_default().push(actual);
+        }
+
+        let settlement_rows = sqlx::query_as::<_, (String, i32)>(
+            "SELECT version_id::TEXT, contracted_minutes_per_period
+             FROM work_schedule_settlement_periods
+             WHERE version_id::TEXT = ANY($1)",
+        )
+        .bind(&version_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(repository_error)?;
+        let settlements = settlement_rows
+            .into_iter()
+            .map(|(id, minutes)| (id, i64::from(minutes)))
+            .collect();
+        let rule_rows = sqlx::query_as::<_, WorkRuleSettingsRow>(
+            "SELECT valid_from, statutory_daily_minutes, statutory_weekly_minutes,
+                    night_start, night_end, week_start_weekday, legal_holiday_weekday
+             FROM work_rule_settings
+             WHERE valid_from <= $1
+             ORDER BY valid_from",
+        )
+        .bind(to)
+        .fetch_all(pool)
+        .await
+        .map_err(repository_error)?;
+        let rules = rule_rows
+            .into_iter()
+            .map(work_rule_row_to_app)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            resolved,
+            actuals,
+            settlements,
+            rules,
+        })
+    }
+}
+
+#[async_trait]
+impl ClassificationReadRepository for BatchClassificationSnapshot {
+    async fn list_resolved_in_range(
+        &self,
+        user_id: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<timekeeper_app::work_schedules::ResolvedWorkday>, MonthlyClassificationError>
+    {
+        Ok(self
+            .resolved
+            .get(user_id)
+            .into_iter()
+            .flatten()
+            .filter(|row| row.work_date >= from && row.work_date <= to)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_day_actuals_in_range(
+        &self,
+        user_id: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<DayActuals>, MonthlyClassificationError> {
+        Ok(self
+            .actuals
+            .get(user_id)
+            .into_iter()
+            .flatten()
+            .filter(|row| row.work_date >= from && row.work_date <= to)
+            .cloned()
+            .collect())
+    }
+
+    async fn find_settlement_minutes(
+        &self,
+        version_id: &str,
+    ) -> Result<Option<i64>, MonthlyClassificationError> {
+        Ok(self.settlements.get(version_id).copied())
+    }
+
+    async fn list_work_rules_effective_until(
+        &self,
+        until: NaiveDate,
+    ) -> Result<Vec<WorkRuleRow>, MonthlyClassificationError> {
+        Ok(self
+            .rules
+            .iter()
+            .filter(|row| row.valid_from <= until)
+            .copied()
+            .collect())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NoopClassificationMaterializer;
+
+#[async_trait]
+impl ClassificationWorkdayMaterializer for NoopClassificationMaterializer {
+    async fn materialize(
+        &self,
+        _user_id: &str,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> Result<(), MonthlyClassificationError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

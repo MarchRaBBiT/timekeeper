@@ -104,6 +104,15 @@ fn user_attendance_day_to_response(
         leave: day.leave.map(|leave| AttendanceLeaveResponse {
             leave_request_id: leave.leave_request_id,
             leave_type: leave.leave_type,
+            acquisition_unit: match leave.acquisition_unit.as_str() {
+                "half_am" => timekeeper_contract::requests::LeaveAcquisitionUnit::HalfAm,
+                "half_pm" => timekeeper_contract::requests::LeaveAcquisitionUnit::HalfPm,
+                "hour" => timekeeper_contract::requests::LeaveAcquisitionUnit::Hour,
+                _ => timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            },
+            start_time: leave.start_time,
+            end_time: leave.end_time,
+            requested_minutes: leave.requested_minutes,
         }),
     }
 }

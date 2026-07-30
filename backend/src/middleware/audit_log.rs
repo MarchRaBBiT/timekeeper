@@ -266,6 +266,11 @@ fn needs_body_for_metadata(event_type: &str) -> bool {
             | "leave_grant_run"
             | "leave_ledger_adjust"
             | "user_hire_date_set"
+            | "holiday_work_submit"
+            | "holiday_work_approve"
+            | "holiday_work_reject"
+            | "leave_type_create"
+            | "leave_type_update"
     )
 }
 
@@ -323,6 +328,21 @@ fn build_metadata(
         "user_hire_date_set" => {
             let payload = parse_json_body(body_bytes);
             Some(build_hire_date_metadata(payload.as_ref()))
+        }
+        "holiday_work_submit" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_holiday_work_metadata(payload.as_ref()))
+        }
+        "holiday_work_approve" | "holiday_work_reject" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_holiday_work_decision_metadata(
+                event_type,
+                payload.as_ref(),
+            ))
+        }
+        "leave_type_create" | "leave_type_update" => {
+            let payload = parse_json_body(body_bytes);
+            Some(build_leave_type_metadata(target_id, payload.as_ref()))
         }
         _ => None,
     }
@@ -509,11 +529,16 @@ fn build_leave_grant_run_metadata(payload: Option<&Value>) -> Value {
     let base_date = payload
         .and_then(|value| value.get("base_date"))
         .and_then(Value::as_str);
+    let leave_type_code = payload
+        .and_then(|value| value.get("leave_type_code"))
+        .and_then(Value::as_str)
+        .unwrap_or(ANNUAL_LEAVE_TYPE);
     json!({
         "dry_run": dry_run,
         "user_ids_count": user_ids_count,
         "exclude_user_ids_count": exclude_user_ids_count,
         "base_date": base_date,
+        "leave_type_code": leave_type_code,
     })
 }
 
@@ -524,11 +549,13 @@ fn build_leave_ledger_adjust_metadata(payload: Option<&Value>) -> Value {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     summary.insert("dry_run".to_string(), Value::Bool(dry_run));
-    // このAPIは年次有給休暇の台帳のみを扱うため leave_type はリクエストボディに
-    // 含まれない（timekeeper_app::leave_ledger::ANNUAL_LEAVE_TYPE 固定）。
+    let leave_type_code = payload
+        .and_then(|value| value.get("leave_type_code"))
+        .and_then(Value::as_str)
+        .unwrap_or(ANNUAL_LEAVE_TYPE);
     summary.insert(
         "leave_type".to_string(),
-        Value::String(ANNUAL_LEAVE_TYPE.to_string()),
+        Value::String(leave_type_code.to_string()),
     );
     if let Some(payload) = payload {
         insert_string_if_present(&mut summary, payload, "user_id");
@@ -548,6 +575,75 @@ fn build_hire_date_metadata(payload: Option<&Value>) -> Value {
     let mut summary = Map::new();
     if let Some(payload) = payload {
         insert_string_if_present(&mut summary, payload, "hire_date");
+    }
+    Value::Object(summary)
+}
+
+fn build_holiday_work_metadata(payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    if let Some(payload) = payload {
+        insert_string_if_present(&mut summary, payload, "work_date");
+        insert_string_if_present(&mut summary, payload, "benefit");
+        insert_string_if_present(&mut summary, payload, "substitute_date");
+        if let Some(minutes) = payload.get("compensatory_minutes").and_then(Value::as_i64) {
+            summary.insert(
+                "compensatory_minutes".to_string(),
+                Value::Number(minutes.into()),
+            );
+        }
+        if let Some(reason) = payload.get("reason").and_then(Value::as_str) {
+            summary.insert(
+                "reason_length".to_string(),
+                Value::Number((reason.chars().count() as u64).into()),
+            );
+        }
+    }
+    Value::Object(summary)
+}
+
+fn build_holiday_work_decision_metadata(event_type: &str, payload: Option<&Value>) -> Value {
+    let comment_length = payload
+        .and_then(|value| value.get("comment"))
+        .and_then(Value::as_str)
+        .map(|comment| comment.chars().count() as u64);
+    json!({
+        "decision": if event_type == "holiday_work_approve" { "approve" } else { "reject" },
+        "comment_present": comment_length.unwrap_or(0) > 0,
+        "comment_length": comment_length,
+    })
+}
+
+fn build_leave_type_metadata(target_id: Option<&str>, payload: Option<&Value>) -> Value {
+    let mut summary = Map::new();
+    if let Some(code) = target_id.or_else(|| {
+        payload
+            .and_then(|value| value.get("code"))
+            .and_then(Value::as_str)
+    }) {
+        summary.insert("code".to_string(), Value::String(code.to_string()));
+    }
+    if let Some(payload) = payload {
+        if let Some(value) = payload.get("is_paid").and_then(Value::as_bool) {
+            summary.insert("is_paid".to_string(), Value::Bool(value));
+        }
+        if let Some(value) = payload.get("balance_tracked").and_then(Value::as_bool) {
+            summary.insert("balance_tracked".to_string(), Value::Bool(value));
+        }
+        if let Some(value) = payload.get("is_active").and_then(Value::as_bool) {
+            summary.insert("is_active".to_string(), Value::Bool(value));
+        }
+        if let Some(units) = payload.get("allowed_units").and_then(Value::as_array) {
+            summary.insert(
+                "allowed_units".to_string(),
+                Value::Array(
+                    units
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(|unit| Value::String(unit.to_string()))
+                        .collect(),
+                ),
+            );
+        }
     }
     Value::Object(summary)
 }
@@ -669,6 +765,14 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "requests", "overtime"]) => {
             Some(event("request_overtime_create", "request", None))
         }
+        (&Method::POST, ["api", "holiday-work-requests"]) => {
+            Some(event("holiday_work_submit", "holiday_work_request", None))
+        }
+        (&Method::DELETE, ["api", "holiday-work-requests", request_id]) => Some(event(
+            "holiday_work_cancel",
+            "holiday_work_request",
+            Some((*request_id).to_string()),
+        )),
         (&Method::PUT, ["api", "requests", request_id]) => Some(event(
             "request_update",
             "request",
@@ -730,6 +834,31 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
             "request",
             Some((*request_id).to_string()),
         )),
+        (&Method::GET, ["api", "admin", "holiday-work-requests"]) => Some(event(
+            "holiday_work_admin_list",
+            "holiday_work_request",
+            None,
+        )),
+        (&Method::POST, ["api", "admin", "holiday-work-requests", request_id, "approve"]) => {
+            Some(event(
+                "holiday_work_approve",
+                "holiday_work_request",
+                Some((*request_id).to_string()),
+            ))
+        }
+        (&Method::POST, ["api", "admin", "holiday-work-requests", request_id, "reject"]) => {
+            Some(event(
+                "holiday_work_reject",
+                "holiday_work_request",
+                Some((*request_id).to_string()),
+            ))
+        }
+        (&Method::GET, ["api", "admin", "attendance-report"]) => {
+            Some(event("admin_attendance_report", "attendance_report", None))
+        }
+        (&Method::GET, ["api", "admin", "payroll-export"]) => {
+            Some(event("payroll_export", "payroll_export", None))
+        }
         (&Method::POST, ["api", "admin", "work-schedules"]) => {
             Some(event("work_schedule_created", "work_schedule", None))
         }
@@ -867,6 +996,22 @@ fn classify_event(method: &Method, path: &str) -> Option<AuditEventDescriptor> {
         (&Method::POST, ["api", "admin", "leave-ledger", "adjust"]) => {
             Some(event("leave_ledger_adjust", "leave_ledger", None))
         }
+        (&Method::GET, ["api", "admin", "leave-types"]) => {
+            Some(event("leave_type_list", "leave_type", None))
+        }
+        (&Method::POST, ["api", "admin", "leave-types"]) => {
+            Some(event("leave_type_create", "leave_type", None))
+        }
+        (&Method::PUT, ["api", "admin", "leave-types", code]) => Some(event(
+            "leave_type_update",
+            "leave_type",
+            Some((*code).to_string()),
+        )),
+        (&Method::DELETE, ["api", "admin", "leave-types", code]) => Some(event(
+            "leave_type_delete",
+            "leave_type",
+            Some((*code).to_string()),
+        )),
         (&Method::PUT, ["api", "admin", "users", user_id, "hire-date"]) => Some(event(
             "user_hire_date_set",
             "user",
@@ -1093,6 +1238,93 @@ mod tests {
     }
 
     #[test]
+    fn classify_event_matches_phase3_paths() {
+        let cases = [
+            (
+                Method::POST,
+                "/api/holiday-work-requests",
+                "holiday_work_submit",
+            ),
+            (
+                Method::DELETE,
+                "/api/holiday-work-requests/request-1",
+                "holiday_work_cancel",
+            ),
+            (
+                Method::POST,
+                "/api/admin/holiday-work-requests/request-1/approve",
+                "holiday_work_approve",
+            ),
+            (
+                Method::POST,
+                "/api/admin/holiday-work-requests/request-1/reject",
+                "holiday_work_reject",
+            ),
+            (
+                Method::GET,
+                "/api/admin/attendance-report",
+                "admin_attendance_report",
+            ),
+            (Method::GET, "/api/admin/payroll-export", "payroll_export"),
+            (Method::POST, "/api/admin/leave-types", "leave_type_create"),
+            (
+                Method::PUT,
+                "/api/admin/leave-types/wellness",
+                "leave_type_update",
+            ),
+            (
+                Method::DELETE,
+                "/api/admin/leave-types/wellness",
+                "leave_type_delete",
+            ),
+        ];
+        for (method, path, expected) in cases {
+            let event = classify_event(&method, path).expect("phase 3 event should map");
+            assert_eq!(event.event_type, expected);
+        }
+    }
+
+    #[test]
+    fn phase3_metadata_is_allowlisted() {
+        let holiday_payload = json!({
+            "work_date": "2026-09-06",
+            "benefit": "substitution",
+            "substitute_date": "2026-09-07",
+            "reason": "private reason",
+            "password": "must-not-leak"
+        });
+        let holiday = build_holiday_work_metadata(Some(&holiday_payload));
+        assert_eq!(holiday["work_date"], "2026-09-06");
+        assert_eq!(holiday["reason_length"], 14);
+        assert!(holiday.get("reason").is_none());
+        assert!(holiday.get("password").is_none());
+
+        let decision = build_holiday_work_decision_metadata(
+            "holiday_work_approve",
+            Some(&json!({"comment": "approved", "token": "must-not-leak"})),
+        );
+        assert_eq!(decision["decision"], "approve");
+        assert_eq!(decision["comment_length"], 8);
+        assert!(decision.get("comment").is_none());
+        assert!(decision.get("token").is_none());
+
+        let leave_type = build_leave_type_metadata(
+            Some("wellness"),
+            Some(&json!({
+                "name": "Private display name",
+                "is_paid": true,
+                "balance_tracked": true,
+                "allowed_units": ["day", "hour"],
+                "secret": "must-not-leak"
+            })),
+        );
+        assert_eq!(leave_type["code"], "wellness");
+        assert_eq!(leave_type["allowed_units"], json!(["day", "hour"]));
+        assert!(leave_type.get("name").is_none());
+        assert!(leave_type.get("secret").is_none());
+    }
+
+    #[test]
     fn classify_event_matches_user_hire_date_path() {
         let event = classify_event(&Method::PUT, "/api/admin/users/user-1/hire-date")
             .expect("hire date update should map");
@@ -1112,6 +1344,7 @@ mod tests {
     fn build_leave_grant_run_metadata_includes_dry_run_and_counts() {
         let payload = serde_json::json!({
             "base_date": "2026-07-01",
+            "leave_type_code": "wellness",
             "dry_run": true,
             "user_ids": ["u-1", "u-2"],
             "exclude_user_ids": ["u-3"],
@@ -1122,6 +1355,7 @@ mod tests {
         assert_eq!(metadata["user_ids_count"], 2);
         assert_eq!(metadata["exclude_user_ids_count"], 1);
         assert_eq!(metadata["base_date"], "2026-07-01");
+        assert_eq!(metadata["leave_type_code"], "wellness");
     }
 
     #[test]
@@ -1132,6 +1366,7 @@ mod tests {
         let metadata = build_leave_grant_run_metadata(Some(&payload));
 
         assert_eq!(metadata["dry_run"], false);
+        assert_eq!(metadata["leave_type_code"], ANNUAL_LEAVE_TYPE);
         assert!(metadata["user_ids_count"].is_null());
         assert!(metadata["exclude_user_ids_count"].is_null());
     }
@@ -1140,6 +1375,7 @@ mod tests {
     fn build_leave_ledger_adjust_metadata_includes_whitelisted_fields() {
         let payload = serde_json::json!({
             "user_id": "user-1",
+            "leave_type_code": "wellness",
             "amount_minutes": -480,
             "lot_id": "lot-1",
             "reason": "初期移行データの補正",
@@ -1152,7 +1388,7 @@ mod tests {
         assert_eq!(metadata["lot_id"], "lot-1");
         assert_eq!(metadata["reason"], "初期移行データの補正");
         assert_eq!(metadata["dry_run"], false);
-        assert_eq!(metadata["leave_type"], ANNUAL_LEAVE_TYPE);
+        assert_eq!(metadata["leave_type"], "wellness");
     }
 
     #[test]

@@ -8,8 +8,17 @@ use chrono::{DateTime, NaiveDate, Utc};
 use sqlx::PgPool;
 
 use crate::error::AppError;
-use crate::models::leave_request::LeaveRequest;
+use crate::models::leave_request::{LeaveAcquisitionUnit, LeaveRequest};
 use crate::types::{LeaveRequestId, UserId};
+
+fn acquisition_unit_value(unit: LeaveAcquisitionUnit) -> &'static str {
+    match unit {
+        LeaveAcquisitionUnit::Day => "day",
+        LeaveAcquisitionUnit::HalfAm => "half_am",
+        LeaveAcquisitionUnit::HalfPm => "half_pm",
+        LeaveAcquisitionUnit::Hour => "hour",
+    }
+}
 
 /// Repository trait for LeaveRequest operations.
 ///
@@ -103,7 +112,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     async fn find_all(&self, db: &PgPool) -> Result<Vec<LeaveRequest>, AppError> {
         let query = format!(
             "SELECT {} FROM {} ORDER BY start_date DESC LIMIT {}",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests",
             1_000
@@ -117,7 +126,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     async fn find_by_id(&self, db: &PgPool, id: LeaveRequestId) -> Result<LeaveRequest, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE id = $1",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests"
         );
@@ -130,29 +139,29 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     }
 
     async fn create(&self, db: &PgPool, item: &LeaveRequest) -> Result<LeaveRequest, AppError> {
-        use crate::models::leave_request::LeaveType;
         use crate::models::request::RequestStatus;
 
         let query = format!(
-            "INSERT INTO {} (id, user_id, leave_type, start_date, end_date, reason, status, \
+            "INSERT INTO {} (id, user_id, leave_type, start_date, end_date, acquisition_unit, \
+             start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) \
              RETURNING {}",
             "leave_requests",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, \
+             end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at"
         );
         let row = sqlx::query_as::<_, LeaveRequest>(&query)
             .bind(item.id)
             .bind(item.user_id)
-            .bind(match item.leave_type {
-                LeaveType::Annual => "annual",
-                LeaveType::Sick => "sick",
-                LeaveType::Personal => "personal",
-                LeaveType::Other => "other",
-            })
+            .bind(item.leave_type.db_value())
             .bind(item.start_date)
             .bind(item.end_date)
+            .bind(acquisition_unit_value(item.acquisition_unit))
+            .bind(item.start_time)
+            .bind(item.end_time)
+            .bind(item.requested_minutes)
             .bind(&item.reason)
             .bind(match item.status {
                 RequestStatus::Pending => "pending",
@@ -174,29 +183,29 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     }
 
     async fn update(&self, db: &PgPool, item: &LeaveRequest) -> Result<LeaveRequest, AppError> {
-        use crate::models::leave_request::LeaveType;
         use crate::models::request::RequestStatus;
 
         let query = format!(
-            "UPDATE {} SET user_id = $2, leave_type = $3, start_date = $4, end_date = $5, reason = $6, \
-             status = $7, approved_by = $8, approved_at = $9, decision_comment = $10, rejected_by = $11, \
-             rejected_at = $12, cancelled_at = $13, updated_at = $14 WHERE id = $1 \
+            "UPDATE {} SET user_id = $2, leave_type = $3, start_date = $4, end_date = $5, \
+             acquisition_unit = $6, start_time = $7, end_time = $8, requested_minutes = $9, reason = $10, \
+             status = $11, approved_by = $12, approved_at = $13, decision_comment = $14, rejected_by = $15, \
+             rejected_at = $16, cancelled_at = $17, updated_at = $18 WHERE id = $1 \
              RETURNING {}",
             "leave_requests",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, \
+             end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at"
         );
         let row = sqlx::query_as::<_, LeaveRequest>(&query)
             .bind(item.id)
             .bind(item.user_id)
-            .bind(match item.leave_type {
-                LeaveType::Annual => "annual",
-                LeaveType::Sick => "sick",
-                LeaveType::Personal => "personal",
-                LeaveType::Other => "other",
-            })
+            .bind(item.leave_type.db_value())
             .bind(item.start_date)
             .bind(item.end_date)
+            .bind(acquisition_unit_value(item.acquisition_unit))
+            .bind(item.start_time)
+            .bind(item.end_time)
+            .bind(item.requested_minutes)
             .bind(&item.reason)
             .bind(match item.status {
                 RequestStatus::Pending => "pending",
@@ -229,7 +238,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     ) -> Result<Vec<LeaveRequest>, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE user_id = $1 ORDER BY created_at DESC",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests"
         );
@@ -250,7 +259,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
         let query = format!(
             "SELECT {} FROM {} WHERE user_id = $1 AND start_date >= $2 AND end_date <= $3 \
              ORDER BY start_date DESC",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests"
         );
@@ -271,7 +280,7 @@ impl LeaveRequestRepositoryTrait for LeaveRequestRepository {
     ) -> Result<Option<LeaveRequest>, AppError> {
         let query = format!(
             "SELECT {} FROM {} WHERE id = $1 AND user_id = $2",
-            "id, user_id, leave_type, start_date, end_date, reason, status, \
+            "id, user_id, leave_type, start_date, end_date, acquisition_unit, start_time, end_time, requested_minutes, reason, status, \
              approved_by, approved_at, rejected_by, rejected_at, cancelled_at, decision_comment, created_at, updated_at",
             "leave_requests"
         );

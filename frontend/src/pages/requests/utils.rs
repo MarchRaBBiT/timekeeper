@@ -111,6 +111,9 @@ impl LeaveFormState {
             leave_type: self.leave_type.get(),
             start_date: start,
             end_date: end,
+            acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            start_time: None,
+            end_time: None,
             reason: optional_string(self.reason.get()),
         })
     }

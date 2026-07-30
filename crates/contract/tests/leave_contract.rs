@@ -6,6 +6,24 @@ use timekeeper_contract::leave::{
     LeaveLotResponse, LeaveObligationStatus, LeaveObligationWindowResponse, SetHireDateRequest,
     LEAVE_BALANCE_INSUFFICIENT_CODE,
 };
+
+#[test]
+fn custom_leave_type_master_contract_uses_stable_codes_and_units() {
+    let request = timekeeper_contract::leave::CreateLeaveTypeRequest {
+        code: "summer_special".to_string(),
+        name: "Summer special leave".to_string(),
+        is_paid: true,
+        balance_tracked: true,
+        allowed_units: vec![
+            timekeeper_contract::leave::LeaveUnit::Day,
+            timekeeper_contract::leave::LeaveUnit::Hour,
+        ],
+    };
+
+    let json = serde_json::to_value(request).expect("serialize leave type");
+    assert_eq!(json["code"], "summer_special");
+    assert_eq!(json["allowed_units"], serde_json::json!(["day", "hour"]));
+}
 use validator::Validate;
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -56,9 +74,17 @@ fn grant_run_request_defaults_optional_fields() {
         serde_json::from_value(serde_json::json!({ "base_date": "2026-07-01" }))
             .expect("deserialize minimal request");
     assert_eq!(parsed.base_date, date(2026, 7, 1));
+    assert_eq!(parsed.leave_type_code, "annual");
     assert!(!parsed.dry_run);
     assert!(parsed.user_ids.is_none());
     assert!(parsed.exclude_user_ids.is_none());
+
+    let custom: LeaveGrantRunRequest = serde_json::from_value(serde_json::json!({
+        "base_date": "2026-07-01",
+        "leave_type_code": "wellness"
+    }))
+    .expect("deserialize custom tracked leave grant request");
+    assert_eq!(custom.leave_type_code, "wellness");
 }
 
 #[test]
@@ -135,6 +161,7 @@ fn adjust_request_requires_reason_and_defaults_flags() {
         "reason": "initial migration"
     }))
     .expect("deserialize minimal adjust");
+    assert_eq!(parsed.leave_type_code, "annual");
     assert!(!parsed.dry_run);
     assert!(parsed.lot_id.is_none());
     assert!(parsed.validate().is_ok());
@@ -146,6 +173,21 @@ fn adjust_request_requires_reason_and_defaults_flags() {
     assert!(empty_reason.validate().is_err());
 }
 
+#[test]
+fn balance_query_defaults_to_annual_and_accepts_custom_leave_type() {
+    let default_query: timekeeper_contract::leave::LeaveBalanceQuery =
+        serde_json::from_value(serde_json::json!({})).expect("deserialize default balance query");
+    assert_eq!(default_query.leave_type_code, "annual");
+
+    let custom_query: timekeeper_contract::leave::LeaveBalanceQuery =
+        serde_json::from_value(serde_json::json!({
+            "leave_type_code": "wellness",
+            "as_of": "2026-07-01"
+        }))
+        .expect("deserialize custom balance query");
+    assert_eq!(custom_query.leave_type_code, "wellness");
+}
+
 /// M-2: `amount_minutes` は DB 列（`INTEGER` = i32）へ収まる範囲でなければ
 /// ならない。`dry_run=true` は DB の `i32::try_from` を経由しないため、
 /// 契約層でのバリデーションが唯一のガードになる。
@@ -153,6 +195,7 @@ fn adjust_request_requires_reason_and_defaults_flags() {
 fn adjust_request_rejects_amount_minutes_outside_i32_range() {
     let base = LeaveLedgerAdjustRequest {
         user_id: "user-1".to_string(),
+        leave_type_code: "annual".to_string(),
         amount_minutes: 2400,
         lot_id: None,
         day_equivalent_minutes: None,
@@ -195,6 +238,7 @@ fn adjust_request_rejects_amount_minutes_outside_i32_range() {
 fn adjust_request_rejects_day_equivalent_minutes_outside_db_check_range() {
     let base = LeaveLedgerAdjustRequest {
         user_id: "user-1".to_string(),
+        leave_type_code: "annual".to_string(),
         amount_minutes: 2400,
         lot_id: None,
         day_equivalent_minutes: Some(480),

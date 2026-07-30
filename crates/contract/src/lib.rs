@@ -1,4 +1,9 @@
+pub mod admin_attendance_report;
+pub mod holiday_work;
+pub mod payroll_export;
+
 pub mod attendance {
+    use crate::requests;
     use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
     use serde::{Deserialize, Serialize};
     use utoipa::{IntoParams, ToSchema};
@@ -62,6 +67,14 @@ pub mod attendance {
     pub struct AttendanceLeaveResponse {
         pub leave_request_id: String,
         pub leave_type: String,
+        #[serde(default)]
+        pub acquisition_unit: requests::LeaveAcquisitionUnit,
+        #[serde(default)]
+        pub start_time: Option<chrono::NaiveTime>,
+        #[serde(default)]
+        pub end_time: Option<chrono::NaiveTime>,
+        #[serde(default)]
+        pub requested_minutes: Option<i32>,
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -242,15 +255,31 @@ pub mod settlement_balance;
 pub mod work_schedules;
 
 pub mod requests {
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, NaiveTime};
     use serde::{Deserialize, Serialize};
     use utoipa::ToSchema;
+
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub enum LeaveAcquisitionUnit {
+        #[default]
+        Day,
+        HalfAm,
+        HalfPm,
+        Hour,
+    }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
     pub struct CreateLeaveRequest {
         pub leave_type: String,
         pub start_date: NaiveDate,
         pub end_date: NaiveDate,
+        #[serde(default)]
+        pub acquisition_unit: LeaveAcquisitionUnit,
+        #[serde(default)]
+        pub start_time: Option<NaiveTime>,
+        #[serde(default)]
+        pub end_time: Option<NaiveTime>,
         pub reason: Option<String>,
     }
 
@@ -259,6 +288,12 @@ pub mod requests {
         pub leave_type: String,
         pub start_date: NaiveDate,
         pub end_date: NaiveDate,
+        #[serde(default)]
+        pub acquisition_unit: LeaveAcquisitionUnit,
+        #[serde(default)]
+        pub start_time: Option<NaiveTime>,
+        #[serde(default)]
+        pub end_time: Option<NaiveTime>,
         pub reason: Option<String>,
     }
 
@@ -269,6 +304,14 @@ pub mod requests {
         pub leave_type: String,
         pub start_date: NaiveDate,
         pub end_date: NaiveDate,
+        #[serde(default)]
+        pub acquisition_unit: LeaveAcquisitionUnit,
+        #[serde(default)]
+        pub start_time: Option<NaiveTime>,
+        #[serde(default)]
+        pub end_time: Option<NaiveTime>,
+        #[serde(default)]
+        pub requested_minutes: Option<i32>,
         pub reason: Option<String>,
         pub status: String,
         pub approved_by: Option<String>,

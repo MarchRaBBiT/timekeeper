@@ -1,11 +1,14 @@
 pub mod attendance;
 pub mod attendance_correction_requests;
+pub mod attendance_report;
 pub mod audit_logs;
 pub mod common;
 pub mod departments;
 pub mod export;
 pub mod holidays;
 pub mod leave_ledger;
+pub mod leave_types;
+pub mod payroll_export;
 pub mod requests;
 pub mod sessions;
 pub mod users;
@@ -14,6 +17,7 @@ pub mod workday_overrides;
 
 pub use attendance::*;
 pub use attendance_correction_requests::*;
+pub use attendance_report::*;
 pub use audit_logs::*;
 pub use departments::*;
 // common is internal helpers, usually not re-exported fully, but let's see if docs.rs needs anything from it.
@@ -22,6 +26,8 @@ pub use departments::*;
 pub use export::*;
 pub use holidays::*;
 pub use leave_ledger::*;
+pub use leave_types::*;
+pub use payroll_export::*;
 pub use requests::*;
 pub use sessions::*;
 pub use users::*;

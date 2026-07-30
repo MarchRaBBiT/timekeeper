@@ -1132,6 +1132,14 @@ fn validate_overtime_monitor_settings(
             "overtime_request_tolerance_minutes must be between 0 and the supported maximum",
         ));
     }
+    if payload
+        .minimum_rest_minutes
+        .is_some_and(|minutes| minutes <= 0 || minutes > MAX_OVERTIME_TOLERANCE_MINUTES)
+    {
+        return Err(invalid_work_schedule(
+            "minimum_rest_minutes must be between 1 and the supported maximum",
+        ));
+    }
     Ok(())
 }
 
@@ -1179,7 +1187,7 @@ fn require_manager(user: &User) -> Result<(), AppError> {
     }
 }
 
-fn require_system_admin(user: &User) -> Result<(), AppError> {
+pub(super) fn require_system_admin(user: &User) -> Result<(), AppError> {
     if user.is_system_admin() {
         Ok(())
     } else {

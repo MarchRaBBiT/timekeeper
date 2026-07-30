@@ -35,7 +35,8 @@ pub use adjust::{AdjustLeaveLedger, AdjustLeaveLedgerCommand, AdjustLeaveLedgerR
 pub use balance::{GetLeaveBalance, GetLeaveBalanceCommand, LeaveBalanceView};
 pub use consume::{
     build_annual_leave_consume_entries, build_annual_leave_release_entries,
-    ensure_annual_leave_request_has_balance, AnnualLeaveRequestLedgerCommand,
+    build_leave_consume_entries_for_minutes, ensure_annual_leave_request_has_balance,
+    ensure_leave_request_minutes_have_balance, AnnualLeaveRequestLedgerCommand,
 };
 pub use grants::{
     ExpiryOutcome, GrantFailure, GrantOutcome, GrantSkipReason, RunLeaveGrants,
@@ -81,6 +82,7 @@ pub struct StoredLeaveLedgerEntry {
     pub kind: LeaveLedgerKind,
     pub lot_id: String,
     pub amount_minutes: i64,
+    pub obligation_minutes: i64,
     pub day_equivalent_minutes: i64,
     pub granted_at: Option<NaiveDate>,
     pub expires_at: Option<NaiveDate>,
@@ -98,6 +100,7 @@ impl StoredLeaveLedgerEntry {
             lot_id: self.lot_id.clone(),
             kind: self.kind,
             amount_minutes: self.amount_minutes,
+            obligation_minutes: self.obligation_minutes,
             day_equivalent_minutes: self.day_equivalent_minutes,
             granted_at: self.granted_at,
             expires_at: self.expires_at,
@@ -115,6 +118,7 @@ pub struct NewLeaveLedgerEntry {
     pub kind: LeaveLedgerKind,
     pub lot_id: Option<String>,
     pub amount_minutes: i64,
+    pub obligation_minutes: i64,
     pub day_equivalent_minutes: i64,
     pub granted_at: Option<NaiveDate>,
     pub expires_at: Option<NaiveDate>,

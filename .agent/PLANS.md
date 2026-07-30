@@ -9,6 +9,26 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260730-leave-units-and-type-master
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md`](../docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md)。T-11: 半休・時間単位休暇、休暇種別マスタ、分単位台帳消化、勤怠表示の拡張（migration 060–061）
+
+# EP-20260730-holiday-substitution-compensatory-leave
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-holiday-substitution-compensatory-leave.md`](../docs/exec-plans/active/EP-20260730-holiday-substitution-compensatory-leave.md)。T-13: 振替休日のatomic override pairと代休台帳・期限workflow（migration 062–063）
+
+# EP-20260730-payroll-export-contract
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-payroll-export-contract.md`](../docs/exec-plans/active/EP-20260730-payroll-export-contract.md)。T-14: closed transition時のversioned snapshotと給与CSV export契約（migration 065）
+
+# EP-20260730-admin-attendance-report
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-admin-attendance-report.md`](../docs/exec-plans/active/EP-20260730-admin-attendance-report.md)。T-15: T-03/T-08/T-09 read-modelを合成する管理者月次レポートAPIと画面
+
+# EP-20260730-work-interval-anomaly
+
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-work-interval-anomaly.md`](../docs/exec-plans/active/EP-20260730-work-interval-anomaly.md)。T-18: effective時刻に基づく`insufficient_rest` anomalyと設定API（migration 064）
+
 # EP-20260705-leave-entitlement-ledger
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md`](../docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md)。T-04（G2 実装 前半）: 付与ルールマスタ + append-only `leave_ledger_entries`（migration 052–054）、`crates/domain` の FIFO・時効・年5日義務純ロジック、付与実行 API（dry-run）・残高 read API 2 本・初期投入 `adjust` API。消化引当は T-05
@@ -59,7 +79,7 @@
 
 # EP-20260704-attendance-domain-gap-backlog
 
-**バックログ登録済み（棚卸し完了・個別 EP 分解は未着手）** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
+**Phase 3 実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
 
 勤怠管理システムとしての機能不足観点 G1–G15 を優先度付きで棚卸しした親 EP。P1 = 労働時間の法令区分集計（G1）、有給付与・残高台帳（G2）、承認済み申請と実績の連動（G3）、36協定上限監視（G4）。
 

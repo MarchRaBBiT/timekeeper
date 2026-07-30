@@ -1,6 +1,7 @@
 use crate::components::guard::RequireAuth;
 use leptos::*;
 
+pub mod attendance_report;
 pub mod components;
 pub mod layout;
 pub mod panel;
@@ -20,6 +21,15 @@ mod i18n_tests {
     use crate::test_support::helpers::set_test_locale;
 
     const ADMIN_TRANSLATION_KEYS: &[&str] = &[
+        "admin_components.attendance_report.title",
+        "admin_components.attendance_report.loading",
+        "admin_components.attendance_report.error",
+        "admin_components.attendance_report.empty",
+        "admin_components.attendance_report.filters.month",
+        "admin_components.attendance_report.filters.department",
+        "admin_components.attendance_report.filters.apply",
+        "admin_components.attendance_report.pagination.previous",
+        "admin_components.attendance_report.pagination.next",
         "admin_components.attendance.title",
         "admin_components.attendance.validation.required_fields",
         "admin_components.attendance.validation.date_format",

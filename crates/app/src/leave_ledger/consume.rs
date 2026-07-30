@@ -7,12 +7,13 @@ use timekeeper_domain::leave_ledger::{
 
 use super::{
     start_of_day_utc, stored_entries_to_events, LeaveLedgerError, NewLeaveLedgerEntry,
-    StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
+    StoredLeaveLedgerEntry,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnualLeaveRequestLedgerCommand {
     pub user_id: String,
+    pub leave_type_code: String,
     pub request_id: String,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
@@ -38,6 +39,23 @@ pub fn ensure_annual_leave_request_has_balance(
     let events = stored_entries_to_events(entries);
     let balance = derive_balance(&events, start_date);
     let requested_minutes = requested_minutes_for_workdays(&balance, workday_count)?;
+    allocate_fifo(&balance, requested_minutes)
+        .map(|_| ())
+        .map_err(allocation_error_to_ledger_error)
+}
+
+/// 分数が既に勤務予定から正規化されている部分休暇の残高を検証する。
+pub fn ensure_leave_request_minutes_have_balance(
+    entries: &[StoredLeaveLedgerEntry],
+    as_of: NaiveDate,
+    requested_minutes: i64,
+) -> Result<(), LeaveLedgerError> {
+    if requested_minutes <= 0 {
+        return Err(LeaveLedgerError::InvalidInput(
+            "leave request duration must be positive".to_string(),
+        ));
+    }
+    let balance = derive_balance(&stored_entries_to_events(entries), as_of);
     allocate_fifo(&balance, requested_minutes)
         .map(|_| ())
         .map_err(allocation_error_to_ledger_error)
@@ -74,10 +92,64 @@ pub fn build_annual_leave_consume_entries(
                 })?;
             Ok(NewLeaveLedgerEntry {
                 user_id: command.user_id.clone(),
-                leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+                leave_type: command.leave_type_code.clone(),
                 kind: LeaveLedgerKind::Consume,
                 lot_id: Some(allocation.lot_id),
                 amount_minutes: -allocation.amount_minutes,
+                obligation_minutes: -allocation.amount_minutes,
+                day_equivalent_minutes: lot.day_equivalent_minutes,
+                granted_at: None,
+                expires_at: None,
+                grant_base_date: None,
+                leave_request_id: Some(command.request_id.clone()),
+                reason: None,
+                created_by: command.created_by.clone(),
+                effective_at: start_of_day_utc(command.start_date),
+            })
+        })
+        .collect()
+}
+
+pub fn build_leave_consume_entries_for_minutes(
+    entries: &[StoredLeaveLedgerEntry],
+    command: AnnualLeaveRequestLedgerCommand,
+    requested_minutes: i64,
+    obligation_half_day: bool,
+) -> Result<Vec<NewLeaveLedgerEntry>, LeaveLedgerError> {
+    if requested_minutes <= 0 {
+        return Err(LeaveLedgerError::InvalidInput(
+            "leave request duration must be positive".to_string(),
+        ));
+    }
+    let balance = derive_balance(&stored_entries_to_events(entries), command.start_date);
+    let allocations =
+        allocate_fifo(&balance, requested_minutes).map_err(allocation_error_to_ledger_error)?;
+    let mut obligation_recorded = false;
+    allocations
+        .into_iter()
+        .map(|allocation| {
+            let lot = balance
+                .lots
+                .iter()
+                .find(|lot| lot.lot_id == allocation.lot_id)
+                .ok_or_else(|| {
+                    LeaveLedgerError::Repository(format!(
+                        "allocated lot was not found: {}",
+                        allocation.lot_id
+                    ))
+                })?;
+            Ok(NewLeaveLedgerEntry {
+                user_id: command.user_id.clone(),
+                leave_type: command.leave_type_code.clone(),
+                kind: LeaveLedgerKind::Consume,
+                lot_id: Some(allocation.lot_id),
+                amount_minutes: -allocation.amount_minutes,
+                obligation_minutes: if obligation_half_day && !obligation_recorded {
+                    obligation_recorded = true;
+                    -(lot.day_equivalent_minutes / 2)
+                } else {
+                    0
+                },
                 day_equivalent_minutes: lot.day_equivalent_minutes,
                 granted_at: None,
                 expires_at: None,
@@ -116,10 +188,11 @@ pub fn build_annual_leave_release_entries(
         }
         releases.push(NewLeaveLedgerEntry {
             user_id: command.user_id.clone(),
-            leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+            leave_type: command.leave_type_code.clone(),
             kind: LeaveLedgerKind::Release,
             lot_id: Some(entry.lot_id.clone()),
             amount_minutes: release_minutes,
+            obligation_minutes: -entry.obligation_minutes,
             day_equivalent_minutes: entry.day_equivalent_minutes,
             granted_at: None,
             expires_at: None,

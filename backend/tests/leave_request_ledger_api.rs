@@ -73,6 +73,10 @@ async fn request_json(
 }
 
 async fn seed_annual_balance(pool: &PgPool, user: &User, days: i32) {
+    seed_balance(pool, user, "annual", days).await;
+}
+
+async fn seed_balance(pool: &PgPool, user: &User, leave_type_code: &str, days: i32) {
     let lot_id = Uuid::new_v4();
     let granted_at = NaiveDate::from_ymd_opt(2026, 1, 1).expect("date");
     let expires_at = NaiveDate::from_ymd_opt(2028, 1, 1).expect("date");
@@ -81,24 +85,113 @@ async fn seed_annual_balance(pool: &PgPool, user: &User, days: i32) {
             id, user_id, leave_type, kind, lot_id, amount_minutes,
             day_equivalent_minutes, granted_at, expires_at, grant_base_date,
             reason, effective_at
-         ) VALUES ($1,$2,'annual','adjust',$3,$4,480,$5,$6,$5,'test balance seed',$5)",
+         ) VALUES ($1,$2,$3,'adjust',$4,$5,480,$6,$7,$6,'test balance seed',$6)",
     )
     .bind(Uuid::new_v4())
     .bind(user.id.to_string())
+    .bind(leave_type_code)
     .bind(lot_id)
     .bind(days * 480)
     .bind(granted_at)
     .bind(expires_at)
     .execute(pool)
     .await
-    .expect("seed annual balance");
+    .expect("seed leave balance");
 }
 
 async fn balance_minutes(pool: PgPool, user: User, as_of: &str) -> i64 {
-    let uri = format!("/api/leave-balances/me?as_of={as_of}");
+    balance_minutes_for(pool, user, "annual", as_of).await
+}
+
+async fn balance_minutes_for(pool: PgPool, user: User, leave_type_code: &str, as_of: &str) -> i64 {
+    let uri = format!("/api/leave-balances/me?leave_type_code={leave_type_code}&as_of={as_of}");
     let (status, body) = request_json(router(pool, user), "GET", &uri, None).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     body["available_minutes"].as_i64().expect("minutes")
+}
+
+#[tokio::test]
+async fn custom_balance_tracked_leave_consumes_releases_and_stays_type_isolated() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    sqlx::query(
+        "INSERT INTO leave_types
+            (code, name, is_paid, balance_tracked, allowed_units)
+         VALUES ('wellness', 'Wellness leave', TRUE, TRUE, ARRAY['day'])",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed custom tracked leave type");
+    let manager = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    seed_balance(&pool, &employee, "wellness", 2).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "wellness",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-10",
+            "reason": "recovery"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request_id = body["id"].as_str().expect("request id").to_string();
+
+    assert_eq!(
+        balance_minutes_for(pool.clone(), employee.clone(), "wellness", "2026-07-10").await,
+        960
+    );
+    assert_eq!(
+        balance_minutes(pool.clone(), employee.clone(), "2026-07-10").await,
+        0,
+        "custom and annual ledgers must remain isolated"
+    );
+
+    let approve_path = format!("/api/admin/requests/{request_id}/approve");
+    let (status, body) = request_json(
+        router(pool.clone(), manager),
+        "PUT",
+        &approve_path,
+        Some(json!({ "comment": "approved" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        balance_minutes_for(pool.clone(), employee.clone(), "wellness", "2026-07-10").await,
+        480
+    );
+
+    let cancel_path = format!("/api/requests/{request_id}");
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "DELETE",
+        &cancel_path,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        balance_minutes_for(pool.clone(), employee.clone(), "wellness", "2026-07-10").await,
+        960
+    );
+
+    let (status, body) = request_json(
+        router(pool, employee),
+        "GET",
+        "/api/leave-balances/me?leave_type_code=sick&as_of=2026-07-10",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
 
 #[tokio::test]
@@ -312,6 +405,104 @@ async fn annual_leave_approval_consumes_and_approved_cancel_releases_balance() {
 }
 
 #[tokio::test]
+async fn annual_hour_leave_approval_consumes_minutes_without_obligation_credit() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let manager = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_annual_balance(&pool, &employee, 5).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-10",
+            "acquisition_unit": "hour",
+            "start_time": "10:15:00",
+            "end_time": "11:45:00"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request_id = body["id"].as_str().expect("request id");
+    let approve_path = format!("/api/admin/requests/{request_id}/approve");
+    let (status, body) = request_json(
+        router(pool.clone(), manager),
+        "PUT",
+        &approve_path,
+        Some(json!({ "comment": "approved" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (amount, obligation): (i32, i32) = sqlx::query_as(
+        "SELECT amount_minutes, obligation_minutes
+         FROM leave_ledger_entries
+         WHERE leave_request_id = $1 AND kind = 'consume'",
+    )
+    .bind(request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("consume");
+    assert_eq!(amount, -90);
+    assert_eq!(obligation, 0);
+    assert_eq!(balance_minutes(pool, employee, "2026-07-10").await, 2310);
+}
+
+#[tokio::test]
+async fn annual_half_leave_approval_consumes_half_and_credits_half_day() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let manager = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    seed_annual_balance(&pool, &employee, 5).await;
+    let (status, body) = request_json(
+        router(pool.clone(), employee),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-10",
+            "end_date": "2026-07-10",
+            "acquisition_unit": "half_am"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request_id = body["id"].as_str().expect("request id");
+    let (status, body) = request_json(
+        router(pool.clone(), manager),
+        "PUT",
+        &format!("/api/admin/requests/{request_id}/approve"),
+        Some(json!({ "comment": "approved" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (amount, obligation): (i32, i32) = sqlx::query_as(
+        "SELECT amount_minutes, obligation_minutes FROM leave_ledger_entries
+         WHERE leave_request_id = $1 AND kind = 'consume'",
+    )
+    .bind(request_id)
+    .fetch_one(&pool)
+    .await
+    .expect("consume");
+    assert_eq!(amount, -240);
+    assert_eq!(obligation, -240);
+}
+
+#[tokio::test]
 async fn non_annual_leave_stays_balance_independent() {
     let _guard = integration_guard().await;
     let pool = test_pool().await;
@@ -420,4 +611,55 @@ async fn update_request_revalidates_balance_when_result_stays_annual() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn update_request_rejects_multi_day_hour_leave() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrate");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    seed_weekday_work_schedule_for_user(&pool, employee.id, "follow_weekly_pattern").await;
+    seed_annual_balance(&pool, &employee, 1).await;
+
+    let (status, body) = request_json(
+        router(pool.clone(), employee.clone()),
+        "POST",
+        "/api/requests/leave",
+        Some(json!({
+            "leave_type": "annual",
+            "start_date": "2026-07-13",
+            "end_date": "2026-07-13",
+            "acquisition_unit": "hour",
+            "start_time": "09:00:00",
+            "end_time": "10:00:00"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request_id = body["id"].as_str().expect("request id").to_string();
+
+    let update_path = format!("/api/requests/{request_id}");
+    let (status, body) = request_json(
+        router(pool.clone(), employee),
+        "PUT",
+        &update_path,
+        Some(json!({
+            "end_date": "2026-07-14"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    let unchanged: (String, String) =
+        sqlx::query_as("SELECT start_date::text, end_date::text FROM leave_requests WHERE id = $1")
+            .bind(request_id)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch leave request");
+    assert_eq!(unchanged.0, "2026-07-13");
+    assert_eq!(unchanged.1, "2026-07-13");
 }

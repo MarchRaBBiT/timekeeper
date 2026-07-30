@@ -69,6 +69,10 @@ fn leave_day(request_id: &str, day: u32, leave_type: &str) -> LeaveDayRecord {
         leave_request_id: request_id.to_string(),
         date: date(day),
         leave_type: leave_type.to_string(),
+        acquisition_unit: "day".to_string(),
+        start_time: None,
+        end_time: None,
+        requested_minutes: None,
     }
 }
 

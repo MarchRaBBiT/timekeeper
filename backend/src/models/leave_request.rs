@@ -1,13 +1,26 @@
 //! Models describing employee leave requests and their lifecycle.
 
 use crate::types::{LeaveRequestId, UserId};
-use chrono::{DateTime, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use sqlx::{postgres::PgTypeInfo, Decode, FromRow, Postgres, Type};
 pub use timekeeper_contract::requests::{CreateLeaveRequest, LeaveRequestResponse};
 use utoipa::ToSchema;
 
 pub use crate::models::request::RequestStatus;
+
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema,
+)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum LeaveAcquisitionUnit {
+    #[default]
+    Day,
+    HalfAm,
+    HalfPm,
+    Hour,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 /// Database representation of a leave request submitted by an employee.
@@ -22,6 +35,14 @@ pub struct LeaveRequest {
     pub start_date: NaiveDate,
     /// Last day of the requested leave period.
     pub end_date: NaiveDate,
+    #[sqlx(default)]
+    pub acquisition_unit: LeaveAcquisitionUnit,
+    #[sqlx(default)]
+    pub start_time: Option<NaiveTime>,
+    #[sqlx(default)]
+    pub end_time: Option<NaiveTime>,
+    #[sqlx(default)]
+    pub requested_minutes: Option<i32>,
     /// Optional user-provided explanation for the leave.
     pub reason: Option<String>,
     /// Current status of the leave request.
@@ -44,9 +65,7 @@ pub struct LeaveRequest {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, ToSchema)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, ToSchema)]
 /// Supported leave categories.
 pub enum LeaveType {
     /// Planned vacation or personal time off.
@@ -57,17 +76,66 @@ pub enum LeaveType {
     Personal,
     /// Custom leave type stored as free-form text.
     Other,
+    /// Company-specific leave type backed by `leave_types`.
+    Custom(String),
 }
 
 impl LeaveType {
     #[allow(dead_code)]
-    pub fn db_value(&self) -> &'static str {
+    pub fn db_value(&self) -> &str {
         match self {
             LeaveType::Annual => "annual",
             LeaveType::Sick => "sick",
             LeaveType::Personal => "personal",
             LeaveType::Other => "other",
+            LeaveType::Custom(value) => value,
         }
+    }
+
+    pub fn from_db_value(value: String) -> Self {
+        match value.as_str() {
+            "annual" => Self::Annual,
+            "sick" => Self::Sick,
+            "personal" => Self::Personal,
+            "other" => Self::Other,
+            _ => Self::Custom(value),
+        }
+    }
+}
+
+impl Serialize for LeaveType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.db_value())
+    }
+}
+
+impl<'de> Deserialize<'de> for LeaveType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self::from_db_value)
+    }
+}
+
+impl Type<Postgres> for LeaveType {
+    fn type_info() -> PgTypeInfo {
+        <String as Type<Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &PgTypeInfo) -> bool {
+        <String as Type<Postgres>>::compatible(ty)
+    }
+}
+
+impl<'r> Decode<'r, Postgres> for LeaveType {
+    fn decode(
+        value: sqlx::postgres::PgValueRef<'r>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        <String as Decode<Postgres>>::decode(value).map(Self::from_db_value)
     }
 }
 
@@ -80,6 +148,23 @@ impl From<LeaveRequest> for LeaveRequestResponse {
             leave_type: request.leave_type.db_value().to_string(),
             start_date: request.start_date,
             end_date: request.end_date,
+            acquisition_unit: match request.acquisition_unit {
+                LeaveAcquisitionUnit::Day => {
+                    timekeeper_contract::requests::LeaveAcquisitionUnit::Day
+                }
+                LeaveAcquisitionUnit::HalfAm => {
+                    timekeeper_contract::requests::LeaveAcquisitionUnit::HalfAm
+                }
+                LeaveAcquisitionUnit::HalfPm => {
+                    timekeeper_contract::requests::LeaveAcquisitionUnit::HalfPm
+                }
+                LeaveAcquisitionUnit::Hour => {
+                    timekeeper_contract::requests::LeaveAcquisitionUnit::Hour
+                }
+            },
+            start_time: request.start_time,
+            end_time: request.end_time,
+            requested_minutes: request.requested_minutes,
             reason: request.reason,
             status: request.status.db_value().to_string(),
             approved_by: request.approved_by.map(|id| id.to_string()),
@@ -102,6 +187,31 @@ impl LeaveRequest {
         end_date: NaiveDate,
         reason: Option<String>,
     ) -> Self {
+        Self::new_with_duration(
+            user_id,
+            leave_type,
+            start_date,
+            end_date,
+            LeaveAcquisitionUnit::Day,
+            None,
+            None,
+            None,
+            reason,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_duration(
+        user_id: UserId,
+        leave_type: LeaveType,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        acquisition_unit: LeaveAcquisitionUnit,
+        start_time: Option<NaiveTime>,
+        end_time: Option<NaiveTime>,
+        requested_minutes: Option<i32>,
+        reason: Option<String>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: LeaveRequestId::new(),
@@ -109,6 +219,10 @@ impl LeaveRequest {
             leave_type,
             start_date,
             end_date,
+            acquisition_unit,
+            start_time,
+            end_time,
+            requested_minutes,
             reason,
             status: RequestStatus::Pending,
             approved_by: None,

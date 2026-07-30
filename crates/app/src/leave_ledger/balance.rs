@@ -5,7 +5,7 @@ use timekeeper_domain::leave_ledger::{
     annual_obligations, derive_balance, LeaveBalance, LeaveLedgerEvent, ObligationWindow,
 };
 
-use super::{LeaveLedgerError, LeaveLedgerRepository, LeaveRuleRepository, ANNUAL_LEAVE_TYPE};
+use super::{LeaveLedgerError, LeaveLedgerRepository, LeaveRuleRepository};
 
 // ---------------------------------------------------------------------------
 // GetLeaveBalance
@@ -14,6 +14,7 @@ use super::{LeaveLedgerError, LeaveLedgerRepository, LeaveRuleRepository, ANNUAL
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetLeaveBalanceCommand {
     pub user_id: String,
+    pub leave_type_code: String,
     pub as_of: NaiveDate,
 }
 
@@ -47,7 +48,7 @@ where
     ) -> Result<LeaveBalanceView, LeaveLedgerError> {
         let entries = self
             .ledger
-            .list_entries(&command.user_id, ANNUAL_LEAVE_TYPE)
+            .list_entries(&command.user_id, &command.leave_type_code)
             .await?;
         let events: Vec<LeaveLedgerEvent> = entries
             .iter()
@@ -56,7 +57,7 @@ where
         let balance = derive_balance(&events, command.as_of);
         let obligations = match self
             .rules
-            .obligation_rule(ANNUAL_LEAVE_TYPE, command.as_of)
+            .obligation_rule(&command.leave_type_code, command.as_of)
             .await?
         {
             Some(rule) => annual_obligations(&events, &rule, command.as_of),
@@ -64,7 +65,7 @@ where
         };
         Ok(LeaveBalanceView {
             user_id: command.user_id,
-            leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+            leave_type: command.leave_type_code,
             balance,
             obligations,
         })

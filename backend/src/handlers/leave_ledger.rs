@@ -27,10 +27,15 @@ pub async fn get_my_leave_balance(
         .as_of
         .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let repository = LeaveLedgerPostgresRepository::new(state.read_pool().clone());
+    repository
+        .ensure_balance_tracked_leave_type(&query.leave_type_code)
+        .await
+        .map_err(leave_ledger_error_to_app_error)?;
     let use_case = GetLeaveBalance::new(repository.clone(), repository);
     let view = use_case
         .execute(GetLeaveBalanceCommand {
             user_id: user.id.to_string(),
+            leave_type_code: query.leave_type_code,
             as_of,
         })
         .await

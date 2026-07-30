@@ -146,7 +146,7 @@
 4. [x] Phase 0（T-01, T-02, T-16, T-19）の着手・個別 EP 化（2026-07-04 完了。commits 40e10b8 / 5ec584b / 8d5101a / 92ca21a）
 5. [x] Phase 1（T-03, T-04, T-06）の着手・個別 EP 化（2026-07-09 実装・多観点レビュー完了）
 6. [x] Phase 2（T-05, T-07, T-08, T-09, T-10, T-12, T-17）の着手・個別 EP 化
-7. [ ] Phase 3（T-11, T-13, T-14, T-15, T-18）の着手・個別 EP 化、G15 の再評価
+7. [x] Phase 3（T-11, T-13, T-14, T-15, T-18）の実装・個別 EP 検証完了（2026-07-30）、G15 は要件未発生のため out of scope 維持
 
 ## Validation Plan
 
@@ -167,3 +167,5 @@
 - 2026-07-04: T-16 完了（92ca21a）。レビューで検出した「デプロイ跨ぎの legacy 形式 in-flight job 消失」エッジを fallback decode + 互換テスト 3 件で修正済み。Phase 0 全 4 タスク完了。次は Phase 1（T-03 / T-04 / T-06）
 - 2026-07-09: Phase 1 実装（b39ed35 / 05f45e9 / a2b1294 / 25104c0）の多観点レビュー（ドメイン正当性 / DB / セキュリティ / 契約同期）を実施。HIGH 3 件を検出・修正: 有給消化の暦日→稼働日ベース化（144ec32、leave-entitlement.md に Consumption Target Days を追記）、RunLeaveGrants/AdjustLeaveLedger の TOCTOU 修正 + 付与バッチのユーザー単位 tx 分離・二重起動排他（457281d、migration 055）、管理系ミューテーション 3 本の監査ログ登録（10b60d0）。MEDIUM 群も修正: adjust 入力の i32 範囲 validate + checked_add、更新時残高再検証、migration 056 の adjust CHECK、エラー変換一本化、admin export の既定期間 + 366 日上限 + user_id マージキー化（c7116c5）。leave_ledger.rs は use case 単位に分割（42c2074、mod/balance/consume/grants/adjust）。区分計算（T-03）は design doc との不一致なし。残課題: 承認済み休暇 read 表示と稼働日消化の非対称は仕様として明文化済み、RunLeaveGrantsReport.failed の API 露出は契約変更を伴うため未対応
 - 2026-07-09: Phase 2 残タスクを実装。T-07（残業申請突合 anomaly）、T-08（36協定監視 API/settings）、T-09/T-10（遅刻・早退・欠勤・休憩不足 anomaly）、T-12（月次締め workflow + `monthly-closing.md`）、T-17（申請提出/承認/却下 notification queue enqueue）を個別 EP 化して登録。`cargo test -p timekeeper-backend --test work_schedule_phase2_api -- --nocapture` は 18 passed。T-17 の missing clock-out reminder は notification enum variant として予約済みで、定期 scan/worker delivery は次の通知 worker 拡張に委ねる
+- 2026-07-30: Phase 3 の T-11 / T-13 / T-14 / T-15 / T-18 を個別 EP 化して実装着手。migration を T-11=060–061、T-13=062–063、T-18=064、T-14=065 と予約し、T-15 は migration なしとした。実行順は T-11・T-18・T-15 backend → T-13 → T-14、T-15 frontendと統合検証。G15 は具体要件がないため引き続き out of scope
+- 2026-07-30: Phase 3 全5タスクの実装・統合検証・adversarial code/security reviewを完了。レビューで検出した時間休更新、振替取消/月次締め、勤務間隔、給与reopen、休日出勤認可/監査の競合・契約不備を回帰テスト付きで修正し、最終判定Approve。

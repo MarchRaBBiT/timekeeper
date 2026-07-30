@@ -285,12 +285,21 @@ pub(crate) async fn load_resolved_in_range(
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Vec<ResolvedWorkday>, ResolveWorkdayError> {
+    load_resolved_for_users_in_range(pool, &[user_id.to_string()], from, to).await
+}
+
+pub(crate) async fn load_resolved_for_users_in_range(
+    pool: &PgPool,
+    user_ids: &[String],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<ResolvedWorkday>, ResolveWorkdayError> {
     let sql = format!(
         "SELECT {RESOLVED_COLUMNS} FROM resolved_workdays \
-         WHERE user_id = $1 AND work_date BETWEEN $2 AND $3 ORDER BY work_date"
+         WHERE user_id = ANY($1) AND work_date BETWEEN $2 AND $3 ORDER BY user_id, work_date"
     );
     let rows = sqlx::query_as::<_, ResolvedWorkdayRow>(&sql)
-        .bind(user_id)
+        .bind(user_ids)
         .bind(from)
         .bind(to)
         .fetch_all(pool)

@@ -284,6 +284,8 @@ T-13（振替休日・代休）は、休日出勤の事後付与（代休）を*
 - FIFO 消化・時効（`expire`）・残高導出・引当（consume / release）の**純ロジックはそのまま再利用**でき、代休固有なのは「付与の起点が休日労働の承認である」「時効月数が短い」点のみ。
 - 代休は年5日義務・比例付与の対象外なので、義務判定と付与ルールマスタは `leave_type = annual` に限定し、代休は付与ルールマスタを経由せず休日出勤ワークフローから直接 `grant` する。
 - 振替休日（事前振替）は残高ではなく resolved workday の override で表現する（[work-schedule-master.md](./work-schedule-master.md) の `WorkdayOverride`）ため台帳の対象外。台帳へ載るのは**事後付与の代休のみ**とする、という境界を T-13 で確定する。
+- `holiday_work_request_id` を grant source として一意化し、承認再実行でも二重付与しない。期限は休日労働日以前で最新の `compensatory_leave_settings.effective_from` から決定する。
+- `compensatory` は通常の勤続年数付与batchと年5日義務の対象外だが、残高照会、FIFO consume、取消release、遅延expireは種別コードを引数に取る共通台帳処理を利用する。
 
 ## Acceptance Criteria（設計 doc として）
 

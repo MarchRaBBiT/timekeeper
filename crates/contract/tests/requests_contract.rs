@@ -1,7 +1,7 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use timekeeper_contract::requests::{
-    CreateLeaveRequest, CreateOvertimeRequest, LeaveRequestResponse, OvertimeRequestResponse,
-    UpdateLeaveRequest, UpdateOvertimeRequest,
+    CreateLeaveRequest, CreateOvertimeRequest, LeaveAcquisitionUnit, LeaveRequestResponse,
+    OvertimeRequestResponse, UpdateLeaveRequest, UpdateOvertimeRequest,
 };
 
 #[test]
@@ -10,12 +10,18 @@ fn leave_request_payloads_serialize_current_wire_format() {
         leave_type: "annual".to_string(),
         start_date: NaiveDate::from_ymd_opt(2026, 6, 15).expect("start date"),
         end_date: NaiveDate::from_ymd_opt(2026, 6, 16).expect("end date"),
+        acquisition_unit: LeaveAcquisitionUnit::Day,
+        start_time: None,
+        end_time: None,
         reason: Some("family event".to_string()),
     };
     let update = UpdateLeaveRequest {
         leave_type: "sick".to_string(),
         start_date: NaiveDate::from_ymd_opt(2026, 6, 17).expect("start date"),
         end_date: NaiveDate::from_ymd_opt(2026, 6, 17).expect("end date"),
+        acquisition_unit: LeaveAcquisitionUnit::Day,
+        start_time: None,
+        end_time: None,
         reason: None,
     };
 
@@ -30,6 +36,39 @@ fn leave_request_payloads_serialize_current_wire_format() {
     assert_eq!(update_json["start_date"], "2026-06-17");
     assert_eq!(update_json["end_date"], "2026-06-17");
     assert!(update_json["reason"].is_null());
+}
+
+#[test]
+fn legacy_leave_request_without_acquisition_unit_defaults_to_day() {
+    let request: CreateLeaveRequest = serde_json::from_value(serde_json::json!({
+        "leave_type": "annual",
+        "start_date": "2026-08-03",
+        "end_date": "2026-08-03",
+        "reason": null
+    }))
+    .expect("legacy request should deserialize");
+
+    assert_eq!(request.acquisition_unit, LeaveAcquisitionUnit::Day);
+    assert_eq!(request.start_time, None);
+    assert_eq!(request.end_time, None);
+}
+
+#[test]
+fn hourly_leave_request_round_trips_times() {
+    let request: CreateLeaveRequest = serde_json::from_value(serde_json::json!({
+        "leave_type": "annual",
+        "start_date": "2026-08-03",
+        "end_date": "2026-08-03",
+        "acquisition_unit": "hour",
+        "start_time": "10:15:00",
+        "end_time": "11:45:00",
+        "reason": null
+    }))
+    .expect("hourly request should deserialize");
+
+    assert_eq!(request.acquisition_unit, LeaveAcquisitionUnit::Hour);
+    assert_eq!(request.start_time, NaiveTime::from_hms_opt(10, 15, 0));
+    assert_eq!(request.end_time, NaiveTime::from_hms_opt(11, 45, 0));
 }
 
 #[test]

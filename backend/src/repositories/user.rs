@@ -301,12 +301,14 @@ pub async fn soft_delete_user(
     sqlx::query(
         r#"
         INSERT INTO archived_leave_requests (
-            id, user_id, leave_type, start_date, end_date, reason, status,
+            id, user_id, leave_type, start_date, end_date, acquisition_unit,
+            start_time, end_time, requested_minutes, reason, status,
             approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
             created_at, updated_at, archived_at
         )
         SELECT
-            id, user_id, leave_type, start_date, end_date, reason, status,
+            id, user_id, leave_type, start_date, end_date, acquisition_unit,
+            start_time, end_time, requested_minutes, reason, status,
             approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
             created_at, updated_at, $2
         FROM leave_requests
@@ -495,12 +497,14 @@ pub async fn restore_user(pool: &PgPool, user_id: &str) -> Result<(), AppError> 
     sqlx::query(
         r#"
         INSERT INTO leave_requests (
-            id, user_id, leave_type, start_date, end_date, reason, status,
+            id, user_id, leave_type, start_date, end_date, acquisition_unit,
+            start_time, end_time, requested_minutes, reason, status,
             approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
             created_at, updated_at
         )
         SELECT
-            id, user_id, leave_type, start_date, end_date, reason, status,
+            id, user_id, leave_type, start_date, end_date, acquisition_unit,
+            start_time, end_time, requested_minutes, reason, status,
             approved_by, approved_at, decision_comment, rejected_by, rejected_at, cancelled_at,
             created_at, updated_at
         FROM archived_leave_requests

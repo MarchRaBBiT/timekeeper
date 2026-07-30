@@ -29,6 +29,8 @@ pub struct LeaveLedgerEvent {
     pub kind: LeaveLedgerKind,
     /// 符号付き分。grant/release/正 adjust は正、consume/expire/負 adjust は負。
     pub amount_minutes: i64,
+    /// 年次有給の取得義務に算入する符号付き分。時間休は 0。
+    pub obligation_minutes: i64,
     /// このロットの 1 日 = N 分換算（grant 時に固定）。
     pub day_equivalent_minutes: i64,
     pub granted_at: Option<NaiveDate>,
@@ -379,7 +381,7 @@ pub fn annual_obligations(
                     && event.effective_on < window_end
                     && event.effective_on <= as_of
             })
-            .map(|event| -event.amount_minutes)
+            .map(|event| -event.obligation_minutes)
             .sum();
         let required_minutes = rule.required_days * day_equivalent_minutes;
         let status = obligation_status(

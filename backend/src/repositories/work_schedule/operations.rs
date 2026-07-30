@@ -1,12 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime};
+use serde::Deserialize;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use timekeeper_contract::work_schedules::{
     MonthlyClosingStatus, MonthlyClosingWorkflowResponse, OvertimeMonitorResponse,
     OvertimeMonitorSettingsRequest, OvertimeMonitorSettingsResponse, OvertimeMonitorStatus,
     OvertimeMonitorUserResponse, WorkScheduleAnomalyKind, WorkScheduleAnomalyResponse,
     WorkScheduleCalendarAttendanceResponse, WorkScheduleCalendarLeaveResponse,
+};
+use timekeeper_domain::{
+    attendance_classification::{
+        build_actual_intervals, classify_days, week_start_date, ClassificationDayInput,
+        WorkRuleParameters,
+    },
+    work_schedules::{ResolvedDayKind, ScheduleType},
 };
 use uuid::Uuid;
 
@@ -49,6 +57,50 @@ struct BreakTotalRow {
     break_minutes: i64,
 }
 
+#[derive(Debug, FromRow)]
+struct PayrollResolvedRow {
+    work_date: NaiveDate,
+    day_kind: String,
+    schedule_type: String,
+    expected_work_minutes: i32,
+}
+
+#[derive(Debug, FromRow)]
+struct PayrollActualRow {
+    date: NaiveDate,
+    clock_in: Option<NaiveDateTime>,
+    clock_out: Option<NaiveDateTime>,
+    breaks: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct PayrollBreak {
+    break_start_time: NaiveDateTime,
+    break_end_time: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Clone, Copy, FromRow)]
+struct PayrollRuleRow {
+    valid_from: NaiveDate,
+    statutory_daily_minutes: i32,
+    statutory_weekly_minutes: i32,
+    night_start: NaiveTime,
+    night_end: NaiveTime,
+    week_start_weekday: i16,
+    legal_holiday_weekday: i16,
+}
+
+#[derive(Debug, Default)]
+struct PayrollClassificationTotals {
+    actual: i64,
+    scheduled: i64,
+    statutory_within: i64,
+    statutory_excess: i64,
+    legal_holiday: i64,
+    night: i64,
+    holiday_work: i64,
+}
+
 #[derive(Debug, Clone, FromRow)]
 struct ApprovedOvertimeRow {
     user_id: String,
@@ -70,12 +122,22 @@ struct OvertimeMonitorSettingsRow {
     break_eight_hour_minimum_minutes: i32,
 }
 
+#[derive(Debug, Clone, Copy, FromRow)]
+struct MinimumRestSettingRow {
+    valid_from: NaiveDate,
+    minimum_rest_minutes: i32,
+}
+
 #[derive(Debug, Clone, FromRow)]
 struct ApprovedLeaveCalendarRow {
     user_id: String,
     date: NaiveDate,
     leave_request_id: String,
     leave_type: String,
+    acquisition_unit: String,
+    start_time: Option<chrono::NaiveTime>,
+    end_time: Option<chrono::NaiveTime>,
+    requested_minutes: Option<i32>,
 }
 
 pub async fn list_user_attendance_calendar(
@@ -123,6 +185,10 @@ pub async fn list_user_leave_calendar(
             .or_insert(WorkScheduleCalendarLeaveResponse {
                 leave_request_id: row.leave_request_id,
                 leave_type: row.leave_type,
+                acquisition_unit: row.acquisition_unit,
+                start_time: row.start_time,
+                end_time: row.end_time,
+                requested_minutes: row.requested_minutes,
             });
     }
     Ok(leave_by_date)
@@ -175,7 +241,7 @@ pub async fn list_anomalies(
         .collect();
 
     let attendance_rows = sqlx::query_as::<_, AttendanceCalendarRow>(
-        "SELECT id, user_id, date, clock_in_time, clock_out_time, is_unscheduled_work \
+        "SELECT id, user_id, date, clock_in_time, clock_out_time, is_unscheduled_work
          FROM attendance WHERE user_id = ANY($1) AND date BETWEEN $2 AND $3",
     )
     .bind(&users)
@@ -187,6 +253,9 @@ pub async fn list_anomalies(
         .into_iter()
         .map(|row| ((row.user_id.clone(), row.date), row))
         .collect();
+    let effective_attendance = list_effective_attendance_for_rest(pool, &users, from, to).await?;
+    let previous_attendance = list_previous_completed_attendance(pool, &users, from).await?;
+    let minimum_rest_settings = list_minimum_rest_settings(pool, to).await?;
 
     let intervals = list_resolved_intervals(pool, &users, from, to).await?;
     let break_totals = list_break_totals(
@@ -302,6 +371,14 @@ pub async fn list_anomalies(
             }
         }
     }
+    add_insufficient_rest_anomalies(
+        &mut items,
+        effective_attendance.iter(),
+        &previous_attendance,
+        from,
+        to,
+        &minimum_rest_settings,
+    );
     items.sort_by(|left, right| {
         (
             left.user_id.as_str(),
@@ -328,7 +405,8 @@ async fn list_approved_leave_calendar_rows(
     }
 
     let rows = sqlx::query_as::<_, ApprovedLeaveCalendarRow>(
-        "SELECT lr.user_id, d.day::date AS date, lr.id AS leave_request_id, lr.leave_type
+        "SELECT lr.user_id, d.day::date AS date, lr.id AS leave_request_id, lr.leave_type,
+                lr.acquisition_unit, lr.start_time, lr.end_time, lr.requested_minutes
          FROM leave_requests lr
          CROSS JOIN LATERAL generate_series(
              lr.start_date::timestamp, lr.end_date::timestamp, interval '1 day'
@@ -440,6 +518,139 @@ async fn find_overtime_monitor_settings(
     .fetch_one(pool)
     .await
     .map_err(Into::into)
+}
+
+async fn list_previous_completed_attendance(
+    pool: &PgPool,
+    user_ids: &[String],
+    before: NaiveDate,
+) -> RepositoryResult<HashMap<String, AttendanceCalendarRow>> {
+    let rows = sqlx::query_as::<_, AttendanceCalendarRow>(
+        "SELECT DISTINCT ON (a.user_id)
+                a.id, a.user_id, a.date,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_in_time_corrected ELSE a.clock_in_time END AS clock_in_time,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_out_time_corrected ELSE a.clock_out_time END AS clock_out_time,
+                a.is_unscheduled_work
+         FROM attendance a
+         LEFT JOIN attendance_correction_effective_values ev ON ev.attendance_id = a.id
+         WHERE a.user_id = ANY($1)
+           AND a.date < $2
+           AND CASE WHEN ev.attendance_id IS NOT NULL
+                    THEN ev.clock_out_time_corrected ELSE a.clock_out_time END IS NOT NULL
+         ORDER BY a.user_id, a.date DESC,
+                  CASE WHEN ev.attendance_id IS NOT NULL
+                       THEN ev.clock_out_time_corrected ELSE a.clock_out_time END DESC",
+    )
+    .bind(user_ids)
+    .bind(before)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.user_id.clone(), row))
+        .collect())
+}
+
+async fn list_effective_attendance_for_rest(
+    pool: &PgPool,
+    user_ids: &[String],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> RepositoryResult<Vec<AttendanceCalendarRow>> {
+    sqlx::query_as::<_, AttendanceCalendarRow>(
+        "SELECT a.id, a.user_id, a.date,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_in_time_corrected ELSE a.clock_in_time END AS clock_in_time,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_out_time_corrected ELSE a.clock_out_time END AS clock_out_time,
+                a.is_unscheduled_work
+         FROM attendance a
+         LEFT JOIN attendance_correction_effective_values ev ON ev.attendance_id = a.id
+         WHERE a.user_id = ANY($1) AND a.date BETWEEN $2 AND $3",
+    )
+    .bind(user_ids)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(Into::into)
+}
+
+async fn list_minimum_rest_settings(
+    pool: &PgPool,
+    until: NaiveDate,
+) -> RepositoryResult<Vec<MinimumRestSettingRow>> {
+    let rows = sqlx::query_as::<_, MinimumRestSettingRow>(
+        "SELECT valid_from, minimum_rest_minutes
+         FROM overtime_monitor_settings
+         WHERE valid_from <= $1
+         ORDER BY valid_from ASC",
+    )
+    .bind(until)
+    .fetch_all(pool)
+    .await?;
+    if rows.is_empty() {
+        return Err(WorkScheduleRepositoryError::CorruptData(
+            "minimum rest settings are not configured".into(),
+        ));
+    }
+    Ok(rows)
+}
+
+fn add_insufficient_rest_anomalies<'a>(
+    items: &mut Vec<WorkScheduleAnomalyResponse>,
+    attendance: impl Iterator<Item = &'a AttendanceCalendarRow>,
+    previous_attendance: &HashMap<String, AttendanceCalendarRow>,
+    from: NaiveDate,
+    to: NaiveDate,
+    settings: &[MinimumRestSettingRow],
+) {
+    let mut by_user: HashMap<&str, Vec<&AttendanceCalendarRow>> = HashMap::new();
+    for row in attendance {
+        by_user.entry(&row.user_id).or_default().push(row);
+    }
+    for rows in by_user.values_mut() {
+        rows.sort_by_key(|row| (row.date, row.clock_in_time));
+        let Some(first) = rows.first() else {
+            continue;
+        };
+        let mut previous_clock_out = previous_attendance
+            .get(first.user_id.as_str())
+            .and_then(|row| row.clock_out_time);
+        for row in rows.iter() {
+            if let (Some(clock_out), Some(clock_in)) = (previous_clock_out, row.clock_in_time) {
+                let minimum_rest_minutes = minimum_rest_minutes_for(settings, row.date);
+                if row.date >= from
+                    && row.date <= to
+                    && minimum_rest_minutes
+                        .is_some_and(|minimum| (clock_in - clock_out).num_minutes() < minimum)
+                {
+                    items.push(anomaly(
+                        &row.user_id,
+                        row.date,
+                        WorkScheduleAnomalyKind::InsufficientRest,
+                        "rest time since the previous completed shift is below the configured minimum",
+                    ));
+                }
+            }
+            if row.clock_out_time.is_some() {
+                previous_clock_out = row.clock_out_time;
+            }
+        }
+    }
+}
+
+fn minimum_rest_minutes_for(
+    settings: &[MinimumRestSettingRow],
+    work_date: NaiveDate,
+) -> Option<i64> {
+    settings
+        .iter()
+        .rev()
+        .find(|setting| setting.valid_from <= work_date)
+        .map(|setting| i64::from(setting.minimum_rest_minutes))
 }
 
 fn add_punctuality_anomalies(
@@ -829,11 +1040,11 @@ pub async fn get_overtime_monitor_settings(
     pool: &PgPool,
     as_of: NaiveDate,
 ) -> RepositoryResult<OvertimeMonitorSettingsResponse> {
-    let row = sqlx::query_as::<_, (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32)>(
+    let row = sqlx::query_as::<_, (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32, i32)>(
         "SELECT id, valid_from, fiscal_year_start_month, monthly_limit_minutes,
                 yearly_limit_minutes, rolling_average_limit_minutes,
                 single_month_absolute_limit_minutes, warning_ratio_percent,
-                overtime_request_tolerance_minutes
+                overtime_request_tolerance_minutes, minimum_rest_minutes
          FROM overtime_monitor_settings
          WHERE valid_from <= $1
          ORDER BY valid_from DESC
@@ -850,13 +1061,13 @@ pub async fn upsert_overtime_monitor_settings(
     request: &OvertimeMonitorSettingsRequest,
 ) -> RepositoryResult<OvertimeMonitorSettingsResponse> {
     let row =
-        sqlx::query_as::<_, (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32)>(
+        sqlx::query_as::<_, (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32, i32)>(
             "INSERT INTO overtime_monitor_settings (
              valid_from, fiscal_year_start_month, monthly_limit_minutes, yearly_limit_minutes,
              rolling_average_limit_minutes, single_month_absolute_limit_minutes,
-             warning_ratio_percent, overtime_request_tolerance_minutes
+             warning_ratio_percent, overtime_request_tolerance_minutes, minimum_rest_minutes
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 660))
          ON CONFLICT (valid_from) DO UPDATE SET
              fiscal_year_start_month = EXCLUDED.fiscal_year_start_month,
              monthly_limit_minutes = EXCLUDED.monthly_limit_minutes,
@@ -865,11 +1076,12 @@ pub async fn upsert_overtime_monitor_settings(
              single_month_absolute_limit_minutes = EXCLUDED.single_month_absolute_limit_minutes,
              warning_ratio_percent = EXCLUDED.warning_ratio_percent,
              overtime_request_tolerance_minutes = EXCLUDED.overtime_request_tolerance_minutes,
+             minimum_rest_minutes = COALESCE($9, overtime_monitor_settings.minimum_rest_minutes),
              updated_at = NOW()
          RETURNING id, valid_from, fiscal_year_start_month, monthly_limit_minutes,
              yearly_limit_minutes, rolling_average_limit_minutes,
              single_month_absolute_limit_minutes, warning_ratio_percent,
-             overtime_request_tolerance_minutes",
+             overtime_request_tolerance_minutes, minimum_rest_minutes",
         )
         .bind(request.valid_from)
         .bind(i16::try_from(request.fiscal_year_start_month).map_err(|_| {
@@ -898,6 +1110,15 @@ pub async fn upsert_overtime_monitor_settings(
             i32::try_from(request.overtime_request_tolerance_minutes).map_err(|_| {
                 WorkScheduleRepositoryError::CorruptData("overtime tolerance overflow".into())
             })?,
+        )
+        .bind(
+            request
+                .minimum_rest_minutes
+                .map(i32::try_from)
+                .transpose()
+                .map_err(|_| {
+                    WorkScheduleRepositoryError::CorruptData("minimum rest minutes overflow".into())
+                })?,
         )
         .fetch_one(pool)
         .await?;
@@ -1065,8 +1286,259 @@ pub async fn close_monthly_closing_workflow(
     .await?;
     let user_ids = [user_id.to_string()];
     close_month_tx(&mut transaction, year, month, &user_ids, actor_id, reason).await?;
+    create_payroll_snapshot_tx(
+        &mut transaction,
+        &response.id,
+        user_id,
+        year,
+        month,
+        actor_id,
+    )
+    .await?;
     transaction.commit().await?;
     Ok(response)
+}
+
+async fn payroll_classification_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    user_id: &str,
+    month_from: NaiveDate,
+    month_to: NaiveDate,
+) -> RepositoryResult<PayrollClassificationTotals> {
+    let rules = sqlx::query_as::<_, PayrollRuleRow>(
+        "SELECT valid_from, statutory_daily_minutes, statutory_weekly_minutes,
+                night_start, night_end, week_start_weekday, legal_holiday_weekday
+         FROM work_rule_settings WHERE valid_from <= $1 ORDER BY valid_from",
+    )
+    .bind(month_to + Duration::days(7))
+    .fetch_all(&mut **transaction)
+    .await?;
+    let params_at = |date: NaiveDate| -> RepositoryResult<WorkRuleParameters> {
+        let row = rules
+            .iter()
+            .rev()
+            .find(|row| row.valid_from <= date)
+            .ok_or_else(|| {
+                WorkScheduleRepositoryError::CorruptData(
+                    "work rule is not configured for payroll period".into(),
+                )
+            })?;
+        Ok(WorkRuleParameters {
+            statutory_daily_minutes: i64::from(row.statutory_daily_minutes),
+            statutory_weekly_minutes: i64::from(row.statutory_weekly_minutes),
+            night_start: row.night_start,
+            night_end: row.night_end,
+            week_start_weekday: u8::try_from(row.week_start_weekday).map_err(|_| {
+                WorkScheduleRepositoryError::CorruptData("invalid week start weekday".into())
+            })?,
+            legal_holiday_weekday: u8::try_from(row.legal_holiday_weekday).map_err(|_| {
+                WorkScheduleRepositoryError::CorruptData("invalid legal holiday weekday".into())
+            })?,
+        })
+    };
+    let window_from = week_start_date(month_from, params_at(month_from)?.week_start_weekday);
+    let window_to =
+        week_start_date(month_to, params_at(month_to)?.week_start_weekday) + Duration::days(6);
+    let resolved = sqlx::query_as::<_, PayrollResolvedRow>(
+        "SELECT rw.work_date, rw.day_kind, wsv.schedule_type, rw.expected_work_minutes
+         FROM resolved_workdays rw
+         JOIN work_schedule_versions wsv ON wsv.id = rw.work_schedule_version_id
+         WHERE rw.user_id = $1 AND rw.work_date BETWEEN $2 AND $3
+         ORDER BY rw.work_date",
+    )
+    .bind(user_id)
+    .bind(window_from)
+    .bind(window_to)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let actuals = sqlx::query_as::<_, PayrollActualRow>(
+        "SELECT a.date,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_in_time_corrected ELSE a.clock_in_time END clock_in,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.clock_out_time_corrected ELSE a.clock_out_time END clock_out,
+                CASE WHEN ev.attendance_id IS NOT NULL
+                     THEN ev.break_records_corrected_json
+                     ELSE COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                         'break_start_time', br.break_start_time,
+                         'break_end_time', br.break_end_time) ORDER BY br.break_start_time)
+                         FROM break_records br WHERE br.attendance_id = a.id), '[]'::jsonb)
+                END breaks
+         FROM attendance a
+         LEFT JOIN attendance_correction_effective_values ev ON ev.attendance_id = a.id
+         WHERE a.user_id = $1 AND a.date BETWEEN $2 AND $3",
+    )
+    .bind(user_id)
+    .bind(window_from)
+    .bind(window_to)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let mut actual_by_date: HashMap<NaiveDate, Vec<_>> = HashMap::new();
+    for row in actuals {
+        let breaks: Vec<PayrollBreak> = serde_json::from_value(row.breaks).map_err(|_| {
+            WorkScheduleRepositoryError::CorruptData("invalid corrected break snapshot".into())
+        })?;
+        let break_pairs = breaks
+            .into_iter()
+            .map(|item| (item.break_start_time, item.break_end_time))
+            .collect::<Vec<_>>();
+        actual_by_date
+            .entry(row.date)
+            .or_default()
+            .extend(build_actual_intervals(
+                row.clock_in,
+                row.clock_out,
+                &break_pairs,
+            ));
+    }
+    let mut inputs = Vec::with_capacity(resolved.len());
+    for row in resolved {
+        let day_kind = match row.day_kind.as_str() {
+            "scheduled_workday" => ResolvedDayKind::ScheduledWorkday,
+            "scheduled_non_working_day" => ResolvedDayKind::ScheduledNonWorkingDay,
+            "public_holiday" => ResolvedDayKind::PublicHoliday,
+            _ => {
+                return Err(WorkScheduleRepositoryError::CorruptData(
+                    "invalid resolved day kind".into(),
+                ))
+            }
+        };
+        let schedule_type = match row.schedule_type.as_str() {
+            "fixed" => ScheduleType::Fixed,
+            "flex" => ScheduleType::Flex,
+            _ => {
+                return Err(WorkScheduleRepositoryError::CorruptData(
+                    "invalid schedule type".into(),
+                ))
+            }
+        };
+        inputs.push(ClassificationDayInput {
+            work_date: row.work_date,
+            day_kind,
+            schedule_type,
+            expected_work_minutes: i64::from(row.expected_work_minutes),
+            intervals: actual_by_date.remove(&row.work_date).unwrap_or_default(),
+            rules: params_at(row.work_date)?,
+        });
+    }
+    if actual_by_date.values().any(|items| !items.is_empty()) {
+        return Err(WorkScheduleRepositoryError::CorruptData(
+            "worked day is not resolved for payroll classification".into(),
+        ));
+    }
+    let mut totals = PayrollClassificationTotals::default();
+    let holiday_work_dates: HashSet<NaiveDate> = sqlx::query_scalar(
+        "SELECT work_date FROM holiday_work_requests
+         WHERE user_id = $1 AND status = 'approved' AND work_date BETWEEN $2 AND $3",
+    )
+    .bind(user_id)
+    .bind(month_from)
+    .bind(month_to)
+    .fetch_all(&mut **transaction)
+    .await?
+    .into_iter()
+    .collect();
+    for day in classify_days(&inputs)
+        .into_iter()
+        .filter(|day| day.work_date >= month_from && day.work_date <= month_to)
+    {
+        totals.actual += day.actual_minutes;
+        totals.scheduled += day.scheduled_minutes;
+        totals.statutory_within += day.statutory_within_minutes;
+        totals.statutory_excess += day.statutory_excess_minutes;
+        totals.legal_holiday += day.legal_holiday_minutes;
+        totals.night += day.night_minutes;
+        if holiday_work_dates.contains(&day.work_date) {
+            totals.holiday_work += day.actual_minutes;
+        }
+    }
+    Ok(totals)
+}
+
+async fn create_payroll_snapshot_tx(
+    transaction: &mut Transaction<'_, Postgres>,
+    workflow_id: &str,
+    user_id: &str,
+    year: i32,
+    month: u32,
+    actor_id: &str,
+) -> RepositoryResult<()> {
+    let from = NaiveDate::from_ymd_opt(year, month, 1)
+        .ok_or_else(|| WorkScheduleRepositoryError::CorruptData("invalid snapshot month".into()))?;
+    let to = end_of_month(from)?;
+    let workflow_id = Uuid::parse_str(workflow_id)
+        .map_err(|_| WorkScheduleRepositoryError::CorruptData("invalid workflow id".into()))?;
+    let classification = payroll_classification_tx(transaction, user_id, from, to).await?;
+    sqlx::query(
+        "WITH leave_days AS (
+             SELECT lr.acquisition_unit, lr.requested_minutes, d.day::date work_date
+             FROM leave_requests lr
+             CROSS JOIN LATERAL generate_series(
+                 GREATEST(lr.start_date, $2)::timestamp,
+                 LEAST(lr.end_date, $3)::timestamp, interval '1 day') d(day)
+             JOIN resolved_workdays rw ON rw.user_id = lr.user_id
+                AND rw.work_date = d.day::date AND rw.day_kind = 'scheduled_workday'
+             WHERE lr.user_id = $1 AND lr.status = 'approved' AND lr.leave_type = 'annual'
+               AND lr.start_date <= $3 AND lr.end_date >= $2
+         ), leave_totals AS (
+             SELECT COUNT(*) FILTER (WHERE acquisition_unit = 'day')::INTEGER paid_days,
+                    COUNT(*) FILTER (WHERE acquisition_unit IN ('half_am','half_pm'))::INTEGER halves,
+                    COALESCE(SUM(requested_minutes) FILTER
+                        (WHERE acquisition_unit = 'hour'), 0)::BIGINT paid_minutes
+             FROM leave_days
+         ), absence_total AS (
+             SELECT COUNT(*)::INTEGER absent_days
+             FROM resolved_workdays rw
+             WHERE rw.user_id = $1 AND rw.work_date BETWEEN $2 AND $3
+               AND rw.day_kind = 'scheduled_workday'
+               AND NOT EXISTS (
+                   SELECT 1 FROM attendance a
+                   WHERE a.user_id = rw.user_id AND a.date = rw.work_date)
+               AND NOT EXISTS (SELECT 1 FROM leave_days ld WHERE ld.work_date = rw.work_date)
+         ), holiday_totals AS (
+             SELECT COALESCE(SUM(CASE WHEN benefit IN ('substitution','compensatory')
+                        THEN compensatory_minutes ELSE NULL END), 0)::BIGINT comp_minutes,
+                    COUNT(*) FILTER (WHERE benefit = 'substitution')::INTEGER substitute_days
+             FROM holiday_work_requests
+             WHERE user_id = $1 AND status = 'approved' AND work_date BETWEEN $2 AND $3
+         ), next_revision AS (
+             SELECT COALESCE(MAX(revision), 0) + 1 AS revision
+             FROM payroll_export_snapshots WHERE user_id = $1 AND year = $4 AND month = $5
+         )
+         INSERT INTO payroll_export_snapshots
+            (id, workflow_id, user_id, year, month, revision, worked_minutes, scheduled_minutes,
+             statutory_within_minutes, statutory_excess_minutes, legal_holiday_minutes,
+             night_minutes, absent_days, paid_leave_days,
+             paid_leave_half_days, paid_leave_minutes, holiday_work_minutes,
+             substitute_holiday_days, compensatory_leave_minutes, created_by)
+         SELECT $6, $7, $1, $4, $5, nr.revision, $9, $10, $11, $12, $13, $14,
+                ab.absent_days,
+                lt.paid_days, lt.halves, lt.paid_minutes,
+                $15,
+                ht.substitute_days, ht.comp_minutes, $8
+         FROM leave_totals lt CROSS JOIN absence_total ab
+              CROSS JOIN holiday_totals ht CROSS JOIN next_revision nr",
+    )
+    .bind(user_id)
+    .bind(from)
+    .bind(to)
+    .bind(year)
+    .bind(i32::try_from(month).map_err(|_| {
+        WorkScheduleRepositoryError::CorruptData("invalid snapshot month".into())
+    })?)
+    .bind(Uuid::new_v4())
+    .bind(workflow_id)
+    .bind(actor_id)
+    .bind(classification.actual)
+    .bind(classification.scheduled)
+    .bind(classification.statutory_within)
+    .bind(classification.statutory_excess)
+    .bind(classification.legal_holiday)
+    .bind(classification.night)
+    .bind(classification.holiday_work)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 fn dates_inclusive(from: NaiveDate, to: NaiveDate) -> RepositoryResult<Vec<NaiveDate>> {
@@ -1124,6 +1596,7 @@ fn anomaly_rank(kind: WorkScheduleAnomalyKind) -> u8 {
         WorkScheduleAnomalyKind::EarlyLeave => 8,
         WorkScheduleAnomalyKind::Absent => 9,
         WorkScheduleAnomalyKind::InsufficientBreak => 10,
+        WorkScheduleAnomalyKind::InsufficientRest => 11,
     }
 }
 
@@ -1190,7 +1663,7 @@ fn months_between_inclusive(from: NaiveDate, to: NaiveDate) -> RepositoryResult<
 }
 
 fn overtime_settings_response(
-    row: (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32),
+    row: (Uuid, NaiveDate, i16, i32, i32, i32, i32, i16, i32, i32),
 ) -> RepositoryResult<OvertimeMonitorSettingsResponse> {
     Ok(OvertimeMonitorSettingsResponse {
         id: row.0.to_string(),
@@ -1204,6 +1677,7 @@ fn overtime_settings_response(
         single_month_absolute_limit_minutes: i64::from(row.6),
         warning_ratio_percent: i32::from(row.7),
         overtime_request_tolerance_minutes: i64::from(row.8),
+        minimum_rest_minutes: i64::from(row.9),
     })
 }
 

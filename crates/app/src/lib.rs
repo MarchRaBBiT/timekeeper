@@ -1,5 +1,8 @@
+pub mod admin_attendance_report;
 pub mod attendance_classification;
+pub mod holiday_work;
 pub mod leave_ledger;
+pub mod payroll_export;
 pub mod settlement_balance;
 pub mod user_workdays;
 pub mod work_schedules;
@@ -132,6 +135,10 @@ pub mod attendance {
         pub leave_request_id: String,
         pub date: NaiveDate,
         pub leave_type: String,
+        pub acquisition_unit: String,
+        pub start_time: Option<chrono::NaiveTime>,
+        pub end_time: Option<chrono::NaiveTime>,
+        pub requested_minutes: Option<i32>,
     }
 
     #[derive(Debug, Clone, PartialEq)]

@@ -1,4 +1,5 @@
 use crate::pages::admin::{
+    attendance_report::ConnectedAttendanceReportSection,
     components::requests::AdminRequestsSection, layout, view_model::use_admin_view_model,
 };
 use crate::state::auth::use_auth;
@@ -23,6 +24,7 @@ pub fn AdminPanel() -> impl IntoView {
 
     view! {
         <layout::AdminDashboardScaffold admin_allowed=admin_allowed>
+            <ConnectedAttendanceReportSection/>
             <AdminRequestsSection
                 users=vm.users_resource
                 filter=vm.requests_filter

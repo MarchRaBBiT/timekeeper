@@ -117,6 +117,403 @@ fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
 }
 
+async fn seed_effective_times(
+    pool: &PgPool,
+    employee: &User,
+    attendance_id: &str,
+    work_date: NaiveDate,
+    clock_in: Option<NaiveDateTime>,
+    clock_out: Option<NaiveDateTime>,
+) {
+    let correction_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO attendance_correction_requests
+         (id, user_id, attendance_id, date, status, reason,
+          original_snapshot_json, proposed_values_json, approved_by, approved_at)
+         VALUES ($1, $2, $3, $4, 'approved', 'rest review fixture',
+                 '{}'::jsonb, '{}'::jsonb, $2, NOW())",
+    )
+    .bind(&correction_id)
+    .bind(employee.id.to_string())
+    .bind(attendance_id)
+    .bind(work_date)
+    .execute(pool)
+    .await
+    .expect("insert correction request");
+    sqlx::query(
+        "INSERT INTO attendance_correction_effective_values
+         (attendance_id, source_request_id, clock_in_time_corrected,
+          clock_out_time_corrected, break_records_corrected_json, applied_by)
+         VALUES ($1, $2, $3, $4, '[]'::jsonb, $5)",
+    )
+    .bind(attendance_id)
+    .bind(correction_id)
+    .bind(clock_in)
+    .bind(clock_out)
+    .bind(employee.id.to_string())
+    .execute(pool)
+    .await
+    .expect("insert effective correction");
+}
+
+#[test]
+fn insufficient_rest_kind_uses_the_public_snake_case_contract() {
+    let value = serde_json::to_value(WorkScheduleAnomalyKind::InsufficientRest)
+        .expect("serialize anomaly kind");
+    assert_eq!(value, json!("insufficient_rest"));
+}
+
+#[tokio::test]
+async fn insufficient_rest_uses_effective_timestamps_previous_range_shift_and_real_night_times() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let (settings_status, settings_body) = request_json(
+        router(pool.clone(), admin),
+        "PUT",
+        "/api/admin/overtime-monitor/settings",
+        Some(json!({
+            "valid_from": "2026-01-01",
+            "fiscal_year_start_month": 4,
+            "monthly_limit_minutes": 2700,
+            "yearly_limit_minutes": 21600,
+            "rolling_average_limit_minutes": 4800,
+            "single_month_absolute_limit_minutes": 6000,
+            "warning_ratio_percent": 80,
+            "overtime_request_tolerance_minutes": 0,
+            "minimum_rest_minutes": 660
+        })),
+    )
+    .await;
+    assert_eq!(settings_status, StatusCode::OK);
+    assert_eq!(settings_body["minimum_rest_minutes"], 660);
+    sqlx::query(
+        "UPDATE overtime_monitor_settings
+         SET minimum_rest_minutes = 660
+         WHERE valid_from <= DATE '2026-07-04'",
+    )
+    .execute(&pool)
+    .await
+    .expect("isolate rest threshold fixture");
+
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 6, 30),
+        Some(
+            NaiveDateTime::parse_from_str("2026-06-30T14:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-06-30T23:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    let july_first = seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 1),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T10:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-01T21:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    let correction_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO attendance_correction_requests
+         (id, user_id, attendance_id, date, status, reason,
+          original_snapshot_json, proposed_values_json, approved_by, approved_at)
+         VALUES ($1, $2, $3, $4, 'approved', 'rest boundary',
+                 '{}'::jsonb, '{}'::jsonb, $2, NOW())",
+    )
+    .bind(&correction_id)
+    .bind(employee.id.to_string())
+    .bind(july_first.id.to_string())
+    .bind(date(2026, 7, 1))
+    .execute(&pool)
+    .await
+    .expect("insert correction request");
+    sqlx::query(
+        "INSERT INTO attendance_correction_effective_values
+         (attendance_id, source_request_id, clock_in_time_corrected,
+          clock_out_time_corrected, break_records_corrected_json, applied_by)
+         VALUES ($1, $2, $3, $4, '[]'::jsonb, $5)",
+    )
+    .bind(july_first.id.to_string())
+    .bind(correction_id)
+    .bind(
+        NaiveDateTime::parse_from_str("2026-07-01T10:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("corrected clock in"),
+    )
+    .bind(
+        NaiveDateTime::parse_from_str("2026-07-01T22:00:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("corrected clock out"),
+    )
+    .bind(employee.id.to_string())
+    .execute(&pool)
+    .await
+    .expect("insert effective correction");
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 2),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-02T08:59:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-02T17:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 3),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-03T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("night clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-04T05:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("night clock out"),
+        ),
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 4),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-04T16:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock in"),
+        ),
+        Some(
+            NaiveDateTime::parse_from_str("2026-07-04T20:00:00", "%Y-%m-%dT%H:%M:%S")
+                .expect("clock out"),
+        ),
+    )
+    .await;
+
+    let anomalies = work_schedule::list_anomalies(
+        &pool,
+        Some(vec![employee.id.to_string()]),
+        date(2026, 7, 1),
+        date(2026, 7, 4),
+        date(2026, 7, 5),
+    )
+    .await
+    .expect("list anomalies");
+    let insufficient_rest_dates = anomalies
+        .iter()
+        .filter(|item| item.kind == WorkScheduleAnomalyKind::InsufficientRest)
+        .map(|item| item.work_date)
+        .collect::<Vec<_>>();
+
+    assert_eq!(insufficient_rest_dates, vec![date(2026, 7, 2)]);
+}
+
+#[tokio::test]
+async fn insufficient_rest_respects_null_effective_clock_out_and_clock_in() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let previous_null_user = seed_user(&pool, UserRole::Employee, false).await;
+    let next_null_user = seed_user(&pool, UserRole::Employee, false).await;
+
+    let previous = seed_attendance(
+        &pool,
+        previous_null_user.id,
+        date(2026, 6, 30),
+        Some(date(2026, 6, 30).and_hms_opt(9, 0, 0).expect("time")),
+        Some(date(2026, 6, 30).and_hms_opt(23, 0, 0).expect("time")),
+    )
+    .await;
+    seed_effective_times(
+        &pool,
+        &previous_null_user,
+        &previous.id.to_string(),
+        date(2026, 6, 30),
+        previous.clock_in_time,
+        None,
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        previous_null_user.id,
+        date(2026, 7, 1),
+        Some(date(2026, 7, 1).and_hms_opt(1, 0, 0).expect("time")),
+        Some(date(2026, 7, 1).and_hms_opt(9, 0, 0).expect("time")),
+    )
+    .await;
+
+    seed_attendance(
+        &pool,
+        next_null_user.id,
+        date(2026, 6, 30),
+        Some(date(2026, 6, 30).and_hms_opt(9, 0, 0).expect("time")),
+        Some(date(2026, 6, 30).and_hms_opt(23, 0, 0).expect("time")),
+    )
+    .await;
+    let next = seed_attendance(
+        &pool,
+        next_null_user.id,
+        date(2026, 7, 1),
+        Some(date(2026, 7, 1).and_hms_opt(1, 0, 0).expect("time")),
+        Some(date(2026, 7, 1).and_hms_opt(9, 0, 0).expect("time")),
+    )
+    .await;
+    seed_effective_times(
+        &pool,
+        &next_null_user,
+        &next.id.to_string(),
+        date(2026, 7, 1),
+        None,
+        next.clock_out_time,
+    )
+    .await;
+
+    let anomalies = work_schedule::list_anomalies(
+        &pool,
+        Some(vec![
+            previous_null_user.id.to_string(),
+            next_null_user.id.to_string(),
+        ]),
+        date(2026, 7, 1),
+        date(2026, 7, 1),
+        date(2026, 7, 2),
+    )
+    .await
+    .expect("list anomalies");
+
+    assert!(!anomalies
+        .iter()
+        .any(|item| item.kind == WorkScheduleAnomalyKind::InsufficientRest));
+}
+
+#[tokio::test]
+async fn insufficient_rest_keeps_last_completed_shift_across_incomplete_attendance() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 1),
+        Some(date(2026, 7, 1).and_hms_opt(9, 0, 0).expect("time")),
+        Some(date(2026, 7, 2).and_hms_opt(23, 0, 0).expect("time")),
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 2),
+        Some(date(2026, 7, 2).and_hms_opt(9, 0, 0).expect("time")),
+        None,
+    )
+    .await;
+    seed_attendance(
+        &pool,
+        employee.id,
+        date(2026, 7, 3),
+        Some(date(2026, 7, 3).and_hms_opt(1, 0, 0).expect("time")),
+        Some(date(2026, 7, 3).and_hms_opt(9, 0, 0).expect("time")),
+    )
+    .await;
+
+    let anomalies = work_schedule::list_anomalies(
+        &pool,
+        Some(vec![employee.id.to_string()]),
+        date(2026, 7, 1),
+        date(2026, 7, 3),
+        date(2026, 7, 4),
+    )
+    .await
+    .expect("list anomalies");
+
+    assert!(anomalies.iter().any(|item| {
+        item.kind == WorkScheduleAnomalyKind::InsufficientRest && item.work_date == date(2026, 7, 3)
+    }));
+}
+
+#[tokio::test]
+async fn insufficient_rest_uses_setting_effective_on_each_next_work_date() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    let admin = seed_user(&pool, UserRole::Manager, true).await;
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    for (valid_from, minimum_rest_minutes) in [("2026-01-01", 660), ("2026-07-03", 720)] {
+        let (status, _) = request_json(
+            router(pool.clone(), admin.clone()),
+            "PUT",
+            "/api/admin/overtime-monitor/settings",
+            Some(json!({
+                "valid_from": valid_from,
+                "fiscal_year_start_month": 4,
+                "monthly_limit_minutes": 2700,
+                "yearly_limit_minutes": 21600,
+                "rolling_average_limit_minutes": 4800,
+                "single_month_absolute_limit_minutes": 6000,
+                "warning_ratio_percent": 80,
+                "minimum_rest_minutes": minimum_rest_minutes
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    for day in 1..=3 {
+        seed_attendance(
+            &pool,
+            employee.id,
+            date(2026, 7, day),
+            Some(date(2026, 7, day).and_hms_opt(9, 0, 0).expect("time")),
+            Some(date(2026, 7, day).and_hms_opt(22, 0, 0).expect("time")),
+        )
+        .await;
+    }
+
+    let anomalies = work_schedule::list_anomalies(
+        &pool,
+        Some(vec![employee.id.to_string()]),
+        date(2026, 7, 2),
+        date(2026, 7, 3),
+        date(2026, 7, 4),
+    )
+    .await
+    .expect("list anomalies");
+    let dates = anomalies
+        .iter()
+        .filter(|item| item.kind == WorkScheduleAnomalyKind::InsufficientRest)
+        .map(|item| item.work_date)
+        .collect::<Vec<_>>();
+
+    assert_eq!(dates, vec![date(2026, 7, 3)]);
+}
+
 async fn assign_manager_to_employee_department(pool: &PgPool, manager: &User, employee: &User) {
     let department_id = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO departments (id, name) VALUES ($1, $2)")
@@ -1001,7 +1398,7 @@ async fn overtime_monitor_reports_threshold_statuses() {
         "PUT",
         "/api/admin/overtime-monitor/settings",
         Some(json!({
-            "valid_from": "2026-01-01",
+            "valid_from": "2026-07-31",
             "fiscal_year_start_month": 4,
             "monthly_limit_minutes": 120,
             "yearly_limit_minutes": 600,
@@ -1057,6 +1454,10 @@ async fn overtime_monitor_reports_threshold_statuses() {
         .expect("employee row");
     assert_eq!(employee_row["month_statutory_excess_minutes"], 180);
     assert_eq!(employee_row["monthly_status"], "exceeded");
+    sqlx::query("DELETE FROM overtime_monitor_settings WHERE valid_from = DATE '2026-07-31'")
+        .execute(&pool)
+        .await
+        .expect("delete test-specific overtime settings");
 }
 
 #[tokio::test]

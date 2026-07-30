@@ -93,6 +93,10 @@ fn calendar_day_roundtrips_leave_designation() {
         leave: Some(WorkScheduleCalendarLeaveResponse {
             leave_request_id: "request-1".to_string(),
             leave_type: "annual".to_string(),
+            acquisition_unit: "day".to_string(),
+            start_time: None,
+            end_time: None,
+            requested_minutes: None,
         }),
     };
 

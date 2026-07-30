@@ -249,6 +249,9 @@ mod tests {
             leave_type: "annual".into(),
             start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 2).unwrap(),
             end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 3).unwrap(),
+            acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            start_time: None,
+            end_time: None,
             reason: None,
         };
         let v = serde_json::to_value(&req).unwrap();

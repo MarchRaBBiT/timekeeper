@@ -11,7 +11,7 @@ use timekeeper_domain::leave_ledger::{
 use super::{
     start_of_day_utc, stored_entries_to_events, GrantCandidate, LeaveGrantUserRepository,
     LeaveLedgerError, LeaveLedgerRepository, LeaveRuleRepository, NewLeaveLedgerEntry,
-    StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
+    StoredLeaveLedgerEntry,
 };
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,7 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunLeaveGrantsCommand {
+    pub leave_type_code: String,
     pub base_date: NaiveDate,
     pub dry_run: bool,
     /// None は全ユーザー。Some は明示リスト（存在しない ID は UserNotFound）。
@@ -114,7 +115,7 @@ where
         }
         let rules = self
             .rules
-            .grant_rules(ANNUAL_LEAVE_TYPE, command.base_date)
+            .grant_rules(&command.leave_type_code, command.base_date)
             .await?;
         if rules.is_empty() {
             return Err(LeaveLedgerError::RulesNotConfigured);
@@ -143,7 +144,9 @@ where
         // M-1b: 候補者ごとの N+1 SELECT を避けるため、ロックなしで一括取得する。
         // これは事前絞り込み専用。実際に書き込むかどうかの判定は、必ず
         // with_user_lock で取得したロック済み entries で再検証する。
-        let entries_by_user = self.bulk_entries_by_user(&active_candidates).await?;
+        let entries_by_user = self
+            .bulk_entries_by_user(&active_candidates, &command.leave_type_code)
+            .await?;
 
         if command.dry_run {
             collect_dry_run(
@@ -177,6 +180,7 @@ where
     async fn bulk_entries_by_user(
         &self,
         candidates: &[GrantCandidate],
+        leave_type_code: &str,
     ) -> Result<HashMap<String, Vec<StoredLeaveLedgerEntry>>, LeaveLedgerError> {
         let user_ids: Vec<String> = candidates
             .iter()
@@ -184,7 +188,7 @@ where
             .collect();
         let bulk_entries = self
             .ledger
-            .list_entries_for_users(&user_ids, ANNUAL_LEAVE_TYPE)
+            .list_entries_for_users(&user_ids, leave_type_code)
             .await?;
         let mut entries_by_user: HashMap<String, Vec<StoredLeaveLedgerEntry>> = HashMap::new();
         for entry in bulk_entries {
@@ -219,6 +223,7 @@ where
                 entries,
                 rules,
                 command.base_date,
+                &command.leave_type_code,
                 &command.created_by,
             )?;
             if preview_entries.is_empty() {
@@ -260,17 +265,19 @@ where
         let candidate_for_lock = candidate.clone();
         let rules_for_lock = rules.to_vec();
         let created_by_for_lock = command.created_by.clone();
+        let leave_type_code_for_lock = command.leave_type_code.clone();
         let base_date = command.base_date;
         self.ledger
             .with_user_lock(
                 &candidate.user_id,
-                ANNUAL_LEAVE_TYPE,
+                &command.leave_type_code,
                 move |locked_entries| {
                     let (outcome, new_entries) = evaluate_candidate(
                         &candidate_for_lock,
                         locked_entries,
                         &rules_for_lock,
                         base_date,
+                        &leave_type_code_for_lock,
                         &created_by_for_lock,
                     )?;
                     Ok((new_entries, outcome))
@@ -298,6 +305,7 @@ fn collect_dry_run(
             entries,
             rules,
             command.base_date,
+            &command.leave_type_code,
             &command.created_by,
         )?;
         acc.record(candidate.user_id.clone(), outcome, &[]);
@@ -350,11 +358,13 @@ fn evaluate_candidate(
     entries: &[StoredLeaveLedgerEntry],
     rules: &[LeaveGrantRule],
     base_date: NaiveDate,
+    leave_type_code: &str,
     created_by: &Option<String>,
 ) -> Result<(CandidateOutcome, Vec<NewLeaveLedgerEntry>), LeaveLedgerError> {
     let events = stored_entries_to_events(entries);
     let balance = derive_balance(&events, base_date);
-    let (expired, mut new_entries) = expiration_entries(candidate, &balance, created_by);
+    let (expired, mut new_entries) =
+        expiration_entries(candidate, &balance, leave_type_code, created_by);
 
     let Some(hire_date) = candidate.hire_date else {
         return Ok(skip_outcome(
@@ -392,10 +402,11 @@ fn evaluate_candidate(
     let granted_minutes = rule.granted_days * rule.day_equivalent_minutes;
     new_entries.push(NewLeaveLedgerEntry {
         user_id: candidate.user_id.clone(),
-        leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+        leave_type: leave_type_code.to_string(),
         kind: LeaveLedgerKind::Grant,
         lot_id: None,
         amount_minutes: granted_minutes,
+        obligation_minutes: 0,
         day_equivalent_minutes: rule.day_equivalent_minutes,
         granted_at: Some(base_date),
         expires_at: Some(expires_at),
@@ -449,6 +460,7 @@ fn skip_outcome(
 fn expiration_entries(
     candidate: &GrantCandidate,
     balance: &LeaveBalance,
+    leave_type_code: &str,
     created_by: &Option<String>,
 ) -> (Vec<ExpiryOutcome>, Vec<NewLeaveLedgerEntry>) {
     let mut expired = Vec::new();
@@ -462,10 +474,11 @@ fn expiration_entries(
         });
         new_entries.push(NewLeaveLedgerEntry {
             user_id: candidate.user_id.clone(),
-            leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+            leave_type: leave_type_code.to_string(),
             kind: LeaveLedgerKind::Expire,
             lot_id: Some(draft.lot_id),
             amount_minutes: draft.amount_minutes,
+            obligation_minutes: 0,
             day_equivalent_minutes: draft.day_equivalent_minutes,
             granted_at: None,
             expires_at: None,

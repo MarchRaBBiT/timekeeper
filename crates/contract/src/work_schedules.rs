@@ -412,6 +412,7 @@ pub enum WorkScheduleAnomalyKind {
     EarlyLeave,
     Absent,
     InsufficientBreak,
+    InsufficientRest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -448,6 +449,10 @@ pub struct WorkScheduleCalendarAttendanceResponse {
 pub struct WorkScheduleCalendarLeaveResponse {
     pub leave_request_id: String,
     pub leave_type: String,
+    pub acquisition_unit: String,
+    pub start_time: Option<NaiveTime>,
+    pub end_time: Option<NaiveTime>,
+    pub requested_minutes: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -531,6 +536,8 @@ pub struct OvertimeMonitorSettingsRequest {
     pub warning_ratio_percent: i32,
     #[serde(default)]
     pub overtime_request_tolerance_minutes: i64,
+    #[serde(default)]
+    pub minimum_rest_minutes: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -544,6 +551,7 @@ pub struct OvertimeMonitorSettingsResponse {
     pub single_month_absolute_limit_minutes: i64,
     pub warning_ratio_percent: i32,
     pub overtime_request_tolerance_minutes: i64,
+    pub minimum_rest_minutes: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

@@ -6,6 +6,7 @@ pub mod auth;
 pub mod config;
 pub mod consents;
 pub mod holiday_exceptions;
+pub mod holiday_work;
 pub mod holidays;
 pub mod leave_ledger;
 pub mod requests;

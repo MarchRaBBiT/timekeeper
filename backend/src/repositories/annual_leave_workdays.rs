@@ -21,6 +21,7 @@ use timekeeper_contract::leave::LEAVE_REQUEST_SCHEDULE_UNRESOLVED_CODE;
 use timekeeper_infra_postgres::work_schedules::WorkdayResolverPostgresRepository;
 
 use crate::error::AppError;
+use crate::models::leave_request::{LeaveAcquisitionUnit, LeaveRequest};
 
 /// `[from, to]`（両端含む）の期間について、resolved workday を解決したうえで
 /// 稼働日（`ScheduledWorkday`）の件数を返す。
@@ -57,6 +58,52 @@ pub async fn count_working_days_for_annual_leave(
         .iter()
         .filter(|day| day.day_kind == ResolvedDayKind::ScheduledWorkday)
         .count() as i64)
+}
+
+/// 部分休暇の消化分を resolved workday snapshot から導出する。
+pub async fn partial_leave_minutes(
+    db: &PgPool,
+    request: &LeaveRequest,
+) -> Result<Option<i64>, AppError> {
+    match request.acquisition_unit {
+        LeaveAcquisitionUnit::Day => Ok(None),
+        LeaveAcquisitionUnit::Hour => request
+            .requested_minutes
+            .map(i64::from)
+            .filter(|minutes| *minutes > 0)
+            .map(Some)
+            .ok_or_else(|| AppError::BadRequest("hour leave duration is missing".into())),
+        LeaveAcquisitionUnit::HalfAm | LeaveAcquisitionUnit::HalfPm => {
+            if request.start_date != request.end_date {
+                return Err(AppError::BadRequest(
+                    "half-day leave must be requested for a single day".into(),
+                ));
+            }
+            materialize_resolved_workdays_fail_closed(
+                db,
+                &request.user_id.to_string(),
+                request.start_date,
+                request.end_date,
+            )
+            .await?;
+            let expected = sqlx::query_scalar::<_, i32>(
+                "SELECT expected_work_minutes FROM resolved_workdays
+                 WHERE user_id = $1 AND work_date = $2
+                   AND day_kind = 'scheduled_workday'",
+            )
+            .bind(request.user_id)
+            .bind(request.start_date)
+            .fetch_optional(db)
+            .await?
+            .ok_or_else(schedule_unresolved_error)?;
+            let expected = i64::from(expected);
+            Ok(Some(match request.acquisition_unit {
+                LeaveAcquisitionUnit::HalfAm => (expected + 1) / 2,
+                LeaveAcquisitionUnit::HalfPm => expected / 2,
+                _ => unreachable!("partial unit was matched above"),
+            }))
+        }
+    }
 }
 
 async fn materialize_resolved_workdays_fail_closed(

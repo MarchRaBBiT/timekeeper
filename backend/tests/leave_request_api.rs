@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
     Extension, Router,
 };
@@ -66,6 +66,52 @@ async fn test_create_leave_request_succeeds() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn custom_hour_leave_persists_minute_duration() {
+    let _guard = integration_guard().await;
+    let pool = test_pool().await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("run migrations");
+    sqlx::query(
+        "INSERT INTO leave_types
+            (code, name, is_paid, balance_tracked, allowed_units)
+         VALUES ('medical_hour', 'Medical hour', TRUE, FALSE, ARRAY['hour'])",
+    )
+    .execute(&pool)
+    .await
+    .expect("seed custom type");
+    let employee = seed_user(&pool, UserRole::Employee, false).await;
+    let app = test_router_with_state(pool.clone(), employee);
+    let payload = json!({
+        "leave_type": "medical_hour",
+        "start_date": "2024-07-15",
+        "end_date": "2024-07-15",
+        "acquisition_unit": "hour",
+        "start_time": "10:15:00",
+        "end_time": "11:45:00"
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/requests/leave")
+                .header("Content-Type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(json["acquisition_unit"], "hour");
+    assert_eq!(json["requested_minutes"], 90);
 }
 
 #[tokio::test]

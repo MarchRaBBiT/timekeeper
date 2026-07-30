@@ -101,6 +101,10 @@ struct LeaveDayRowData {
     leave_request_id: String,
     date: NaiveDate,
     leave_type: String,
+    acquisition_unit: String,
+    start_time: Option<chrono::NaiveTime>,
+    end_time: Option<chrono::NaiveTime>,
+    requested_minutes: Option<i32>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -770,7 +774,8 @@ async fn list_approved_leave_days(
     to: Option<NaiveDate>,
 ) -> Result<Vec<LeaveDayRowData>, sqlx::Error> {
     sqlx::query_as::<_, LeaveDayRowData>(
-        "SELECT lr.id AS leave_request_id, d.day::date AS date, lr.leave_type
+        "SELECT lr.id AS leave_request_id, d.day::date AS date, lr.leave_type,
+                lr.acquisition_unit, lr.start_time, lr.end_time, lr.requested_minutes
          FROM leave_requests lr
          CROSS JOIN LATERAL generate_series(
              lr.start_date::timestamp, lr.end_date::timestamp, interval '1 day'
@@ -1151,6 +1156,10 @@ fn leave_day_row_to_app(row: LeaveDayRowData) -> LeaveDayRecord {
         leave_request_id: row.leave_request_id,
         date: row.date,
         leave_type: row.leave_type,
+        acquisition_unit: row.acquisition_unit,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        requested_minutes: row.requested_minutes,
     }
 }
 

@@ -31,13 +31,43 @@ impl LeaveLedgerPostgresRepository {
         Self { pool }
     }
 
+    /// `leave_type_code` が休暇種別master上で残高連動対象かを検証する。
+    ///
+    /// 無効化後も既存台帳の参照・取消releaseは必要なため、`is_active` はここでは
+    /// 判定しない。新規申請での有効性・許可単位は申請側のpolicy検証が担う。
+    pub async fn ensure_balance_tracked_leave_type(
+        &self,
+        leave_type_code: &str,
+    ) -> Result<(), LeaveLedgerError> {
+        if self.is_balance_tracked_leave_type(leave_type_code).await? {
+            return Ok(());
+        }
+        Err(LeaveLedgerError::InvalidInput(format!(
+            "leave_type_code is not balance-tracked: {leave_type_code}"
+        )))
+    }
+
+    pub async fn is_balance_tracked_leave_type(
+        &self,
+        leave_type_code: &str,
+    ) -> Result<bool, LeaveLedgerError> {
+        let balance_tracked = sqlx::query_scalar::<_, bool>(
+            "SELECT balance_tracked FROM leave_types WHERE code = $1",
+        )
+        .bind(leave_type_code)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(repository_error)?;
+        Ok(balance_tracked == Some(true))
+    }
+
     pub async fn list_entries_for_update(
         tx: &mut Transaction<'_, Postgres>,
         user_id: &str,
         leave_type: &str,
     ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError> {
         sqlx::query_as::<_, LeaveLedgerEntryRow>(
-            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes,
+            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes, obligation_minutes,
                     day_equivalent_minutes, granted_at, expires_at, grant_base_date,
                     leave_request_id, reason, created_by, effective_at, created_at
              FROM leave_ledger_entries
@@ -158,11 +188,11 @@ impl LeaveLedgerPostgresRepository {
                 })?;
             let row = sqlx::query_as::<_, LeaveLedgerEntryRow>(
                 "INSERT INTO leave_ledger_entries (
-                    id, user_id, leave_type, kind, lot_id, amount_minutes,
+                    id, user_id, leave_type, kind, lot_id, amount_minutes, obligation_minutes,
                     day_equivalent_minutes, granted_at, expires_at, grant_base_date,
                     leave_request_id, reason, created_by, effective_at
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-                 RETURNING id, user_id, leave_type, kind, lot_id, amount_minutes,
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 RETURNING id, user_id, leave_type, kind, lot_id, amount_minutes, obligation_minutes,
                     day_equivalent_minutes, granted_at, expires_at, grant_base_date,
                     leave_request_id, reason, created_by, effective_at, created_at",
             )
@@ -172,6 +202,9 @@ impl LeaveLedgerPostgresRepository {
             .bind(kind_to_str(entry.kind))
             .bind(lot_id)
             .bind(amount_minutes)
+            .bind(i32::try_from(entry.obligation_minutes).map_err(|_| {
+                LeaveLedgerError::InvalidInput("obligation_minutes is out of range".to_string())
+            })?)
             .bind(day_equivalent_minutes)
             .bind(entry.granted_at)
             .bind(entry.expires_at)
@@ -197,6 +230,7 @@ struct LeaveLedgerEntryRow {
     kind: String,
     lot_id: Uuid,
     amount_minutes: i32,
+    obligation_minutes: i32,
     day_equivalent_minutes: i32,
     granted_at: Option<NaiveDate>,
     expires_at: Option<NaiveDate>,
@@ -238,7 +272,7 @@ impl LeaveLedgerRepository for LeaveLedgerPostgresRepository {
         leave_type: &str,
     ) -> Result<Vec<StoredLeaveLedgerEntry>, LeaveLedgerError> {
         sqlx::query_as::<_, LeaveLedgerEntryRow>(
-            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes,
+            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes, obligation_minutes,
                     day_equivalent_minutes, granted_at, expires_at, grant_base_date,
                     leave_request_id, reason, created_by, effective_at, created_at
              FROM leave_ledger_entries
@@ -264,7 +298,7 @@ impl LeaveLedgerRepository for LeaveLedgerPostgresRepository {
             return Ok(Vec::new());
         }
         sqlx::query_as::<_, LeaveLedgerEntryRow>(
-            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes,
+            "SELECT id, user_id, leave_type, kind, lot_id, amount_minutes, obligation_minutes,
                     day_equivalent_minutes, granted_at, expires_at, grant_base_date,
                     leave_request_id, reason, created_by, effective_at, created_at
              FROM leave_ledger_entries
@@ -465,6 +499,7 @@ fn row_to_stored_entry(
         kind: kind_from_str(&row.kind)?,
         lot_id: row.lot_id.to_string(),
         amount_minutes: i64::from(row.amount_minutes),
+        obligation_minutes: i64::from(row.obligation_minutes),
         day_equivalent_minutes: i64::from(row.day_equivalent_minutes),
         granted_at: row.granted_at,
         expires_at: row.expires_at,

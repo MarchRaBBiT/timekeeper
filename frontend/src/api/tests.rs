@@ -547,6 +547,9 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
                 leave_type: "annual".into(),
                 start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
                 end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+                acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+                start_time: None,
+                end_time: None,
                 reason: Some("updated".into()),
             },
         )
@@ -569,6 +572,9 @@ async fn api_client_attendance_and_requests_endpoints_succeed() {
             leave_type: "annual".into(),
             start_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 10).unwrap(),
             end_date: chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+            acquisition_unit: timekeeper_contract::requests::LeaveAcquisitionUnit::Day,
+            start_time: None,
+            end_time: None,
             reason: None,
         })
         .await

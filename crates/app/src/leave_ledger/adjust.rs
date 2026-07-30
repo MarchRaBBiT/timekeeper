@@ -7,7 +7,7 @@ use timekeeper_domain::leave_ledger::{
 
 use super::{
     stored_entries_to_events, LeaveGrantUserRepository, LeaveLedgerError, LeaveLedgerRepository,
-    NewLeaveLedgerEntry, StoredLeaveLedgerEntry, ANNUAL_LEAVE_TYPE,
+    NewLeaveLedgerEntry, StoredLeaveLedgerEntry,
 };
 
 // ---------------------------------------------------------------------------
@@ -17,6 +17,7 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdjustLeaveLedgerCommand {
     pub user_id: String,
+    pub leave_type_code: String,
     pub amount_minutes: i64,
     /// Some: 既存ロットの補正。None: 新規ロット投入（初期移行）。
     pub lot_id: Option<String>,
@@ -80,7 +81,7 @@ where
             // (TOCTOU による負残高リスクが無い read-only 経路)。
             let entries = self
                 .ledger
-                .list_entries(&command.user_id, ANNUAL_LEAVE_TYPE)
+                .list_entries(&command.user_id, &command.leave_type_code)
                 .await?;
             let new_entry = build_adjust_entry(&command, &entries, as_of)?;
             // 仮ロット ID で投入後残高を導出する（新規ロットは未採番のため）。
@@ -96,9 +97,10 @@ where
         // H-2: 残高チェック（build_adjust_entry）から追記までを、users 行ロック +
         // 台帳行 FOR UPDATE を取った同一トランザクションで行う（TOCTOU 防止）。
         let command_for_lock = command.clone();
+        let leave_type_code = command.leave_type_code.clone();
         let (stored, locked_entries) = self
             .ledger
-            .with_user_lock(&command.user_id, ANNUAL_LEAVE_TYPE, move |entries| {
+            .with_user_lock(&command.user_id, &leave_type_code, move |entries| {
                 let new_entry = build_adjust_entry(&command_for_lock, entries, as_of)?;
                 Ok((vec![new_entry], entries.to_vec()))
             })
@@ -155,10 +157,11 @@ fn build_adjust_entry(
             }
             Ok(NewLeaveLedgerEntry {
                 user_id: command.user_id.clone(),
-                leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+                leave_type: command.leave_type_code.clone(),
                 kind: LeaveLedgerKind::Adjust,
                 lot_id: Some(lot_id.clone()),
                 amount_minutes: command.amount_minutes,
+                obligation_minutes: 0,
                 day_equivalent_minutes: lot.day_equivalent_minutes,
                 granted_at: None,
                 expires_at: None,
@@ -198,10 +201,11 @@ fn build_adjust_entry(
             }
             Ok(NewLeaveLedgerEntry {
                 user_id: command.user_id.clone(),
-                leave_type: ANNUAL_LEAVE_TYPE.to_string(),
+                leave_type: command.leave_type_code.clone(),
                 kind: LeaveLedgerKind::Adjust,
                 lot_id: None,
                 amount_minutes: command.amount_minutes,
+                obligation_minutes: 0,
                 day_equivalent_minutes,
                 granted_at: Some(granted_at),
                 expires_at: Some(expires_at),
@@ -228,6 +232,7 @@ fn new_entry_to_hypothetical_event(
             .unwrap_or_else(|| "(dry-run-new-lot)".to_string()),
         kind: entry.kind,
         amount_minutes: entry.amount_minutes,
+        obligation_minutes: entry.obligation_minutes,
         day_equivalent_minutes: entry.day_equivalent_minutes,
         granted_at: entry.granted_at,
         expires_at: entry.expires_at,

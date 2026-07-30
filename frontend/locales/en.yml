@@ -988,6 +988,18 @@ admin_components:
       unset: "Not Set"
       active: "Active"
     confirm_delete: "Delete this weekly holiday?"
+  attendance_report:
+    title: "Monthly Attendance Report"
+    loading: "Loading the attendance report..."
+    error: "The attendance report could not be loaded."
+    empty: "No employees match these filters."
+    filters:
+      month: "Month"
+      department: "Department"
+      apply: "Apply"
+    pagination:
+      previous: "Previous"
+      next: "Next"
 
 api:
   errors:

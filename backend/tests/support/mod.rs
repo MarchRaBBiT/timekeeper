@@ -824,12 +824,7 @@ pub async fn seed_leave_request(
     )
     .bind(request.id.to_string())
     .bind(request.user_id.to_string())
-    .bind(match request.leave_type {
-        LeaveType::Annual => "annual",
-        LeaveType::Sick => "sick",
-        LeaveType::Personal => "personal",
-        LeaveType::Other => "other",
-    })
+    .bind(request.leave_type.db_value())
     .bind(request.start_date)
     .bind(request.end_date)
     .bind(&request.reason)

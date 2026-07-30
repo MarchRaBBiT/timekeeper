@@ -290,6 +290,36 @@ impl ApiClient {
             .map(|response| response.data)
     }
 
+    pub async fn admin_attendance_report(
+        &self,
+        query: &timekeeper_contract::admin_attendance_report::AdminAttendanceReportQuery,
+    ) -> Result<timekeeper_contract::admin_attendance_report::AdminAttendanceReportResponse, ApiError>
+    {
+        let base_url = self.resolved_base_url().await;
+        let response = self
+            .send_with_refresh(|| {
+                Ok(self
+                    .client
+                    .get(format!("{}/admin/attendance-report", base_url))
+                    .query(query))
+            })
+            .await?;
+        let status = response.status();
+        Self::handle_unauthorized_status(status);
+        if status.is_success() {
+            response
+                .json()
+                .await
+                .map_err(|error| ApiError::unknown(format!("Failed to parse response: {error}")))
+        } else {
+            let error = response
+                .json()
+                .await
+                .map_err(ApiClient::map_error_payload_parse_failure)?;
+            Err(error)
+        }
+    }
+
     pub async fn get_users_with_policy(
         &self,
     ) -> Result<PiiProtectedResponse<Vec<UserResponse>>, ApiError> {
