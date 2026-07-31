@@ -27,7 +27,7 @@
 
 計画済み（本 EP では重複登録しない）:
 
-- flex 清算期間残高: [EP-20260703-work-schedule-phase3-settlement-balance](../completed/EP-20260703-work-schedule-phase3-settlement-balance.md)（未着手）
+- flex 清算期間残高: [EP-20260703-work-schedule-phase3-settlement-balance](./EP-20260703-work-schedule-phase3-settlement-balance.md)（実装完了、`51a2c9d`）
 - [work-schedule-master.md](../../design-docs/work-schedule-master.md) Follow-up Designs: 1 勤怠計算ポリシー / 2 月次締め・承認・再締め / 3 有給休暇付与・残高台帳 / 4 給与エクスポート契約（design doc 予告のみで EP 未作成 → 本 EP の G1 / G2 / G8 / G10 が EP 化の受け皿）
 - 代理承認者 / system_admin 自動エスカレーション: tech-debt #11 残（P2）
 - 勤怠修正承認の管理 UI 配線: tech-debt #16
@@ -128,7 +128,7 @@
 - [x] 不足観点が実装調査（API catalog / migrations / handlers / 既存 EP・design doc）に基づき優先度付きで列挙されている
 - [x] 既存計画（settlement-balance EP、Follow-up Designs 1–4、tech-debt #7/#11/#16）との対応関係が明示され、二重登録がない
 - [x] P1 の各観点（G1–G4）に対応する design doc または個別 EP が作成されている
-- [ ] P2 の各観点が、着手時に本 EP を起点として個別 EP 化されている（着手順は下記 Suggested Order）
+- [x] P2 の各観点が個別 EP 化され、G12 の application notification worker と G14 の retention enforcement も後続 active EP として登録されている
 
 ## Constraints / Non-goals
 
@@ -157,9 +157,11 @@
 
 - [x] `git status --short`
 - [x] `docs-check` pass
-- [x] `git commit -m "docs: register attendance domain gap backlog exec plan"`
+- [x] `d0fd507 docs: register attendance domain gap backlog exec plan`、最終 closeout `6bc9953 docs: close attendance phase 3 plans`
 
 ## Progress Notes
+
+- 2026-07-31: 初回登録 `d0fd507`、タスクリスト `bfff492`、Phase 0 登録 `8ebd01e` / `13fa58b`、Phase 2 `ee1a5ba`、Phase 3 `fc1414e` / closeout `6bc9953` と後続2件の active EP 登録を確認し、親バックログを完了扱いとした。
 
 - 2026-07-04: 実装調査（有給残高・区分集計・遅刻早退判定・申請実績連動・通知・締めワークフローの不在を grep / API catalog / migration 一覧で確認）に基づき G1–G15 を登録。P1 = G1–G4、P2 = G5–G12、P3 = G13–G15 とした
 - 2026-07-04: G1–G14 を実装タスク T-01〜T-19 へ分解し、担当エージェント向け指示（前提タスク・目的・ゴール・次タスク・共通作業規約）を [attendance-domain-gap-tasks.md](../attendance-domain-gap-tasks.md) として登録。依存関係を Phase 0–3 に整理（G15 はタスク化せず要件発生時に再登録）

@@ -1,7 +1,7 @@
 # Attendance Domain Gap — 実装タスクリスト
 
 **Updated:** 2026-07-04
-**親 EP:** [EP-20260704-attendance-domain-gap-backlog](./active/EP-20260704-attendance-domain-gap-backlog.md)
+**親 EP:** [EP-20260704-attendance-domain-gap-backlog](./completed/EP-20260704-attendance-domain-gap-backlog.md)
 **Purpose:** 親 EP で棚卸しした不足観点 G1–G14 を、担当エージェントが単独で着手できる実装タスクへ分解した実行バックログ。各タスクは着手時に個別 ExecPlan（`docs/exec-plans/active/EP-YYYYMMDD-<slug>.md`）へ転記して進める。
 
 ## 全タスク共通の作業規約（担当エージェントは必ず守ること）
@@ -50,7 +50,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   3. Follow-up Designs 1 の具体化であることを `work-schedule-master.md` に相互リンクで明記する
 - **ゴール（Observable）:** design doc が存在し、上記論点すべてに決定が書かれている。`bash scripts/harness.sh docs-check` green。個別 EP 作成・commit 済み
 - **次の関連タスク:** T-03（この doc を実装する）、T-06 / T-09 / T-10 / T-12（休暇日・判定猶予・警告扱いの決定を参照する）
-- **Status:** 完了（2026-07-04、[EP-20260704-attendance-calculation-policy-design](./active/EP-20260704-attendance-calculation-policy-design.md) / commit 40e10b8。成果物: [attendance-calculation-policy.md](../design-docs/attendance-calculation-policy.md)）
+- **Status:** 完了（2026-07-04、[EP-20260704-attendance-calculation-policy-design](./completed/EP-20260704-attendance-calculation-policy-design.md) / commit 40e10b8。成果物: [attendance-calculation-policy.md](../design-docs/attendance-calculation-policy.md)）
 
 ### T-02: 有給休暇付与・残高台帳 design doc（G2 設計）
 
@@ -68,7 +68,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
      - `LeaveType::Annual` 以外（sick / personal / other）は残高非連動として扱う（種別マスタ化は T-11）
 - **ゴール:** design doc が存在し上記が決定済み。docs-check green。EP 作成・commit 済み
 - **次の関連タスク:** T-04（実装）、T-11（単位拡張の前提）
-- **Status:** 完了（2026-07-04、[EP-20260704-leave-entitlement-design](./active/EP-20260704-leave-entitlement-design.md) / commit 5ec584b。成果物: [leave-entitlement.md](../design-docs/leave-entitlement.md)）
+- **Status:** 完了（2026-07-04、[EP-20260704-leave-entitlement-design](./completed/EP-20260704-leave-entitlement-design.md) / commit 5ec584b。成果物: [leave-entitlement.md](../design-docs/leave-entitlement.md)）
 
 ### T-16: 汎用通知サービス基盤（G12 前半）
 
@@ -81,7 +81,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 完了時に tech-debt-tracker #7 の Status を実測で更新する
 - **ゴール:** 汎用化された queue で lockout 通知の既存 integration test が green。`worker-once` stage が green。RUNBOOK に worker 運用節が存在する
 - **次の関連タスク:** T-17（申請・打刻イベントの配線）
-- **Status:** 完了（2026-07-04、[EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md) / commit 92ca21a。generic `NotificationJob` envelope + legacy fallback decode、`worker-once` stage 新設、tech-debt #7 返済。検証実測: unit 387 / lockout integration 10 / clippy 0 warnings / worker-once pass）
+- **Status:** 完了（2026-07-04、[EP-20260704-notification-service-generalization](./completed/EP-20260704-notification-service-generalization.md) / commit 92ca21a。generic `NotificationJob` envelope + legacy fallback decode、`worker-once` stage 新設、tech-debt #7 返済。application consumer は [EP-20260731-application-notification-worker](./active/EP-20260731-application-notification-worker.md) で実装する）
 
 ### T-19: 勤怠記録の保存期間 retention policy design doc（G14）
 
@@ -94,7 +94,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 実装（自動 purge バッチ等）は本タスクに含めない。方針確定後に別 EP として親 EP へ追記する
 - **ゴール:** design doc が存在し、分類別の保存方針と subject request 例外規定が決定済み。docs-check green
 - **次の関連タスク:** なし（実装 EP は方針確定後に起票）
-- **Status:** 完了（2026-07-04、[EP-20260704-data-retention-policy](./active/EP-20260704-data-retention-policy.md) / commit 8d5101a。成果物: [data-retention.md](../design-docs/data-retention.md)。subject request approve が実データに触れない事実と crypto-shredding 不可の判断を記録済み）
+- **Status:** 完了（2026-07-04、[EP-20260704-data-retention-policy](./completed/EP-20260704-data-retention-policy.md) / commit 8d5101a。成果物: [data-retention.md](../design-docs/data-retention.md)。実装は [EP-20260731-data-retention-enforcement](./active/EP-20260731-data-retention-enforcement.md)）
 
 ---
 
@@ -103,8 +103,8 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-03: 日次労働時間区分の read-model 実装（G1 実装）
 
 - **前提タスク:** T-01（design doc の決定に従うこと。doc と実装が食い違う場合は doc を先に修正する）
-- **個別 EP:** [EP-20260705-attendance-classification-read-model](./active/EP-20260705-attendance-classification-read-model.md)
-- **Status:** 完了（EP: [EP-20260705-attendance-classification-read-model](./active/EP-20260705-attendance-classification-read-model.md)、commit: `feat(attendance): add daily classification read-model`）
+- **個別 EP:** [EP-20260705-attendance-classification-read-model](./completed/EP-20260705-attendance-classification-read-model.md)
+- **Status:** 完了（EP: [EP-20260705-attendance-classification-read-model](./completed/EP-20260705-attendance-classification-read-model.md)、commit: `b39ed35 feat(attendance): add daily classification read-model`）
 - **目的:** 割増賃金計算の入力となる日次区分（所定内 / 法定内残業 / 法定外残業 / 深夜 / 法定休日）を導出値として提供する。T-07 / T-08 / T-13 / T-14 / T-15 がこの出力に依存する
 - **指示:**
   1. `crates/domain` に区分計算の純ロジック（resolved workday snapshot + effective 打刻 → 日次区分分値）を実装し、夜勤・boundary 前打刻・休日・flex の各ケースを unit test で固定する

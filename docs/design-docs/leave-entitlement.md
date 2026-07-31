@@ -1,14 +1,14 @@
 # 有給休暇付与・残高台帳設計
 
-**Status:** Design only（実装未着手）。本 doc は [attendance-domain-gap-tasks.md](../exec-plans/attendance-domain-gap-tasks.md) の T-02（G2 設計）の成果物であり、[work-schedule-master.md](./work-schedule-master.md) の Follow-up Designs 3「有給休暇付与・残高台帳」の具体化である。実装は T-04（付与・残高参照）/ T-05（消化引当）/ T-11（半休・時間単位・種別マスタ）/ T-13（代休への流用）で行う。
+**Status:** Implemented through T-04 / T-05 / T-11 / T-13。付与・残高参照、消化引当、半休・時間単位・種別マスタ、代休台帳を実装済み。比例付与と出勤率8割判定は follow-up。
 
-**Updated:** 2026-07-04
+**Updated:** 2026-07-31
 
 **Scope:** 年次有給休暇（`LeaveType::Annual`）の付与、残高台帳、消化引当、時効、年5日取得義務の追跡を「台帳（ledger）」として成立させる設計を確定する。
 
 ## Decision Summary
 
-現状は `LeaveType::Annual` の申請・承認はできるが、付与・残高・時効・取得義務の概念が一切なく、**残高ゼロでも申請・承認できる**（[EP-20260704-attendance-domain-gap-backlog](../exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md) G2）。本設計はこれを次の 5 決定で解消する。
+設計着手時は `LeaveType::Annual` の申請・承認だけが存在し、付与・残高・時効・取得義務がなく、残高ゼロでも申請・承認できた（[親 EP](../exec-plans/completed/EP-20260704-attendance-domain-gap-backlog.md) G2）。現在は ledger 残高検証と承認時消化が fail-closed で実装済みであり、次の決定を維持する。
 
 1. **残高は保存しない導出値**とし、正は **append-only の ledger イベント列**（`grant` / `consume` / `release` / `expire` / `adjust`）のみとする。残高スナップショットを主データにしない。
 2. **付与は勤続年数テーブル**で行う（入社 6 ヶ月で 10 日 → 以降テーブル）。比例付与は第一増分の対象外とし、拡張点だけ設計する。
@@ -224,7 +224,7 @@ CREATE UNIQUE INDEX uq_leave_ledger_expire   ON leave_ledger_entries (lot_id) WH
 
 ## Read-Model And APIs（導出値と API）
 
-残高・時効予定・年5日義務はいずれも**保存せず read API として導出**する（settlement balance と同型）。実装は T-04 / T-05。
+残高・時効予定・年5日義務はいずれも**保存せず read API として導出**する（settlement balance と同型）。T-04 / T-05 で実装済み。
 
 | Method | Path | Auth | Semantics |
 | --- | --- | --- | --- |
@@ -301,6 +301,6 @@ T-13（振替休日・代休）は、休日出勤の事後付与（代休）を*
 
 ## Follow-up
 
-- 実装は T-04 → T-05 → T-11 の順で増分化する（[attendance-domain-gap-tasks.md](../exec-plans/attendance-domain-gap-tasks.md)）。
+- T-04 → T-05 → T-11 → T-13 の増分実装は完了している（[attendance-domain-gap-tasks.md](../exec-plans/attendance-domain-gap-tasks.md)）。
 - 出勤率 8 割判定・比例付与・一律基準日は本 doc の Extension Points を起点に、必要が生じた時点で別 EP を親 EP へ追記する。
-- 締め時点の残高固定は給与エクスポート契約（Follow-up Designs 4 / T-14）の設計時に扱う。残高は導出値であり、固定が要るのはエクスポート境界のみ。
+- 締め時点の固定は T-14 の給与エクスポート snapshot 境界で実装済み。通常の残高は引き続き導出値とする。

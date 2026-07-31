@@ -9,6 +9,14 @@
 - 実装中はチェックボックスを更新し、未完了の作業を残す
 - テスト成功の節目ごとに `git status` を確認し、必要な差分だけを conventional commit で記録する
 
+# EP-20260731-data-retention-enforcement
+
+**Active** — 詳細: [`docs/exec-plans/active/EP-20260731-data-retention-enforcement.md`](../docs/exec-plans/active/EP-20260731-data-retention-enforcement.md)。保存期間設定、legal hold、削除要求のatomicなアクセス停止・匿名化、期限満了 purge workerを実装する。
+
+# EP-20260731-application-notification-worker
+
+**Active** — 詳細: [`docs/exec-plans/active/EP-20260731-application-notification-worker.md`](../docs/exec-plans/active/EP-20260731-application-notification-worker.md)。application通知queueのconsumerと、打刻漏れreminder producerを実装する。
+
 # EP-20260730-lan-manual-testbed
 
 **実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-lan-manual-testbed.md`](../docs/exec-plans/completed/EP-20260730-lan-manual-testbed.md)。LAN上の別端末からHTTPSで人手確認するための隔離Podman Compose環境。
@@ -67,29 +75,29 @@
 
 # EP-20260704-notification-service-generalization
 
-**完了済み (92ca21a)** — 詳細: [`docs/exec-plans/active/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/active/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済。次は T-17 の申請・打刻イベント配線）
+**完了済み (92ca21a)** — 詳細: [`docs/exec-plans/completed/EP-20260704-notification-service-generalization.md`](../docs/exec-plans/completed/EP-20260704-notification-service-generalization.md)。汎用 notification queue（tagged envelope + legacy fallback）、`worker-once` harness stage、RUNBOOK worker 運用節（T-16、tech-debt #7 返済）
 
 # EP-20260704-attendance-calculation-policy-design
 
-**完了済み (40e10b8)** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md`](../docs/exec-plans/active/EP-20260704-attendance-calculation-policy-design.md)。成果物: [`docs/design-docs/attendance-calculation-policy.md`](../docs/design-docs/attendance-calculation-policy.md)（T-01、実装は T-03）
+**完了済み (40e10b8)** — 詳細: [`docs/exec-plans/completed/EP-20260704-attendance-calculation-policy-design.md`](../docs/exec-plans/completed/EP-20260704-attendance-calculation-policy-design.md)。成果物: [`docs/design-docs/attendance-calculation-policy.md`](../docs/design-docs/attendance-calculation-policy.md)（T-01。T-03実装 `b39ed35`）
 
 # EP-20260704-leave-entitlement-design
 
-**完了済み (5ec584b)** — 詳細: [`docs/exec-plans/active/EP-20260704-leave-entitlement-design.md`](../docs/exec-plans/active/EP-20260704-leave-entitlement-design.md)。成果物: [`docs/design-docs/leave-entitlement.md`](../docs/design-docs/leave-entitlement.md)（T-02、実装は T-04/T-05）
+**完了済み (5ec584b)** — 詳細: [`docs/exec-plans/completed/EP-20260704-leave-entitlement-design.md`](../docs/exec-plans/completed/EP-20260704-leave-entitlement-design.md)。成果物: [`docs/design-docs/leave-entitlement.md`](../docs/design-docs/leave-entitlement.md)（T-02。T-04/T-05/T-11/T-13実装済み）
 
 # EP-20260704-data-retention-policy
 
-**完了済み (8d5101a)** — 詳細: [`docs/exec-plans/active/EP-20260704-data-retention-policy.md`](../docs/exec-plans/active/EP-20260704-data-retention-policy.md)。成果物: [`docs/design-docs/data-retention.md`](../docs/design-docs/data-retention.md)（T-19、purge 実装は方針確定済み・別 EP）
+**完了済み (8d5101a)** — 詳細: [`docs/exec-plans/completed/EP-20260704-data-retention-policy.md`](../docs/exec-plans/completed/EP-20260704-data-retention-policy.md)。成果物: [`docs/design-docs/data-retention.md`](../docs/design-docs/data-retention.md)（T-19。実装は EP-20260731-data-retention-enforcement）
 
 # EP-20260704-attendance-domain-gap-backlog
 
-**Phase 3 実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
+**Phase 0–3 完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260704-attendance-domain-gap-backlog.md`](../docs/exec-plans/completed/EP-20260704-attendance-domain-gap-backlog.md)
 
 勤怠管理システムとしての機能不足観点 G1–G15 を優先度付きで棚卸しした親 EP。P1 = 労働時間の法令区分集計（G1）、有給付与・残高台帳（G2）、承認済み申請と実績の連動（G3）、36協定上限監視（G4）。
 
 # EP-20260705-attendance-classification-read-model
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-attendance-classification-read-model.md`](../docs/exec-plans/active/EP-20260705-attendance-classification-read-model.md)。T-03（G1）の日次労働時間区分 read-model。API は `GET /api/attendance/me/classification` と `GET /api/admin/users/{user_id}/classification`。
+**実装完了・検証済み (b39ed35)** — 詳細: [`docs/exec-plans/completed/EP-20260705-attendance-classification-read-model.md`](../docs/exec-plans/completed/EP-20260705-attendance-classification-read-model.md)。T-03（G1）の日次労働時間区分 read-model。API は `GET /api/attendance/me/classification` と `GET /api/admin/users/{user_id}/classification`。
 
 # EP-20260311-frontend-rust-i18n-migration
 

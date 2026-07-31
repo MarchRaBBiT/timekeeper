@@ -19,7 +19,7 @@
   - 丸めポリシー実装（Decision 10 は互換方針のみ）
   - 36協定閾値・監視（T-08）、残業申請突合（T-07）、給与エクスポート（T-14）
   - 就業規則マスタの CRUD API（第一増分は migration seed のみ。改定は運用 SQL / 後続タスク）
-  - settlement balance API 本体（EP-20260703 は未着手のまま。本 EP は設計判断のみ流用）
+  - settlement balance API 本体（本 EP 後の `51a2c9d` で実装済み。本 EP は設計判断のみ流用）
   - frontend / CSV への区分追加
 
 ## Done Criteria (Observable)
@@ -75,11 +75,12 @@
 
 - [x] `git status --short`
 - [x] focused tests pass
-- [ ] commit recorded: `feat(attendance): add daily classification read-model`
+- [x] commit recorded: `b39ed35 feat(attendance): add daily classification read-model`
 
 ## Progress Notes
 
-- 2026-07-05: EP 作成。attendance-calculation-policy.md Decision 1–12 を読み込み、settlement balance EP（未実装・設計のみ）の tagged status / fail-closed / work_date 帰属 / year・month validation の各判断を流用する方針を確定。
+- 2026-07-05: EP 作成。attendance-calculation-policy.md Decision 1–12 を読み込み、当時設計段階だった settlement balance EP の tagged status / fail-closed / work_date 帰属 / year・month validation の各判断を流用する方針を確定。
+- 2026-07-31: 実装 commit `b39ed35` と後続 settlement balance commit `51a2c9d` を再確認し、完了扱いとした。
 - 2026-07-05: 前セッションで実装途中まで進行。mixed fixed/flex 月の fixture が fixed 日の expected minutes を flex 側と混同していたため、実装ではなくテストデータの不整合として引き継ぎ。
 - 2026-07-06: 引き継ぎ後、mixed fixed/flex fixture を fixed resolved workday の expected minutes に合わせて修正。既存 admin request integration test は manager 部署スコープ認可に合わせて fixture を明示化。auth timing distribution test は full integration 実行時の p90 jitter で 51ms/75ms 程度の揺れが出るため、median gate は維持し p90 jitter 許容を 75ms に調整。
 - 2026-07-08: `.claude/worktrees/agent-a49ed6b9d7cffc94b` に残っていた T-03 実装を main checkout へ取り込み、現在の repo state で再検証した。追加で clippy の `vec_init_then_push` 指摘を app test で修正。検証結果: `cargo test -p timekeeper-domain -p timekeeper-app -p timekeeper-contract` green、`cargo test -p timekeeper-backend --test attendance_classification_api` green（5 passed）、`cargo fmt --all --check` green、`bash scripts/harness.sh docs-check` green、`cargo test -p timekeeper-backend --lib` green（387 passed）、`cargo clippy --workspace --all-targets -- -D warnings` green、`cargo test -p timekeeper-backend --tests` green。

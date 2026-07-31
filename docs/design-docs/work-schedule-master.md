@@ -1,6 +1,6 @@
 # 勤務体系マスタ設計
 
-**Status:** Phase 2 backend MVP and Phase 3 flex/core time/settlement balance are implemented. The settlement balance is a read-time derived value exposed to the employee and scoped managers; payroll snapshot/export remains a follow-up.
+**Status:** Phase 2 backend MVP、Phase 3 flex/core time/settlement balance、payroll snapshot/export を実装済み。
 
 **Updated:** 2026-07-30
 
@@ -22,12 +22,12 @@
 2026-07-02に Phase 3 の最初の増分として、`schedule_type`（Fixed/Flex）・コアタイム・清算期間の
 domain model（`crates/domain`）とcontract DTO（`crates/contract`）を追加した。`ScheduleDefinition`の
 `flex_policy`により、Fixed/Flexの相互排他、コアタイムの勤務区間内チェック、清算期間の妥当性を検証する。
-API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は当時未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。**API配線・`ResolveWorkday`配線は後続エントリ（2026-07-02のAPI配線、2026-07-03のResolveWorkday flex対応）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
+API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は当時未実装だった（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。後続の API 配線、ResolveWorkday flex 対応、`51a2c9d` の清算期間残高 read-model で実装済み。
 2026-07-02にPhase 3のAPI配線として、`CreateWorkScheduleVersionRequest`/`ReplaceWorkScheduleVersionRequest`/`WorkScheduleVersionResponse`へ
 `schedule_type`（省略時`fixed`、後方互換）・`flex_policy`を追加し、`work_schedule_versions.schedule_type`カラムと
 `work_schedule_settlement_periods`/`work_schedule_core_time_windows`テーブル（migration `048_add_work_schedule_flex_policy.sql`）で永続化した。
-handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は当時未実装のまま
-（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。**`ResolveWorkday`のflex対応出力は次エントリ（2026-07-03）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
+handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。当時未実装だった `ResolveWorkday` のflex対応出力と清算期間残高の実績突合は、後続 EP と `51a2c9d` で実装済み
+（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。
 2026-07-03に`ResolveWorkday`をflex対応にした（[`EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../exec-plans/completed/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)）。
 `ScheduleVersion`へ`schedule_type`を追加し、flexかつ勤務日のときのみ該当曜日のコアタイムを
 `ResolvedWorkday.core_time_windows`へsnapshotする（非勤務日・fixedでは空）。migration
@@ -583,7 +583,7 @@ handlerへ解決規則やSQLを追加しない。
 
 この設計の後に、次を個別のdesign docとして定義する。
 
-1. 勤怠計算ポリシー（所定内外、深夜、休日、遅刻早退、丸め）— 設計済み: [attendance-calculation-policy.md](./attendance-calculation-policy.md)（2026-07-04、実装は未着手）
+1. 勤怠計算ポリシー（所定内外、深夜、休日、遅刻早退、丸め）— [attendance-calculation-policy.md](./attendance-calculation-policy.md) に基づき T-03 と後続 consumer を実装済み
 2. 月次締め・承認・再締め
 3. 有給休暇付与・残高台帳
 4. 給与エクスポート契約

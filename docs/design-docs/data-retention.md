@@ -1,10 +1,10 @@
 # データ保存期間ポリシー（Data Retention Policy）
 
-**Updated:** 2026-07-04
+**Updated:** 2026-07-31
 **Project:** Timekeeper - 勤怠管理システム
-**Status:** 設計確定（Design Decisions）。実装（自動 purge バッチ・匿名化ジョブ・approve セマンティクス拡張）は本 doc の範囲外。
-**親 EP:** [EP-20260704-attendance-domain-gap-backlog](../exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)（Gap G14）
-**個別 EP:** [EP-20260704-data-retention-policy](../exec-plans/active/EP-20260704-data-retention-policy.md)
+**Status:** 設計確定（Design Decisions）。実装は [EP-20260731-data-retention-enforcement](../exec-plans/active/EP-20260731-data-retention-enforcement.md) で計画済み。
+**親 EP:** [EP-20260704-attendance-domain-gap-backlog](../exec-plans/completed/EP-20260704-attendance-domain-gap-backlog.md)（Gap G14）
+**個別 EP:** [EP-20260704-data-retention-policy](../exec-plans/completed/EP-20260704-data-retention-policy.md)
 **関連タスク:** [attendance-domain-gap-tasks.md](../exec-plans/attendance-domain-gap-tasks.md) T-19
 
 ## Purpose
@@ -47,7 +47,7 @@
 | 2 | 休憩実績 | `break_records` | 分類 1 に従属（同年限） | 従属する `attendance` の起算点 | 分類 1 と一体でアーカイブ/削除 | 法定保存優先 |
 | 3 | 勤怠修正（承認済み補正値） | `attendance_corrections` | 分類 1 と同年限 | 対象勤務日の記録完結日 | 分類 1 と一体（補正値は出勤簿の「正」を構成するため分離しない） | 法定保存優先 |
 | 4 | 休暇・残業申請 | `leave_requests` / `overtime_requests`（および `archived_*`） | 5 年（当分の間 3 年） | 申請対象日 / 承認・却下日 | アーカイブ → 満了後に匿名化/物理削除 | 法定保存優先（賃金・労働関係の付随記録） |
-| 5 | 有給台帳（将来） | `leave_ledger_entries`（T-04 で新設予定） | 年休管理簿相当 3 年 + 残高整合に必要な範囲 | 付与基準日から 1 年経過時（管理簿の完結） | 満了後もアーカイブ保持。**残高導出に必要な未消滅付与は保存期間より長く保持** | 法定保存優先。残高整合を壊す物理削除は不可 |
+| 5 | 有給台帳 | `leave_ledger_entries`（T-04 で実装済み） | 年休管理簿相当 3 年 + 残高整合に必要な範囲 | 付与基準日から 1 年経過時（管理簿の完結） | 満了後もアーカイブ保持。**残高導出に必要な未消滅付与は保存期間より長く保持** | 法定保存優先。残高整合を壊す物理削除は不可 |
 | 6 | 監査ログ | `audit_logs` | config `AUDIT_LOG_RETENTION_DAYS`（既定 1825 日 = 5 年、`FOREVER`/`0` 対応） | イベント発生時刻 | 既存の cutoff 削除で物理削除 | **対象外**（不正調査・法的請求の防御という正当利益。削除要求では消さない） |
 | 7 | 同意ログ | `consent_logs` | config `CONSENT_LOG_RETENTION_DAYS`（既定 1825 日 = 5 年） | 同意記録日時 | 既存の `ConsentLogService::delete_logs_before` で物理削除 | **対象外**（同意・撤回の証跡自体は残す） |
 | 8 | データ主体請求の対応記録 | `subject_requests` | 5 年（設定マスタ） | 対応完了日（approved / rejected / cancelled の日時） | 満了後に物理削除 | **対象外**（請求対応義務の証跡は残す。ただし `details` 内の PII は受理時に最小化） |
@@ -140,11 +140,9 @@
 - 起算点の精密追跡ロジックの実装
 - per-subject DEK 方式への暗号化設計変更
 
-> **実装への接続**: 上記の方針が確定した後、実装は別 EP として起票し、
-> 親 EP [EP-20260704-attendance-domain-gap-backlog](../exec-plans/active/EP-20260704-attendance-domain-gap-backlog.md)
-> の Task Breakdown へ追記する。本 doc（設計）と個別 EP
-> [EP-20260704-data-retention-policy](../exec-plans/active/EP-20260704-data-retention-policy.md) の完了をもって
-> G14 の「方針確定」フェーズを終える。
+> **実装への接続**: G14 の方針確定は完了した。保存期間設定、削除要求の匿名化、purge は
+> [EP-20260731-data-retention-enforcement](../exec-plans/active/EP-20260731-data-retention-enforcement.md)
+> で実装する。
 
 ## References
 

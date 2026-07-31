@@ -43,10 +43,12 @@
 
 ## Git Snapshot Log
 
-- [ ] `git status --short`
-- [ ] `git commit`（親セッションが統合 commit を作成する）
+- [x] `git status --short`
+- [x] `git commit`（`40e10b8 docs: add attendance calculation policy design (T-01)`）
 
 ## Progress Notes
+
+- 2026-07-31: git 履歴と現行成果物を再確認し、統合 commit `40e10b8` を記録して完了扱いとした。
 
 - 2026-07-04: T-01 実施。主要決定: (1) 基本区分 4 種の partition + 深夜 overlay の 2 軸構成、
   (2) 深夜は「測定 = 暦時刻交差、帰属 = `work_date` 全量」で夜勤の非分割と両立、

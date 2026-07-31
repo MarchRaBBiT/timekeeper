@@ -375,7 +375,7 @@ Recommended Fix 1-4 を次のとおり返済した。
 
 **Status (2026-07-04, 返済実施)**
 
-ExecPlan: [EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md)（T-16 と統合して実施）
+ExecPlan: [EP-20260704-notification-service-generalization](./completed/EP-20260704-notification-service-generalization.md)（T-16 と統合して実施）
 
 Recommended Fix 1–3 を次のとおり返済した。
 
@@ -832,7 +832,7 @@ queue のメッセージ型を `notification_kind` + payload の internally-tagg
   #16 は #11 返済中に発見された勤怠修正承認の管理 UI 未配線（approve/reject が API 直叩きのみ）
 - **2026-07-04 追加返済**: #7「Queue / Worker Operational Debt」の Recommended Fix 1–3 を、
   `docs/exec-plans/attendance-domain-gap-tasks.md` T-16（汎用通知サービス基盤）と統合して返済
-  （[EP-20260704-notification-service-generalization](./active/EP-20260704-notification-service-generalization.md)）。
+  （[EP-20260704-notification-service-generalization](./completed/EP-20260704-notification-service-generalization.md)）。
   `docs/manual/RUNBOOK.md` に "Notification Worker Operations" 節（queue/retry/DLQ 観測コマンド、
   drain/replay 手順）を追加し、`scripts/harness.sh` に `worker-once` stage（live Postgres/Redis に
   対する `lockout_notification_worker --once` smoke）を追加した。加えて T-16 の指示に基づき、

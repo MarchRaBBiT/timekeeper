@@ -1,7 +1,7 @@
 # EP-20260705-leave-entitlement-ledger
 
 **親タスク:** [attendance-domain-gap-tasks.md](../attendance-domain-gap-tasks.md) T-04（G2 実装 前半）
-**親 EP:** [EP-20260704-attendance-domain-gap-backlog](../active/EP-20260704-attendance-domain-gap-backlog.md)
+**親 EP:** [EP-20260704-attendance-domain-gap-backlog](./EP-20260704-attendance-domain-gap-backlog.md)
 **設計 source of truth:** [docs/design-docs/leave-entitlement.md](../../design-docs/leave-entitlement.md)（T-02 成果物）
 
 ## Goal

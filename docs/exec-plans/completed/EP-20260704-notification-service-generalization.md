@@ -109,11 +109,13 @@
 
 ## Git Snapshot Log
 
-- [ ] `git status --short`
+- [x] `git status --short`
 - [x] 対象テスト pass（上記 Validation Plan 参照）
-- [ ] commit（親セッションが実施。本タスクの指示で git commit / git add は本 EP 実施中は行っていない）
+- [x] commit（`92ca21a feat(notifications): generalize notification queue and add worker-once stage (T-16)`）
 
 ## Progress Notes
+
+- 2026-07-31: 実装・検証 commit `92ca21a` を再確認し、完了扱いとした。application notification の consumer と reminder producer は [EP-20260731-application-notification-worker](../active/EP-20260731-application-notification-worker.md) へ分離した。
 
 - 2026-07-04: 計画作成・実装開始。既存 `auth_lockout_redis_integration.rs` /
   `auth_flow_api.rs` を読み、`LockoutNotificationJob` の構造体リテラル直接構築（DLQ テスト）と

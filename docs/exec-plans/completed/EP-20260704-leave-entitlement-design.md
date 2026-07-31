@@ -23,7 +23,7 @@
 - [x] `docs/design-docs/leave-entitlement.md` が存在し、T-02 の全論点が「決定」として書かれている（付与ルール / ledger 5 イベント / FIFO・時効 2 年 / 年5日義務判定 / adjust 初期移行 / 数量=分 + `day_equivalent_minutes` / `Annual` 限定境界 / DDL スケッチ / T-04・T-05・T-11 参照項目 / T-13 代休流用）
 - [x] design doc が `work-schedule-master.md` の Follow-up Designs 3 の具体化であることを相互リンクで明記している
 - [x] `bash scripts/harness.sh docs-check` green
-- [ ] 本 EP が `.agent/PLANS.md` へ登録され、T-02 に EP リンクが追記される（**並列衝突防止のため本タスクでは実施せず、統合担当が別途反映**）
+- [x] 本 EP が `.agent/PLANS.md` へ登録され、T-02 に EP リンクが追記されている
 
 ## Constraints / Non-goals
 
@@ -43,15 +43,17 @@
 ## Validation Plan
 
 - [x] `bash scripts/harness.sh docs-check`
-- [ ] fmt / clippy / test は対象外（コード変更なし）
+- [x] fmt / clippy / test は対象外であることを確認（コード変更なし）
 
 ## Git Snapshot Log
 
-- [ ] `git status --short`（本タスクでは commit しない。統合担当が実施）
+- [x] `git status --short`（統合担当が実施）
 - [x] `docs-check` pass
-- [ ] `git commit`（本タスクでは行わない）
+- [x] `git commit`（`5ec584b docs: add leave entitlement ledger design (T-02)`）
 
 ## Progress Notes
+
+- 2026-07-31: `.agent/PLANS.md` / T-02 登録と commit `5ec584b` を再確認し、完了扱いとした。
 
 - 2026-07-04: T-02（G2 設計）着手。design doc `leave-entitlement.md` を作成し、次を決定として明文化した — (1) 残高は保存しない導出値、正は append-only ledger（grant / consume / release / expire / adjust）、(2) 勤続年数テーブル付与（入社 6 ヶ月 10 日 → 20 日、法定値はマスタ外部化）、比例付与・出勤率 8 割判定は第一増分 Out で拡張点のみ、(3) FIFO（時効の近いロットから）消化・時効 2 年（遅延評価 + 冪等 expire 補記）、(4) 年5日義務は基準日 + 1 年 window の取得日数判定・時間単位年休は非算入・read API 導出、(5) 数量は分（`amount_minutes`）で保持しロット単位 `day_equivalent_minutes` で日⇔分換算、(6) `Annual` のみ残高連動・他種別は非連動で現行維持、(7) 既存残高は `adjust` でロット別に初期投入（dry-run 照合）、(8) DDL スケッチ（`leave_grant_rules` / `leave_ledger_entries`）と T-04 / T-05 / T-11 の参照項目、(9) T-13 代休は同一台帳へ `leave_type='compensatory'` として純ロジック流用。
 - 2026-07-04: `bash scripts/harness.sh docs-check` green を確認。実装（T-04 以降）と `.agent/PLANS.md` 登録・タスクリストへの EP リンク追記は並列作業衝突防止のため本タスクの対象外とした。

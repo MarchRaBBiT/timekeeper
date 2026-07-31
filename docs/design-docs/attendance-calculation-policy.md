@@ -1,16 +1,16 @@
 # 勤怠計算ポリシー設計（所定内外・深夜・休日・丸め）
 
-**Status:** Design decided — 実装は T-03（日次労働時間区分 read-model）以降で行う。本書は設計決定のみ
-**Updated:** 2026-07-04
+**Status:** Implemented — T-03 日次労働時間区分 read-model と後続の監視・給与連携まで実装済み（`b39ed35`、`ee1a5ba`、`fc1414e`）。本書は計算規則の source of truth
+**Updated:** 2026-07-31
 **Scope:** 実労働時間を割増賃金計算・36協定監視の入力となる法令区分へ分類する規則の確定
 **親タスク:** [attendance-domain-gap-tasks.md](../exec-plans/attendance-domain-gap-tasks.md) T-01（G1 設計）
 **関連:** [work-schedule-master.md](./work-schedule-master.md) Follow-up Designs 1 の具体化
 
 ## Purpose
 
-現行の実績値は `attendance.total_work_hours`（f64、実休憩控除後の総時間）1 本であり、
-割増賃金計算に必要な区分（所定内 / 法定内残業 / 法定外残業 / 深夜 / 法定休日労働)が存在しない。
-本書はこの区分の定義を 1 箇所で確定し、後続タスクの source of truth とする。
+設計着手時の実績値は `attendance.total_work_hours`（f64、実休憩控除後の総時間）1 本であり、
+割増賃金計算に必要な区分（所定内 / 法定内残業 / 法定外残業 / 深夜 / 法定休日労働）が存在しなかった。
+現在は T-03 の read-model と後続 consumer が実装済みであり、本書を区分定義の source of truth とする。
 
 **Consumers（本書の決定を入力とするタスク）:**
 

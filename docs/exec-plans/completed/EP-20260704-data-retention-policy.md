@@ -39,18 +39,20 @@
 1. [x] 既存実装の確認（subject_requests approve フロー / archived-users 完全削除 / KMS 封筒 / PII 暗号化列 / 既存 config retention）
 2. [x] `docs/design-docs/data-retention.md` に分類別保存方針・subject request 例外規定・crypto-shredding 判断を決定として記述
 3. [x] 個別 EP（本ファイル）を `.agent/PLANS.md` テンプレート形式で作成
-4. [ ] （後続・別 EP）保存期間設定マスタ + purge バッチ + approve 匿名化ジョブの実装 EP を親 EP へ追記
+4. [x] （後続・別 EP）保存期間設定マスタ + purge バッチ + approve 匿名化ジョブを [EP-20260731-data-retention-enforcement](../active/EP-20260731-data-retention-enforcement.md) として登録
 
 ## Validation Plan
 - [x] `bash scripts/harness.sh docs-check`
 - コード変更なしのため fmt / clippy / test は対象外
 
 ## Git Snapshot Log
-- [ ] `git status --short`
-- [ ] `docs-check` pass
-- [ ] `git commit -m "docs: add data retention policy design doc (G14/T-19)"`
+- [x] `git status --short`
+- [x] `docs-check` pass
+- [x] `git commit -m "docs: add data retention policy design (T-19)"`（`8d5101a`）
 
 ## Progress Notes
+
+- 2026-07-31: 設計 commit `8d5101a` と後続実装 EP の登録を確認し、設計 EP を完了扱いとした。
 - 2026-07-04: 実装確認に基づき `data-retention.md` を作成。
   - 決定 1: 分類別保存方針表（9 分類）。労基法 109 条 5 年（当分の間 3 年）・労基則 24 条の 7 管理簿 3 年を
     背景として明記し、実値は保存期間設定マスタ（既存の `*_RETENTION_DAYS` config を前例に）へ外部化する方針。

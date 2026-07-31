@@ -1,7 +1,7 @@
 # EP-20260709-leave-attendance-integration
 
 **親タスク:** [attendance-domain-gap-tasks.md](../attendance-domain-gap-tasks.md) T-06（G3 前半）
-**前提:** [EP-20260704-attendance-calculation-policy-design](../active/EP-20260704-attendance-calculation-policy-design.md) / [docs/design-docs/attendance-calculation-policy.md](../../design-docs/attendance-calculation-policy.md)
+**前提:** [EP-20260704-attendance-calculation-policy-design](./EP-20260704-attendance-calculation-policy-design.md) / [docs/design-docs/attendance-calculation-policy.md](../../design-docs/attendance-calculation-policy.md)
 
 ## Goal
 
