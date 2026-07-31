@@ -21,7 +21,7 @@
 - `bash`
 - `cargo`
 - `node`
-- `python3` or `python`
+- `python3` 3.8 以上
 - `curl`
 
 また、live smoke を回す場合に使う URL も表示します。
@@ -43,6 +43,18 @@
 
 ```bash
 bash scripts/harness.sh docs-check
+```
+
+`docs-check` は最後に `harness-contract` も実行します。
+
+### `harness-contract`
+
+実行可能な stage とハーネス文書が同期していること、および `AGENTS.md` と
+`.agent/PLANS.md` のローカル Markdown リンクがリポジトリ内の実在する対象を指すことを
+確認します。
+
+```bash
+bash scripts/harness.sh harness-contract
 ```
 
 ### `fmt-check`

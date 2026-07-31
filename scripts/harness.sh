@@ -42,6 +42,7 @@ Usage:
   bash scripts/harness.sh --list
   bash scripts/harness.sh doctor
   bash scripts/harness.sh docs-check
+  bash scripts/harness.sh harness-contract
   bash scripts/harness.sh fmt-check
   bash scripts/harness.sh backend-unit
   bash scripts/harness.sh backend-integration
@@ -93,13 +94,9 @@ run_doctor() {
   require_cmd cargo
   require_cmd node
   require_cmd curl
-  if command -v python3 >/dev/null 2>&1; then
-    :
-  elif command -v python >/dev/null 2>&1; then
-    :
-  else
-    die "missing command: python3 or python"
-  fi
+  require_cmd python3
+  python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' \
+    || die "python3 >= 3.8 is required"
   log "BACKEND_BASE_URL=$BACKEND_BASE_URL"
   log "FRONTEND_BASE_URL=$FRONTEND_BASE_URL"
 }
@@ -139,6 +136,13 @@ run_docs_check() {
       die "stable harness doc still references jj workflow: $file"
     fi
   done
+
+  (cd "$ROOT_DIR" && bash scripts/tests/harness_contract.sh)
+}
+
+run_harness_contract() {
+  log "stage=harness-contract"
+  (cd "$ROOT_DIR" && bash scripts/tests/harness_contract.sh)
 }
 
 run_fmt_check() {
@@ -261,6 +265,58 @@ run_full() {
   run_frontend_login
 }
 
+HARNESS_STAGES=(
+  doctor run_doctor
+  docs-check run_docs_check
+  harness-contract run_harness_contract
+  fmt-check run_fmt_check
+  backend-unit run_backend_unit
+  backend-integration run_backend_integration
+  backend-security-smoke run_backend_security_smoke
+  worker-once run_worker_once
+  clippy-backend run_clippy_backend
+  clippy-frontend run_clippy_frontend
+  lint run_lint
+  api-smoke run_api_smoke
+  frontend-login run_frontend_login
+  smoke run_smoke
+  full run_full
+)
+
+list_stages() {
+  local index
+  for ((index = 0; index < ${#HARNESS_STAGES[@]}; index += 2)); do
+    printf '%s\n' "${HARNESS_STAGES[$index]}"
+  done
+}
+
+stage_function() {
+  local requested="$1"
+  local index
+  for ((index = 0; index < ${#HARNESS_STAGES[@]}; index += 2)); do
+    if [[ "${HARNESS_STAGES[$index]}" == "$requested" ]]; then
+      printf '%s\n' "${HARNESS_STAGES[$((index + 1))]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+check_stage() {
+  local function_name
+  function_name="$(stage_function "$1")" || return 1
+  declare -F "$function_name" >/dev/null
+}
+
+run_stage() {
+  local function_name
+  function_name="$(stage_function "$1")" || {
+    usage
+    die "unknown stage: $1"
+  }
+  "$function_name"
+}
+
 if [[ $# -eq 0 ]]; then
   usage
   exit 1
@@ -268,70 +324,16 @@ fi
 
 case "$1" in
   --list)
-    cat <<'EOF'
-doctor
-docs-check
-fmt-check
-backend-unit
-backend-integration
-backend-security-smoke
-worker-once
-clippy-backend
-clippy-frontend
-lint
-api-smoke
-frontend-login
-smoke
-full
-EOF
+    list_stages
     ;;
   --help|-h)
     usage
     ;;
-  doctor)
-    run_doctor
-    ;;
-  docs-check)
-    run_docs_check
-    ;;
-  fmt-check)
-    run_fmt_check
-    ;;
-  backend-unit)
-    run_backend_unit
-    ;;
-  backend-integration)
-    run_backend_integration
-    ;;
-  backend-security-smoke)
-    run_backend_security_smoke
-    ;;
-  worker-once)
-    run_worker_once
-    ;;
-  clippy-backend)
-    run_clippy_backend
-    ;;
-  clippy-frontend)
-    run_clippy_frontend
-    ;;
-  lint)
-    run_lint
-    ;;
-  api-smoke)
-    run_api_smoke
-    ;;
-  frontend-login)
-    run_frontend_login
-    ;;
-  smoke)
-    run_smoke
-    ;;
-  full)
-    run_full
+  --check-stage)
+    [[ $# -eq 2 ]] || die "--check-stage requires exactly one stage name"
+    check_stage "$2" || die "stage is not dispatchable: $2"
     ;;
   *)
-    usage
-    die "unknown stage: $1"
+    run_stage "$1"
     ;;
 esac

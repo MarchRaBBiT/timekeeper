@@ -67,27 +67,31 @@
    - 必須コマンド、依存ツール、live URL 前提を確認
 2. `docs-check`
    - ハーネスと再構築 source of truth の存在・整合を確認
-3. `fmt-check`
+3. `harness-contract`
+   - 実行可能な stage と文書の同期、および harness / ExecPlan のローカルリンクを確認
+4. `fmt-check`
    - `cargo fmt --all --check`
-4. `backend-unit`
+5. `backend-unit`
    - `cargo test -p timekeeper-backend --lib`
-5. `backend-integration`
+6. `backend-integration`
    - `cargo test -p timekeeper-backend --tests`
-6. `backend-security-smoke`
+7. `backend-security-smoke`
    - auth / lockout / rate-limit / password / mfa / session の focused `cargo test`（詳細: [docs/manual/HARNESS.md](./docs/manual/HARNESS.md)）
-7. `worker-once`
+8. `worker-once`
    - `lockout_notification_worker --once` を live Postgres/Redis に対して 1 回実行する運用 smoke（詳細: [docs/manual/HARNESS.md](./docs/manual/HARNESS.md)、[docs/manual/RUNBOOK.md](./docs/manual/RUNBOOK.md)）
-8. `clippy-backend`
+9. `clippy-backend`
    - `cargo clippy -p timekeeper-backend --all-targets -- -D warnings`
-9. `clippy-frontend`
+10. `clippy-frontend`
    - `cargo clippy -p timekeeper-frontend --all-targets -- -D warnings`
-10. `lint`
-   - `docs-check + fmt-check + clippy-backend + clippy-frontend`
-11. `api-smoke`
+11. `lint`
+   - `docs-check + harness-contract + fmt-check + clippy-backend + clippy-frontend`
+12. `api-smoke`
    - live backend に対する API スモーク
-12. `frontend-login`
+13. `frontend-login`
    - live frontend に対する Playwright login smoke
-13. `full`
+14. `smoke`
+   - doctor / backend unit / live API / frontend login を束ねた最小 end-to-end 検証
+15. `full`
    - 上記を束ねた統合実行
 
 共通入口:
@@ -96,6 +100,7 @@
 bash scripts/harness.sh --list
 bash scripts/harness.sh doctor
 bash scripts/harness.sh docs-check
+bash scripts/harness.sh harness-contract
 bash scripts/harness.sh fmt-check
 bash scripts/harness.sh backend-unit
 bash scripts/harness.sh backend-security-smoke
@@ -111,7 +116,7 @@ bash scripts/harness.sh full
 
 - 変更対象の期待挙動を示す test がある
 - 変更 seam に対応する harness stage が green
-- docs / harness / architecture 変更では `docs-check` が green
+- docs / harness / architecture 変更では `docs-check` と `harness-contract` が green
 - `cargo fmt --all --check` が通る
 - `cargo clippy --all-targets -- -D warnings` が通る
 - 関連 issue / PR / ExecPlan に実測結果が残っている
