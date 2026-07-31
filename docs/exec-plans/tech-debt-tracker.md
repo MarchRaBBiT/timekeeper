@@ -448,7 +448,7 @@ queue のメッセージ型を `notification_kind` + payload の internally-tagg
 
 **Status (2026-07-30)**
 
-- [EP-20260311-frontend-rust-i18n-migration](./active/EP-20260311-frontend-rust-i18n-migration.md)
+- [EP-20260311-frontend-rust-i18n-migration](./completed/EP-20260311-frontend-rust-i18n-migration.md)
   の翻訳移行・テスト・文書同期は完了済み
 - 未返済なのは `frontend/Cargo.toml` の `rust-i18n = "4.0.0-preview1"` を stable 系へ
   更新する作業のみ。本体 EP の完了状態とは分離し、依存更新 debt として維持する

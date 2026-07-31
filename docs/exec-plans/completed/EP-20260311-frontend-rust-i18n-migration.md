@@ -390,7 +390,7 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 - [x] final validation
 
 想定差分ファイル:
-- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `docs/exec-plans/completed/EP-20260311-frontend-rust-i18n-migration.md`
 - `frontend/AGENTS.md`
 - `docs/manual/frontend-i18n-rule.md`（新規、命名は調整可）
 - `frontend/locales/en.yml`
@@ -428,7 +428,7 @@ shared components を先に移行するのは、以後の各画面が同じ tran
 - `frontend/src/test_support/mod.rs`
 - `frontend/src/test_support/ssr.rs`
 - `frontend/AGENTS.md`
-- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `docs/exec-plans/completed/EP-20260311-frontend-rust-i18n-migration.md`
 
 競合理由メモ:
 
@@ -444,7 +444,7 @@ shared components を先に移行するのは、以後の各画面が同じ tran
   - locale 初期化 helper や test harness 追加で共通基盤の追記が集中しやすい
 - `frontend/AGENTS.md`
   - docs 変更の一部を先行 PR で触ると PR4 と競合しやすい。原則 PR4 まで温存する
-- `docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`
+- `docs/exec-plans/completed/EP-20260311-frontend-rust-i18n-migration.md`
   - 実施ログ更新が各 PR で重なりやすい。マージ時に最新状態へ手で整列する
 
 競合を減らす運用:

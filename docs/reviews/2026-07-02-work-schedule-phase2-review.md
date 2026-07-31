@@ -3,7 +3,7 @@
 **Date:** 2026-07-02
 **Reviewer:** Claude Code（rust-reviewer / database-reviewer / security-reviewer 並列レビューを統合）
 **対象コミット:** `b54c6cd` (`feat: add work schedule phase2 controls`)
-**対象ExecPlan:** [`docs/exec-plans/active/EP-20260702-work-schedule-phase2-operational-controls.md`](../exec-plans/active/EP-20260702-work-schedule-phase2-operational-controls.md)
+**対象ExecPlan:** [`docs/exec-plans/completed/EP-20260702-work-schedule-phase2-operational-controls.md`](../exec-plans/completed/EP-20260702-work-schedule-phase2-operational-controls.md)
 
 ## 総合判定: **Block**（Critical 1件の解消が必須）
 

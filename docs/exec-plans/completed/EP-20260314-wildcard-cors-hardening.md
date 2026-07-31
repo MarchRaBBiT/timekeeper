@@ -101,7 +101,7 @@ L32 の `o == "*"` が wildcard 許容分岐そのもの。ここを除去し al
 
 ## Progress Notes
 - 2026-03-14: wildcard CORS finding を config / startup hardening の独立 ExecPlan として作成。
-- 2026-07-03: Job1（現状調査）を実施し、`docs/exec-plans/backlog/20260314-wildcard-cors-hardening.md` から `docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md` へ移動した（active の命名規則 `EP-YYYYMMDD-slug.md` に合わせて改名）。
+- 2026-07-03: Job1（現状調査）を実施し、`docs/exec-plans/backlog/20260314-wildcard-cors-hardening.md` から `docs/exec-plans/completed/EP-20260314-wildcard-cors-hardening.md` へ移動した（active の命名規則 `EP-YYYYMMDD-slug.md` に合わせて改名）。
   - CORS初期化が `log_config`（production_mode時のみpanic）と `cors_layer`（production_mode非依存でwildcard許可）の2箇所に分散し、これが Done Criteria「PRODUCTION_MODE非依存」の未達成原因であることを確認した
   - validation 配置は `Config::load()` への集約を推奨案として記録した
   - `verify_request_origin` が CSRF middleware（`csrf_check`）の中核であり、CORS wildcard設定がCSRF allowlistも無効化してしまう結合関係を確認した。Task 4 に CSRF middleware 経由のテストを追加する必要がある

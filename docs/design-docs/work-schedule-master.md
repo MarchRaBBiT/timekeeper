@@ -22,13 +22,13 @@
 2026-07-02に Phase 3 の最初の増分として、`schedule_type`（Fixed/Flex）・コアタイム・清算期間の
 domain model（`crates/domain`）とcontract DTO（`crates/contract`）を追加した。`ScheduleDefinition`の
 `flex_policy`により、Fixed/Flexの相互排他、コアタイムの勤務区間内チェック、清算期間の妥当性を検証する。
-API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は当時未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。**API配線・`ResolveWorkday`配線は後続エントリ（2026-07-02のAPI配線、2026-07-03のResolveWorkday flex対応）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
+API・永続化・`ResolveWorkday`への配線、および清算期間残高の実績突合は当時未実装（[`EP-20260702-work-schedule-phase3-flex-core-time.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-flex-core-time.md)参照）。**API配線・`ResolveWorkday`配線は後続エントリ（2026-07-02のAPI配線、2026-07-03のResolveWorkday flex対応）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
 2026-07-02にPhase 3のAPI配線として、`CreateWorkScheduleVersionRequest`/`ReplaceWorkScheduleVersionRequest`/`WorkScheduleVersionResponse`へ
 `schedule_type`（省略時`fixed`、後方互換）・`flex_policy`を追加し、`work_schedule_versions.schedule_type`カラムと
 `work_schedule_settlement_periods`/`work_schedule_core_time_windows`テーブル（migration `048_add_work_schedule_flex_policy.sql`）で永続化した。
 handlerは引き続きdomain `ScheduleDefinition::validate()`に不変条件チェックを委譲する。`ResolveWorkday`のflex対応出力・清算期間残高の実績突合は当時未実装のまま
-（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。**`ResolveWorkday`のflex対応出力は次エントリ（2026-07-03）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
-2026-07-03に`ResolveWorkday`をflex対応にした（[`EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)）。
+（[`EP-20260702-work-schedule-phase3-api-wiring.md`](../exec-plans/completed/EP-20260702-work-schedule-phase3-api-wiring.md)参照）。**`ResolveWorkday`のflex対応出力は次エントリ（2026-07-03）で実装済み。清算期間残高の実績突合のみ引き続き未実装。**
+2026-07-03に`ResolveWorkday`をflex対応にした（[`EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../exec-plans/completed/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)）。
 `ScheduleVersion`へ`schedule_type`を追加し、flexかつ勤務日のときのみ該当曜日のコアタイムを
 `ResolvedWorkday.core_time_windows`へsnapshotする（非勤務日・fixedでは空）。migration
 `049_add_resolved_workday_flex.sql`で`resolved_workdays.schedule_type`カラムと

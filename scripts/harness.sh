@@ -109,7 +109,7 @@ run_docs_check() {
     "docs/manual/HARNESS.md"
     "docs/design-docs/harness-engineering.md"
     "docs/design-docs/rebuild-architecture.md"
-    "docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md"
+    "docs/exec-plans/completed/EP-20260610-rebuild-architecture-harness.md"
     ".agent/PLANS.md"
   )
 

@@ -28,7 +28,7 @@
 - 実行可能な検証入口: `scripts/harness.sh`
 - 現行 backend API 契約一覧: `docs/design-docs/backend-api-catalog.md`
 - 再構築 target architecture: `docs/design-docs/rebuild-architecture.md`
-- 再構築 implementation plan: `docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`
+- 再構築 implementation plan: `docs/exec-plans/completed/EP-20260610-rebuild-architecture-harness.md`
 - 各レイヤーの詳細規約:
   - [backend/AGENTS.md](./backend/AGENTS.md)
   - [frontend/AGENTS.md](./frontend/AGENTS.md)

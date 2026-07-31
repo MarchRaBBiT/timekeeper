@@ -35,7 +35,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-01: 勤怠計算ポリシー design doc（G1 設計）
 
-- **前提タスク:** なし。入力として [EP-20260703-work-schedule-phase3-settlement-balance](./active/EP-20260703-work-schedule-phase3-settlement-balance.md) の Design Decisions 1–3（実績 = effective timestamp 差分の整数分 / 実休憩打刻ベース / 第一増分は丸めなし）と [work-schedule-master.md](../design-docs/work-schedule-master.md) の Time Semantics を必ず読み、矛盾する決定をしないこと
+- **前提タスク:** なし。入力として [EP-20260703-work-schedule-phase3-settlement-balance](./completed/EP-20260703-work-schedule-phase3-settlement-balance.md) の Design Decisions 1–3（実績 = effective timestamp 差分の整数分 / 実休憩打刻ベース / 第一増分は丸めなし）と [work-schedule-master.md](../design-docs/work-schedule-master.md) の Time Semantics を必ず読み、矛盾する決定をしないこと
 - **目的:** 割増賃金計算・36協定監視・給与連携の全てが依存する「労働時間の法令区分」の定義を 1 箇所で確定し、後続実装タスクの source of truth を作る
 - **指示:**
   1. `docs/design-docs/attendance-calculation-policy.md` を新規作成する
@@ -126,15 +126,15 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
   4. 残高参照 API: `GET /api/leave-balances/me`（本人）、`GET /api/admin/users/{user_id}/leave-balances`（Scoped Manager+）。残高・時効予定・年 5 日義務の消化状況を返す
   5. 初期残高投入用の `adjust` を管理 API または CLI として用意する
 - **ゴール:** 付与実行 → 残高参照の一連が integration test で green。api-catalog / OpenAPI 同期済み。lint green
-- **ExecPlan:** [EP-20260705-leave-entitlement-ledger](./active/EP-20260705-leave-entitlement-ledger.md)
+- **ExecPlan:** [EP-20260705-leave-entitlement-ledger](./completed/EP-20260705-leave-entitlement-ledger.md)
 - **Status:** 実装完了・検証済み（2026-07-08）。付与・残高 read・adjust・hire-date API を追加。消化引当は予定通り T-05
 - **次の関連タスク:** T-05（消化引当）、T-11（単位拡張）、T-13（台帳の器を代休へ流用）
 
 ### T-06: 休暇承認→勤怠反映と打刻矛盾検知（G3 前半）
 
 - **前提タスク:** T-01（休暇日の集計上の扱いの決定に従う）。T-02 / T-04 とは独立（残高と勤怠反映は別関心）
-- **ExecPlan:** [EP-20260709-leave-attendance-integration](./active/EP-20260709-leave-attendance-integration.md)
-- **Status:** 完了（2026-07-09、[EP-20260709-leave-attendance-integration](./active/EP-20260709-leave-attendance-integration.md) / commit: `feat(attendance): surface approved leave in read paths`）。承認済み休暇を read-time join で attendance 一覧・月次サマリ・本人/管理者 CSV・work schedule calendar に反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
+- **ExecPlan:** [EP-20260709-leave-attendance-integration](./completed/EP-20260709-leave-attendance-integration.md)
+- **Status:** 完了（2026-07-09、[EP-20260709-leave-attendance-integration](./completed/EP-20260709-leave-attendance-integration.md) / commit: `feat(attendance): surface approved leave in read paths`）。承認済み休暇を read-time join で attendance 一覧・月次サマリ・本人/管理者 CSV・work schedule calendar に反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
 - **目的:** 承認済み休暇が出勤簿に一切現れない分断を解消し、「休暇日」を欠測日と区別できるようにする
 - **指示:**
   1. 承認済み leave request を日次ステータス（休暇区分付き）として読み取り経路へ反映する: `GET /api/attendance/me`、月次サマリ、本人/管理者 CSV export、`work-schedule-calendar`。反映は read 時 join（導出）を第一候補とし、resolved workday への書き込みは T-01 の決定がある場合のみ行う
@@ -150,7 +150,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-05: 休暇申請の残高検証・消化引当（G2 実装 後半）
 
 - **前提タスク:** T-04
-- **ExecPlan:** [EP-20260708-leave-request-ledger-consumption](./active/EP-20260708-leave-request-ledger-consumption.md)
+- **ExecPlan:** [EP-20260708-leave-request-ledger-consumption](./completed/EP-20260708-leave-request-ledger-consumption.md)
 - **Status:** 完了（2026-07-08）。annual 申請の残高不足 reject、承認時 consume、承認済み annual 取消時 release を実装・検証済み。pending は引当せず承認時に同一 DB transaction で再検証する。
 - **目的:** 残高不足の申請を入口で止め、承認・取消と台帳を同期させる
 - **指示:**
@@ -164,7 +164,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-07: 残業申請と実績の突合（G3 後半）
 
 - **前提タスク:** T-03（法定外実績の定義を使う）
-- **ExecPlan:** [EP-20260709-overtime-request-reconciliation](./active/EP-20260709-overtime-request-reconciliation.md)
+- **ExecPlan:** [EP-20260709-overtime-request-reconciliation](./completed/EP-20260709-overtime-request-reconciliation.md)
 - **Status:** 完了（2026-07-09）。`unapproved_overtime` / `overtime_exceeds_request` anomaly を追加し、admin anomaly list / calendar に露出
 - **目的:** 「申請なしの残業」「申請超過の残業」を検知し、申請ワークフローを形骸化させない
 - **指示:**
@@ -177,7 +177,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-08: 36協定上限の実績監視 API（G4）
 
 - **前提タスク:** T-03（T-07 完了が望ましいが必須ではない）
-- **ExecPlan:** [EP-20260709-overtime-monitor-api](./active/EP-20260709-overtime-monitor-api.md)
+- **ExecPlan:** [EP-20260709-overtime-monitor-api](./completed/EP-20260709-overtime-monitor-api.md)
 - **Status:** 完了（2026-07-09）。`overtime_monitor_settings` と `GET /api/admin/overtime-monitor` / settings API を追加
 - **目的:** 時間外労働の上限（月 45h / 年 360h、特別条項、単月 100h 未満・2〜6 ヶ月平均 80h）への接近・超過を発生前に可視化する
 - **指示:**
@@ -191,7 +191,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-09: 遅刻・早退・欠勤判定（G5）
 
 - **前提タスク:** T-06（休暇日を欠勤誤検知から除外するため必須）、T-01（判定猶予・丸めの決定に従う）
-- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./active/EP-20260709-punctuality-break-anomalies.md)
+- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./completed/EP-20260709-punctuality-break-anomalies.md)
 - **Status:** 完了（2026-07-09）。`late` / `early_leave` / `absent` anomaly を追加し、休暇日は欠勤から除外
 - **目的:** 予定と実績の乖離（遅刻・早退・欠勤）を判定・集計可能にする
 - **指示:**
@@ -205,7 +205,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-10: 休憩の法定下限チェック（G6）
 
 - **前提タスク:** T-01（警告扱い・どの労働時間で判定するかの決定に従う）。T-03 と独立に実装可
-- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./active/EP-20260709-punctuality-break-anomalies.md)
+- **ExecPlan:** [EP-20260709-punctuality-break-anomalies](./completed/EP-20260709-punctuality-break-anomalies.md)
 - **Status:** 完了（2026-07-09）。設定値に基づく `insufficient_break` anomaly を追加
 - **目的:** 労働 6h 超で休憩 45 分未満 / 8h 超で 60 分未満の日を可視化する
 - **指示:**
@@ -218,7 +218,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-12: 月次締めの承認ワークフロー（G8）
 
 - **前提タスク:** 設計は独立で開始可。実装は T-03 完了後を推奨（締め確定値の固定拡張を見込むため）
-- **ExecPlan:** [EP-20260709-monthly-closing-workflow](./active/EP-20260709-monthly-closing-workflow.md)
+- **ExecPlan:** [EP-20260709-monthly-closing-workflow](./completed/EP-20260709-monthly-closing-workflow.md)
 - **Status:** 完了（2026-07-09）。[monthly-closing.md](../design-docs/monthly-closing.md)、workflow tables、self-confirm / approve / close / reopen API を追加
 - **目的:** 現状の「system_admin による一方的な lock」を、本人確認 → 上長承認 → 締め確定 → 再締めの追跡可能なワークフローへ拡張する
 - **指示:**
@@ -232,7 +232,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 ### T-17: 申請・打刻イベントの通知配線（G12 後半）
 
 - **前提タスク:** T-16
-- **ExecPlan:** [EP-20260709-request-notification-events](./active/EP-20260709-request-notification-events.md)
+- **ExecPlan:** [EP-20260709-request-notification-events](./completed/EP-20260709-request-notification-events.md)
 - **Status:** 完了（2026-07-09）。汎用 notification envelope に申請イベント variant を追加し、申請提出・承認・却下時に Redis queue 有効なら enqueue する。`missing_clock_out_reminder` variant は予約済みで、定期 scan/worker delivery は後続 worker 拡張へ残す
 - **目的:** 申請の放置・打刻漏れの放置を通知で減らす
 - **指示:**
@@ -250,7 +250,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-11: 半休・時間単位休暇と休暇種別マスタ（G7）
 
-**Status:** 完了（[EP-20260730-leave-units-and-type-master](./active/EP-20260730-leave-units-and-type-master.md)、commit `fc1414e`、migration 060–061）
+**Status:** 完了（[EP-20260730-leave-units-and-type-master](./completed/EP-20260730-leave-units-and-type-master.md)、commit `fc1414e`、migration 060–061）
 
 - **前提タスク:** T-04, T-05（残高消化を分単位へ一般化する対象があるため）
 - **目的:** 日単位固定の休暇申請を半休・時間単位へ拡張し、コード内 enum 固定の休暇種別を会社固有に定義可能にする
@@ -264,7 +264,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-13: 振替休日・代休の管理（G9）
 
-**Status:** 完了（[EP-20260730-holiday-substitution-compensatory-leave](./active/EP-20260730-holiday-substitution-compensatory-leave.md)、commit `fc1414e`、migration 062–063）
+**Status:** 完了（[EP-20260730-holiday-substitution-compensatory-leave](./completed/EP-20260730-holiday-substitution-compensatory-leave.md)、commit `fc1414e`、migration 062–063）
 
 - **前提タスク:** T-03（休日労働の区分判定）、T-04（付与台帳の器）
 - **目的:** 休日出勤の対価（事前振替 = 振休、事後付与 = 代休）を付与・消化・期限まで追跡可能にする
@@ -278,7 +278,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-14: 給与エクスポート契約（G10）
 
-**Status:** 完了（[EP-20260730-payroll-export-contract](./active/EP-20260730-payroll-export-contract.md)、commit `fc1414e`、migration 065）
+**Status:** 完了（[EP-20260730-payroll-export-contract](./completed/EP-20260730-payroll-export-contract.md)、commit `fc1414e`、migration 065）
 
 - **前提タスク:** T-03（区分集計）、T-12（closed 状態の確定）
 - **目的:** 給与システムが必要とする「従業員 × 月 × 賃金項目」の確定値を、締め済み月についてのみ出力する
@@ -291,7 +291,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-15: 管理者向け月次レポート / 長時間労働ダッシュボード（G11）
 
-**Status:** 完了（[EP-20260730-admin-attendance-report](./active/EP-20260730-admin-attendance-report.md)、commit `fc1414e`、migration追加なし）
+**Status:** 完了（[EP-20260730-admin-attendance-report](./completed/EP-20260730-admin-attendance-report.md)、commit `fc1414e`、migration追加なし）
 
 - **前提タスク:** T-03（T-08 完了後の統合を推奨）
 - **目的:** 管理者が raw CSV 以外で部署・全社の月次状況（労働時間、残業、anomaly、36協定判定）を一覧できるようにする
@@ -305,7 +305,7 @@ G15（打刻手段拡張）はタスク化しない。要件が発生した時�
 
 ### T-18: 勤務間インターバルチェック（G13）
 
-**Status:** 完了（[EP-20260730-work-interval-anomaly](./active/EP-20260730-work-interval-anomaly.md)、commit `fc1414e`、migration 064）
+**Status:** 完了（[EP-20260730-work-interval-anomaly](./completed/EP-20260730-work-interval-anomaly.md)、commit `fc1414e`、migration 064）
 
 - **前提タスク:** T-09（anomaly 判定基盤に相乗りする）
 - **目的:** 前日の退勤から当日の出勤までの休息時間の不足（努力義務、目安 11h）を可視化する

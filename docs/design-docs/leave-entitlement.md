@@ -101,7 +101,7 @@
 ### 残高を導出値にする理由
 
 - 締め・監査・時効・年5日義務のいずれも「ある基準日時点の残高」を必要とし、スナップショット 1 本では過去時点の再現ができない。
-- settlement balance（[EP-20260703](../exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md)）と同じく、**残高は保存せず read-model として都度計算**することで、後からの補正（`adjust`）・時効ルール変更を派生値の再計算だけで吸収できる。
+- settlement balance（[EP-20260703](../exec-plans/completed/EP-20260703-work-schedule-phase3-settlement-balance.md)）と同じく、**残高は保存せず read-model として都度計算**することで、後からの補正（`adjust`）・時効ルール変更を派生値の再計算だけで吸収できる。
 - パフォーマンス上スナップショットが必要になった場合も、それは**キャッシュ**であって source of truth にしない（`grant base date` ごとの中間残高を materialized view 等で持つのは拡張点）。
 
 ## Consumption Order And Expiry（消化順序と時効）

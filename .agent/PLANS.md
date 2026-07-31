@@ -11,59 +11,59 @@
 
 # EP-20260730-lan-manual-testbed
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-lan-manual-testbed.md`](../docs/exec-plans/active/EP-20260730-lan-manual-testbed.md)。LAN上の別端末からHTTPSで人手確認するための隔離Podman Compose環境。
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-lan-manual-testbed.md`](../docs/exec-plans/completed/EP-20260730-lan-manual-testbed.md)。LAN上の別端末からHTTPSで人手確認するための隔離Podman Compose環境。
 
 # EP-20260730-leave-units-and-type-master
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md`](../docs/exec-plans/active/EP-20260730-leave-units-and-type-master.md)。T-11: 半休・時間単位休暇、休暇種別マスタ、分単位台帳消化、勤怠表示の拡張（migration 060–061）
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-leave-units-and-type-master.md`](../docs/exec-plans/completed/EP-20260730-leave-units-and-type-master.md)。T-11: 半休・時間単位休暇、休暇種別マスタ、分単位台帳消化、勤怠表示の拡張（migration 060–061）
 
 # EP-20260730-holiday-substitution-compensatory-leave
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-holiday-substitution-compensatory-leave.md`](../docs/exec-plans/active/EP-20260730-holiday-substitution-compensatory-leave.md)。T-13: 振替休日のatomic override pairと代休台帳・期限workflow（migration 062–063）
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-holiday-substitution-compensatory-leave.md`](../docs/exec-plans/completed/EP-20260730-holiday-substitution-compensatory-leave.md)。T-13: 振替休日のatomic override pairと代休台帳・期限workflow（migration 062–063）
 
 # EP-20260730-payroll-export-contract
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-payroll-export-contract.md`](../docs/exec-plans/active/EP-20260730-payroll-export-contract.md)。T-14: closed transition時のversioned snapshotと給与CSV export契約（migration 065）
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-payroll-export-contract.md`](../docs/exec-plans/completed/EP-20260730-payroll-export-contract.md)。T-14: closed transition時のversioned snapshotと給与CSV export契約（migration 065）
 
 # EP-20260730-admin-attendance-report
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-admin-attendance-report.md`](../docs/exec-plans/active/EP-20260730-admin-attendance-report.md)。T-15: T-03/T-08/T-09 read-modelを合成する管理者月次レポートAPIと画面
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-admin-attendance-report.md`](../docs/exec-plans/completed/EP-20260730-admin-attendance-report.md)。T-15: T-03/T-08/T-09 read-modelを合成する管理者月次レポートAPIと画面
 
 # EP-20260730-work-interval-anomaly
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260730-work-interval-anomaly.md`](../docs/exec-plans/active/EP-20260730-work-interval-anomaly.md)。T-18: effective時刻に基づく`insufficient_rest` anomalyと設定API（migration 064）
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260730-work-interval-anomaly.md`](../docs/exec-plans/completed/EP-20260730-work-interval-anomaly.md)。T-18: effective時刻に基づく`insufficient_rest` anomalyと設定API（migration 064）
 
 # EP-20260705-leave-entitlement-ledger
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md`](../docs/exec-plans/active/EP-20260705-leave-entitlement-ledger.md)。T-04（G2 実装 前半）: 付与ルールマスタ + append-only `leave_ledger_entries`（migration 052–054）、`crates/domain` の FIFO・時効・年5日義務純ロジック、付与実行 API（dry-run）・残高 read API 2 本・初期投入 `adjust` API。消化引当は T-05
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260705-leave-entitlement-ledger.md`](../docs/exec-plans/completed/EP-20260705-leave-entitlement-ledger.md)。T-04（G2 実装 前半）: 付与ルールマスタ + append-only `leave_ledger_entries`（migration 052–054）、`crates/domain` の FIFO・時効・年5日義務純ロジック、付与実行 API（dry-run）・残高 read API 2 本・初期投入 `adjust` API。消化引当は T-05
 
 # EP-20260708-leave-request-ledger-consumption
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md`](../docs/exec-plans/active/EP-20260708-leave-request-ledger-consumption.md)。T-05（G2 実装 後半）: annual 申請の残高不足 reject、承認時 FIFO consume、承認済み annual 取消時 release。pending は引当せず承認時に同一 DB transaction で再検証する。annual 以外は残高非連動を維持
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260708-leave-request-ledger-consumption.md`](../docs/exec-plans/completed/EP-20260708-leave-request-ledger-consumption.md)。T-05（G2 実装 後半）: annual 申請の残高不足 reject、承認時 FIFO consume、承認済み annual 取消時 release。pending は引当せず承認時に同一 DB transaction で再検証する。annual 以外は残高非連動を維持
 
 # EP-20260709-leave-attendance-integration
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-leave-attendance-integration.md`](../docs/exec-plans/active/EP-20260709-leave-attendance-integration.md)。T-06（G3 前半）: 承認済み休暇を attendance read path / summary / CSV / work-schedule calendar へ read-time join で反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-leave-attendance-integration.md`](../docs/exec-plans/completed/EP-20260709-leave-attendance-integration.md)。T-06（G3 前半）: 承認済み休暇を attendance read path / summary / CSV / work-schedule calendar へ read-time join で反映し、休暇日打刻は `leave_conflict` anomaly として検出する。resolved workday への休暇状態書き込みと打刻 reject はしない
 
 # EP-20260709-overtime-request-reconciliation
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-overtime-request-reconciliation.md`](../docs/exec-plans/active/EP-20260709-overtime-request-reconciliation.md)。T-07（G3 後半）: `unapproved_overtime` / `overtime_exceeds_request` anomaly を追加し、admin anomaly list / calendar 経由で露出する
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-overtime-request-reconciliation.md`](../docs/exec-plans/completed/EP-20260709-overtime-request-reconciliation.md)。T-07（G3 後半）: `unapproved_overtime` / `overtime_exceeds_request` anomaly を追加し、admin anomaly list / calendar 経由で露出する
 
 # EP-20260709-overtime-monitor-api
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-overtime-monitor-api.md`](../docs/exec-plans/active/EP-20260709-overtime-monitor-api.md)。T-08（G4）: `overtime_monitor_settings` と `GET /api/admin/overtime-monitor` / settings API を追加し、月次・年度・直近6ヶ月平均の `ok` / `warning` / `exceeded` を返す
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-overtime-monitor-api.md`](../docs/exec-plans/completed/EP-20260709-overtime-monitor-api.md)。T-08（G4）: `overtime_monitor_settings` と `GET /api/admin/overtime-monitor` / settings API を追加し、月次・年度・直近6ヶ月平均の `ok` / `warning` / `exceeded` を返す
 
 # EP-20260709-punctuality-break-anomalies
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-punctuality-break-anomalies.md`](../docs/exec-plans/active/EP-20260709-punctuality-break-anomalies.md)。T-09/T-10（G5/G6）: `late` / `early_leave` / `absent` / `insufficient_break` anomaly を追加
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-punctuality-break-anomalies.md`](../docs/exec-plans/completed/EP-20260709-punctuality-break-anomalies.md)。T-09/T-10（G5/G6）: `late` / `early_leave` / `absent` / `insufficient_break` anomaly を追加
 
 # EP-20260709-monthly-closing-workflow
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-monthly-closing-workflow.md`](../docs/exec-plans/active/EP-20260709-monthly-closing-workflow.md)。T-12（G8）: 月次締め design doc、workflow tables、self-confirm / approve / close / reopen API を追加。`closed` は既存 monthly lock と統合
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-monthly-closing-workflow.md`](../docs/exec-plans/completed/EP-20260709-monthly-closing-workflow.md)。T-12（G8）: 月次締め design doc、workflow tables、self-confirm / approve / close / reopen API を追加。`closed` は既存 monthly lock と統合
 
 # EP-20260709-request-notification-events
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260709-request-notification-events.md`](../docs/exec-plans/active/EP-20260709-request-notification-events.md)。T-17（G12 後半）: 汎用 notification envelope に申請イベント variant を追加し、申請提出・承認・却下時に Redis queue 有効なら enqueue する
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260709-request-notification-events.md`](../docs/exec-plans/completed/EP-20260709-request-notification-events.md)。T-17（G12 後半）: 汎用 notification envelope に申請イベント variant を追加し、申請提出・承認・却下時に Redis queue 有効なら enqueue する
 
 # EP-20260704-notification-service-generalization
 
@@ -93,167 +93,167 @@
 
 # EP-20260311-frontend-rust-i18n-migration
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md`](../docs/exec-plans/active/EP-20260311-frontend-rust-i18n-migration.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260311-frontend-rust-i18n-migration.md`](../docs/exec-plans/completed/EP-20260311-frontend-rust-i18n-migration.md)
 
 # EP-20260621-workday-override-and-schedule-read-api
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-workday-override-and-schedule-read-api.md`](../docs/exec-plans/active/EP-20260621-workday-override-and-schedule-read-api.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260621-workday-override-and-schedule-read-api.md`](../docs/exec-plans/completed/EP-20260621-workday-override-and-schedule-read-api.md)
 
 # EP-20260314-wildcard-cors-hardening
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md`](../docs/exec-plans/active/EP-20260314-wildcard-cors-hardening.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260314-wildcard-cors-hardening.md`](../docs/exec-plans/completed/EP-20260314-wildcard-cors-hardening.md)
 
 # EP-20260703-work-schedule-phase3-settlement-balance
 
-**実装完了・検証済み** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md)。補正後実績と月次契約所定分を分単位で突合するread-model、本人・scoped manager向けAPI、tagged union contractを追加
+**実装完了・検証済み** — 詳細: [`docs/exec-plans/completed/EP-20260703-work-schedule-phase3-settlement-balance.md`](../docs/exec-plans/completed/EP-20260703-work-schedule-phase3-settlement-balance.md)。補正後実績と月次契約所定分を分単位で突合するread-model、本人・scoped manager向けAPI、tagged union contractを追加
 
 # EP-20260703-work-schedule-phase3-resolve-workday-flex
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../docs/exec-plans/active/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260703-work-schedule-phase3-resolve-workday-flex.md`](../docs/exec-plans/completed/EP-20260703-work-schedule-phase3-resolve-workday-flex.md)
 
 # EP-20260702-work-schedule-phase3-flex-core-time
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md`](../docs/exec-plans/active/EP-20260702-work-schedule-phase3-flex-core-time.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260702-work-schedule-phase3-flex-core-time.md`](../docs/exec-plans/completed/EP-20260702-work-schedule-phase3-flex-core-time.md)
 
 # EP-20260702-work-schedule-phase3-api-wiring
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md`](../docs/exec-plans/active/EP-20260702-work-schedule-phase3-api-wiring.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260702-work-schedule-phase3-api-wiring.md`](../docs/exec-plans/completed/EP-20260702-work-schedule-phase3-api-wiring.md)
 
 # EP-20260620-work-schedule-master-design
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-design.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-design.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260620-work-schedule-master-design.md`](../docs/exec-plans/completed/EP-20260620-work-schedule-master-design.md)
 
 # EP-20260620-work-schedule-master-api
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260620-work-schedule-master-api.md`](../docs/exec-plans/active/EP-20260620-work-schedule-master-api.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260620-work-schedule-master-api.md`](../docs/exec-plans/completed/EP-20260620-work-schedule-master-api.md)
 
 # EP-20260621-resolve-workday
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-resolve-workday.md`](../docs/exec-plans/active/EP-20260621-resolve-workday.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260621-resolve-workday.md`](../docs/exec-plans/completed/EP-20260621-resolve-workday.md)
 
 # EP-20260621-connect-punches-to-workdays
 
-**完了済み** — 詳細: [`docs/exec-plans/active/EP-20260621-connect-punches-to-workdays.md`](../docs/exec-plans/active/EP-20260621-connect-punches-to-workdays.md)
+**完了済み** — 詳細: [`docs/exec-plans/completed/EP-20260621-connect-punches-to-workdays.md`](../docs/exec-plans/completed/EP-20260621-connect-punches-to-workdays.md)
 
 # EP-20260610-rebuild-architecture-harness
 
-**完了済み (b958562)** — 詳細: [`docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/active/EP-20260610-rebuild-architecture-harness.md)
+**完了済み (b958562)** — 詳細: [`docs/exec-plans/completed/EP-20260610-rebuild-architecture-harness.md`](../docs/exec-plans/completed/EP-20260610-rebuild-architecture-harness.md)
 
 # EP-20260612-rebuild-target-workspace
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md`](../docs/exec-plans/active/EP-20260612-rebuild-target-workspace.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-rebuild-target-workspace.md`](../docs/exec-plans/completed/EP-20260612-rebuild-target-workspace.md)
 
 # EP-20260612-attendance-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260612-attendance-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-attendance-contract-dtos.md`](../docs/exec-plans/completed/EP-20260612-attendance-contract-dtos.md)
 
 # EP-20260612-clock-in-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-in-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-in-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-clock-in-use-case.md`](../docs/exec-plans/completed/EP-20260612-clock-in-use-case.md)
 
 # EP-20260612-clock-out-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-clock-out-use-case.md`](../docs/exec-plans/active/EP-20260612-clock-out-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-clock-out-use-case.md`](../docs/exec-plans/completed/EP-20260612-clock-out-use-case.md)
 
 # EP-20260612-start-break-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-start-break-use-case.md`](../docs/exec-plans/active/EP-20260612-start-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-start-break-use-case.md`](../docs/exec-plans/completed/EP-20260612-start-break-use-case.md)
 
 # EP-20260612-end-break-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-end-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-end-break-use-case.md`](../docs/exec-plans/completed/EP-20260612-end-break-use-case.md)
 
 # EP-20260612-attendance-infra-postgres-repository
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260612-attendance-infra-postgres-repository.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-attendance-infra-postgres-repository.md`](../docs/exec-plans/completed/EP-20260612-attendance-infra-postgres-repository.md)
 
 # EP-20260612-attendance-status-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md`](../docs/exec-plans/active/EP-20260612-attendance-status-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-attendance-status-read-use-case.md`](../docs/exec-plans/completed/EP-20260612-attendance-status-read-use-case.md)
 
 # EP-20260612-breaks-by-attendance-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md`](../docs/exec-plans/active/EP-20260612-breaks-by-attendance-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-breaks-by-attendance-read-use-case.md`](../docs/exec-plans/completed/EP-20260612-breaks-by-attendance-read-use-case.md)
 
 # EP-20260612-admin-force-end-break-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-force-end-break-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-admin-force-end-break-use-case.md`](../docs/exec-plans/completed/EP-20260612-admin-force-end-break-use-case.md)
 
 # EP-20260612-admin-active-breaks-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-active-breaks-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-admin-active-breaks-read-use-case.md`](../docs/exec-plans/completed/EP-20260612-admin-active-breaks-read-use-case.md)
 
 # EP-20260612-admin-attendance-page-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-page-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-admin-attendance-page-read-use-case.md`](../docs/exec-plans/completed/EP-20260612-admin-attendance-page-read-use-case.md)
 
 # EP-20260612-admin-attendance-upsert-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md`](../docs/exec-plans/active/EP-20260612-admin-attendance-upsert-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260612-admin-attendance-upsert-use-case.md`](../docs/exec-plans/completed/EP-20260612-admin-attendance-upsert-use-case.md)
 
 # EP-20260613-user-attendance-range-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-range-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-user-attendance-range-read-use-case.md`](../docs/exec-plans/completed/EP-20260613-user-attendance-range-read-use-case.md)
 
 # EP-20260613-user-attendance-summary-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-summary-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-user-attendance-summary-use-case.md`](../docs/exec-plans/completed/EP-20260613-user-attendance-summary-use-case.md)
 
 # EP-20260613-user-attendance-export-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-user-attendance-export-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-user-attendance-export-use-case.md`](../docs/exec-plans/completed/EP-20260613-user-attendance-export-use-case.md)
 
 # EP-20260613-admin-attendance-export-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-export-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-admin-attendance-export-use-case.md`](../docs/exec-plans/completed/EP-20260613-admin-attendance-export-use-case.md)
 
 # EP-20260613-create-attendance-correction-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-create-attendance-correction-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-create-attendance-correction-use-case.md`](../docs/exec-plans/completed/EP-20260613-create-attendance-correction-use-case.md)
 
 # EP-20260613-manage-attendance-correction-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md`](../docs/exec-plans/active/EP-20260613-manage-attendance-correction-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-manage-attendance-correction-use-case.md`](../docs/exec-plans/completed/EP-20260613-manage-attendance-correction-use-case.md)
 
 # EP-20260613-admin-attendance-correction-decision-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-decision-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-admin-attendance-correction-decision-use-case.md`](../docs/exec-plans/completed/EP-20260613-admin-attendance-correction-decision-use-case.md)
 
 # EP-20260613-admin-attendance-correction-read-use-case
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-correction-read-use-case.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-admin-attendance-correction-read-use-case.md`](../docs/exec-plans/completed/EP-20260613-admin-attendance-correction-read-use-case.md)
 
 # EP-20260613-attendance-correction-infra-postgres-repository
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-infra-postgres-repository.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-attendance-correction-infra-postgres-repository.md`](../docs/exec-plans/completed/EP-20260613-attendance-correction-infra-postgres-repository.md)
 
 # EP-20260613-attendance-correction-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-attendance-correction-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-attendance-correction-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-attendance-correction-contract-dtos.md)
 
 # EP-20260613-admin-attendance-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-admin-attendance-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-admin-attendance-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-admin-attendance-contract-dtos.md)
 
 # EP-20260613-leave-overtime-request-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-leave-overtime-request-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-leave-overtime-request-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-leave-overtime-request-contract-dtos.md)
 
 # EP-20260613-subject-request-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-subject-request-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-subject-request-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-subject-request-contract-dtos.md)
 
 # EP-20260613-department-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-department-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-department-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-department-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-department-contract-dtos.md)
 
 # EP-20260613-holiday-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-holiday-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-holiday-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-holiday-contract-dtos.md)
 
 # EP-20260613-auth-password-reset-contract-dtos
 
-**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md`](../docs/exec-plans/active/EP-20260613-auth-password-reset-contract-dtos.md)
+**完了済み (c9b64b3)** — 詳細: [`docs/exec-plans/completed/EP-20260613-auth-password-reset-contract-dtos.md`](../docs/exec-plans/completed/EP-20260613-auth-password-reset-contract-dtos.md)
 
 ## テンプレート
 

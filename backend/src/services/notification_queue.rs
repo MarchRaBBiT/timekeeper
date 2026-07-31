@@ -68,7 +68,7 @@
 //!
 //! ## Application notification queue has no consumer yet: `LTRIM` cap
 //!
-//! `docs/exec-plans/active/EP-20260709-request-notification-events.md` scoped worker
+//! `docs/exec-plans/completed/EP-20260709-request-notification-events.md` scoped worker
 //! delivery for the application notification variants (`RequestSubmitted` /
 //! `RequestApproved` / `RequestRejected` / `MissingClockOutReminder`) out of that change —
 //! unlike [`crate::services::lockout_notification_queue`], which is drained by

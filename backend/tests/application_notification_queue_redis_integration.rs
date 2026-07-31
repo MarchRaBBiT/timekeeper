@@ -1,7 +1,7 @@
 //! Regression test for the MEDIUM operational-risk fix on `app:notifications`.
 //!
 //! Context: `enqueue_application_notification_job` (leave/overtime submit + approval/rejection)
-//! has no consumer yet — `docs/exec-plans/active/EP-20260709-request-notification-events.md`
+//! has no consumer yet — `docs/exec-plans/completed/EP-20260709-request-notification-events.md`
 //! explicitly scoped worker delivery for these events out of that change. Unlike the lockout
 //! queue (`auth:lockout-notifications`, drained by `lockout_notification_worker`), nothing
 //! `BRPOP`s `app:notifications`, so an unbounded `RPUSH` there would let the Redis list grow

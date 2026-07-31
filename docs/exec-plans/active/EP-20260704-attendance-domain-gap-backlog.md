@@ -27,7 +27,7 @@
 
 計画済み（本 EP では重複登録しない）:
 
-- flex 清算期間残高: [EP-20260703-work-schedule-phase3-settlement-balance](./EP-20260703-work-schedule-phase3-settlement-balance.md)（未着手）
+- flex 清算期間残高: [EP-20260703-work-schedule-phase3-settlement-balance](../completed/EP-20260703-work-schedule-phase3-settlement-balance.md)（未着手）
 - [work-schedule-master.md](../../design-docs/work-schedule-master.md) Follow-up Designs: 1 勤怠計算ポリシー / 2 月次締め・承認・再締め / 3 有給休暇付与・残高台帳 / 4 給与エクスポート契約（design doc 予告のみで EP 未作成 → 本 EP の G1 / G2 / G8 / G10 が EP 化の受け皿）
 - 代理承認者 / system_admin 自動エスカレーション: tech-debt #11 残（P2）
 - 勤怠修正承認の管理 UI 配線: tech-debt #16

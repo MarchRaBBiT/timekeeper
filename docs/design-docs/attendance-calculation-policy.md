@@ -29,7 +29,7 @@
 
 1. 実績時間は `attendance_correction_effective_values` 適用後（effective）の clock/break timestamp 差分から
    **整数分で直接計算**する。保存済み `total_work_hours`（f64）は入力に使わない
-   （[EP-20260703-work-schedule-phase3-settlement-balance](../exec-plans/active/EP-20260703-work-schedule-phase3-settlement-balance.md) Design Decision 1）
+   （[EP-20260703-work-schedule-phase3-settlement-balance](../exec-plans/completed/EP-20260703-work-schedule-phase3-settlement-balance.md) Design Decision 1）
 2. 休憩は**実休憩打刻ベース**で控除する。予定休憩の自動控除はしない（同 Decision 2、
    work-schedule-master.md Weekly Pattern 節）
 3. 実績の月帰属は **`work_date` 基準**。夜勤（`end_day_offset = 1`）が暦日・暦月を跨いでも

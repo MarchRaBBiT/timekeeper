@@ -1088,7 +1088,7 @@ fn validate_range(from: NaiveDate, to: NaiveDate) -> Result<(), AppError> {
 /// ~10 years) — far beyond any realistic overtime-limit configuration, while leaving
 /// comfortable headroom under `i32::MAX` (~4085 years) so the conversion can never
 /// overflow.
-/// Rationale recorded in docs/exec-plans/active/EP-20260709-overtime-monitor-api.md.
+/// Rationale recorded in docs/exec-plans/completed/EP-20260709-overtime-monitor-api.md.
 const MAX_OVERTIME_LIMIT_MINUTES: i64 = 527_040 * 10;
 
 /// Ceiling for `overtime_request_tolerance_minutes`. This field is a small
