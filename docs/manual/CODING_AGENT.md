@@ -1,6 +1,6 @@
 # Coding Agent Guide
 
-**Updated:** 2026-06-10
+**Updated:** 2026-07-31
 **Project:** Timekeeper - 勤怠管理システム
 
 ## Purpose
@@ -73,6 +73,17 @@
 - ユーザー許可なく仕様を簡略化しない
 - backend API の route / method / request / response / error / 認可要件を変更した場合は、同じ変更内で `docs/design-docs/backend-api-catalog.md` を更新する
 - docs / harness / architecture source of truth を変更した場合は、`bash scripts/harness.sh docs-check` を実行する
+
+## 記述の責務
+
+実装に関する情報は、次の責務に分けて記述します。
+
+- プロダクションコードは、処理をどのように実現するか（**How**）を構造と命名で示す
+- テストコードは、何が期待される挙動か（**What**）をテスト名・入力・期待値で示す
+- コミットメッセージは、なぜ変更したか（**Why**）を示す
+- コードコメントは、採用しなかった選択肢と、その理由（**Why not**）を示す
+
+コードから明らかな処理内容をコメントで言い換えず、制約やトレードオフにより別案を採用しなかった理由を残してください。
 
 ## Notes
 
