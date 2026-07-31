@@ -650,6 +650,7 @@ mod host_tests {
 
     #[test]
     fn helper_subject_request_detail_rows_basic_fields() {
+        let _locale = crate::test_support::helpers::set_test_locale("ja");
         let request = sample_request();
         let rows = subject_request_detail_rows(&request, &[]);
         let labels: Vec<&str> = rows.iter().map(|(l, _)| *l).collect();
